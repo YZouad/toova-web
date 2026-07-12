@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { Item, useStore } from '../store';
@@ -16,7 +16,31 @@ interface Props {
  */
 export function ImportedModel({ item, selected, invalid }: Props) {
   if (!item.importedUrl) return null;
-  return <Inner item={item} selected={selected} invalid={invalid} url={item.importedUrl} />;
+  return (
+    <Suspense fallback={<ImportedLoadingBox item={item} selected={selected} invalid={invalid} />}>
+      <Inner item={item} selected={selected} invalid={invalid} url={item.importedUrl} />
+    </Suspense>
+  );
+}
+
+function ImportedLoadingBox({ item, selected, invalid }: Props) {
+  const displaySize = item.catalogSizeIn ?? item.size;
+  return (
+    <>
+      <mesh position={[0, displaySize[1] / 2, 0]} castShadow receiveShadow>
+        <boxGeometry args={displaySize} />
+        <meshStandardMaterial
+          color="#7E8A60"
+          roughness={0.85}
+          transparent
+          opacity={0.38}
+        />
+      </mesh>
+      {selected && (
+        <SelectionOutline size={displaySize} color={invalid ? '#ff5555' : '#4f8cff'} />
+      )}
+    </>
+  );
 }
 
 function Inner({ item, selected, invalid, url }: Props & { url: string }) {
@@ -50,6 +74,7 @@ function Inner({ item, selected, invalid, url }: Props & { url: string }) {
 
   const natural = item.importedNaturalSize ?? meshNaturalSize;
   const eps = 1e-3;
+  // item.size is kept proportional to natural so sx/sy/sz stay equal (uniform scale).
   const sx = natural[0] > eps ? item.size[0] / natural[0] : 1;
   const sy = natural[1] > eps ? item.size[1] / natural[1] : 1;
   const sz = natural[2] > eps ? item.size[2] / natural[2] : 1;
@@ -59,7 +84,9 @@ function Inner({ item, selected, invalid, url }: Props & { url: string }) {
       <group scale={[sx, sy, sz]}>
         <primitive object={centeredScene} />
       </group>
-      {selected && <SelectionOutline size={item.size} color={invalid ? '#ff5555' : '#4f8cff'} />}
+      {selected && (
+        <SelectionOutline size={item.size} color={invalid ? '#ff5555' : '#4f8cff'} />
+      )}
     </>
   );
 }

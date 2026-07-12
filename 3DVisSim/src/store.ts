@@ -1,7 +1,13 @@
 import { create } from 'zustand';
 import { FURNITURE, FurnitureKind } from './furniture/registry';
 import { findValidElevation, settleGravity, validatePlacement } from './interaction/collision';
-import { ROOM } from './units';
+import { resolveImportedInitialSize } from './lib/importedItemSize';
+import {
+  clampRoomGeometry,
+  DEFAULT_ROOM_GEOMETRY,
+  type RoomGeometry,
+  type RoomWindow,
+} from './lib/roomGeometry';
 
 const BED_MIN_BODY_H = 4;
 export const DEFAULT_BLANKET_COLOR = '#6b8cae';
@@ -23,6 +29,41 @@ export function normalizeBedItem(it: Item): Item {
   };
 }
 
+export interface RoomEnvironment {
+  timeOfDay: number;       // 0..24
+  orientationDeg: number;  // 0..360, room yaw vs sun
+  exposure: number;        // global brightness trim, default 1
+  skyMode: 'gradient' | 'studio';
+  godRays: boolean;
+}
+
+export const DEFAULT_ENVIRONMENT: RoomEnvironment = {
+  timeOfDay: 13,
+  orientationDeg: 0,
+  exposure: 1,
+  skyMode: 'gradient',
+  godRays: false,
+};
+
+export interface EmitterConfig {
+  enabled: boolean;
+  type: 'point' | 'spot';
+  color: string;
+  intensity: number;
+  range: number;
+  angleDeg?: number;
+  emissiveBoost?: number;
+}
+
+export const DEFAULT_EMITTER: EmitterConfig = {
+  enabled: true,
+  type: 'point',
+  color: '#fff4e0',
+  intensity: 1.5,
+  range: 80,
+  emissiveBoost: 0.4,
+};
+
 export interface Item {
   id: string;
   kind: FurnitureKind;
@@ -35,6 +76,8 @@ export interface Item {
   importedStoragePath?: string;
   /** GLTF mesh bounds before user scale; only for `imported` */
   importedNaturalSize?: [number, number, number];
+  /** Catalog inch dimensions (community models); used to recover size after mesh load. */
+  catalogSizeIn?: [number, number, number];
   label: string;
   /** Gravity off on drag only when checked AND touching a wall; height slider ignores this flag. */
   wallMounted?: boolean;
@@ -46,6 +89,7 @@ export interface Item {
   blanketTexturePath?: string;
   /** Signed URL for blanket texture (runtime only; not persisted). */
   blanketTextureUrl?: string;
+  emitter?: EmitterConfig;
 }
 
 interface StoreState {
@@ -54,8 +98,21 @@ interface StoreState {
   selectedId: string | null;
   invalid: boolean;
 
+  environment: RoomEnvironment;
+  roomGeometry: RoomGeometry;
+  setTimeOfDay: (h: number) => void;
+  setOrientation: (deg: number) => void;
+  setExposure: (x: number) => void;
+  setSkyMode: (m: 'gradient' | 'studio') => void;
+  setGodRays: (on: boolean) => void;
+  setRoomDimensions: (dims: Partial<Pick<RoomGeometry, 'width' | 'depth' | 'height'>>) => void;
+  addWindow: (win?: Partial<RoomWindow>) => void;
+  updateWindow: (index: number, patch: Partial<RoomWindow>) => void;
+  removeWindow: (index: number) => void;
+
   /** Replace layout from persisted data for the active room. */
   hydrateLayout: (payload: Item[], orderIds: string[]) => void;
+  hydrateRoomSettings: (environment: RoomEnvironment, roomGeometry: RoomGeometry) => void;
   /** Clear scene (switch room / sign out). */
   resetLayout: () => void;
 
@@ -66,8 +123,11 @@ interface StoreState {
       storagePath?: string;
       label?: string;
       size?: [number, number, number];
+      catalogSizeIn?: [number, number, number];
     },
   ) => string;
+  /** Clone an item with a new id, slight position offset; appends and selects it. */
+  duplicateItem: (id: string) => string | null;
   removeItem: (id: string) => void;
   updatePosition: (id: string, position: [number, number, number]) => void;
   updateRotation: (id: string, rotationY: number) => void;
@@ -83,6 +143,8 @@ interface StoreState {
     id: string,
     tex: { path: string; url: string } | null,
   ) => void;
+  setEmitterEnabled: (id: string, enabled: boolean) => void;
+  setEmitterConfig: (id: string, patch: Partial<EmitterConfig>) => void;
   registerImportedNaturalSize: (id: string, natural: [number, number, number]) => void;
   setImportedSize: (id: string, size: [number, number, number]) => void;
   select: (id: string | null) => void;
@@ -93,10 +155,14 @@ let nextId = 1;
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
+/** Wrap an angle into [0, 360). */
+const wrapDeg = (deg: number) => ((deg % 360) + 360) % 360;
+
 export function clampFullItemPosition(
   position: [number, number, number],
   rotationY: number,
   size: [number, number, number],
+  room = useStore.getState().roomGeometry,
 ): [number, number, number] {
   const [w, h, d] = size;
   const c = Math.abs(Math.cos(rotationY));
@@ -105,9 +171,9 @@ export function clampFullItemPosition(
   const halfD = (w * s + d * c) / 2;
   const inset = 1;
   return [
-    clamp(position[0], inset + halfW, ROOM.width - inset - halfW),
-    clamp(position[1], 0, Math.max(0, ROOM.height - h)),
-    clamp(position[2], inset + halfD, ROOM.depth - inset - halfD),
+    clamp(position[0], inset + halfW, room.width - inset - halfW),
+    clamp(position[1], 0, Math.max(0, room.height - h)),
+    clamp(position[2], inset + halfD, room.depth - inset - halfD),
   ];
 }
 
@@ -123,6 +189,65 @@ export const useStore = create<StoreState>((set) => ({
   order: [],
   selectedId: null,
   invalid: false,
+
+  environment: { ...DEFAULT_ENVIRONMENT },
+  roomGeometry: { ...DEFAULT_ROOM_GEOMETRY, windows: [...DEFAULT_ROOM_GEOMETRY.windows] },
+
+  setTimeOfDay: (h) =>
+    set((s) => ({ environment: { ...s.environment, timeOfDay: clamp(h, 0, 24) } })),
+  setOrientation: (deg) =>
+    set((s) => ({ environment: { ...s.environment, orientationDeg: wrapDeg(deg) } })),
+  setExposure: (x) =>
+    set((s) => ({ environment: { ...s.environment, exposure: clamp(x, 0.2, 3) } })),
+  setSkyMode: (m) =>
+    set((s) => ({ environment: { ...s.environment, skyMode: m } })),
+  setGodRays: (on) =>
+    set((s) => ({ environment: { ...s.environment, godRays: on } })),
+
+  setRoomDimensions: (dims) =>
+    set((s) => {
+      const next = clampRoomGeometry({
+        ...s.roomGeometry,
+        ...dims,
+      });
+      return { roomGeometry: next };
+    }),
+
+  addWindow: (win) =>
+    set((s) => {
+      const geom = s.roomGeometry;
+      const patch: RoomWindow = {
+        wall: win?.wall ?? 'east',
+        x: win?.x ?? 0,
+        y: win?.y ?? 36,
+        w: win?.w ?? 36,
+        h: win?.h ?? 36,
+      };
+      return {
+        roomGeometry: clampRoomGeometry({
+          ...geom,
+          windows: [...geom.windows, patch],
+        }),
+      };
+    }),
+
+  updateWindow: (index, patch) =>
+    set((s) => {
+      const windows = s.roomGeometry.windows.map((w, i) =>
+        i === index ? { ...w, ...patch } : w,
+      );
+      return {
+        roomGeometry: clampRoomGeometry({ ...s.roomGeometry, windows }),
+      };
+    }),
+
+  removeWindow: (index) =>
+    set((s) => ({
+      roomGeometry: clampRoomGeometry({
+        ...s.roomGeometry,
+        windows: s.roomGeometry.windows.filter((_, i) => i !== index),
+      }),
+    })),
 
   hydrateLayout: (payload, orderIds) =>
     set(() => {
@@ -140,10 +265,29 @@ export const useStore = create<StoreState>((set) => ({
       };
     }),
 
+  hydrateRoomSettings: (environment, roomGeometry) =>
+    set(() => ({
+      environment: { ...environment },
+      roomGeometry: {
+        ...roomGeometry,
+        windows: [...roomGeometry.windows],
+      },
+    })),
+
   resetLayout: () =>
     set(() => {
       nextId = 1;
-      return { items: {}, order: [], selectedId: null, invalid: false };
+      return {
+        items: {},
+        order: [],
+        selectedId: null,
+        invalid: false,
+        environment: { ...DEFAULT_ENVIRONMENT },
+        roomGeometry: {
+          ...DEFAULT_ROOM_GEOMETRY,
+          windows: [...DEFAULT_ROOM_GEOMETRY.windows],
+        },
+      };
     }),
 
   addItem: (kind, opts) => {
@@ -153,10 +297,16 @@ export const useStore = create<StoreState>((set) => ({
     const isBed = kind === 'bed';
     const bedLegHeight = isBed ? 8 : undefined;
     const bodyH = isBed && def ? def.size[1] : 0;
-    const position: [number, number, number] = [ROOM.width / 2, 0, ROOM.depth / 2];
+    const room = useStore.getState().roomGeometry;
+    const position: [number, number, number] = [room.width / 2, 0, room.depth / 2];
     const itemSize: [number, number, number] = isBed && def
       ? [def.size[0], bedLegHeight! + bodyH, def.size[2]]
       : size;
+    const catalogSizeIn =
+      kind === 'imported'
+        ? (opts?.catalogSizeIn ?? ([...itemSize] as [number, number, number]))
+        : undefined;
+
     const item: Item = {
       id,
       kind,
@@ -166,6 +316,7 @@ export const useStore = create<StoreState>((set) => ({
       bedLegHeight,
       importedUrl: opts?.url,
       importedStoragePath: opts?.storagePath,
+      catalogSizeIn,
       label: opts?.label ?? (def ? def.label : 'Model'),
     };
     set((s) => ({
@@ -174,6 +325,31 @@ export const useStore = create<StoreState>((set) => ({
       selectedId: id,
     }));
     return id;
+  },
+
+  duplicateItem: (id) => {
+    const src = useStore.getState().items[id];
+    if (!src) return null;
+    const newId = `item-${nextId++}`;
+    const offset = 12;
+    const rawPosition: [number, number, number] = [
+      src.position[0] + offset,
+      src.position[1],
+      src.position[2] + offset,
+    ];
+    const position = clampFullItemPosition(rawPosition, src.rotationY, src.size);
+    const clone: Item = {
+      ...src,
+      id: newId,
+      position,
+      size: [...src.size] as [number, number, number],
+    };
+    set((s) => ({
+      items: { ...s.items, [newId]: clone },
+      order: [...s.order, newId],
+      selectedId: newId,
+    }));
+    return newId;
   },
 
   removeItem: (id) =>
@@ -208,8 +384,9 @@ export const useStore = create<StoreState>((set) => ({
     set((s) => {
       const it = s.items[id];
       if (!it) return s;
-      const maxFootprint = Math.max(ROOM.width, ROOM.depth, 200);
-      let heightMax = ROOM.height;
+      const room = s.roomGeometry;
+      const maxFootprint = Math.max(room.width, room.depth, 200);
+      let heightMax = room.height;
       let size: [number, number, number] = [
         clamp(sizeInput[0], 1, maxFootprint),
         clamp(sizeInput[1], 4, heightMax),
@@ -228,7 +405,7 @@ export const useStore = create<StoreState>((set) => ({
       const it = s.items[id];
       if (!it) return s;
       const others = Object.values(s.items).filter((o) => o.id !== id);
-      const maxY = Math.max(0, ROOM.height - it.size[1]);
+      const maxY = Math.max(0, s.roomGeometry.height - it.size[1]);
       const targetY = clamp(y, 0, maxY);
       const candidate = { ...it, position: [it.position[0], targetY, it.position[2]] as [number, number, number] };
       const resolvedY = findValidElevation(candidate, others, targetY);
@@ -253,7 +430,18 @@ export const useStore = create<StoreState>((set) => ({
       let next: Item = { ...it, wallMounted: mounted };
       if (!mounted) {
         const y = settleGravity(next, others, next.position[1]);
-        next = { ...next, position: [next.position[0], y, next.position[2]] };
+        const settled: [number, number, number] = [next.position[0], y, next.position[2]];
+        const candidate = { ...next, position: settled };
+        if (validatePlacement(candidate, others).ok) {
+          next = candidate;
+        } else {
+          const atFloor: [number, number, number] = [next.position[0], 0, next.position[2]];
+          if (validatePlacement({ ...next, position: atFloor }, others).ok) {
+            next = { ...next, position: atFloor };
+          } else {
+            next = { ...next, position: settled };
+          }
+        }
       }
 
       return { items: { ...s.items, [id]: next } };
@@ -265,7 +453,7 @@ export const useStore = create<StoreState>((set) => ({
       if (!it || it.kind !== 'bed') return s;
       const prevLeg = it.bedLegHeight ?? 8;
       const bodyH = Math.max(BED_MIN_BODY_H, it.size[1] - prevLeg);
-      const clamped = clamp(h, 4, Math.min(36, Math.max(4, ROOM.height - bodyH)));
+      const clamped = clamp(h, 4, Math.min(36, Math.max(4, s.roomGeometry.height - bodyH)));
       const nextSize: [number, number, number] = [it.size[0], clamped + bodyH, it.size[2]];
       const next: Item = {
         ...it,
@@ -330,15 +518,44 @@ export const useStore = create<StoreState>((set) => ({
       };
     }),
 
-  registerImportedNaturalSize: (id, natural) =>
+  setEmitterEnabled: (id, enabled) =>
     set((s) => {
       const it = s.items[id];
-      if (!it || it.kind !== 'imported') return s;
-      if (it.importedNaturalSize) return s;
+      if (!it) return s;
+      const base = it.emitter ?? { ...DEFAULT_EMITTER, enabled: false };
+      const emitter = enabled
+        ? { ...(it.emitter ?? DEFAULT_EMITTER), enabled: true }
+        : { ...base, enabled: false };
       return {
         items: {
           ...s.items,
-          [id]: { ...it, importedNaturalSize: natural, size: natural },
+          [id]: { ...it, emitter },
+        },
+      };
+    }),
+
+  setEmitterConfig: (id, patch) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it) return s;
+      const base = it.emitter ?? { ...DEFAULT_EMITTER, enabled: false };
+      return {
+        items: {
+          ...s.items,
+          [id]: { ...it, emitter: { ...base, ...patch } },
+        },
+      };
+    }),
+
+  registerImportedNaturalSize: (id, natural) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'imported' || it.importedNaturalSize) return s;
+      const size = resolveImportedInitialSize(it.size, natural, it.catalogSizeIn);
+      return {
+        items: {
+          ...s.items,
+          [id]: { ...it, importedNaturalSize: natural, size },
         },
       };
     }),
@@ -347,10 +564,11 @@ export const useStore = create<StoreState>((set) => ({
     set((s) => {
       const it = s.items[id];
       if (!it || it.kind !== 'imported' || !it.importedNaturalSize) return s;
-      const maxFootprint = Math.max(ROOM.width, ROOM.depth, 200);
+      const room = s.roomGeometry;
+      const maxFootprint = Math.max(room.width, room.depth, 200);
       const size: [number, number, number] = [
         clamp(sizeInput[0], 1, maxFootprint),
-        clamp(sizeInput[1], 4, ROOM.height),
+        clamp(sizeInput[1], 4, room.height),
         clamp(sizeInput[2], 1, maxFootprint),
       ];
       const position = clampFullItemPosition(it.position, it.rotationY, size);

@@ -3,7 +3,7 @@
  */
 
 import type { FurnitureKind } from '../furniture/registry';
-import { DEFAULT_BLANKET_COLOR, type Item } from '../store';
+import { DEFAULT_BLANKET_COLOR, type EmitterConfig, type Item } from '../store';
 
 const KNOWN_KINDS: FurnitureKind[] = [
   'bed',
@@ -41,6 +41,7 @@ export interface RoomItemRow {
   bedding_enabled?: boolean | null;
   blanket_color?: string | null;
   blanket_texture_path?: string | null;
+  emitter?: EmitterConfig | null;
 }
 
 export type RoomItemInsert = {
@@ -63,6 +64,7 @@ export type RoomItemInsert = {
   bedding_enabled?: boolean;
   blanket_color: string | null;
   blanket_texture_path: string | null;
+  emitter?: EmitterConfig | null;
 };
 
 function n(v: string | number): number {
@@ -122,6 +124,8 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
       ? String(row.blanket_texture_path).trim()
       : undefined;
 
+  const emitter = parseEmitter(row.emitter);
+
   return {
     id: row.id,
     kind: row.kind,
@@ -137,6 +141,26 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     importedNaturalSize,
     importedUrl,
     importedStoragePath,
+    emitter,
+  };
+}
+
+function parseEmitter(raw: unknown): EmitterConfig | undefined {
+  if (!raw || typeof raw !== 'object') return undefined;
+  const o = raw as Record<string, unknown>;
+  if (o.enabled !== true) return undefined;
+  const type = o.type === 'spot' ? 'spot' : o.type === 'point' ? 'point' : null;
+  if (!type) return undefined;
+  if (typeof o.color !== 'string' || typeof o.intensity !== 'number') return undefined;
+  if (typeof o.range !== 'number') return undefined;
+  return {
+    enabled: true,
+    type,
+    color: o.color,
+    intensity: o.intensity,
+    range: o.range,
+    angleDeg: typeof o.angleDeg === 'number' ? o.angleDeg : undefined,
+    emissiveBoost: typeof o.emissiveBoost === 'number' ? o.emissiveBoost : undefined,
   };
 }
 
@@ -153,7 +177,7 @@ export function serializeLayoutForRoom(
 
     const natural = it.importedNaturalSize;
 
-    out.push({
+    const row: RoomItemInsert = {
       room_id: roomId,
       kind: it.kind,
       label: it.label,
@@ -184,7 +208,8 @@ export function serializeLayoutForRoom(
         it.kind === 'bed' && it.blanketTexturePath
           ? it.blanketTexturePath
           : null,
-    });
+    };
+    out.push(row);
   }
   return out;
 }

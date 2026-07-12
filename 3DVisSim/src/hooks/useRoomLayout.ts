@@ -6,6 +6,7 @@ import {
   type RoomItemRow,
 } from '../lib/roomLayoutSerialize';
 import { signModelObjectPath } from '../lib/modelStorage';
+import { patchImportedItemsFromCatalog } from '../lib/patchImportedFromCatalog';
 import type { Item } from '../store';
 import { useStore } from '../store';
 
@@ -28,29 +29,36 @@ export async function loadRoomLayout(roomId: string): Promise<{
   for (const row of rows) {
     const item = dbRowToItem(row);
     if (!item) continue;
-    if (
-      item.kind === 'imported' &&
-      item.importedStoragePath &&
-      !item.importedUrl
-    ) {
-      const signed = await signModelObjectPath(item.importedStoragePath);
-      if (signed) {
-        item.importedUrl = signed;
-      }
-    }
-    if (
-      item.kind === 'bed' &&
-      item.blanketTexturePath &&
-      !item.blanketTextureUrl
-    ) {
-      const signed = await signModelObjectPath(item.blanketTexturePath);
-      if (signed) {
-        item.blanketTextureUrl = signed;
-      }
-    }
     items.push(item);
     order.push(item.id);
   }
+
+  await Promise.all(
+    items.map(async (item) => {
+      if (
+        item.kind === 'imported' &&
+        item.importedStoragePath &&
+        !item.importedUrl
+      ) {
+        const signed = await signModelObjectPath(item.importedStoragePath);
+        if (signed) {
+          item.importedUrl = signed;
+        }
+      }
+      if (
+        item.kind === 'bed' &&
+        item.blanketTexturePath &&
+        !item.blanketTextureUrl
+      ) {
+        const signed = await signModelObjectPath(item.blanketTexturePath);
+        if (signed) {
+          item.blanketTextureUrl = signed;
+        }
+      }
+    }),
+  );
+
+  await patchImportedItemsFromCatalog(items);
 
   return { items, order };
 }

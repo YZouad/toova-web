@@ -1,5 +1,9 @@
 import type { Item } from '../store';
-import { ROOM } from '../units';
+import { useStore } from '../store';
+
+function room() {
+  return useStore.getState().roomGeometry;
+}
 
 // ---------------------------------------------------------------------------
 // Geometry helpers
@@ -89,8 +93,9 @@ export interface ValidationResult { ok: boolean; reason?: string; }
 export function validatePlacement(candidate: Item, others: Item[]): ValidationResult {
   const rect = itemRect(candidate);
 
-  if (rect.minX < ROOM_INSET || rect.maxX > ROOM.width - ROOM_INSET ||
-      rect.minZ < ROOM_INSET || rect.maxZ > ROOM.depth - ROOM_INSET) {
+  const r = room();
+  if (rect.minX < ROOM_INSET || rect.maxX > r.width - ROOM_INSET ||
+      rect.minZ < ROOM_INSET || rect.maxZ > r.depth - ROOM_INSET) {
     return { ok: false, reason: 'Outside room' };
   }
 
@@ -137,7 +142,7 @@ export function validatePlacement(candidate: Item, others: Item[]): ValidationRe
  */
 export function findValidElevation(candidate: Item, others: Item[], desiredY: number): number {
   const h = candidate.size[1];
-  const maxY = Math.max(0, ROOM.height - h);
+  const maxY = Math.max(0, room().height - h);
   const rect = itemRect(candidate);
   let y = Math.max(0, Math.min(maxY, desiredY));
 
@@ -181,12 +186,10 @@ export function findValidElevation(candidate: Item, others: Item[], desiredY: nu
  */
 export function settleGravity(candidate: Item, others: Item[], fromY: number): number {
   const h = candidate.size[1];
-  const maxY = Math.max(0, ROOM.height - h);
+  const maxY = Math.max(0, room().height - h);
   const startY = Math.max(0, Math.min(maxY, fromY));
   const rect = itemRect(candidate);
 
-  // Collect candidate surfaces: floor and tops of items whose XZ overlaps and
-  // whose top surface is at or below the current position.
   const surfaces: number[] = [0];
   for (const other of others) {
     if (other.id === candidate.id) continue;
@@ -195,7 +198,6 @@ export function settleGravity(candidate: Item, others: Item[], fromY: number): n
     if (top <= startY + 0.5) surfaces.push(top);
   }
 
-  // Try from highest to lowest — land on the first valid surface.
   surfaces.sort((a, b) => b - a);
   for (const sy of surfaces) {
     if (sy > startY + 0.5) continue;
@@ -203,7 +205,13 @@ export function settleGravity(candidate: Item, others: Item[], fromY: number): n
     if (validatePlacement(test, others).ok) return sy;
   }
 
-  return 0;
+  // Last resort: try floor even if no overlapping support was found.
+  if (startY > 0.5) {
+    const floorTest: Item = { ...candidate, position: [candidate.position[0], 0, candidate.position[2]] };
+    if (validatePlacement(floorTest, others).ok) return 0;
+  }
+
+  return startY;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,11 +224,12 @@ export function settleGravity(candidate: Item, others: Item[], fromY: number): n
  */
 export function isTouchingWall(item: Item, tolerance = 6): boolean {
   const rect = itemRect(item);
+  const r = room();
   return (
     rect.minX <= ROOM_INSET + tolerance ||
-    rect.maxX >= ROOM.width  - ROOM_INSET - tolerance ||
+    rect.maxX >= r.width  - ROOM_INSET - tolerance ||
     rect.minZ <= ROOM_INSET + tolerance ||
-    rect.maxZ >= ROOM.depth  - ROOM_INSET - tolerance
+    rect.maxZ >= r.depth  - ROOM_INSET - tolerance
   );
 }
 
@@ -231,8 +240,9 @@ export function clampToRoom(item: Item, proposedX: number, proposedZ: number): [
   const s = Math.abs(Math.sin(item.rotationY));
   const halfW = (w * c + d * s) / 2;
   const halfD = (w * s + d * c) / 2;
+  const r = room();
   return [
-    Math.max(ROOM_INSET + halfW, Math.min(ROOM.width - ROOM_INSET - halfW, proposedX)),
-    Math.max(ROOM_INSET + halfD, Math.min(ROOM.depth - ROOM_INSET - halfD, proposedZ)),
+    Math.max(ROOM_INSET + halfW, Math.min(r.width - ROOM_INSET - halfW, proposedX)),
+    Math.max(ROOM_INSET + halfD, Math.min(r.depth - ROOM_INSET - halfD, proposedZ)),
   ];
 }

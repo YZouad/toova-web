@@ -7,6 +7,8 @@ import { Desk } from './Desk';
 import { Chair } from './Chair';
 import { Nightstand } from './Nightstand';
 import { ImportedModel } from './ImportedModel';
+import { ItemEmitter } from './ItemEmitter';
+import { EmitterGlow } from './EmitterGlow';
 
 export function ItemsLayer() {
   const items = useStore((s) => s.items);
@@ -28,11 +30,29 @@ export function ItemsLayer() {
             userData={{ itemId: id }}
           >
             <Selectable id={id}>
-              <FurnitureBody item={item} selected={isSelected} invalid={isSelected && invalid} />
+              <ItemVisual item={item} selected={isSelected} invalid={isSelected && invalid} />
             </Selectable>
           </group>
         );
       })}
+    </>
+  );
+}
+
+function ItemVisual({ item, selected, invalid }: { item: Item; selected: boolean; invalid: boolean }) {
+  const emitter = item.emitter?.enabled ? item.emitter : null;
+  const body = <FurnitureBody item={item} selected={selected} invalid={invalid} />;
+
+  return (
+    <>
+      {emitter ? (
+        <EmitterGlow color={emitter.color} boost={emitter.emissiveBoost ?? 0.35}>
+          {body}
+        </EmitterGlow>
+      ) : (
+        body
+      )}
+      {emitter ? <ItemEmitter emitter={emitter} itemHeight={item.size[1]} /> : null}
     </>
   );
 }

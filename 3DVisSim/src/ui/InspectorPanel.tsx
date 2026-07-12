@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { useStore, DEFAULT_BLANKET_COLOR } from '../store';
-import { ROOM } from '../units';
-
-const MAX_ITEM_FOOTPRINT = Math.max(ROOM.width, ROOM.depth, 200);
 
 export function InspectorPanel() {
   const selectedId = useStore((s) => s.selectedId);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
+  const roomGeometry = useStore((s) => s.roomGeometry);
   const updateRotation = useStore((s) => s.updateRotation);
   const setItemSize = useStore((s) => s.setItemSize);
   const setItemElevation = useStore((s) => s.setItemElevation);
@@ -35,7 +33,8 @@ export function InspectorPanel() {
 
   const rotDeg = Math.round(((item.rotationY * 180) / Math.PI) % 360);
   const canEditSize = item.kind !== 'imported' || !!item.importedNaturalSize;
-  const maxElevation = Math.max(0, ROOM.height - item.size[1]);
+  const maxItemFootprint = Math.max(roomGeometry.width, roomGeometry.depth, 200);
+  const maxElevation = Math.max(0, roomGeometry.height - item.size[1]);
   const currentY = Math.round(item.position[1]);
   const sizeLabels = ['Width', 'Height', 'Depth'] as const;
 
@@ -73,7 +72,7 @@ export function InspectorPanel() {
                 <input
                   type="range"
                   min={4}
-                  max={MAX_ITEM_FOOTPRINT}
+                  max={maxItemFootprint}
                   step={0.5}
                   value={Math.max(item.size[0], item.size[1], item.size[2])}
                   onChange={(e) => {

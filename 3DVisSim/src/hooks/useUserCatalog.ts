@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { signModelObjectPath } from '../lib/modelStorage';
+import { parseInchDims } from '../lib/importedItemSize';
 
 export interface UserCatalogEntry {
   kind: string;
@@ -18,7 +19,8 @@ export interface UserCatalogEntry {
 }
 
 function n(v: unknown): number {
-  return typeof v === 'number' ? v : Number(v);
+  const x = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(x) ? x : NaN;
 }
 
 export function useUserCatalog(enabled: boolean) {
@@ -45,36 +47,43 @@ export function useUserCatalog(enabled: boolean) {
       if (qErr) throw new Error(qErr.message);
 
       const rows = data ?? [];
-      const out: UserCatalogEntry[] = [];
+      const resolved = await Promise.all(
+        rows.map(async (row): Promise<UserCatalogEntry | null> => {
+          const path = (row.model_url as string | null)?.trim() ?? '';
+          if (!path) return null;
 
-      for (const row of rows) {
-        const path = (row.model_url as string | null)?.trim() ?? '';
-        if (!path) continue;
+          const isAbsolute =
+            path.startsWith('http://') || path.startsWith('https://');
+          const signedUrl = isAbsolute
+            ? path
+            : await signModelObjectPath(path);
 
-        const isAbsolute =
-          path.startsWith('http://') || path.startsWith('https://');
-        const signedUrl = isAbsolute
-          ? path
-          : await signModelObjectPath(path);
+          if (!signedUrl) return null;
 
-        if (!signedUrl) continue;
+          const dims = parseInchDims(row.width_in, row.height_in, row.depth_in);
+          if (!dims) return null;
 
-        out.push({
-          kind: row.kind as string,
-          label: row.label as string,
-          description: (row.description as string | null) ?? null,
-          tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
-          width_in: n(row.width_in),
-          height_in: n(row.height_in),
-          depth_in: n(row.depth_in),
-          clearance_in:
-            row.clearance_in != null && row.clearance_in !== ''
-              ? n(row.clearance_in)
-              : null,
-          storagePath: isAbsolute ? '' : path,
-          signedUrl,
-        });
-      }
+          return {
+            kind: row.kind as string,
+            label: row.label as string,
+            description: (row.description as string | null) ?? null,
+            tags: Array.isArray(row.tags) ? (row.tags as string[]) : [],
+            width_in: dims[0],
+            height_in: dims[1],
+            depth_in: dims[2],
+            clearance_in:
+              row.clearance_in != null && row.clearance_in !== ''
+                ? n(row.clearance_in)
+                : null,
+            storagePath: isAbsolute ? '' : path,
+            signedUrl,
+          };
+        }),
+      );
+
+      const out = resolved.filter(
+        (entry): entry is UserCatalogEntry => entry !== null,
+      );
 
       setCatalog(out);
     } catch (e) {

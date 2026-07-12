@@ -56,6 +56,7 @@ export function Sidebar() {
                   storagePath: entry.storagePath || undefined,
                   label: entry.label,
                   size: [entry.width_in, entry.height_in, entry.depth_in],
+                  catalogSizeIn: [entry.width_in, entry.height_in, entry.depth_in],
                 });
               }}
             >

@@ -81,6 +81,7 @@ export function PosterImageCrop({
           crop={crop}
           zoom={zoom}
           aspect={aspect}
+          objectFit="contain"
           showGrid={false}
           cropShape="rect"
           onCropChange={setCrop}

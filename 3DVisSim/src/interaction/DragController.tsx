@@ -116,9 +116,14 @@ export function DragController() {
           }
         } else {
           const settledY = settleGravity(item, others, item.position[1]);
-          const settled: [number, number, number] = [item.position[0], settledY, item.position[2]];
-          const ok = validatePlacement({ ...item, position: settled }, others).ok;
-          useStore.getState().updatePosition(drag.id, ok ? settled : drag.startPosition);
+          let pos: [number, number, number] = [item.position[0], settledY, item.position[2]];
+          if (!validatePlacement({ ...item, position: pos }, others).ok) {
+            pos = [drag.startPosition[0], settledY, drag.startPosition[2]];
+            if (!validatePlacement({ ...item, position: pos }, others).ok) {
+              pos = drag.startPosition;
+            }
+          }
+          useStore.getState().updatePosition(drag.id, pos);
         }
       }
 

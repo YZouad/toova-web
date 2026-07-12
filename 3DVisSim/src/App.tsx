@@ -1,27 +1,26 @@
 import { useCallback, useEffect, useState } from 'react';
-import { RoomWorkspaceProvider, useRoomWorkspace } from './context/RoomWorkspaceContext';
+import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
 import { useRoomLoad } from './hooks/useRoomLayout';
 import { supabase } from './lib/supabase';
-import { useStore } from './store';
-import { Scene } from './scene/Scene';
-import { Sidebar } from './ui/Sidebar';
-import { InspectorPanel } from './ui/InspectorPanel';
-import { IntroPage } from './ui/IntroPage';
-import { LoginPage } from './ui/LoginPage';
-import { ModePicker } from './ui/ModePicker';
-import { AdminPortal } from './ui/AdminPortal';
-import { RoomPicker } from './ui/RoomPicker';
-import { WelcomePage } from './ui/WelcomePage';
-import { IntroBackButton } from './ui/IntroBackButton';
+import { useStore, DEFAULT_ENVIRONMENT } from './store';
+import { DEFAULT_ROOM_GEOMETRY } from './lib/roomGeometry';
+import { LandingPage } from './ui/LandingPage';
+import { PitchMadnessPage } from './ui/PitchMadnessPage';
+import { AuthPage } from './ui/AuthPage';
+import { Dashboard } from './ui/Dashboard';
+import { Designer } from './ui/Designer';
+import { AdminConsole } from './ui/AdminConsole';
+import { Dock, type DockNav } from './ui/Dock';
+
+type Screen = 'landing' | 'pitch-madness' | 'auth' | 'dashboard' | 'designer' | 'admin' | 'ar';
 
 /** Decorative only — does not encode a real URL. */
 function DecorativeQrGraphic() {
   const mod = 4;
   const n = 35;
   const W = n * mod;
-
   const finderPattern = [
     [1, 1, 1, 1, 1, 1, 1],
     [1, 0, 0, 0, 0, 0, 1],
@@ -31,10 +30,8 @@ function DecorativeQrGraphic() {
     [1, 0, 0, 0, 0, 0, 1],
     [1, 1, 1, 1, 1, 1, 1],
   ] as const;
-
   const filled = new Set<string>();
   const mark = (c: number, r: number) => filled.add(`${c},${r}`);
-
   const stampFinder = (ox: number, oy: number) => {
     for (let r = 0; r < 7; r++) {
       for (let c = 0; c < 7; c++) {
@@ -42,118 +39,71 @@ function DecorativeQrGraphic() {
       }
     }
   };
-
   stampFinder(0, 0);
   stampFinder(n - 7, 0);
   stampFinder(0, n - 7);
-
   for (let r = 8; r < 27; r++) {
     for (let c = 8; c < 27; c++) {
-      if (((r * 31) ^ (c * 17) ^ (r * c)) % 3 === 0) {
-        mark(c, r);
-      }
+      if (((r * 31) ^ (c * 17) ^ (r * c)) % 3 === 0) mark(c, r);
     }
   }
-
   const rects = Array.from(filled, (key) => {
     const [c, r] = key.split(',').map(Number) as [number, number];
-    return (
-      <rect key={key} x={c * mod} y={r * mod} width={mod} height={mod} fill="#111827" />
-    );
+    return <rect key={key} x={c * mod} y={r * mod} width={mod} height={mod} fill="#2B2620" />;
   });
-
   return (
-    <svg
-      className="ar-qr-graphic"
-      width={W}
-      height={W}
-      viewBox={`0 0 ${W} ${W}`}
-      aria-hidden={true}
-    >
+    <svg width={W} height={W} viewBox={`0 0 ${W} ${W}`} aria-hidden>
       <rect width={W} height={W} fill="#ffffff" />
       {rects}
     </svg>
   );
 }
 
-function ARInfoCard({ onBack }: { onBack: () => void }) {
+function AuthSplash() {
   return (
-    <div className="onboarding-page">
-      <IntroBackButton onBack={onBack} />
-      <header className="onboarding-header">
-        <img src={`${import.meta.env.BASE_URL}toova-logo-cropped.png`} alt="Toova" className="onboarding-logo-img" />
+    <div className="splash-page">
+      <div className="splash-inner">Checking session…</div>
+    </div>
+  );
+}
+
+function ARPage({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="ar-page">
+      <header className="dashboard-topbar">
+        <div className="dashboard-topbar-inner">
+          <button type="button" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
+            <div className="tv-logo-mark" style={{ width: 25, height: 25, borderRadius: 7, fontSize: 17 }}>t</div>
+            <span className="tv-logo-text" style={{ fontSize: 22 }}>Toova</span>
+          </button>
+        </div>
       </header>
-      <main className="onboarding-main onboarding-main--narrow">
-        <div className="onboarding-card onboarding-ar-centered onboarding-card--compact">
-          <h1 className="onboarding-title">AR experience</h1>
-          <p>
+      <main className="ar-main">
+        <div className="ar-card">
+          <h1 style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 28, margin: '0 0 12px' }}>AR experience</h1>
+          <p style={{ color: 'var(--text-muted)', margin: '0 0 8px' }}>
             Scan the QR code to download the Toova app on iPhone and start using AR.
           </p>
           <div className="ar-qr-frame">
             <DecorativeQrGraphic />
           </div>
-          <p className="ar-qr-caption">iPhone only</p>
+          <p style={{ fontSize: 13, color: 'var(--text-subtle)' }}>iPhone only</p>
         </div>
       </main>
     </div>
   );
 }
 
-function AuthSplash() {
-  return (
-    <div className="onboarding-page onboarding-page--splash">
-      <div className="onboarding-card onboarding-splash-inner">
-        <p className="onboarding-splash-label">Checking session…</p>
-      </div>
-    </div>
-  );
-}
-
-function PlannerChrome() {
-  const { exitWorkspace } = useRoomWorkspace();
-
-  return (
-    <div className="app">
-      <Sidebar />
-      <div className="canvas-wrap">
-        <Scene />
-        <div className="hint-overlay">
-          Left-drag: rotate camera &nbsp;·&nbsp; Right-drag: pan &nbsp;·&nbsp; Scroll: zoom
-          <br />
-          Click item to select &nbsp;·&nbsp; Drag to move &nbsp;·&nbsp; R / Shift+R rotate &nbsp;·&nbsp;
-          Delete to remove
-          <br />
-          <button type="button" className="hint-switch-room" onClick={() => exitWorkspace()}>
-            Switch room
-          </button>
-        </div>
-      </div>
-      <InspectorPanel />
-    </div>
-  );
-}
-
 export default function App() {
-  const { loading, user } = useAuth();
-  const [showWelcome, setShowWelcome] = useState(true);
-  const [mode, setMode] = useState<'ar' | '3d' | null>(null);
-  const [started, setStarted] = useState(false);
+  const { loading, user, logout } = useAuth();
+  const [screen, setScreen] = useState<Screen>('landing');
+  const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
+  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [workspace, setWorkspace] = useState<{ id: string; name: string } | null>(null);
-  const [showAdmin, setShowAdmin] = useState(false);
   const resetLayout = useStore((s) => s.resetLayout);
   const hydrateLayout = useStore((s) => s.hydrateLayout);
+  const hydrateRoomSettings = useStore((s) => s.hydrateRoomSettings);
   const { load, loading: layoutLoading } = useRoomLoad();
-
-  useEffect(() => {
-    if (!user) {
-      resetLayout();
-      setWorkspace(null);
-      setStarted(false);
-      setShowWelcome(true);
-      setMode(null);
-      setShowAdmin(false);
-    }
-  }, [user, resetLayout]);
 
   const {
     isAdmin,
@@ -167,28 +117,27 @@ export default function App() {
   } = useAdminStats(user?.id);
 
   useEffect(() => {
-    if (showAdmin && !adminStatsLoading && !isAdmin) {
-      setShowAdmin(false);
+    if (!user) {
+      resetLayout();
+      setWorkspace(null);
+      if (screen !== 'landing' && screen !== 'auth' && screen !== 'pitch-madness') {
+        setScreen('landing');
+      }
+    } else if (screen === 'auth') {
+      setScreen('dashboard');
     }
-  }, [adminStatsLoading, isAdmin, showAdmin]);
-
-  const adminFullscreenOpen = !workspace && showAdmin && isAdmin;
+  }, [user, resetLayout, screen]);
 
   useEffect(() => {
-    const cls = 'admin-dashboard-open';
-    if (adminFullscreenOpen) {
-      document.documentElement.classList.add(cls);
-      return () => {
-        document.documentElement.classList.remove(cls);
-      };
+    if (screen === 'admin' && !adminStatsLoading && !isAdmin) {
+      setScreen('dashboard');
     }
-    return undefined;
-  }, [adminFullscreenOpen]);
+  }, [adminStatsLoading, isAdmin, screen]);
 
   const exitWorkspace = useCallback(() => {
     resetLayout();
     setWorkspace(null);
-    setStarted(false);
+    setScreen('dashboard');
   }, [resetLayout]);
 
   const handlePickExisting = useCallback(
@@ -196,18 +145,14 @@ export default function App() {
       resetLayout();
       const data = await load(room.id);
       hydrateLayout(data.items, data.order);
-      const { data: row, error } = await supabase
-        .from('rooms')
-        .select('name')
-        .eq('id', room.id)
-        .maybeSingle();
-      const name =
-        !error && row?.name != null && String(row.name).trim() !== ''
-          ? String(row.name)
-          : room.name;
-      setWorkspace({ id: room.id, name });
+      hydrateRoomSettings(
+        { ...DEFAULT_ENVIRONMENT },
+        { ...DEFAULT_ROOM_GEOMETRY, windows: [...DEFAULT_ROOM_GEOMETRY.windows] },
+      );
+      setWorkspace({ id: room.id, name: room.name });
+      setScreen('designer');
     },
-    [hydrateLayout, load, resetLayout],
+    [hydrateLayout, hydrateRoomSettings, load, resetLayout],
   );
 
   const handleCreate = useCallback(
@@ -218,89 +163,154 @@ export default function App() {
         .insert({ user_id: user.id, name })
         .select('id,name')
         .single();
-
       if (error) throw new Error(error.message);
       resetLayout();
       hydrateLayout([], []);
       setWorkspace({ id: data.id, name: data.name ?? name });
+      setScreen('designer');
     },
     [hydrateLayout, resetLayout, user?.id],
   );
 
-  if (showWelcome) {
-    return <WelcomePage onGetStarted={() => setShowWelcome(false)} />;
+  const dockActive: DockNav | null =
+    screen === 'dashboard' ? 'rooms'
+    : screen === 'admin' ? 'admin'
+    : screen === 'ar' ? 'ar'
+    : screen === 'landing' || screen === 'pitch-madness' ? 'home'
+    : null;
+
+  const showDock = user && (screen === 'landing' || screen === 'pitch-madness' || screen === 'dashboard' || screen === 'admin' || screen === 'ar');
+
+  function handleDockNav(nav: DockNav) {
+    if (nav === 'home') {
+      setScreen('landing');
+      return;
+    }
+    if (nav === 'rooms') setScreen('dashboard');
+    if (nav === 'admin' && isAdmin) setScreen('admin');
+    if (nav === 'ar') setScreen('ar');
   }
 
-  if (loading) return <AuthSplash />;
-  if (!user) return <LoginPage onBack={() => setShowWelcome(true)} />;
+  const landingCallbacks = {
+    loggedIn: !!user,
+    onGoDashboard: () => setScreen('dashboard'),
+    onGetStarted: () => {
+      if (user) { setScreen('dashboard'); return; }
+      setAuthMode('signup');
+      setScreen('auth');
+    },
+    onLogin: () => {
+      if (user) { setScreen('dashboard'); return; }
+      setAuthMode('signin');
+      setScreen('auth');
+    },
+    onAdmin: isAdmin ? () => setScreen('admin') : undefined,
+  };
 
-  if (!mode) {
+  if (screen === 'landing') {
     return (
-      <ModePicker
-        onSelectMode={setMode}
-        onBack={() => void supabase.auth.signOut()}
-      />
-    );
-  }
-
-  if (mode === 'ar') return <ARInfoCard onBack={() => setMode(null)} />;
-
-  if (!workspace && showAdmin && isAdmin) {
-    return (
-      <AdminPortal
-        stats={adminInventoryStats}
-        bundles={adminBundlePairs}
-        rooms={adminRoomRollups}
-        users={adminUserRollups}
-        loading={adminStatsLoading}
-        error={adminStatsError}
-        onExit={() => setShowAdmin(false)}
-        onRefresh={refetchAdminInventory}
-      />
-    );
-  }
-  if (!workspace) {
-    return (
-      <div className="intro room-picker-shell">
-        {isAdmin && !adminStatsLoading ? (
-          <div className="admin-room-picker-banner">
-            <button
-              type="button"
-              className="intro-start admin-dash-open"
-              onClick={() => setShowAdmin(true)}
-            >
-              Open admin dashboard
-            </button>
-          </div>
+      <>
+        <LandingPage
+          {...landingCallbacks}
+          onPitchMadness={() => {
+            setPitchScrollToDemos(false);
+            setScreen('pitch-madness');
+          }}
+          onWatchDemo={() => {
+            setPitchScrollToDemos(true);
+            setScreen('pitch-madness');
+          }}
+        />
+        {showDock ? (
+          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
         ) : null}
-        <RoomPicker
+      </>
+    );
+  }
+
+  if (screen === 'pitch-madness') {
+    return (
+      <>
+        <PitchMadnessPage
+          {...landingCallbacks}
+          onGoHome={() => setScreen('landing')}
+          scrollToDemosOnMount={pitchScrollToDemos}
+          onDemosScrolled={() => setPitchScrollToDemos(false)}
+        />
+        {showDock ? (
+          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
+        ) : null}
+      </>
+    );
+  }
+
+  if (screen === 'auth' && !user) {
+    if (loading) return <AuthSplash />;
+    return (
+      <AuthPage
+        initialMode={authMode}
+        onBack={() => setScreen('landing')}
+      />
+    );
+  }
+
+  if (loading && !user) return <AuthSplash />;
+
+  if (screen === 'admin' && isAdmin) {
+    return (
+      <>
+        <AdminConsole
+          stats={adminInventoryStats}
+          bundles={adminBundlePairs}
+          rooms={adminRoomRollups}
+          users={adminUserRollups}
+          loading={adminStatsLoading}
+          error={adminStatsError}
+          onExit={() => setScreen('dashboard')}
+          onRefresh={refetchAdminInventory}
+        />
+        {showDock ? (
+          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
+        ) : null}
+      </>
+    );
+  }
+
+  if (screen === 'ar' && user) {
+    return (
+      <>
+        <ARPage onBack={() => setScreen('dashboard')} />
+        {showDock ? (
+          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
+        ) : null}
+      </>
+    );
+  }
+
+  if (screen === 'designer' && workspace && user) {
+    return (
+      <RoomWorkspaceProvider value={{ workspace, exitWorkspace }}>
+        <Designer onBack={exitWorkspace} />
+      </RoomWorkspaceProvider>
+    );
+  }
+
+  if (user) {
+    return (
+      <>
+        <Dashboard
           user={user}
           loadingLayout={layoutLoading}
           onPickExisting={handlePickExisting}
           onCreate={handleCreate}
-          onBack={() => setMode(null)}
+          onGoLanding={() => { void logout(); setScreen('landing'); }}
         />
-      </div>
+        {showDock ? (
+          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
+        ) : null}
+      </>
     );
   }
 
-  return (
-    <RoomWorkspaceProvider
-      value={{
-        workspace,
-        exitWorkspace,
-      }}
-    >
-      {!started ? (
-        <IntroPage
-          roomLabel={workspace.name}
-          onSwitchRooms={() => exitWorkspace()}
-          onStart={() => setStarted(true)}
-          onBack={() => exitWorkspace()}
-        />
-      ) : (
-        <PlannerChrome />
-      )}
-    </RoomWorkspaceProvider>
-  );
+  return <AuthSplash />;
 }

@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { createPosterGlb } from '../lib/createPosterGlb';
 import { decimateGlb } from '../lib/decimateGlb';
+import { formatInchDim, readGlbAxisBounds } from '../lib/glbBounds';
+import { DEFAULT_IMPORTED_MAX_SIDE, maxInchSide } from '../lib/importedItemSize';
+import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { MODEL_FILES_BUCKET } from '../lib/modelStorage';
 import { supabase } from '../lib/supabase';
 import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../lib/trellisApi';
@@ -11,6 +14,7 @@ type ModalTab = 'upload' | 'generate' | 'poster';
 interface ImportModelModalProps {
   userId: string;
   open: boolean;
+  initialTab?: ModalTab;
   onClose: () => void;
   onAdded: () => void | Promise<void>;
 }
@@ -18,10 +22,11 @@ interface ImportModelModalProps {
 export function ImportModelModal({
   userId,
   open,
+  initialTab = 'upload',
   onClose,
   onAdded,
 }: ImportModelModalProps) {
-  const [tab, setTab] = useState<ModalTab>('upload');
+  const [tab, setTab] = useState<ModalTab>(initialTab);
   const [file, setFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -53,6 +58,10 @@ export function ImportModelModal({
   const [posterError, setPosterError] = useState<string | null>(null);
 
   const busy = submitting || generating || decimating || creatingPoster;
+
+  useEffect(() => {
+    if (open) setTab(initialTab);
+  }, [open, initialTab]);
 
   useEffect(() => {
     if (!imageFile) {
@@ -96,7 +105,7 @@ export function ImportModelModal({
     setDecimationError(null);
     setDecimating(true);
 
-    void decimateGlb(file).then((result) => {
+    void decimateGlb(file).then(async (result) => {
       if (cancelled) return;
       setDecimatedFile(result.file);
       setDecimationInfo({
@@ -104,6 +113,16 @@ export function ImportModelModal({
         finalTriangles: result.finalTriangles,
         skipped: result.skipped,
       });
+      const bounds = await readGlbAxisBounds(result.file);
+      if (!cancelled && bounds) {
+        const dims =
+          maxInchSide(bounds) > 3
+            ? bounds
+            : proportionalSizesFromMaxSide(bounds, DEFAULT_IMPORTED_MAX_SIDE);
+        setWidthIn(formatInchDim(dims[0]));
+        setHeightIn(formatInchDim(dims[1]));
+        setDepthIn(formatInchDim(Math.max(0.25, dims[2])));
+      }
       setDecimating(false);
     }).catch((err) => {
       if (cancelled) return;
