@@ -19,14 +19,15 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
+        working-directory: 3DVisSim
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
-
-      - run: npm install
+          cache: npm
+          cache-dependency-path: 3DVisSim/package-lock.json
+      - run: npm ci
       - run: npm run build
         env:
           VITE_BASE_PATH: /toova-web/
@@ -35,10 +36,9 @@ jobs:
           # to https://<service>.onrender.com/api/trellis/generate (Settings → Secrets and variables → Actions → Variables).
           # Optional: override with secret VITE_TRELLIS_GENERATE_URL instead.
           VITE_TRELLIS_GENERATE_URL: ${{ vars.VITE_TRELLIS_GENERATE_URL || secrets.VITE_TRELLIS_GENERATE_URL }}
-
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: dist
+          path: 3DVisSim/dist
 
   deploy:
     needs: build
