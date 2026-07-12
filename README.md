@@ -4,7 +4,7 @@ Web frontend for **Toova** — a 3D room planner where users design spaces, plac
 
 Built with React, Three.js (`@react-three/fiber`), Vite, and Supabase.
 
-**Live site:** https://yzouad.github.io/toova-web/
+**Live site:** https://toova.net
 
 ## Local development
 
@@ -45,7 +45,7 @@ See [`.env.example`](.env.example). Copy it to `.env.local` for local dev (gitig
 |----------|-------------|
 | `TRELLIS_UPSTREAM_ORIGIN` | Trellis server origin for the Vite dev proxy (local only, not committed). |
 | `VITE_TRELLIS_GENERATE_URL` | HTTPS endpoint baked into production builds; optional override in dev. |
-| `VITE_BASE_PATH` | Base URL path for assets. Set to `/toova-web/` for GitHub Pages. |
+| `VITE_BASE_PATH` | Base URL path for assets. Use `/` for the custom domain (`toova.net`). |
 
 ## Deployment
 

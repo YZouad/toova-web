@@ -27,7 +27,7 @@ jobs:
       - run: npm ci
       - run: npm run build
         env:
-          VITE_BASE_PATH: /toova-web/
+          VITE_BASE_PATH: /
           # HTTPS URL only (GitHub Pages is https — browsers block http:// APIs). Deploy the BFF from
           # render Blueprint at repo root (render.yaml), then set repo variable VITE_TRELLIS_GENERATE_URL
           # to https://<service>.onrender.com/api/trellis/generate (Settings → Secrets and variables → Actions → Variables).
