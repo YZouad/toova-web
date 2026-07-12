@@ -1,0 +1,51 @@
+name: Deploy 3DVisSim to GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - run: npm install
+      - run: npm run build
+        env:
+          VITE_BASE_PATH: /toova-web/
+          # HTTPS URL only (GitHub Pages is https — browsers block http:// APIs). Deploy the BFF from
+          # render Blueprint at repo root (render.yaml), then set repo variable VITE_TRELLIS_GENERATE_URL
+          # to https://<service>.onrender.com/api/trellis/generate (Settings → Secrets and variables → Actions → Variables).
+          # Optional: override with secret VITE_TRELLIS_GENERATE_URL instead.
+          VITE_TRELLIS_GENERATE_URL: ${{ vars.VITE_TRELLIS_GENERATE_URL || secrets.VITE_TRELLIS_GENERATE_URL }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

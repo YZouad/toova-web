@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rsync -a --exclude node_modules --exclude package-lock.json --exclude .DS_Store '/Users/yaniszouad/Desktop/Creations/NewWebsite3DPlacement/3D Room Viewer/' /Users/yaniszouad/Desktop/Creations/3DVisSim/)",
+      "Bash(npm install *)",
+      "Bash(npx tsc *)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
