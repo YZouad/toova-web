@@ -4,21 +4,27 @@ import {
   allWallSegments,
   defaultRectanglePlan,
   floorFaceLoops,
+  formatLength,
   getWallSegment,
   hasEnclosedFootprint,
   holesForWallSegment,
   isValidFloorPlan,
+  lShapePlan,
   legacyToFloorPlan,
+  moveVertex,
   openEndpointVertexIds,
   openingWorldPlacement,
   parseFloorPlan,
   pointInPolygon,
+  rectanglePlan,
   resolveWallAnchor,
   sanitizeWallGraph,
-  wallLength,
+  setWallLength,
   signedArea,
   snapToGrid,
+  updateOpening,
   validateFloorPlan,
+  wallLength,
 } from '../lib/floorPlanGeometry';
 import { ROOM } from '../units';
 
@@ -300,6 +306,44 @@ describe('floorPlanGeometry', () => {
     const seg = getWallSegment(plan, plan.walls[0]!)!;
     const [hole] = holesForWallSegment(plan, seg);
     expect(hole!.x).toBe(0);
+  });
+
+  it('formats lengths in inches and feet', () => {
+    expect(formatLength(96, 'inches')).toBe('96″');
+    expect(formatLength(96, 'ft-in')).toBe('8′');
+    expect(formatLength(101, 'ft-in')).toBe('8′ 5″');
+  });
+
+  it('builds custom rectangle and L-shape plans', () => {
+    const rect = rectanglePlan(120, 96, 96, false);
+    expect(rect.walls).toHaveLength(4);
+    expect(rect.vertices).toHaveLength(4);
+    expect(wallLength(rect, rect.walls[0]!)).toBe(120);
+
+    const l = lShapePlan(120, 120, 48, 48, 96);
+    expect(l.walls.length).toBeGreaterThanOrEqual(6);
+    expect(isValidFloorPlan(l)).toBe(true);
+  });
+
+  it('resizes walls and moves vertices', () => {
+    const plan = rectanglePlan(120, 96, 96, false);
+    const wall = plan.walls[0]!;
+    const resized = setWallLength(plan, wall.id, 144);
+    expect(wallLength(resized, resized.walls[0]!)).toBe(144);
+
+    const moved = moveVertex(resized, wall.endId, 198, 0);
+    const end = moved.vertices.find((v) => v.id === wall.endId)!;
+    expect(end.x).toBe(198);
+    expect(end.z).toBe(0);
+  });
+
+  it('updates opening dimensions with clamping', () => {
+    const plan = defaultRectanglePlan();
+    const door = plan.openings.find((o) => o.kind === 'door')!;
+    const updated = updateOpening(plan, door.id, { width: 40, height: 78 });
+    const next = updated.openings.find((o) => o.id === door.id)!;
+    expect(next.width).toBe(40);
+    expect(next.height).toBe(78);
   });
 
   it('aligns hole world position with opening placement on every wall orientation', () => {

@@ -119,55 +119,165 @@ export function snapAngle(
   x: number,
   z: number,
   enabled: boolean,
+  grid = GRID_SNAP_IN,
 ): [number, number] {
-  if (!enabled) return snapPoint(x, z);
+  if (!enabled) return snapPoint(x, z, grid);
   const dx = x - anchor[0];
   const dz = z - anchor[1];
   const len = Math.hypot(dx, dz);
-  if (len < GRID_SNAP_IN) return snapPoint(anchor[0], anchor[1]);
+  if (len < grid) return snapPoint(anchor[0], anchor[1], grid);
   const angle = Math.atan2(dz, dx);
   const step = Math.PI / 4;
   const snapped = Math.round(angle / step) * step;
   const sx = anchor[0] + Math.cos(snapped) * len;
   const sz = anchor[1] + Math.sin(snapped) * len;
-  return snapPoint(sx, sz);
+  return snapPoint(sx, sz, grid);
 }
 
-export function defaultRectanglePlan(): FloorPlan {
+export type LengthUnit = 'inches' | 'ft-in';
+
+export function formatLength(inches: number, unit: LengthUnit): string {
+  const rounded = Math.round(inches);
+  if (unit === 'inches') return `${rounded}″`;
+  const ft = Math.floor(rounded / 12);
+  const rem = rounded % 12;
+  if (rem === 0) return `${ft}′`;
+  return `${ft}′ ${rem}″`;
+}
+
+export function rectanglePlan(
+  width: number,
+  depth: number,
+  height: number = ROOM.height,
+  withDefaults = true,
+): FloorPlan {
+  const W = snapToGrid(Math.max(MIN_WALL_LENGTH * 2, width));
+  const D = snapToGrid(Math.max(MIN_WALL_LENGTH * 2, depth));
   const v0 = { id: genId('v'), x: 0, z: 0 };
-  const v1 = { id: genId('v'), x: ROOM.width, z: 0 };
-  const v2 = { id: genId('v'), x: ROOM.width, z: ROOM.depth };
-  const v3 = { id: genId('v'), x: 0, z: ROOM.depth };
+  const v1 = { id: genId('v'), x: W, z: 0 };
+  const v2 = { id: genId('v'), x: W, z: D };
+  const v3 = { id: genId('v'), x: 0, z: D };
   const w0 = { id: genId('w'), startId: v0.id, endId: v1.id };
   const w1 = { id: genId('w'), startId: v1.id, endId: v2.id };
   const w2 = { id: genId('w'), startId: v2.id, endId: v3.id };
   const w3 = { id: genId('w'), startId: v3.id, endId: v0.id };
+  const openings: FloorPlanOpening[] = withDefaults
+    ? [
+        {
+          id: genId('o'),
+          wallId: w0.id,
+          kind: 'door',
+          offset: W / 2 - DOOR.width / 2,
+          width: DOOR.width,
+          height: DOOR.height,
+          hinge: 'left',
+        },
+        {
+          id: genId('o'),
+          wallId: w2.id,
+          kind: 'window',
+          offset: W / 2 - GRID_SNAP_IN / 2,
+          width: GRID_SNAP_IN,
+          height: WINDOW.height,
+          sill: WINDOW.sill,
+        },
+      ]
+    : [];
   return {
     version: FLOOR_PLAN_VERSION,
-    height: ROOM.height,
+    height,
     vertices: [v0, v1, v2, v3],
     walls: [w0, w1, w2, w3],
+    openings,
+  };
+}
+
+/** L-shaped room with a rectangular notch cut from the top-right corner. */
+export function lShapePlan(
+  outerW = 120,
+  outerD = 120,
+  cutW = 48,
+  cutD = 48,
+  height: number = ROOM.height,
+): FloorPlan {
+  const W = snapToGrid(Math.max(MIN_WALL_LENGTH * 3, outerW));
+  const D = snapToGrid(Math.max(MIN_WALL_LENGTH * 3, outerD));
+  const cW = snapToGrid(Math.min(W - MIN_WALL_LENGTH * 2, Math.max(MIN_WALL_LENGTH, cutW)));
+  const cD = snapToGrid(Math.min(D - MIN_WALL_LENGTH * 2, Math.max(MIN_WALL_LENGTH, cutD)));
+  const v0 = { id: genId('v'), x: 0, z: 0 };
+  const v1 = { id: genId('v'), x: W, z: 0 };
+  const v2 = { id: genId('v'), x: W, z: cD };
+  const v3 = { id: genId('v'), x: W - cW, z: cD };
+  const v4 = { id: genId('v'), x: W - cW, z: D };
+  const v5 = { id: genId('v'), x: 0, z: D };
+  const w0 = { id: genId('w'), startId: v0.id, endId: v1.id };
+  const w1 = { id: genId('w'), startId: v1.id, endId: v2.id };
+  const w2 = { id: genId('w'), startId: v2.id, endId: v3.id };
+  const w3 = { id: genId('w'), startId: v3.id, endId: v4.id };
+  const w4 = { id: genId('w'), startId: v4.id, endId: v5.id };
+  const w5 = { id: genId('w'), startId: v5.id, endId: v0.id };
+  return {
+    version: FLOOR_PLAN_VERSION,
+    height,
+    vertices: [v0, v1, v2, v3, v4, v5],
+    walls: [w0, w1, w2, w3, w4, w5],
     openings: [
       {
         id: genId('o'),
         wallId: w0.id,
         kind: 'door',
-        offset: ROOM.width / 2 - DOOR.width / 2,
+        offset: W / 2 - DOOR.width / 2,
         width: DOOR.width,
         height: DOOR.height,
         hinge: 'left',
       },
-      {
-        id: genId('o'),
-        wallId: w2.id,
-        kind: 'window',
-        offset: ROOM.width / 2 - GRID_SNAP_IN / 2,
-        width: GRID_SNAP_IN,
-        height: WINDOW.height,
-        sill: WINDOW.sill,
-      },
     ],
   };
+}
+
+export function defaultRectanglePlan(): FloorPlan {
+  return rectanglePlan(ROOM.width, ROOM.depth, ROOM.height);
+}
+
+export function setWallLength(plan: FloorPlan, wallId: string, length: number): FloorPlan {
+  const wall = wallById(plan, wallId);
+  if (!wall) return plan;
+  const seg = getWallSegment(plan, wall);
+  if (!seg) return plan;
+  const clampedLen = Math.max(MIN_WALL_LENGTH, length);
+  const [tx, tz] = seg.tangent;
+  const newEndX = seg.start.x + tx * clampedLen;
+  const newEndZ = seg.start.z + tz * clampedLen;
+  const [sx, sz] = snapPoint(newEndX, newEndZ);
+  const vertices = plan.vertices.map((v) =>
+    v.id === wall.endId ? { ...v, x: sx, z: sz } : v,
+  );
+  return { ...plan, vertices };
+}
+
+export function moveVertex(
+  plan: FloorPlan,
+  vertexId: string,
+  x: number,
+  z: number,
+  grid = GRID_SNAP_IN,
+): FloorPlan {
+  const [sx, sz] = snapPoint(x, z, grid);
+  const vertices = plan.vertices.map((v) =>
+    v.id === vertexId ? { ...v, x: sx, z: sz } : v,
+  );
+  return { ...plan, vertices };
+}
+
+export function updateOpening(
+  plan: FloorPlan,
+  openingId: string,
+  patch: Partial<Pick<FloorPlanOpening, 'offset' | 'width' | 'height' | 'sill' | 'hinge'>>,
+): FloorPlan {
+  const openings = plan.openings.map((o) =>
+    o.id === openingId ? { ...o, ...patch } : o,
+  );
+  return clampPlan({ ...plan, openings });
 }
 
 export function emptyPlan(height = ROOM.height): FloorPlan {

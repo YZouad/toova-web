@@ -60,9 +60,10 @@ export function FloorPlanSetup({
     <div className="fp-setup-page">
       <header className="fp-setup-header">
         <button type="button" className="fp-setup-back" onClick={onCancel}>
-          ← {mode === 'create' ? 'Back' : 'Cancel'}
+          <span className="fp-setup-back-icon" aria-hidden>←</span>
+          {mode === 'create' ? 'Back' : 'Cancel'}
         </button>
-        <div>
+        <div className="fp-setup-heading">
           <h1 className="fp-setup-title">{mode === 'create' ? 'Draw your floor plan' : 'Edit floor plan'}</h1>
           <p className="fp-setup-sub">{roomName}</p>
         </div>
@@ -77,11 +78,6 @@ export function FloorPlanSetup({
       </header>
 
       {error ? <div className="tv-banner-error fp-setup-error" role="alert">{error}</div> : null}
-
-      <p className="fp-setup-hint">
-        Draw on the fixed canvas (about 8′×15′). Each square is 6″. Windows: click start, then end along a wall.
-        Select a wall or opening and press Delete to remove it.
-      </p>
 
       <FloorPlanEditor
         plan={plan}
