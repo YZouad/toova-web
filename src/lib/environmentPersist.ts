@@ -16,5 +16,6 @@ export function parseEnvironment(raw: unknown): RoomEnvironment | null {
     exposure: clamp(o.exposure, 0.2, 3),
     skyMode: o.skyMode,
     godRays: o.godRays === true,
+    shadowRoof: o.shadowRoof === true,
   };
 }

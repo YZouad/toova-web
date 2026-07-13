@@ -1,5 +1,7 @@
 import { useCallback, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { parseEnvironment } from '../lib/environmentPersist';
+import { parseFloorPlan, serializeFloorPlan, DEFAULT_ROOM_GEOMETRY, type RoomGeometry } from '../lib/roomGeometry';
 import {
   dbRowToItem,
   serializeLayoutForRoom,
@@ -7,22 +9,29 @@ import {
 } from '../lib/roomLayoutSerialize';
 import { signModelObjectPath } from '../lib/modelStorage';
 import { patchImportedItemsFromCatalog } from '../lib/patchImportedFromCatalog';
-import type { Item } from '../store';
-import { useStore } from '../store';
+import type { Item, RoomEnvironment } from '../store';
+import { DEFAULT_ENVIRONMENT, useStore } from '../store';
 
-export async function loadRoomLayout(roomId: string): Promise<{
+export interface RoomLoadResult {
   items: Item[];
   order: string[];
-}> {
-  const { data, error } = await supabase
-    .from('room_items')
-    .select('*')
-    .eq('room_id', roomId)
-    .order('sort_order', { ascending: true });
+  environment: RoomEnvironment;
+  roomGeometry: RoomGeometry;
+}
 
-  if (error) throw new Error(error.message);
+export async function loadRoomLayout(roomId: string): Promise<RoomLoadResult> {
+  const [{ data: roomRow, error: roomErr }, { data: itemRows, error: itemErr }] = await Promise.all([
+    supabase.from('rooms').select('environment, room_geometry').eq('id', roomId).single(),
+    supabase.from('room_items').select('*').eq('room_id', roomId).order('sort_order', { ascending: true }),
+  ]);
 
-  const rows = (data ?? []) as RoomItemRow[];
+  if (roomErr) throw new Error(formatRoomDbError(roomErr.message));
+  if (itemErr) throw new Error(itemErr.message);
+
+  const environment = parseEnvironment(roomRow?.environment) ?? { ...DEFAULT_ENVIRONMENT };
+  const roomGeometry = parseFloorPlan(roomRow?.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+
+  const rows = (itemRows ?? []) as RoomItemRow[];
   const items: Item[] = [];
   const order: string[] = [];
 
@@ -60,13 +69,20 @@ export async function loadRoomLayout(roomId: string): Promise<{
 
   await patchImportedItemsFromCatalog(items);
 
-  return { items, order };
+  return {
+    items,
+    order,
+    environment,
+    roomGeometry: roomGeometry!,
+  };
 }
 
 export async function saveRoomLayout(
   roomId: string,
   items: Record<string, Item>,
   order: string[],
+  environment?: RoomEnvironment,
+  roomGeometry?: RoomGeometry,
 ): Promise<void> {
   const payload = serializeLayoutForRoom(roomId, items, order);
 
@@ -82,12 +98,49 @@ export async function saveRoomLayout(
     if (insErr) throw new Error(insErr.message);
   }
 
-  const { error: upErr } = await supabase
-    .from('rooms')
-    .update({ updated_at: new Date().toISOString() })
-    .eq('id', roomId);
+  const roomUpdate: Record<string, unknown> = {
+    updated_at: new Date().toISOString(),
+  };
+  if (environment) roomUpdate.environment = environment;
+  if (roomGeometry) roomUpdate.room_geometry = serializeFloorPlan(roomGeometry);
 
-  if (upErr) throw new Error(upErr.message);
+  const { error: upErr } = await supabase.from('rooms').update(roomUpdate).eq('id', roomId);
+
+  if (upErr) throw new Error(formatRoomDbError(upErr.message));
+}
+
+const ROOM_SCHEMA_MIGRATION_HINT =
+  'Run supabase/sql/add_room_environment_geometry_emitter.sql in the Supabase SQL Editor (Dashboard → SQL).';
+
+function formatRoomDbError(message: string): string {
+  if (
+    message.includes("'environment'") ||
+    message.includes("'room_geometry'") ||
+    message.includes('schema cache')
+  ) {
+    return `Database is missing room layout columns. ${ROOM_SCHEMA_MIGRATION_HINT}`;
+  }
+  return message;
+}
+
+export async function createRoomWithGeometry(
+  userId: string,
+  name: string,
+  roomGeometry: RoomGeometry,
+  environment = DEFAULT_ENVIRONMENT,
+): Promise<{ id: string; name: string }> {
+  const { data, error } = await supabase
+    .from('rooms')
+    .insert({
+      user_id: userId,
+      name,
+      room_geometry: serializeFloorPlan(roomGeometry),
+      environment,
+    })
+    .select('id,name')
+    .single();
+  if (error) throw new Error(formatRoomDbError(error.message));
+  return { id: data.id, name: data.name ?? name };
 }
 
 /** Imperative load — use from room picker. */
@@ -118,11 +171,11 @@ export function useRoomSave(roomId: string | null) {
 
   const save = useCallback(async () => {
     if (!roomId) return;
-    const { items, order } = useStore.getState();
+    const { items, order, environment, roomGeometry } = useStore.getState();
     setSaving(true);
     setError(null);
     try {
-      await saveRoomLayout(roomId, items, order);
+      await saveRoomLayout(roomId, items, order, environment, roomGeometry);
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to save room';
       setError(msg);

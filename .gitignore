@@ -10,3 +10,5 @@ dist/
 # OS / editor
 .DS_Store
 *.tsbuildinfo
+
+graphify-out/

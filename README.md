@@ -54,6 +54,22 @@ The site deploys to GitHub Pages on every push to `main` via [`.github/workflows
 1. In the repo, go to **Settings → Pages** and set the source to **GitHub Actions**.
 2. Optionally set `VITE_TRELLIS_GENERATE_URL` under **Settings → Secrets and variables → Actions → Variables** so model import works in production.
 
+## Supabase database
+
+If room creation fails with a missing `environment` or `room_geometry` column, run this once in **Supabase Dashboard → SQL Editor**:
+
+```sql
+-- supabase/sql/add_room_environment_geometry_emitter.sql
+ALTER TABLE public.rooms
+  ADD COLUMN IF NOT EXISTS environment jsonb DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS room_geometry jsonb DEFAULT NULL;
+
+ALTER TABLE public.room_items
+  ADD COLUMN IF NOT EXISTS emitter jsonb DEFAULT NULL;
+```
+
+New projects should use [`supabase/sql/room_layout_schema.sql`](supabase/sql/room_layout_schema.sql), which already includes these columns.
+
 ## Project layout
 
 ```

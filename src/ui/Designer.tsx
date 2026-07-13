@@ -10,15 +10,13 @@ import { FURNITURE, type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
 import { formatTimeOfDay, isDaytime } from '../lib/environment';
 import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item } from '../store';
-import type { WallId } from '../lib/roomGeometry';
+import { planBounds } from '../lib/roomGeometry';
 import { FurniturePreview } from './FurniturePreview';
 import { ImportModelModal } from './ImportModelModal';
 
 const RECENT_KEY = 'toova-recent-kinds';
 const MAX_RECENT = 6;
 const CALENDLY_DEMO_URL = 'https://calendly.com/aeliyag-uchicago/30min';
-
-const WALL_OPTIONS: WallId[] = ['north', 'south', 'east', 'west'];
 
 const BUILTIN_CATS: Record<Exclude<FurnitureKind, 'imported'>, string> = {
   bed: 'Bedroom',
@@ -61,6 +59,7 @@ type PaletteEntry = {
 
 interface DesignerProps {
   onBack: () => void;
+  onEditFloorPlan?: () => void;
 }
 
 function loadRecent(): string[] {
@@ -78,7 +77,7 @@ function pushRecent(kind: string) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(next));
 }
 
-export function Designer({ onBack }: DesignerProps) {
+export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
   const { user } = useAuth();
   const { isAdmin } = useAdminStats(user?.id);
   const { workspace } = useRoomWorkspace();
@@ -107,16 +106,16 @@ export function Designer({ onBack }: DesignerProps) {
   const setOrientation = useStore((s) => s.setOrientation);
   const setExposure = useStore((s) => s.setExposure);
   const setGodRays = useStore((s) => s.setGodRays);
+  const setShadowRoof = useStore((s) => s.setShadowRoof);
   const godRays = useStore((s) => s.environment.godRays);
+  const shadowRoof = useStore((s) => s.environment.shadowRoof);
   const roomGeometry = useStore((s) => s.roomGeometry);
-  const setRoomDimensions = useStore((s) => s.setRoomDimensions);
-  const addWindow = useStore((s) => s.addWindow);
-  const updateWindow = useStore((s) => s.updateWindow);
-  const removeWindow = useStore((s) => s.removeWindow);
+  const setRoomHeight = useStore((s) => s.setRoomHeight);
   const setEmitterEnabled = useStore((s) => s.setEmitterEnabled);
   const setEmitterConfig = useStore((s) => s.setEmitterConfig);
 
-  const maxItemFootprint = Math.max(roomGeometry.width, roomGeometry.depth, 200);
+  const roomBounds = planBounds(roomGeometry);
+  const maxItemFootprint = Math.max(roomBounds.width, roomBounds.depth, 200);
 
   const [roomName, setRoomName] = useState(workspace?.name ?? '');
   const [savedLabel, setSavedLabel] = useState('Saved');
@@ -393,6 +392,15 @@ export function Designer({ onBack }: DesignerProps) {
               />
               Light shafts
             </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, flex: 1 }}>
+              <input
+                type="checkbox"
+                checked={shadowRoof}
+                onChange={(e) => setShadowRoof(e.target.checked)}
+                style={{ accentColor: 'var(--accent)' }}
+              />
+              Shadow roof
+            </label>
             <button
               type="button"
               className="designer-env-preset"
@@ -403,62 +411,30 @@ export function Designer({ onBack }: DesignerProps) {
           </div>
           {roomPanelOpen ? (
             <div className="designer-room-panel">
-              {(['width', 'depth', 'height'] as const).map((dim) => (
-                <div key={dim} className="designer-env-row">
-                  <span className="designer-env-label" style={{ minWidth: 52, textTransform: 'capitalize' }}>{dim}</span>
-                  <input
-                    type="range"
-                    className="designer-env-slider"
-                    min={dim === 'height' ? 72 : 60}
-                    max={dim === 'width' ? 360 : dim === 'depth' ? 480 : 144}
-                    step={2}
-                    value={roomGeometry[dim]}
-                    onChange={(e) => setRoomDimensions({ [dim]: Number(e.target.value) })}
-                  />
-                  <span className="designer-env-orient-val">{Math.round(roomGeometry[dim])}″</span>
-                </div>
-              ))}
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, marginBottom: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 700 }}>Windows</span>
-                <button type="button" className="designer-env-preset" onClick={() => addWindow()}>+ Add</button>
+              <div className="designer-env-row">
+                <span className="designer-env-label" style={{ minWidth: 52 }}>Height</span>
+                <input
+                  type="range"
+                  className="designer-env-slider"
+                  min={72}
+                  max={144}
+                  step={2}
+                  value={roomGeometry.height}
+                  onChange={(e) => setRoomHeight(Number(e.target.value))}
+                />
+                <span className="designer-env-orient-val">{Math.round(roomGeometry.height)}″</span>
               </div>
-              {roomGeometry.windows.map((win, i) => (
-                <div key={i} className="designer-window-card">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, fontWeight: 600 }}>Window {i + 1}</span>
-                    {roomGeometry.windows.length > 1 ? (
-                      <button type="button" className="designer-env-preset" onClick={() => removeWindow(i)}>Remove</button>
-                    ) : null}
-                  </div>
-                  <label style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                    Wall
-                    <select
-                      value={win.wall}
-                      onChange={(e) => updateWindow(i, { wall: e.target.value as WallId })}
-                      style={{ width: '100%', marginTop: 4, fontFamily: 'inherit', fontSize: 12 }}
-                    >
-                      {WALL_OPTIONS.map((w) => (
-                        <option key={w} value={w}>{w}</option>
-                      ))}
-                    </select>
-                  </label>
-                  {(['x', 'y', 'w', 'h'] as const).map((field) => (
-                    <div key={field} className="designer-env-row" style={{ marginTop: 4 }}>
-                      <span className="designer-env-label" style={{ minWidth: 28 }}>{field}</span>
-                      <input
-                        type="range"
-                        className="designer-env-slider"
-                        min={field === 'y' ? 0 : field === 'w' || field === 'h' ? 12 : -120}
-                        max={field === 'y' ? roomGeometry.height - 12 : field === 'w' ? 120 : field === 'h' ? 96 : 120}
-                        step={2}
-                        value={win[field]}
-                        onChange={(e) => updateWindow(i, { [field]: Number(e.target.value) })}
-                      />
-                      <span className="designer-env-orient-val">{Math.round(win[field])}</span>
-                    </div>
-                  ))}
-                </div>
-              ))}
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                {onEditFloorPlan ? (
+                  <button type="button" className="designer-env-preset" onClick={onEditFloorPlan}>
+                    Edit floor plan
+                  </button>
+                ) : null}
+              </div>
+              <p style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 8, marginBottom: 0 }}>
+                {roomGeometry.walls.length} walls · {roomGeometry.openings.filter((o) => o.kind === 'door').length} doors ·{' '}
+                {roomGeometry.openings.filter((o) => o.kind === 'window').length} windows
+              </p>
             </div>
           ) : null}
         </div>

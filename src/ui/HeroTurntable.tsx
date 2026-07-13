@@ -6,7 +6,7 @@ import * as THREE from 'three';
 function RotatingChair() {
   const group = useRef<THREE.Group>(null);
   return (
-    <group ref={group} position={[0, -8, 0]}>
+    <group ref={group} position={[0, -16, 0]}>
       <mesh position={[0, 14, 0]} castShadow>
         <boxGeometry args={[28, 4, 24]} />
         <meshStandardMaterial color="#CBB28F" />
@@ -43,7 +43,7 @@ export function HeroTurntable() {
       <directionalLight position={[40, 60, 30]} intensity={1.2} />
       <pointLight position={[-30, 20, -20]} intensity={0.4} color="#B05A3C" />
       <RotatingChair />
-      <OrbitControls enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={1.4} enableDamping />
+      <OrbitControls target={[0, 6, 0]} enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={1.4} enableDamping />
     </Canvas>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
+import { planBounds } from '../lib/roomGeometry';
 import { useStore, DEFAULT_BLANKET_COLOR } from '../store';
 
 export function InspectorPanel() {
@@ -33,7 +34,7 @@ export function InspectorPanel() {
 
   const rotDeg = Math.round(((item.rotationY * 180) / Math.PI) % 360);
   const canEditSize = item.kind !== 'imported' || !!item.importedNaturalSize;
-  const maxItemFootprint = Math.max(roomGeometry.width, roomGeometry.depth, 200);
+  const maxItemFootprint = Math.max(planBounds(roomGeometry).width, planBounds(roomGeometry).depth, 200);
   const maxElevation = Math.max(0, roomGeometry.height - item.size[1]);
   const currentY = Math.round(item.position[1]);
   const sizeLabels = ['Width', 'Height', 'Depth'] as const;

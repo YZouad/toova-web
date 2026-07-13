@@ -3,11 +3,15 @@ import { FURNITURE, FurnitureKind } from './furniture/registry';
 import { findValidElevation, settleGravity, validatePlacement } from './interaction/collision';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
 import {
-  clampRoomGeometry,
+  clampPlan,
+  clampPlanHeight,
   DEFAULT_ROOM_GEOMETRY,
+  normalizeRoomGeometry,
+  planBounds,
+  planCentroid,
   type RoomGeometry,
-  type RoomWindow,
 } from './lib/roomGeometry';
+import { clampPositionInRoom } from './interaction/collision';
 
 const BED_MIN_BODY_H = 4;
 export const DEFAULT_BLANKET_COLOR = '#6b8cae';
@@ -35,6 +39,8 @@ export interface RoomEnvironment {
   exposure: number;        // global brightness trim, default 1
   skyMode: 'gradient' | 'studio';
   godRays: boolean;
+  /** Invisible ceiling plane that casts shadows (toggle). */
+  shadowRoof: boolean;
 }
 
 export const DEFAULT_ENVIRONMENT: RoomEnvironment = {
@@ -43,6 +49,7 @@ export const DEFAULT_ENVIRONMENT: RoomEnvironment = {
   exposure: 1,
   skyMode: 'gradient',
   godRays: false,
+  shadowRoof: false,
 };
 
 export interface EmitterConfig {
@@ -105,10 +112,9 @@ interface StoreState {
   setExposure: (x: number) => void;
   setSkyMode: (m: 'gradient' | 'studio') => void;
   setGodRays: (on: boolean) => void;
-  setRoomDimensions: (dims: Partial<Pick<RoomGeometry, 'width' | 'depth' | 'height'>>) => void;
-  addWindow: (win?: Partial<RoomWindow>) => void;
-  updateWindow: (index: number, patch: Partial<RoomWindow>) => void;
-  removeWindow: (index: number) => void;
+  setShadowRoof: (on: boolean) => void;
+  setRoomGeometry: (geom: RoomGeometry) => void;
+  setRoomHeight: (height: number) => void;
 
   /** Replace layout from persisted data for the active room. */
   hydrateLayout: (payload: Item[], orderIds: string[]) => void;
@@ -164,17 +170,8 @@ export function clampFullItemPosition(
   size: [number, number, number],
   room = useStore.getState().roomGeometry,
 ): [number, number, number] {
-  const [w, h, d] = size;
-  const c = Math.abs(Math.cos(rotationY));
-  const s = Math.abs(Math.sin(rotationY));
-  const halfW = (w * c + d * s) / 2;
-  const halfD = (w * s + d * c) / 2;
-  const inset = 1;
-  return [
-    clamp(position[0], inset + halfW, room.width - inset - halfW),
-    clamp(position[1], 0, Math.max(0, room.height - h)),
-    clamp(position[2], inset + halfD, room.depth - inset - halfD),
-  ];
+  const [x, y, z] = clampPositionInRoom(position, rotationY, size, room);
+  return [x, clamp(y, 0, Math.max(0, room.height - size[1])), z];
 }
 
 function bumpNextIdFromExistingIds(ids: string[]) {
@@ -191,7 +188,7 @@ export const useStore = create<StoreState>((set) => ({
   invalid: false,
 
   environment: { ...DEFAULT_ENVIRONMENT },
-  roomGeometry: { ...DEFAULT_ROOM_GEOMETRY, windows: [...DEFAULT_ROOM_GEOMETRY.windows] },
+  roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
 
   setTimeOfDay: (h) =>
     set((s) => ({ environment: { ...s.environment, timeOfDay: clamp(h, 0, 24) } })),
@@ -203,50 +200,14 @@ export const useStore = create<StoreState>((set) => ({
     set((s) => ({ environment: { ...s.environment, skyMode: m } })),
   setGodRays: (on) =>
     set((s) => ({ environment: { ...s.environment, godRays: on } })),
+  setShadowRoof: (on) =>
+    set((s) => ({ environment: { ...s.environment, shadowRoof: on } })),
 
-  setRoomDimensions: (dims) =>
-    set((s) => {
-      const next = clampRoomGeometry({
-        ...s.roomGeometry,
-        ...dims,
-      });
-      return { roomGeometry: next };
-    }),
+  setRoomGeometry: (geom) => set({ roomGeometry: normalizeRoomGeometry(geom) }),
 
-  addWindow: (win) =>
-    set((s) => {
-      const geom = s.roomGeometry;
-      const patch: RoomWindow = {
-        wall: win?.wall ?? 'east',
-        x: win?.x ?? 0,
-        y: win?.y ?? 36,
-        w: win?.w ?? 36,
-        h: win?.h ?? 36,
-      };
-      return {
-        roomGeometry: clampRoomGeometry({
-          ...geom,
-          windows: [...geom.windows, patch],
-        }),
-      };
-    }),
-
-  updateWindow: (index, patch) =>
-    set((s) => {
-      const windows = s.roomGeometry.windows.map((w, i) =>
-        i === index ? { ...w, ...patch } : w,
-      );
-      return {
-        roomGeometry: clampRoomGeometry({ ...s.roomGeometry, windows }),
-      };
-    }),
-
-  removeWindow: (index) =>
+  setRoomHeight: (height) =>
     set((s) => ({
-      roomGeometry: clampRoomGeometry({
-        ...s.roomGeometry,
-        windows: s.roomGeometry.windows.filter((_, i) => i !== index),
-      }),
+      roomGeometry: clampPlan({ ...s.roomGeometry, height: clampPlanHeight(height) }),
     })),
 
   hydrateLayout: (payload, orderIds) =>
@@ -268,10 +229,7 @@ export const useStore = create<StoreState>((set) => ({
   hydrateRoomSettings: (environment, roomGeometry) =>
     set(() => ({
       environment: { ...environment },
-      roomGeometry: {
-        ...roomGeometry,
-        windows: [...roomGeometry.windows],
-      },
+      roomGeometry: normalizeRoomGeometry(roomGeometry),
     })),
 
   resetLayout: () =>
@@ -283,10 +241,7 @@ export const useStore = create<StoreState>((set) => ({
         selectedId: null,
         invalid: false,
         environment: { ...DEFAULT_ENVIRONMENT },
-        roomGeometry: {
-          ...DEFAULT_ROOM_GEOMETRY,
-          windows: [...DEFAULT_ROOM_GEOMETRY.windows],
-        },
+        roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
       };
     }),
 
@@ -298,7 +253,8 @@ export const useStore = create<StoreState>((set) => ({
     const bedLegHeight = isBed ? 8 : undefined;
     const bodyH = isBed && def ? def.size[1] : 0;
     const room = useStore.getState().roomGeometry;
-    const position: [number, number, number] = [room.width / 2, 0, room.depth / 2];
+    const [cx, cz] = planCentroid(room);
+    const position: [number, number, number] = [cx, 0, cz];
     const itemSize: [number, number, number] = isBed && def
       ? [def.size[0], bedLegHeight! + bodyH, def.size[2]]
       : size;
@@ -385,7 +341,8 @@ export const useStore = create<StoreState>((set) => ({
       const it = s.items[id];
       if (!it) return s;
       const room = s.roomGeometry;
-      const maxFootprint = Math.max(room.width, room.depth, 200);
+      const b = planBounds(room);
+      const maxFootprint = Math.max(b.width, b.depth, 200);
       let heightMax = room.height;
       let size: [number, number, number] = [
         clamp(sizeInput[0], 1, maxFootprint),
@@ -565,7 +522,8 @@ export const useStore = create<StoreState>((set) => ({
       const it = s.items[id];
       if (!it || it.kind !== 'imported' || !it.importedNaturalSize) return s;
       const room = s.roomGeometry;
-      const maxFootprint = Math.max(room.width, room.depth, 200);
+      const b = planBounds(room);
+      const maxFootprint = Math.max(b.width, b.depth, 200);
       const size: [number, number, number] = [
         clamp(sizeInput[0], 1, maxFootprint),
         clamp(sizeInput[1], 4, room.height),

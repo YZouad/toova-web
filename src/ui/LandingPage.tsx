@@ -3,7 +3,7 @@ import { HeroTurntable } from './HeroTurntable';
 import { MarketingNav } from './MarketingNav';
 
 const HERO_STATS = [
-  { n: '2.4s', l: 'avg. photo → 3D' },
+  { n: '32.4s', l: 'avg. photo → 3D' },
   { n: '18', l: 'furniture categories' },
   { n: '∞', l: 'layouts per room' },
 ];
@@ -162,8 +162,6 @@ export function LandingPage({ onGetStarted, onLogin, onPitchMadness, onWatchDemo
                 <div className="landing-stat-l">{s.l}</div>
               </div>
             ))}
-            <div className="landing-hero-stats-spacer" />
-            <span className="landing-hero-stats-meta">hero-room · live render</span>
           </div>
         </div>
       </div>

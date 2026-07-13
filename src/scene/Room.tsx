@@ -1,59 +1,71 @@
 import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { ROOM, DOOR } from '../units';
+import { ROOM } from '../units';
 import { sampleSun } from '../lib/environment';
 import {
-  holesForWall,
-  windowWorldPlacement,
+  allWallSegments,
+  doorOpenings,
+  floorFaceLoops,
+  holesForWallSegment,
+  openingWorldPlacement,
+  planBounds,
+  planCentroid,
+  windowOpenings,
   type RoomGeometry,
-  type RoomWindow,
 } from '../lib/roomGeometry';
 import { useStore } from '../store';
 import { Wall } from './Wall';
 
-const SHORT_WALL_COLOR = '#d8d0c2';
-const LONG_WALL_COLOR = '#cfc7b8';
-const CORNER_CAP_COLOR = '#d3cac0';
+const WALL_COLOR_A = '#d8d0c2';
+const WALL_COLOR_B = '#cfc7b8';
 
-interface WindowPlacement {
-  win: RoomWindow;
+interface OpeningPlacement {
   cx: number;
   cy: number;
   cz: number;
   outward: [number, number, number];
+  rotationY: number;
+  w: number;
+  h: number;
+  kind: 'door' | 'window';
+  sill: number;
 }
 
-function placementsFromGeometry(geom: RoomGeometry): WindowPlacement[] {
-  return geom.windows.map((win) => {
-    const p = windowWorldPlacement(geom, win);
-    return {
-      win,
-      cx: p.cx,
-      cy: p.cy,
-      cz: p.cz,
-      outward: p.outward,
-    };
-  });
+function placementsFromGeometry(geom: RoomGeometry): OpeningPlacement[] {
+  return geom.openings
+    .map((o) => {
+      const p = openingWorldPlacement(geom, o);
+      if (!p) return null;
+      return {
+        cx: p.cx,
+        cy: p.cy,
+        cz: p.cz,
+        outward: p.outward,
+        rotationY: p.rotationY,
+        w: p.w,
+        h: p.h,
+        kind: o.kind,
+        sill: o.sill ?? 0,
+      };
+    })
+    .filter((p): p is OpeningPlacement => p != null);
 }
 
 function WindowGlass({
   placement,
   glassTint,
 }: {
-  placement: WindowPlacement;
+  placement: OpeningPlacement;
   glassTint: string;
 }) {
-  const { win, cx, cy, cz, outward } = placement;
-  const inset = 0.1;
-  const frameZ = cz - outward[2] * inset - outward[0] * inset;
-  const frameX = cx - outward[0] * inset;
-  const sillY = win.y;
+  const { w, h, sill, cx, cy, cz, rotationY } = placement;
+  const t = 1;
 
   return (
-    <group>
-      <mesh position={[frameX, cy, frameZ]}>
-        <planeGeometry args={[win.w - 1, win.h - 1]} />
+    <group position={[cx, 0, cz]} rotation={[0, rotationY, 0]}>
+      <mesh position={[0, cy, 0]}>
+        <planeGeometry args={[w - 1, h - 1]} />
         <meshPhysicalMaterial
           color={glassTint}
           roughness={0.05}
@@ -63,20 +75,12 @@ function WindowGlass({
           opacity={0.4}
         />
       </mesh>
-      <mesh position={[frameX, sillY - 0.75, frameZ - outward[2]]}>
-        <boxGeometry args={[win.w + 3, 1.5, 2]} />
+      <mesh position={[0, sill - 0.75, t]}>
+        <boxGeometry args={[w + 3, 1.5, 2]} />
         <meshStandardMaterial color="#ffffff" roughness={0.6} />
       </mesh>
-      <mesh position={[frameX, sillY + win.h + 0.75, frameZ - outward[2]]}>
-        <boxGeometry args={[win.w + 3, 1.5, 2]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.6} />
-      </mesh>
-      <mesh position={[frameX - win.w / 2 - 0.75, cy, frameZ - outward[2]]}>
-        <boxGeometry args={[1.5, win.h, 2]} />
-        <meshStandardMaterial color="#ffffff" roughness={0.6} />
-      </mesh>
-      <mesh position={[frameX + win.w / 2 + 0.75, cy, frameZ - outward[2]]}>
-        <boxGeometry args={[1.5, win.h, 2]} />
+      <mesh position={[0, sill + h + 0.75, t]}>
+        <boxGeometry args={[w + 3, 1.5, 2]} />
         <meshStandardMaterial color="#ffffff" roughness={0.6} />
       </mesh>
     </group>
@@ -88,23 +92,15 @@ function WindowFillLight({
   color,
   intensity,
 }: {
-  placement: WindowPlacement;
+  placement: OpeningPlacement;
   color: string;
   intensity: number;
 }) {
   const lightRef = useRef<THREE.SpotLight>(null!);
   const targetRef = useRef<THREE.Object3D>(null!);
   const { cx, cy, cz, outward } = placement;
-  const outside = [
-    cx + outward[0] * 35,
-    cy,
-    cz + outward[2] * 35,
-  ] as [number, number, number];
-  const inside = [
-    cx - outward[0] * 25,
-    cy,
-    cz - outward[2] * 25,
-  ] as [number, number, number];
+  const outside = [cx + outward[0] * 35, cy, cz + outward[2] * 35] as [number, number, number];
+  const inside = [cx - outward[0] * 25, cy, cz - outward[2] * 25] as [number, number, number];
 
   useLayoutEffect(() => {
     const light = lightRef.current;
@@ -134,10 +130,13 @@ function WindowAssembly({ geom }: { geom: RoomGeometry }) {
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const exposure = useStore((s) => s.environment.exposure);
 
-  const placements = useMemo(() => placementsFromGeometry(geom), [geom]);
+  const placements = useMemo(
+    () => placementsFromGeometry(geom).filter((p) => p.kind === 'window'),
+    [geom],
+  );
 
   const sun = useMemo(
-    () => sampleSun(timeOfDay, orientationDeg, geom),
+    () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)),
     [timeOfDay, orientationDeg, geom],
   );
 
@@ -158,226 +157,137 @@ function WindowAssembly({ geom }: { geom: RoomGeometry }) {
   );
 }
 
+function DoorFrames({ geom }: { geom: RoomGeometry }) {
+  const doors = doorOpenings(geom);
+  return (
+    <group>
+      {doors.map((door) => {
+        const p = openingWorldPlacement(geom, door);
+        if (!p) return null;
+        const w = door.width;
+        const h = door.height;
+        const t = 2;
+        const f = 1.5;
+        const rot = p.rotationY;
+        return (
+          <group key={door.id} position={[p.cx, 0, p.cz]} rotation={[0, rot, 0]}>
+            <mesh position={[-w / 2 - f / 2, h / 2, t / 2]} castShadow>
+              <boxGeometry args={[f, h, t]} />
+              <meshStandardMaterial color="#3a2e22" roughness={0.7} />
+            </mesh>
+            <mesh position={[w / 2 + f / 2, h / 2, t / 2]} castShadow>
+              <boxGeometry args={[f, h, t]} />
+              <meshStandardMaterial color="#3a2e22" roughness={0.7} />
+            </mesh>
+            <mesh position={[0, h + f / 2, t / 2]} castShadow>
+              <boxGeometry args={[w + 2 * f, f, t]} />
+              <meshStandardMaterial color="#3a2e22" roughness={0.7} />
+            </mesh>
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+function floorShapesFromGeometry(geom: RoomGeometry): THREE.Shape[] {
+  const loops = floorFaceLoops(geom);
+  if (loops.length === 0) {
+    const b = planBounds(geom);
+    const s = new THREE.Shape();
+    s.moveTo(0, 0);
+    s.lineTo(b.width, 0);
+    s.lineTo(b.width, b.depth);
+    s.lineTo(0, b.depth);
+    s.closePath();
+    return [s];
+  }
+  return loops.map((verts) => {
+    const s = new THREE.Shape();
+    s.moveTo(verts[0]!.x, verts[0]!.z);
+    for (let i = 1; i < verts.length; i++) {
+      s.lineTo(verts[i]!.x, verts[i]!.z);
+    }
+    s.closePath();
+    return s;
+  });
+}
+
+function FloorMesh({ geom }: { geom: RoomGeometry }) {
+  const shapes = useMemo(() => floorShapesFromGeometry(geom), [geom]);
+
+  return (
+    <group>
+      {shapes.map((shape, i) => (
+        <mesh key={i} rotation={[Math.PI / 2, 0, 0]} receiveShadow>
+          <shapeGeometry args={[shape]} />
+          <meshStandardMaterial color="#8b6f4e" roughness={0.85} side={THREE.DoubleSide} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+/** Invisible ceiling that still casts shadows when enabled in environment settings. */
+function ShadowRoof({ geom }: { geom: RoomGeometry }) {
+  const enabled = useStore((s) => s.environment.shadowRoof);
+  const shapes = useMemo(() => floorShapesFromGeometry(geom), [geom]);
+  const shadowMat = useMemo(() => {
+    const m = new THREE.MeshStandardMaterial();
+    m.colorWrite = false;
+    m.depthWrite = false;
+    m.transparent = true;
+    return m;
+  }, []);
+
+  if (!enabled) return null;
+
+  return (
+    <group>
+      {shapes.map((shape, i) => (
+        <mesh
+          key={i}
+          position={[0, geom.height, 0]}
+          rotation={[Math.PI / 2, 0, 0]}
+          castShadow
+          receiveShadow={false}
+          material={shadowMat}
+        >
+          <shapeGeometry args={[shape]} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
 export function Room() {
   const geom = useStore((s) => s.roomGeometry);
-  const W = geom.width;
-  const D = geom.depth;
   const H = geom.height;
+  const segments = useMemo(() => allWallSegments(geom), [geom]);
 
   return (
     <group>
-      <mesh
-        position={[W / 2, 0, D / 2]}
-        rotation={[-Math.PI / 2, 0, 0]}
-        receiveShadow
-      >
-        <planeGeometry args={[W, D]} />
-        <meshStandardMaterial color="#8b6f4e" roughness={0.85} />
-      </mesh>
+      <FloorMesh geom={geom} />
 
-      <Wall
-        length={W}
-        height={H}
-        outwardNormal={[0, 0, -1]}
-        innerFaceCenter={[W / 2, 0, 0]}
-        holes={[{ x: 0, y: 0, w: DOOR.width, h: DOOR.height }, ...holesForWall(geom, 'south')]}
-        color={SHORT_WALL_COLOR}
-      />
+      {segments.map((seg, i) => {
+        const renderLength = seg.length + ROOM.wallThickness;
+        return (
+        <Wall
+          key={seg.wall.id}
+          length={renderLength}
+          height={H}
+          outwardNormal={[seg.outward[0], 0, seg.outward[1]]}
+          innerFaceCenter={seg.innerFaceCenter}
+          rotationY={seg.rotationY}
+          holes={holesForWallSegment(geom, seg)}
+          color={i % 2 === 0 ? WALL_COLOR_A : WALL_COLOR_B}
+        />
+        );
+      })}
 
-      <Wall
-        length={W}
-        height={H}
-        outwardNormal={[0, 0, 1]}
-        innerFaceCenter={[W / 2, 0, D]}
-        holes={holesForWall(geom, 'north')}
-        color={SHORT_WALL_COLOR}
-      />
-
-      <Wall
-        length={D}
-        height={H}
-        outwardNormal={[-1, 0, 0]}
-        innerFaceCenter={[0, 0, D / 2]}
-        holes={holesForWall(geom, 'west')}
-        color={LONG_WALL_COLOR}
-      />
-
-      <Wall
-        length={D}
-        height={H}
-        outwardNormal={[1, 0, 0]}
-        innerFaceCenter={[W, 0, D / 2]}
-        holes={holesForWall(geom, 'east')}
-        color={LONG_WALL_COLOR}
-      />
-
-      <WallCornerVolumes width={W} depth={D} height={H} />
-
-      <DoorFrame width={W} />
-
+      <DoorFrames geom={geom} />
       <WindowAssembly geom={geom} />
-    </group>
-  );
-}
-
-function WallCornerVolumes({
-  width: W,
-  depth: D,
-  height: h,
-}: {
-  width: number;
-  depth: number;
-  height: number;
-}) {
-  const t = ROOM.wallThickness;
-  const y = h / 2;
-
-  const boxGeo = useMemo(() => new THREE.BoxGeometry(t, h, t), [t, h]);
-
-  return (
-    <group>
-      <WallCornerPost
-        geometry={boxGeo}
-        height={h}
-        position={[-t / 2, y, -t / 2]}
-        faceColors={cornerFaceColors.sw}
-        shortNormal={[0, 0, -1]}
-        longNormal={[-1, 0, 0]}
-        fadeOrigin={[0, h / 2, 0]}
-      />
-      <WallCornerPost
-        geometry={boxGeo}
-        height={h}
-        position={[W + t / 2, y, -t / 2]}
-        faceColors={cornerFaceColors.se}
-        shortNormal={[0, 0, -1]}
-        longNormal={[1, 0, 0]}
-        fadeOrigin={[W, h / 2, 0]}
-      />
-      <WallCornerPost
-        geometry={boxGeo}
-        height={h}
-        position={[-t / 2, y, D + t / 2]}
-        faceColors={cornerFaceColors.nw}
-        shortNormal={[0, 0, 1]}
-        longNormal={[-1, 0, 0]}
-        fadeOrigin={[0, h / 2, D]}
-      />
-      <WallCornerPost
-        geometry={boxGeo}
-        height={h}
-        position={[W + t / 2, y, D + t / 2]}
-        faceColors={cornerFaceColors.ne}
-        shortNormal={[0, 0, 1]}
-        longNormal={[1, 0, 0]}
-        fadeOrigin={[W, h / 2, D]}
-      />
-    </group>
-  );
-}
-
-const cornerFaceColors = {
-  sw: [SHORT_WALL_COLOR, LONG_WALL_COLOR, CORNER_CAP_COLOR, CORNER_CAP_COLOR, LONG_WALL_COLOR, SHORT_WALL_COLOR],
-  se: [LONG_WALL_COLOR, SHORT_WALL_COLOR, CORNER_CAP_COLOR, CORNER_CAP_COLOR, SHORT_WALL_COLOR, SHORT_WALL_COLOR],
-  nw: [SHORT_WALL_COLOR, LONG_WALL_COLOR, CORNER_CAP_COLOR, CORNER_CAP_COLOR, SHORT_WALL_COLOR, LONG_WALL_COLOR],
-  ne: [LONG_WALL_COLOR, SHORT_WALL_COLOR, CORNER_CAP_COLOR, CORNER_CAP_COLOR, SHORT_WALL_COLOR, LONG_WALL_COLOR],
-} as const;
-
-interface WallCornerPostProps {
-  geometry: THREE.BoxGeometry;
-  height: number;
-  position: [number, number, number];
-  faceColors: readonly [string, string, string, string, string, string];
-  shortNormal: [number, number, number];
-  longNormal: [number, number, number];
-  fadeOrigin: [number, number, number];
-}
-
-function WallCornerPost({
-  geometry,
-  height,
-  position,
-  faceColors,
-  shortNormal,
-  longNormal,
-  fadeOrigin,
-}: WallCornerPostProps) {
-  const meshRef = useRef<THREE.Mesh>(null!);
-  const materials = useMemo(() => {
-    return faceColors.map(
-      (color) =>
-        new THREE.MeshStandardMaterial({
-          color,
-          roughness: 0.95,
-          metalness: 0,
-          side: THREE.DoubleSide,
-        }),
-    );
-  }, [faceColors]);
-
-  const nShort = useMemo(() => new THREE.Vector3(...shortNormal), [shortNormal]);
-  const nLong = useMemo(() => new THREE.Vector3(...longNormal), [longNormal]);
-  const origin = useMemo(() => new THREE.Vector3(...fadeOrigin), [fadeOrigin]);
-
-  useFrame(({ camera }) => {
-    const mesh = meshRef.current;
-    if (!mesh || !Array.isArray(mesh.material)) return;
-
-    const toCamera = new THREE.Vector3().subVectors(camera.position, origin).normalize();
-    const exposureShort = toCamera.dot(nShort);
-    const exposureLong = toCamera.dot(nLong);
-    const opacityShort =
-      exposureShort > 0 ? Math.max(0, 1 - exposureShort * 2.5) : 1;
-    const opacityLong = exposureLong > 0 ? Math.max(0, 1 - exposureLong * 2.5) : 1;
-
-    const perFaceTargetOpacity: number[] = [
-      faceColors[0] === SHORT_WALL_COLOR ? opacityShort : opacityLong,
-      faceColors[1] === SHORT_WALL_COLOR ? opacityShort : opacityLong,
-      Math.min(opacityShort, opacityLong),
-      Math.min(opacityShort, opacityLong),
-      faceColors[4] === SHORT_WALL_COLOR ? opacityShort : opacityLong,
-      faceColors[5] === SHORT_WALL_COLOR ? opacityShort : opacityLong,
-    ];
-
-    const mats = mesh.material as THREE.MeshStandardMaterial[];
-    for (let i = 0; i < mats.length; i++) {
-      const mat = mats[i];
-      const targetOpacity = perFaceTargetOpacity[i] ?? 1;
-      mat.opacity = THREE.MathUtils.lerp(mat.opacity, targetOpacity, 0.18);
-      mat.transparent = mat.opacity < 0.99;
-      mat.depthWrite = mat.opacity > 0.95;
-    }
-  });
-
-  return (
-    <mesh ref={meshRef} geometry={geometry} material={materials} position={position} castShadow receiveShadow />
-  );
-}
-
-function DoorFrame({ width }: { width: number }) {
-  const cx = width / 2;
-  const w = DOOR.width;
-  const h = DOOR.height;
-  const t = 2;
-  const f = 1.5;
-  return (
-    <group>
-      <mesh position={[cx - w / 2 - f / 2, h / 2, t / 2]} castShadow>
-        <boxGeometry args={[f, h, t]} />
-        <meshStandardMaterial color="#3a2e22" roughness={0.7} />
-      </mesh>
-      <mesh position={[cx + w / 2 + f / 2, h / 2, t / 2]} castShadow>
-        <boxGeometry args={[f, h, t]} />
-        <meshStandardMaterial color="#3a2e22" roughness={0.7} />
-      </mesh>
-      <mesh position={[cx, h + f / 2, t / 2]} castShadow>
-        <boxGeometry args={[w + 2 * f, f, t]} />
-        <meshStandardMaterial color="#3a2e22" roughness={0.7} />
-      </mesh>
-      <mesh position={[cx, 0.1, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-        <planeGeometry args={[w, 4]} />
-        <meshStandardMaterial color="#2a2018" roughness={0.9} />
-      </mesh>
+      <ShadowRoof geom={geom} />
     </group>
   );
 }

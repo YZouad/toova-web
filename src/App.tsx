@@ -2,19 +2,27 @@ import { useCallback, useEffect, useState } from 'react';
 import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
-import { useRoomLoad } from './hooks/useRoomLayout';
+import { createRoomWithGeometry, useRoomLoad } from './hooks/useRoomLayout';
 import { supabase } from './lib/supabase';
 import { useStore, DEFAULT_ENVIRONMENT } from './store';
-import { DEFAULT_ROOM_GEOMETRY } from './lib/roomGeometry';
+import type { FloorPlan } from './lib/floorPlanGeometry';
+import { serializeFloorPlan } from './lib/roomGeometry';
 import { LandingPage } from './ui/LandingPage';
 import { PitchMadnessPage } from './ui/PitchMadnessPage';
 import { AuthPage } from './ui/AuthPage';
 import { Dashboard } from './ui/Dashboard';
 import { Designer } from './ui/Designer';
+import { FloorPlanSetup } from './ui/FloorPlanSetup';
 import { AdminConsole } from './ui/AdminConsole';
 import { Dock, type DockNav } from './ui/Dock';
 
-type Screen = 'landing' | 'pitch-madness' | 'auth' | 'dashboard' | 'designer' | 'admin' | 'ar';
+type Screen = 'landing' | 'pitch-madness' | 'auth' | 'dashboard' | 'floor-plan' | 'designer' | 'admin' | 'ar';
+
+interface FloorPlanDraft {
+  name: string;
+  mode: 'create' | 'edit';
+  initialPlan?: FloorPlan;
+}
 
 /** Decorative only — does not encode a real URL. */
 function DecorativeQrGraphic() {
@@ -100,6 +108,8 @@ export default function App() {
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [workspace, setWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [floorPlanDraft, setFloorPlanDraft] = useState<FloorPlanDraft | null>(null);
+  const [floorPlanBusy, setFloorPlanBusy] = useState(false);
   const resetLayout = useStore((s) => s.resetLayout);
   const hydrateLayout = useStore((s) => s.hydrateLayout);
   const hydrateRoomSettings = useStore((s) => s.hydrateRoomSettings);
@@ -145,31 +155,65 @@ export default function App() {
       resetLayout();
       const data = await load(room.id);
       hydrateLayout(data.items, data.order);
-      hydrateRoomSettings(
-        { ...DEFAULT_ENVIRONMENT },
-        { ...DEFAULT_ROOM_GEOMETRY, windows: [...DEFAULT_ROOM_GEOMETRY.windows] },
-      );
+      hydrateRoomSettings(data.environment, data.roomGeometry);
       setWorkspace({ id: room.id, name: room.name });
       setScreen('designer');
     },
     [hydrateLayout, hydrateRoomSettings, load, resetLayout],
   );
 
-  const handleCreate = useCallback(
-    async (name: string) => {
+  const handleStartFloorPlan = useCallback((name: string) => {
+    setFloorPlanDraft({ name, mode: 'create' });
+    setScreen('floor-plan');
+  }, []);
+
+  const handleCreateWithPlan = useCallback(
+    async (name: string, plan: FloorPlan) => {
       if (!user?.id) return;
-      const { data, error } = await supabase
-        .from('rooms')
-        .insert({ user_id: user.id, name })
-        .select('id,name')
-        .single();
-      if (error) throw new Error(error.message);
-      resetLayout();
-      hydrateLayout([], []);
-      setWorkspace({ id: data.id, name: data.name ?? name });
-      setScreen('designer');
+      setFloorPlanBusy(true);
+      try {
+        const room = await createRoomWithGeometry(user.id, name, plan, { ...DEFAULT_ENVIRONMENT });
+        resetLayout();
+        hydrateLayout([], []);
+        hydrateRoomSettings({ ...DEFAULT_ENVIRONMENT }, plan);
+        setWorkspace({ id: room.id, name: room.name });
+        setFloorPlanDraft(null);
+        setScreen('designer');
+      } finally {
+        setFloorPlanBusy(false);
+      }
     },
-    [hydrateLayout, resetLayout, user?.id],
+    [hydrateLayout, hydrateRoomSettings, resetLayout, user?.id],
+  );
+
+  const handleEditFloorPlan = useCallback(() => {
+    const geom = useStore.getState().roomGeometry;
+    if (!workspace) return;
+    setFloorPlanDraft({
+      name: workspace.name,
+      mode: 'edit',
+      initialPlan: structuredClone(geom),
+    });
+    setScreen('floor-plan');
+  }, [workspace]);
+
+  const handleSaveEditedPlan = useCallback(
+    async (plan: FloorPlan) => {
+      if (!workspace?.id) return;
+      setFloorPlanBusy(true);
+      try {
+        hydrateRoomSettings(useStore.getState().environment, plan);
+        await supabase
+          .from('rooms')
+          .update({ room_geometry: serializeFloorPlan(plan), updated_at: new Date().toISOString() })
+          .eq('id', workspace.id);
+        setFloorPlanDraft(null);
+        setScreen('designer');
+      } finally {
+        setFloorPlanBusy(false);
+      }
+    },
+    [hydrateRoomSettings, workspace?.id],
   );
 
   const dockActive: DockNav | null =
@@ -290,8 +334,32 @@ export default function App() {
   if (screen === 'designer' && workspace && user) {
     return (
       <RoomWorkspaceProvider value={{ workspace, exitWorkspace }}>
-        <Designer onBack={exitWorkspace} />
+        <Designer onBack={exitWorkspace} onEditFloorPlan={handleEditFloorPlan} />
       </RoomWorkspaceProvider>
+    );
+  }
+
+  if (screen === 'floor-plan' && floorPlanDraft && user) {
+    const items = Object.values(useStore.getState().items);
+    return (
+      <FloorPlanSetup
+        roomName={floorPlanDraft.name}
+        mode={floorPlanDraft.mode}
+        initialPlan={floorPlanDraft.initialPlan}
+        furnitureItems={floorPlanDraft.mode === 'edit' ? items : undefined}
+        continuing={floorPlanBusy}
+        onCancel={() => {
+          setFloorPlanDraft(null);
+          setScreen(floorPlanDraft.mode === 'create' ? 'dashboard' : 'designer');
+        }}
+        onContinue={async (plan) => {
+          if (floorPlanDraft.mode === 'create') {
+            await handleCreateWithPlan(floorPlanDraft.name, plan);
+          } else {
+            await handleSaveEditedPlan(plan);
+          }
+        }}
+      />
     );
   }
 
@@ -302,7 +370,7 @@ export default function App() {
           user={user}
           loadingLayout={layoutLoading}
           onPickExisting={handlePickExisting}
-          onCreate={handleCreate}
+          onStartFloorPlan={handleStartFloorPlan}
           onGoLanding={() => { void logout(); setScreen('landing'); }}
         />
         {showDock ? (

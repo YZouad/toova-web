@@ -1,18 +1,19 @@
 import * as THREE from 'three';
 import { sunLightDirection } from './environment';
-import type { RoomGeometry, WallId } from './roomGeometry';
-import { windowWorldPlacement } from './roomGeometry';
+import {
+  allWallSegments,
+  openingWorldPlacement,
+  planBounds,
+  windowOpenings,
+  type RoomGeometry,
+} from './roomGeometry';
 
 const SURFACE_EPS = 0.02;
 const RAY_EPS = 0.5;
-/** Window opening samples per axis — extra rays land on floor/wall junctions. */
 const WINDOW_SUBDIV = 4;
-
-type RoomSurface = 'floor' | 'north' | 'south' | 'east' | 'west' | 'ceiling';
 
 interface RoomHit {
   point: THREE.Vector3;
-  surface: RoomSurface;
   t: number;
 }
 
@@ -22,81 +23,58 @@ export interface WindowBeam {
   splashQuad: THREE.BufferGeometry | null;
 }
 
-/** Parallel rays enter the room when they travel opposite to the wall outward normal. */
 function lightEntersWindow(lightDir: THREE.Vector3, outward: THREE.Vector3): boolean {
   return lightDir.dot(outward) < 0.02;
 }
 
-function wallAxes(wall: WallId): { right: THREE.Vector3; up: THREE.Vector3 } {
-  switch (wall) {
-    case 'north':
-    case 'south':
-      return { right: new THREE.Vector3(1, 0, 0), up: new THREE.Vector3(0, 1, 0) };
-    case 'west':
-    case 'east':
-      return { right: new THREE.Vector3(0, 0, 1), up: new THREE.Vector3(0, 1, 0) };
-  }
-}
-
-function corner(
-  center: THREE.Vector3,
-  right: THREE.Vector3,
-  up: THREE.Vector3,
-  sx: number,
-  sy: number,
-): THREE.Vector3 {
-  return center
-    .clone()
-    .add(right.clone().multiplyScalar(sx))
-    .add(up.clone().multiplyScalar(sy));
-}
-
-/** Where a ray leaves the room box — handles wall/floor/ceiling edges and corners. */
-function rayExitRoom(
+function rayExitPolygonRoom(
   from: THREE.Vector3,
   dir: THREE.Vector3,
   geom: RoomGeometry,
-  sourceWall: WallId,
+  sourceWallId: string,
 ): RoomHit | null {
-  const { width: W, depth: D, height: H } = geom;
+  const H = geom.height;
+  const b = planBounds(geom);
   let bestT = Infinity;
-  let bestSurface: RoomSurface | null = null;
 
-  const consider = (t: number, surface: RoomSurface) => {
+  const consider = (t: number) => {
     if (t <= RAY_EPS || t >= bestT) return;
     bestT = t;
-    bestSurface = surface;
   };
 
-  if (dir.x > 0.0005) consider((W - SURFACE_EPS - from.x) / dir.x, 'east');
-  if (dir.x < -0.0005 && sourceWall !== 'west') consider((SURFACE_EPS - from.x) / dir.x, 'west');
+  if (dir.y > 0.0005) consider((H - SURFACE_EPS - from.y) / dir.y);
+  if (dir.y < -0.0005) consider((SURFACE_EPS - from.y) / dir.y);
 
-  if (dir.y > 0.0005) consider((H - SURFACE_EPS - from.y) / dir.y, 'ceiling');
-  if (dir.y < -0.0005) consider((SURFACE_EPS - from.y) / dir.y, 'floor');
+  for (const seg of allWallSegments(geom)) {
+    if (seg.wall.id === sourceWallId) continue;
+    const ax = seg.start.x;
+    const az = seg.start.z;
+    const bx = seg.end.x;
+    const bz = seg.end.z;
+    const edx = bx - ax;
+    const edz = bz - az;
+    const denom = dir.x * edz - dir.z * edx;
+    if (Math.abs(denom) < 1e-6) continue;
+    const t = ((ax - from.x) * edz - (az - from.z) * edx) / denom;
+    if (t <= RAY_EPS) continue;
+    const ix = from.x + dir.x * t;
+    const iz = from.z + dir.z * t;
+    const segLen2 = edx * edx + edz * edz;
+    const u = segLen2 < 1e-6 ? 0 : ((ix - ax) * edx + (iz - az) * edz) / segLen2;
+    if (u < -0.01 || u > 1.01) continue;
+    consider(t);
+  }
 
-  if (dir.z > 0.0005 && sourceWall !== 'north') consider((D - SURFACE_EPS - from.z) / dir.z, 'north');
-  if (dir.z < -0.0005 && sourceWall !== 'south') consider((SURFACE_EPS - from.z) / dir.z, 'south');
+  if (!Number.isFinite(bestT)) {
+    // Fallback to bounding box
+    if (dir.x > 0.0005) consider((b.maxX - SURFACE_EPS - from.x) / dir.x);
+    if (dir.x < -0.0005) consider((b.minX + SURFACE_EPS - from.x) / dir.x);
+    if (dir.z > 0.0005) consider((b.maxZ - SURFACE_EPS - from.z) / dir.z);
+    if (dir.z < -0.0005) consider((b.minZ + SURFACE_EPS - from.z) / dir.z);
+  }
 
-  if (bestSurface == null || !Number.isFinite(bestT)) return null;
-
-  const raw = from.clone().add(dir.clone().multiplyScalar(bestT));
-  return { point: snapBoundaryPoint(raw, geom), surface: bestSurface, t: bestT };
-}
-
-/** Snap to inner faces; points near edges land on the edge/corner. */
-function snapBoundaryPoint(raw: THREE.Vector3, geom: RoomGeometry): THREE.Vector3 {
-  const { width: W, depth: D, height: H } = geom;
-  const edge = 0.35;
-  const snap1 = (v: number, lo: number, hi: number) => {
-    if (v - lo <= edge) return lo;
-    if (hi - v <= edge) return hi;
-    return Math.max(lo, Math.min(hi, v));
-  };
-  return new THREE.Vector3(
-    snap1(raw.x, SURFACE_EPS, W - SURFACE_EPS),
-    snap1(raw.y, SURFACE_EPS, H - SURFACE_EPS),
-    snap1(raw.z, SURFACE_EPS, D - SURFACE_EPS),
-  );
+  if (!Number.isFinite(bestT)) return null;
+  return { point: from.clone().add(dir.clone().multiplyScalar(bestT)), t: bestT };
 }
 
 function beamExtent(corners: THREE.Vector3[]): number {
@@ -110,17 +88,6 @@ function beamExtent(corners: THREE.Vector3[]): number {
   );
 }
 
-function sampleWindow(
-  u: number,
-  v: number,
-  corners: [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3],
-): THREE.Vector3 {
-  const bottom = corners[0].clone().lerp(corners[1], u);
-  const top = corners[3].clone().lerp(corners[2], u);
-  return bottom.lerp(top, v);
-}
-
-/** Outer shell only (4 sides, no end cap) — avoids overlapping additive faces. */
 function buildShellShaftGeometry(
   nearPts: THREE.Vector3[],
   farPts: THREE.Vector3[],
@@ -131,16 +98,11 @@ function buildShellShaftGeometry(
   const beamFactors: number[] = [];
   const lateral: number[] = [];
   const indices: number[] = [];
-
-  const gridAt = (r: number, c: number) => r * cell + c;
   const pts = (far: boolean) => (far ? farPts : nearPts);
   const row = (r: number, far: boolean) =>
-    Array.from({ length: cell }, (_, c) => pts(far)[gridAt(r, c)]!);
-  const col = (c: number, far: boolean) =>
-    Array.from({ length: cell }, (_, r) => pts(far)[gridAt(r, c)]!);
+    Array.from({ length: cell }, (_, c) => pts(far)[r * cell + c]!);
 
   let vi = 0;
-
   const addStrip = (nearStrip: THREE.Vector3[], farStrip: THREE.Vector3[]) => {
     const base = vi;
     const n = nearStrip.length;
@@ -148,25 +110,21 @@ function buildShellShaftGeometry(
       const t = n === 1 ? 0.5 : i / (n - 1);
       const a = nearStrip[i]!;
       const b = farStrip[i]!;
-      positions.push(a.x, a.y, a.z);
-      beamFactors.push(0);
-      lateral.push(t);
-      positions.push(b.x, b.y, b.z);
-      beamFactors.push(1);
-      lateral.push(t);
+      positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      beamFactors.push(0, 1);
+      lateral.push(t, t);
       vi += 2;
     }
     for (let i = 0; i < n - 1; i++) {
       const i0 = base + i * 2;
-      const i1 = i0 + 1;
-      const i2 = i0 + 2;
-      const i3 = i0 + 3;
-      indices.push(i0, i2, i3, i0, i3, i1);
+      indices.push(i0, i0 + 2, i0 + 3, i0, i0 + 3, i0 + 1);
     }
   };
 
   addStrip(row(0, false), row(0, true));
   addStrip([...row(cell - 1, false)].reverse(), [...row(cell - 1, true)].reverse());
+  const col = (c: number, far: boolean) =>
+    Array.from({ length: cell }, (_, r) => pts(far)[r * cell + c]!);
   addStrip(col(0, false), col(0, true));
   addStrip([...col(cell - 1, false)].reverse(), [...col(cell - 1, true)].reverse());
 
@@ -222,11 +180,8 @@ function buildFarCapGeometry(farPts: THREE.Vector3[], subdiv: number): THREE.Buf
   const positions: number[] = [];
   const indices: number[] = [];
   const cell = subdiv;
-  const farOff = 0;
-
   for (const p of farPts) positions.push(p.x, p.y, p.z);
-  const at = (r: number, c: number) => farOff + r * cell + c;
-
+  const at = (r: number, c: number) => r * cell + c;
   for (let r = 0; r < cell - 1; r++) {
     for (let c = 0; c < cell - 1; c++) {
       const f00 = at(r, c);
@@ -236,7 +191,6 @@ function buildFarCapGeometry(farPts: THREE.Vector3[], subdiv: number): THREE.Buf
       indices.push(f00, f01, f11, f00, f11, f10);
     }
   }
-
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
   geo.setIndex(indices);
@@ -253,23 +207,28 @@ export function computeWindowBeams(
   const lightDir = new THREE.Vector3(dx, dy, dz);
   const beams: WindowBeam[] = [];
 
-  for (const win of geom.windows) {
-    const p = windowWorldPlacement(geom, win);
+  for (const win of windowOpenings(geom)) {
+    const p = openingWorldPlacement(geom, win);
+    if (!p) continue;
     const outward = new THREE.Vector3(...p.outward);
-    const wallCenter = new THREE.Vector3(p.cx, p.cy, p.cz);
-
     if (!lightEntersWindow(lightDir, outward)) continue;
 
-    const { right, up } = wallAxes(win.wall);
-    const hw = p.w * 0.5;
-    const hh = p.h * 0.5;
+    const seg = allWallSegments(geom).find((s) => s.wall.id === win.wallId);
+    if (!seg) continue;
 
-    const near = [
-      corner(wallCenter, right, up, -hw, -hh),
-      corner(wallCenter, right, up, hw, -hh),
-      corner(wallCenter, right, up, hw, hh),
-      corner(wallCenter, right, up, -hw, hh),
-    ] as [THREE.Vector3, THREE.Vector3, THREE.Vector3, THREE.Vector3];
+    const [tx, tz] = seg.tangent;
+    const hw = p.w / 2;
+    const hh = p.h / 2;
+    const sill = win.sill ?? 36;
+    const baseX = seg.start.x + tx * win.offset;
+    const baseZ = seg.start.z + tz * win.offset;
+
+    const corners = [
+      new THREE.Vector3(baseX, sill, baseZ),
+      new THREE.Vector3(baseX + tx * win.width, sill, baseZ + tz * win.width),
+      new THREE.Vector3(baseX + tx * win.width, sill + win.height, baseZ + tz * win.width),
+      new THREE.Vector3(baseX, sill + win.height, baseZ),
+    ];
 
     const nearPts: THREE.Vector3[] = [];
     const farPts: THREE.Vector3[] = [];
@@ -279,8 +238,10 @@ export function computeWindowBeams(
       for (let c = 0; c < WINDOW_SUBDIV; c++) {
         const u = c / (WINDOW_SUBDIV - 1);
         const v = r / (WINDOW_SUBDIV - 1);
-        const nearPt = sampleWindow(u, v, near);
-        const hit = rayExitRoom(nearPt, lightDir, geom, win.wall);
+        const bottom = corners[0]!.clone().lerp(corners[1]!, u);
+        const top = corners[3]!.clone().lerp(corners[2]!, u);
+        const nearPt = bottom.lerp(top, v);
+        const hit = rayExitPolygonRoom(nearPt, lightDir, geom, win.wallId);
         if (!hit) {
           valid = false;
           break;
@@ -294,13 +255,10 @@ export function computeWindowBeams(
     if (!valid || farPts.length !== WINDOW_SUBDIV * WINDOW_SUBDIV) continue;
     if (beamExtent(farPts) < 4) continue;
 
-    const shaftGeometry = buildShellShaftGeometry(nearPts, farPts, WINDOW_SUBDIV);
-    const splashQuad = buildFarCapGeometry(farPts, WINDOW_SUBDIV);
-
     beams.push({
       lightDir,
-      shaftGeometry,
-      splashQuad,
+      shaftGeometry: buildShellShaftGeometry(nearPts, farPts, WINDOW_SUBDIV),
+      splashQuad: buildFarCapGeometry(farPts, WINDOW_SUBDIV),
     });
   }
 

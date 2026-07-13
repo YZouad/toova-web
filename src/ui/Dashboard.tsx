@@ -42,7 +42,7 @@ interface DashboardProps {
   user: User;
   loadingLayout: boolean;
   onPickExisting: (room: { id: string; name: string }) => Promise<void>;
-  onCreate: (name: string) => Promise<void>;
+  onStartFloorPlan: (name: string) => void;
   onGoLanding: () => void;
 }
 
@@ -50,7 +50,7 @@ export function Dashboard({
   user,
   loadingLayout,
   onPickExisting,
-  onCreate,
+  onStartFloorPlan,
   onGoLanding,
 }: DashboardProps) {
   const [rooms, setRooms] = useState<ListedRoomRow[]>([]);
@@ -63,7 +63,6 @@ export function Dashboard({
   const [showNewRoom, setShowNewRoom] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomType, setNewRoomType] = useState('Living Room');
-  const [creating, setCreating] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const fetchRooms = useCallback(async () => {
@@ -121,9 +120,21 @@ export function Dashboard({
     setActionError(null);
     try {
       const copyName = `${roomName} (copy)`;
+      const { data: sourceRoom, error: srcErr } = await supabase
+        .from('rooms')
+        .select('environment, room_geometry')
+        .eq('id', roomId)
+        .single();
+      if (srcErr) throw new Error(srcErr.message);
+
       const { data: newRoom, error: createErr } = await supabase
         .from('rooms')
-        .insert({ user_id: user.id, name: copyName })
+        .insert({
+          user_id: user.id,
+          name: copyName,
+          environment: sourceRoom?.environment ?? null,
+          room_geometry: sourceRoom?.room_geometry ?? null,
+        })
         .select('id')
         .single();
       if (createErr) throw new Error(createErr.message);
@@ -180,24 +191,16 @@ export function Dashboard({
     await fetchRooms();
   }
 
-  async function handleCreateRoom() {
+  function handleCreateRoom() {
     const name = newRoomName.trim() || nextRoomName(rooms);
     if (atLimit) {
       setActionError(`Room limit reached (${MAX_ROOMS} rooms).`);
       return;
     }
-    setCreating(true);
     setActionError(null);
-    try {
-      await onCreate(name);
-      setShowNewRoom(false);
-      setNewRoomName('');
-      await fetchRooms();
-    } catch (err) {
-      setActionError(err instanceof Error ? err.message : 'Could not create room');
-    } finally {
-      setCreating(false);
-    }
+    setShowNewRoom(false);
+    setNewRoomName('');
+    onStartFloorPlan(name);
   }
 
   function toggleMenu(e: MouseEvent, roomId: string) {
@@ -261,7 +264,7 @@ export function Dashboard({
               const isBusy = busyId === r.id || loadingLayout;
 
               return (
-                <div key={r.id} className="dashboard-room-card">
+                <div key={r.id} className={`dashboard-room-card${menuOpen ? ' dashboard-room-card--menu-open' : ''}`}>
                   <div className="dashboard-room-preview">
                     {Array.from({ length: Math.min(r.item_count, 6) }).map((_, i) => (
                       <div
@@ -331,7 +334,7 @@ export function Dashboard({
                   </div>
 
                   {confirmDeleteId === r.id ? (
-                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(43,38,32,.8)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+                    <div style={{ position: 'absolute', inset: 0, borderRadius: 16, background: 'rgba(43,38,32,.8)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
                       <div style={{ fontFamily: 'var(--font-serif)', fontSize: 20, color: '#F8F3EA', marginBottom: 6 }}>Delete this room?</div>
                       <div style={{ fontSize: 13, color: 'rgba(244,238,228,.7)', marginBottom: 18 }}>&quot;{r.name}&quot; can&apos;t be recovered.</div>
                       <div style={{ display: 'flex', gap: 10 }}>
@@ -378,8 +381,8 @@ export function Dashboard({
               ))}
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" className="tv-btn-primary" style={{ flex: 1, padding: 13, borderRadius: 10, fontSize: 15 }} disabled={creating} onClick={() => void handleCreateRoom()}>
-                {creating ? 'Creating…' : 'Create room'}
+              <button type="button" className="tv-btn-primary" style={{ flex: 1, padding: 13, borderRadius: 10, fontSize: 15 }} onClick={handleCreateRoom}>
+                Draw floor plan
               </button>
               <button type="button" style={{ cursor: 'pointer', border: '1px solid var(--border-input)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 15, padding: '13px 20px', borderRadius: 10 }} onClick={() => setShowNewRoom(false)}>Cancel</button>
             </div>

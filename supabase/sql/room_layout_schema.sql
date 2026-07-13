@@ -34,12 +34,14 @@ INSERT INTO public.furniture_catalog (
   ('nightstand', 'Nightstand', 18, 24, 18, null,  true, null, '{}'::text[]);
 
 CREATE TABLE public.rooms (
-  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id      uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
-  name         text NOT NULL DEFAULT 'My Room',
-  sort_order   int NOT NULL DEFAULT 0,
-  created_at   timestamptz NOT NULL DEFAULT now(),
-  updated_at   timestamptz NOT NULL DEFAULT now()
+  id             uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id        uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
+  name           text NOT NULL DEFAULT 'My Room',
+  sort_order     int NOT NULL DEFAULT 0,
+  environment    jsonb DEFAULT NULL,
+  room_geometry  jsonb DEFAULT NULL,
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX idx_rooms_user_id ON public.rooms (user_id);

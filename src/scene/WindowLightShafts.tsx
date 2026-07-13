@@ -1,6 +1,7 @@
 import { useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { sampleSun } from '../lib/environment';
+import { planBounds } from '../lib/roomGeometry';
 import { computeWindowBeams, createShaftMaterial, makeRectSplashTexture } from '../lib/windowLightShafts';
 import { useStore } from '../store';
 
@@ -13,7 +14,7 @@ export function WindowLightShafts() {
   const geom = useStore((s) => s.roomGeometry);
 
   const sun = useMemo(
-    () => sampleSun(timeOfDay, orientationDeg, geom),
+    () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)),
     [timeOfDay, orientationDeg, geom],
   );
 

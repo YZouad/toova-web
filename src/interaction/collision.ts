@@ -1,3 +1,9 @@
+import type { RoomGeometry } from '../lib/roomGeometry';
+import {
+  isTouchingAnyWall,
+  planBounds,
+  pointInPolygon,
+} from '../lib/floorPlanGeometry';
 import type { Item } from '../store';
 import { useStore } from '../store';
 
@@ -80,6 +86,65 @@ export function clearanceOf(item: Item): number {
 
 export const ROOM_INSET = 1;
 
+function footprintInsideRoom(rect: Rect, geom: RoomGeometry, inset = ROOM_INSET): boolean {
+  const corners: [number, number][] = [
+    [rect.minX, rect.minZ],
+    [rect.maxX, rect.minZ],
+    [rect.maxX, rect.maxZ],
+    [rect.minX, rect.maxZ],
+  ];
+  return corners.every(([x, z]) => pointInPolygon(x, z, geom, inset));
+}
+
+/** Clamp XZ so the item footprint stays inside the floor-plan polygon. */
+export function clampPositionInRoom(
+  position: [number, number, number],
+  rotationY: number,
+  size: [number, number, number],
+  geom: RoomGeometry,
+): [number, number, number] {
+  const rect = itemRect({ ...({} as Item), position, rotationY, size });
+  const b = planBounds(geom);
+  let x = position[0];
+  let z = position[2];
+  const halfW = (rect.maxX - rect.minX) / 2;
+  const halfD = (rect.maxZ - rect.minZ) / 2;
+
+  x = Math.max(b.minX + ROOM_INSET + halfW, Math.min(b.maxX - ROOM_INSET - halfW, x));
+  z = Math.max(b.minZ + ROOM_INSET + halfD, Math.min(b.maxZ - ROOM_INSET - halfD, z));
+
+  const testRect = {
+    minX: x - halfW,
+    maxX: x + halfW,
+    minZ: z - halfD,
+    maxZ: z + halfD,
+  };
+  if (footprintInsideRoom(testRect, geom)) {
+    return [x, position[1], z];
+  }
+
+  // Binary search toward centroid if corner clamp isn't enough (concave rooms).
+  const cx = (b.minX + b.maxX) / 2;
+  const cz = (b.minZ + b.maxZ) / 2;
+  let bestX = x;
+  let bestZ = z;
+  for (let t = 0; t <= 1; t += 0.05) {
+    const tx = x + (cx - x) * t;
+    const tz = z + (cz - z) * t;
+    const tr = {
+      minX: tx - halfW,
+      maxX: tx + halfW,
+      minZ: tz - halfD,
+      maxZ: tz + halfD,
+    };
+    if (footprintInsideRoom(tr, geom)) {
+      bestX = tx;
+      bestZ = tz;
+    }
+  }
+  return [bestX, position[1], bestZ];
+}
+
 // ---------------------------------------------------------------------------
 // Full placement validation
 // ---------------------------------------------------------------------------
@@ -92,10 +157,9 @@ export interface ValidationResult { ok: boolean; reason?: string; }
  */
 export function validatePlacement(candidate: Item, others: Item[]): ValidationResult {
   const rect = itemRect(candidate);
-
   const r = room();
-  if (rect.minX < ROOM_INSET || rect.maxX > r.width - ROOM_INSET ||
-      rect.minZ < ROOM_INSET || rect.maxZ > r.depth - ROOM_INSET) {
+
+  if (!footprintInsideRoom(rect, r)) {
     return { ok: false, reason: 'Outside room' };
   }
 
@@ -127,6 +191,16 @@ export function validatePlacement(candidate: Item, others: Item[]): ValidationRe
   return { ok: true };
 }
 
+/** Check whether all placed items fit inside a proposed floor plan. */
+export function itemsFitPlan(items: Item[], plan: RoomGeometry): Item[] {
+  const outside: Item[] = [];
+  for (const item of items) {
+    const rect = itemRect(item);
+    if (!footprintInsideRoom(rect, plan)) outside.push(item);
+  }
+  return outside;
+}
+
 // ---------------------------------------------------------------------------
 // Height-slider physics
 // ---------------------------------------------------------------------------
@@ -134,11 +208,6 @@ export function validatePlacement(candidate: Item, others: Item[]): ValidationRe
 /**
  * Find the nearest Y to `desiredY` that avoids volume conflicts with all others
  * at the candidate's current XZ position.
- *
- * Behaviour:
- *  - Moving down → stops on the top surface of whatever is below.
- *  - Moving up   → stops on the underside of whatever is above.
- *  - Snaps to the closest boundary (top or bottom of blocker) when blocked.
  */
 export function findValidElevation(candidate: Item, others: Item[], desiredY: number): number {
   const h = candidate.size[1];
@@ -153,10 +222,9 @@ export function findValidElevation(candidate: Item, others: Item[], desiredY: nu
     const oBot = other.position[1];
     const oTop = oBot + other.size[1];
 
-    // Would placing at y cause this item to penetrate `other`?
     if (y < oTop - 0.25 && y + h > oBot + 0.25) {
-      const above = oTop;          // rest on top of other
-      const below = oBot - h;      // sit entirely below other
+      const above = oTop;
+      const below = oBot - h;
 
       const aboveOk = above <= maxY;
       const belowOk = below >= 0;
@@ -180,10 +248,6 @@ export function findValidElevation(candidate: Item, others: Item[], desiredY: nu
 // Gravity / settle
 // ---------------------------------------------------------------------------
 
-/**
- * Drop the candidate from `fromY` to the highest valid resting surface at or
- * below it (floor, or top of another item).  Used when drag is released.
- */
 export function settleGravity(candidate: Item, others: Item[], fromY: number): number {
   const h = candidate.size[1];
   const maxY = Math.max(0, room().height - h);
@@ -205,7 +269,6 @@ export function settleGravity(candidate: Item, others: Item[], fromY: number): n
     if (validatePlacement(test, others).ok) return sy;
   }
 
-  // Last resort: try floor even if no overlapping support was found.
   if (startY > 0.5) {
     const floorTest: Item = { ...candidate, position: [candidate.position[0], 0, candidate.position[2]] };
     if (validatePlacement(floorTest, others).ok) return 0;
@@ -218,31 +281,17 @@ export function settleGravity(candidate: Item, others: Item[], fromY: number): n
 // XZ clamping / wall touching
 // ---------------------------------------------------------------------------
 
-/**
- * Returns true when the item's bounding rect is within `tolerance` inches of
- * any wall inner face.
- */
 export function isTouchingWall(item: Item, tolerance = 6): boolean {
   const rect = itemRect(item);
-  const r = room();
-  return (
-    rect.minX <= ROOM_INSET + tolerance ||
-    rect.maxX >= r.width  - ROOM_INSET - tolerance ||
-    rect.minZ <= ROOM_INSET + tolerance ||
-    rect.maxZ >= r.depth  - ROOM_INSET - tolerance
-  );
+  return isTouchingAnyWall(rect.minX, rect.maxX, rect.minZ, rect.maxZ, room(), tolerance);
 }
 
-/** Clamp a proposed XZ position so the item stays within the room interior. */
 export function clampToRoom(item: Item, proposedX: number, proposedZ: number): [number, number] {
-  const [w, , d] = item.size;
-  const c = Math.abs(Math.cos(item.rotationY));
-  const s = Math.abs(Math.sin(item.rotationY));
-  const halfW = (w * c + d * s) / 2;
-  const halfD = (w * s + d * c) / 2;
-  const r = room();
-  return [
-    Math.max(ROOM_INSET + halfW, Math.min(r.width - ROOM_INSET - halfW, proposedX)),
-    Math.max(ROOM_INSET + halfD, Math.min(r.depth - ROOM_INSET - halfD, proposedZ)),
-  ];
+  const [x, , z] = clampPositionInRoom(
+    [proposedX, item.position[1], proposedZ],
+    item.rotationY,
+    item.size,
+    room(),
+  );
+  return [x, z];
 }

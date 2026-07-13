@@ -11,6 +11,7 @@ import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
 import { ArcMenu } from './ArcMenu';
 import { useStore } from '../store';
 import { sampleSun } from '../lib/environment';
+import { planBounds, planCentroid } from '../lib/roomGeometry';
 import { WindowLightShafts } from './WindowLightShafts';
 
 const SCENE_BG = '#E4DAC8';
@@ -40,21 +41,24 @@ function EnvironmentRig() {
   const targetRef = useRef<THREE.Object3D>(null!);
 
   const sun = useMemo(
-    () => sampleSun(timeOfDay, orientationDeg, geom),
+    () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)),
     [timeOfDay, orientationDeg, geom],
   );
 
+  const [cx, , cz] = useMemo(() => {
+    const c = planCentroid(geom);
+    return [c[0], 0, c[1]] as [number, number, number];
+  }, [geom]);
+
   const target = useMemo(
-    () => [geom.width / 2, 0, geom.depth / 2] as [number, number, number],
-    [geom.width, geom.depth],
+    () => [cx, 0, cz] as [number, number, number],
+    [cx, cz],
   );
 
-  // Fit the ortho shadow frustum to the room so each of the 2048² texels covers less
-  // world space — big fixed frustums were the source of the coarse self-shadow banding.
-  const shadowExtent = useMemo(
-    () => Math.max(geom.width, geom.depth) * 0.85 + 50,
-    [geom.width, geom.depth],
-  );
+  const shadowExtent = useMemo(() => {
+    const b = planBounds(geom);
+    return Math.max(b.width, b.depth) * 0.85 + 50;
+  }, [geom]);
 
   useLayoutEffect(() => {
     const light = lightRef.current;
@@ -118,7 +122,7 @@ function ImageBasedLighting() {
   }, [gl, scene]);
 
   const ambient = useMemo(
-    () => sampleSun(timeOfDay, orientationDeg, geom).ambient,
+    () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)).ambient,
     [timeOfDay, orientationDeg, geom],
   );
 
@@ -137,7 +141,7 @@ function SkyBackground() {
   const geom = useStore((s) => s.roomGeometry);
 
   const sun = useMemo(
-    () => sampleSun(timeOfDay, orientationDeg, geom),
+    () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)),
     [timeOfDay, orientationDeg, geom],
   );
 
@@ -176,8 +180,7 @@ function SkyBackground() {
 function CompassRose() {
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const geom = useStore((s) => s.roomGeometry);
-  const cx = geom.width / 2;
-  const cz = geom.depth / 2;
+  const [cx, cz] = planCentroid(geom);
   const r = 28;
   const yaw = -(orientationDeg * Math.PI) / 180;
 
@@ -219,17 +222,19 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const geom = useStore((s) => s.roomGeometry);
 
-  const camera = useMemo(
-    () => ({
-      position: [geom.width / 2 + 180, 140, geom.depth / 2 + 240] as [number, number, number],
-      target: [geom.width / 2, 30, geom.depth / 2] as [number, number, number],
-    }),
-    [geom.width, geom.depth],
-  );
+  const camera = useMemo(() => {
+    const b = planBounds(geom);
+    const [cx, cz] = planCentroid(geom);
+    const span = Math.max(b.width, b.depth);
+    return {
+      position: [cx + span * 0.9, span * 0.55, cz + span * 1.1] as [number, number, number],
+      target: [cx, 30, cz] as [number, number, number],
+    };
+  }, [geom]);
 
   const backdrop = useMemo(() => {
     if (skyMode === 'studio') return SCENE_BG;
-    return sampleSun(timeOfDay, orientationDeg, geom).skyBottom;
+    return sampleSun(timeOfDay, orientationDeg, planBounds(geom)).skyBottom;
   }, [skyMode, timeOfDay, orientationDeg, geom]);
 
   return (
@@ -255,8 +260,8 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
       <EnvironmentRig />
 
       <Grid
-        position={[geom.width / 2, 0.1, geom.depth / 2]}
-        args={[geom.width, geom.depth]}
+        position={[planCentroid(geom)[0], 0.1, planCentroid(geom)[1]]}
+        args={[planBounds(geom).width, planBounds(geom).depth]}
         cellSize={12}
         cellThickness={0.6}
         cellColor="#6a543a"
@@ -303,11 +308,14 @@ export const Scene = forwardRef<SceneHandle>(function Scene(_, ref) {
     resetCamera() {
       const ctrl = controlsRef.current;
       if (!ctrl) return;
-      ctrl.object.position.set(geom.width / 2 + 180, 140, geom.depth / 2 + 240);
-      ctrl.target.set(geom.width / 2, 30, geom.depth / 2);
+      const b = planBounds(geom);
+      const [cx, cz] = planCentroid(geom);
+      const span = Math.max(b.width, b.depth);
+      ctrl.object.position.set(cx + span * 0.9, span * 0.55, cz + span * 1.1);
+      ctrl.target.set(cx, 30, cz);
       ctrl.update();
     },
-  }), [geom.width, geom.depth]);
+  }), [geom]);
 
   return <SceneInner controlsRef={controlsRef} />;
 });
