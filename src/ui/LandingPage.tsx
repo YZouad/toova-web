@@ -1,4 +1,6 @@
 import { useRef, type RefObject } from 'react';
+import { useChecklistModal } from '../hooks/useChecklistModal';
+import { ChecklistModal } from './ChecklistModal';
 import { HeroTurntable } from './HeroTurntable';
 import { MarketingNav } from './MarketingNav';
 
@@ -60,6 +62,7 @@ interface LandingPageProps {
   onLogin: () => void;
   onPitchMadness: () => void;
   onWatchDemo: () => void;
+  onOpenChecklist: () => void;
   onAdmin?: () => void;
   loggedIn?: boolean;
   onGoDashboard?: () => void;
@@ -94,8 +97,18 @@ function MarqueePill({ label, cat, color }: { label: string; cat: string; color:
   );
 }
 
-export function LandingPage({ onGetStarted, onLogin, onPitchMadness, onWatchDemo, onAdmin, loggedIn, onGoDashboard }: LandingPageProps) {
+export function LandingPage({
+  onGetStarted,
+  onLogin,
+  onPitchMadness,
+  onWatchDemo,
+  onOpenChecklist,
+  onAdmin,
+  loggedIn,
+  onGoDashboard,
+}: LandingPageProps) {
   const doubled = [...MARQUEE_PIECES, ...MARQUEE_PIECES];
+  const { open: checklistOpen, closeChecklist } = useChecklistModal();
 
   const howRef = useRef<HTMLElement>(null);
   const galleryRef = useRef<HTMLElement>(null);
@@ -112,6 +125,11 @@ export function LandingPage({ onGetStarted, onLogin, onPitchMadness, onWatchDemo
 
   return (
     <div className="landing-page">
+      <ChecklistModal
+        open={checklistOpen}
+        onClose={closeChecklist}
+        onViewChecklist={onOpenChecklist}
+      />
       <MarketingNav
         page="landing"
         primaryLabel={primaryLabel}
@@ -144,6 +162,16 @@ export function LandingPage({ onGetStarted, onLogin, onPitchMadness, onWatchDemo
               <div className="landing-hero-ctas">
                 <button type="button" className="tv-btn-primary landing-hero-cta-primary" onClick={primaryAction}>{loggedIn ? 'Go to dashboard' : 'Start designing — free'}</button>
                 <button type="button" className="tv-btn-ghost landing-hero-cta-secondary" onClick={loggedIn && onGoDashboard ? onGoDashboard : onWatchDemo}>{loggedIn ? 'My rooms' : 'Watch demo'}</button>
+                <button
+                  type="button"
+                  className="tv-btn-ghost landing-hero-cta-checklist"
+                  onClick={() => {
+                    closeChecklist();
+                    onOpenChecklist();
+                  }}
+                >
+                  Get the Toova checklist
+                </button>
               </div>
             </div>
             <div className="landing-hero-3d">

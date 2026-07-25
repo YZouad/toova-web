@@ -11,10 +11,11 @@ import { PitchMadnessPage } from './ui/PitchMadnessPage';
 import { AuthPage } from './ui/AuthPage';
 import { Dashboard } from './ui/Dashboard';
 import { Designer } from './ui/Designer';
+import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole } from './ui/AdminConsole';
 import { Dock, type DockNav } from './ui/Dock';
 
-type Screen = 'landing' | 'pitch-madness' | 'auth' | 'dashboard' | 'designer' | 'admin' | 'ar';
+type Screen = 'landing' | 'pitch-madness' | 'auth' | 'dashboard' | 'designer' | 'admin' | 'ar' | 'checklist';
 
 /** Decorative only — does not encode a real URL. */
 function DecorativeQrGraphic() {
@@ -97,6 +98,7 @@ function ARPage({ onBack }: { onBack: () => void }) {
 export default function App() {
   const { loading, user, logout } = useAuth();
   const [screen, setScreen] = useState<Screen>('landing');
+  const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [workspace, setWorkspace] = useState<{ id: string; name: string } | null>(null);
@@ -120,7 +122,12 @@ export default function App() {
     if (!user) {
       resetLayout();
       setWorkspace(null);
-      if (screen !== 'landing' && screen !== 'auth' && screen !== 'pitch-madness') {
+      if (
+        screen !== 'landing'
+        && screen !== 'auth'
+        && screen !== 'pitch-madness'
+        && screen !== 'checklist'
+      ) {
         setScreen('landing');
       }
     } else if (screen === 'auth') {
@@ -191,6 +198,11 @@ export default function App() {
     if (nav === 'ar') setScreen('ar');
   }
 
+  const openChecklistFrom = useCallback((from: Screen) => {
+    setChecklistReturn(from);
+    setScreen('checklist');
+  }, []);
+
   const landingCallbacks = {
     loggedIn: !!user,
     onGoDashboard: () => setScreen('dashboard'),
@@ -207,11 +219,38 @@ export default function App() {
     onAdmin: isAdmin ? () => setScreen('admin') : undefined,
   };
 
+  if (screen === 'checklist') {
+    const backTarget =
+      checklistReturn === 'designer' && workspace && user
+        ? 'designer'
+        : checklistReturn === 'dashboard' && user
+          ? 'dashboard'
+          : checklistReturn === 'pitch-madness'
+            ? 'pitch-madness'
+            : 'landing';
+
+    return (
+      <ChecklistPage
+        onBack={() => setScreen(backTarget)}
+        onDesign={() => {
+          if (user) {
+            if (workspace) setScreen('designer');
+            else setScreen('dashboard');
+            return;
+          }
+          setAuthMode('signup');
+          setScreen('auth');
+        }}
+      />
+    );
+  }
+
   if (screen === 'landing') {
     return (
       <>
         <LandingPage
           {...landingCallbacks}
+          onOpenChecklist={() => openChecklistFrom('landing')}
           onPitchMadness={() => {
             setPitchScrollToDemos(false);
             setScreen('pitch-madness');
@@ -290,7 +329,10 @@ export default function App() {
   if (screen === 'designer' && workspace && user) {
     return (
       <RoomWorkspaceProvider value={{ workspace, exitWorkspace }}>
-        <Designer onBack={exitWorkspace} />
+        <Designer
+          onBack={exitWorkspace}
+          onOpenChecklist={() => openChecklistFrom('designer')}
+        />
       </RoomWorkspaceProvider>
     );
   }
