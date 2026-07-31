@@ -10,23 +10,25 @@ Built with React, Three.js (`@react-three/fiber`), Vite, and Supabase.
 
 ```bash
 npm install
-cp .env.example .env.local   # then edit with your Trellis host
+cp .env.example .env.local   # then set PIXAL3D_UPSTREAM_ORIGIN to your EC2 host
 npm run dev
 ```
 
 Open http://localhost:5173
 
-### Trellis (3D model import)
+### Photo → 3D (Pixal3D)
 
-Trellis is **not** hardcoded in the repo. Configure it per environment:
+The backend runs **Pixal3D** on EC2 and exposes a Trellis-compatible API (`POST /generate`, multipart field `file`, GLB response). Configure per environment:
 
 | Environment | How it works |
 |-------------|--------------|
-| **Local dev** | Copy `.env.example` → `.env.local` and set `TRELLIS_UPSTREAM_ORIGIN=http://YOUR_HOST:8000`. Vite proxies `/api/trellis/generate` to that server. |
-| **Local dev (alt)** | Set `VITE_TRELLIS_GENERATE_URL` to a direct HTTPS Trellis or BFF URL instead of using the proxy. |
-| **Production (GitHub Pages)** | Set repo variable `VITE_TRELLIS_GENERATE_URL` under **Settings → Secrets and variables → Actions → Variables** (used at build time). |
+| **Local dev** | Set `PIXAL3D_UPSTREAM_ORIGIN=http://YOUR_EC2_HOST:8000` in `.env.local`. Vite proxies `/api/trellis/generate` → `/generate`. `TRELLIS_UPSTREAM_ORIGIN` is still supported. |
+| **Local dev (alt)** | Set `VITE_TRELLIS_GENERATE_URL` to a direct HTTPS BFF URL instead of using the Vite proxy. |
+| **Production (GitHub Pages / toova.net)** | Set repo variable `VITE_TRELLIS_GENERATE_URL` to `https://<render-bff>/api/trellis/generate`. The HTTPS BFF proxies to Pixal3D on EC2. |
 
-If neither `TRELLIS_UPSTREAM_ORIGIN` nor `VITE_TRELLIS_GENERATE_URL` is set, the app runs but model import will fail until you configure one of the above.
+**Mixed content:** Production (`https://toova.net`) cannot call `http://EC2_IP:8000` directly. Always use the Render BFF in production.
+
+If neither upstream origin nor `VITE_TRELLIS_GENERATE_URL` is set, the app runs but photo → 3D import will fail until configured.
 
 ## Scripts
 
@@ -43,7 +45,8 @@ See [`.env.example`](.env.example). Copy it to `.env.local` for local dev (gitig
 
 | Variable | Description |
 |----------|-------------|
-| `TRELLIS_UPSTREAM_ORIGIN` | Trellis server origin for the Vite dev proxy (local only, not committed). |
+| `PIXAL3D_UPSTREAM_ORIGIN` | Pixal3D server origin for the Vite dev proxy (local only). Preferred over `TRELLIS_UPSTREAM_ORIGIN`. |
+| `TRELLIS_UPSTREAM_ORIGIN` | Legacy alias for the same upstream origin. |
 | `VITE_TRELLIS_GENERATE_URL` | HTTPS endpoint baked into production builds; optional override in dev. |
 | `VITE_BASE_PATH` | Base URL path for assets. Use `/` for the custom domain (`toova.net`). |
 

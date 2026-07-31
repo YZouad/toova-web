@@ -15,3 +15,19 @@ export async function signModelObjectPath(
   if (error || !data?.signedUrl) return null;
   return data.signedUrl;
 }
+
+/** Upload a JPEG thumbnail under `{userId}/thumbnails/{uuid}.jpg`. */
+export async function uploadModelThumbnail(
+  blob: Blob,
+  userId: string,
+): Promise<string | null> {
+  const objectPath = `${userId}/thumbnails/${crypto.randomUUID()}.jpg`;
+  const { error } = await supabase.storage
+    .from(MODEL_FILES_BUCKET)
+    .upload(objectPath, blob, {
+      contentType: 'image/jpeg',
+      upsert: false,
+    });
+  if (error) return null;
+  return objectPath;
+}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { useRoomWorkspace } from '../context/RoomWorkspaceContext';
-import { useAdminStats } from '../hooks/useAdminStats';
 import { useAuth } from '../hooks/useAuth';
+import { useBuiltinPreviews, getBuiltinPreviewUrl } from '../hooks/useBuiltinPreviews';
 import { useRoomSave } from '../hooks/useRoomLayout';
 import { useUserCatalog, type UserCatalogEntry } from '../hooks/useUserCatalog';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
@@ -11,12 +11,14 @@ import { Scene, type SceneHandle } from '../scene/Scene';
 import { formatTimeOfDay, isDaytime } from '../lib/environment';
 import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item } from '../store';
 import { planBounds } from '../lib/roomGeometry';
+import { useChecklistModal } from '../hooks/useChecklistModal';
+import { ChecklistModal } from './ChecklistModal';
 import { FurniturePreview } from './FurniturePreview';
 import { ImportModelModal } from './ImportModelModal';
+import { SceneCheckoutPanel } from './SceneCheckoutPanel';
 
 const RECENT_KEY = 'toova-recent-kinds';
 const MAX_RECENT = 6;
-const CALENDLY_DEMO_URL = 'https://calendly.com/aeliyag-uchicago/30min';
 
 const BUILTIN_CATS: Record<Exclude<FurnitureKind, 'imported'>, string> = {
   bed: 'Bedroom',
@@ -60,6 +62,7 @@ type PaletteEntry = {
 interface DesignerProps {
   onBack: () => void;
   onEditFloorPlan?: () => void;
+  onOpenChecklist: () => void;
 }
 
 function loadRecent(): string[] {
@@ -77,9 +80,8 @@ function pushRecent(kind: string) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(next));
 }
 
-export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
+export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerProps) {
   const { user } = useAuth();
-  const { isAdmin } = useAdminStats(user?.id);
   const { workspace } = useRoomWorkspace();
   const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
   const sceneRef = useRef<SceneHandle>(null);
@@ -130,8 +132,10 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
   const [roomPanelOpen, setRoomPanelOpen] = useState(false);
 
   const [beddingBusy, setBeddingBusy] = useState(false);
+  const { open: checklistOpen, closeChecklist } = useChecklistModal();
 
   const { catalog, loading: catalogLoading, refresh: refreshCatalog } = useUserCatalog(Boolean(user?.id));
+  const builtinPreviews = useBuiltinPreviews();
 
   useEffect(() => {
     setRoomName(workspace?.name ?? '');
@@ -295,6 +299,13 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            type="button"
+            className="designer-checklist-btn"
+            onClick={onOpenChecklist}
+          >
+            Checklist
+          </button>
           <button type="button" onClick={() => sceneRef.current?.resetCamera()} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}>Reset view</button>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-subtle)' }}>{saving ? 'Saving…' : savedLabel}</div>
           <button type="button" className="tv-btn-primary" style={{ fontSize: 13, padding: '9px 18px', borderRadius: 9 }} disabled={saving} onClick={() => void handleSave()}>Save</button>
@@ -321,6 +332,9 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
           <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>· {placedCount} pieces</span>
         </div>
 
+        <SceneCheckoutPanel onOpenChecklist={onOpenChecklist} />
+
+        <div className="designer-right-rail">
         <div className="designer-env-panel">
           <div className="designer-env-row">
             <span className="designer-env-glyph" aria-hidden>
@@ -438,6 +452,7 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
             </div>
           ) : null}
         </div>
+        </div>
 
         {!selectedId ? (
           <button type="button" className="designer-add-btn" onClick={() => setPaletteOpen(true)}>
@@ -499,26 +514,14 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Turn a photo into 3D</div>
                     <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Upload any furniture photo — we build a real 3D model.</div>
                   </div>
-                  {isAdmin ? (
-                    <button
-                      type="button"
-                      className="tv-btn-primary"
-                      style={{ fontSize: 13, padding: '11px 17px', borderRadius: 9, flex: 'none' }}
-                      onClick={() => { setImportTab('generate'); setImportOpen(true); }}
-                    >
-                      Upload
-                    </button>
-                  ) : (
-                    <a
-                      href={CALENDLY_DEMO_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="tv-btn-primary"
-                      style={{ fontSize: 13, padding: '11px 17px', borderRadius: 9, flex: 'none', textDecoration: 'none' }}
-                    >
-                      Schedule a demo
-                    </a>
-                  )}
+                  <button
+                    type="button"
+                    className="tv-btn-primary"
+                    style={{ fontSize: 13, padding: '11px 17px', borderRadius: 9, flex: 'none' }}
+                    onClick={() => { setImportTab('generate'); setImportOpen(true); }}
+                  >
+                    Upload
+                  </button>
                 </div>
 
                 {recentItems.length > 0 ? (
@@ -530,7 +533,11 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
                           <FurniturePreview
                             kind={r.isBuiltin ? r.kind : 'imported'}
                             size={r.catalogEntry ? [r.catalogEntry.width_in, r.catalogEntry.height_in, r.catalogEntry.depth_in] : undefined}
-                            url={r.isBuiltin ? undefined : r.catalogEntry?.signedUrl ?? undefined}
+                            previewUrl={
+                              r.isBuiltin
+                                ? getBuiltinPreviewUrl(r.kind, builtinPreviews)
+                                : r.catalogEntry?.previewUrl ?? undefined
+                            }
                             className="palette-recent-preview"
                           />
                           <span className="palette-recent-label">{r.label}</span>
@@ -549,7 +556,11 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
                         <FurniturePreview
                           kind={c.isBuiltin ? c.kind : 'imported'}
                           size={c.catalogEntry ? [c.catalogEntry.width_in, c.catalogEntry.height_in, c.catalogEntry.depth_in] : undefined}
-                          url={c.catalogEntry?.signedUrl ?? undefined}
+                          previewUrl={
+                            c.isBuiltin
+                              ? getBuiltinPreviewUrl(c.kind, builtinPreviews)
+                              : c.catalogEntry?.previewUrl ?? undefined
+                          }
                           className="palette-preview-canvas"
                         />
                         <span className="palette-tile-cat">{c.cat}</span>
@@ -766,6 +777,12 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
           onAdded={() => { void refreshCatalog(); setImportOpen(false); }}
         />
       ) : null}
+
+      <ChecklistModal
+        open={checklistOpen}
+        onClose={closeChecklist}
+        onViewChecklist={onOpenChecklist}
+      />
     </div>
   );
 }
