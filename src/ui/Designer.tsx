@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { useRoomWorkspace } from '../context/RoomWorkspaceContext';
-import { useAdminStats } from '../hooks/useAdminStats';
 import { useAuth } from '../hooks/useAuth';
 import { useRoomSave } from '../hooks/useRoomLayout';
 import { useUserCatalog, type UserCatalogEntry } from '../hooks/useUserCatalog';
@@ -19,7 +18,6 @@ import { SceneCheckoutPanel } from './SceneCheckoutPanel';
 
 const RECENT_KEY = 'toova-recent-kinds';
 const MAX_RECENT = 6;
-const CALENDLY_DEMO_URL = 'https://calendly.com/aeliyag-uchicago/30min';
 
 const WALL_OPTIONS: WallId[] = ['north', 'south', 'east', 'west'];
 
@@ -84,7 +82,6 @@ function pushRecent(kind: string) {
 
 export function Designer({ onBack, onOpenChecklist }: DesignerProps) {
   const { user } = useAuth();
-  const { isAdmin } = useAdminStats(user?.id);
   const { workspace } = useRoomWorkspace();
   const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
   const sceneRef = useRef<SceneHandle>(null);
@@ -537,26 +534,14 @@ export function Designer({ onBack, onOpenChecklist }: DesignerProps) {
                     <div style={{ fontSize: 14, fontWeight: 600 }}>Turn a photo into 3D</div>
                     <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Upload any furniture photo — we build a real 3D model.</div>
                   </div>
-                  {isAdmin ? (
-                    <button
-                      type="button"
-                      className="tv-btn-primary"
-                      style={{ fontSize: 13, padding: '11px 17px', borderRadius: 9, flex: 'none' }}
-                      onClick={() => { setImportTab('generate'); setImportOpen(true); }}
-                    >
-                      Upload
-                    </button>
-                  ) : (
-                    <a
-                      href={CALENDLY_DEMO_URL}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="tv-btn-primary"
-                      style={{ fontSize: 13, padding: '11px 17px', borderRadius: 9, flex: 'none', textDecoration: 'none' }}
-                    >
-                      Schedule a demo
-                    </a>
-                  )}
+                  <button
+                    type="button"
+                    className="tv-btn-primary"
+                    style={{ fontSize: 13, padding: '11px 17px', borderRadius: 9, flex: 'none' }}
+                    onClick={() => { setImportTab('generate'); setImportOpen(true); }}
+                  >
+                    Upload
+                  </button>
                 </div>
 
                 {recentItems.length > 0 ? (
