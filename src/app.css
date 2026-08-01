@@ -1441,6 +1441,24 @@ button.landing-nav-brand { cursor: pointer; }
   gap: 4px;
   margin-top: 2px;
 }
+.designer-env-weather {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.designer-env-weather-btn {
+  min-width: 28px;
+  padding: 3px 6px;
+  font-size: 13px;
+  line-height: 1;
+}
+.designer-env-preset.active,
+.designer-env-weather-btn.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+  color: var(--text-dark);
+}
 .designer-env-preset {
   cursor: pointer;
   border: 1px solid rgba(227, 217, 200, 0.9);

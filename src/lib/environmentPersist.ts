@@ -1,7 +1,17 @@
+import type { Weather } from './environment';
 import type { RoomEnvironment } from '../store';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const wrapDeg = (deg: number) => ((deg % 360) + 360) % 360;
+
+const WEATHER_VALUES: Weather[] = ['clear', 'partlyCloudy', 'overcast', 'foggy', 'rain', 'snow'];
+
+function parseWeather(raw: unknown): Weather {
+  if (typeof raw === 'string' && (WEATHER_VALUES as string[]).includes(raw)) {
+    return raw as Weather;
+  }
+  return 'clear';
+}
 
 export function parseEnvironment(raw: unknown): RoomEnvironment | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -15,6 +25,7 @@ export function parseEnvironment(raw: unknown): RoomEnvironment | null {
     orientationDeg: wrapDeg(o.orientationDeg),
     exposure: clamp(o.exposure, 0.2, 3),
     skyMode: o.skyMode,
+    weather: parseWeather(o.weather),
     godRays: o.godRays === true,
     shadowRoof: o.shadowRoof === true,
   };

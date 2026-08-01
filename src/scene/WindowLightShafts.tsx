@@ -1,72 +1,93 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { sampleSun } from '../lib/environment';
+import { beamGeometryKey, horizonFactor, sampleSun, weatherGodRayStrength } from '../lib/environment';
 import { planBounds } from '../lib/roomGeometry';
-import { computeWindowBeams, createShaftMaterial, makeRectSplashTexture } from '../lib/windowLightShafts';
+import {
+  computeWindowBeams,
+  createShaftMaterial,
+  type WindowBeam,
+} from '../lib/windowLightShafts';
 import { useStore } from '../store';
 
-/** Sun-aligned volumetric shafts through each window + surface splash. */
+function BeamMesh({
+  beam,
+  shaftMaterial,
+  groupRef,
+}: {
+  beam: WindowBeam;
+  shaftMaterial: THREE.ShaderMaterial;
+  groupRef: (el: THREE.Group | null) => void;
+}) {
+  return (
+    <group ref={groupRef}>
+      <mesh geometry={beam.shaftGeometry} material={shaftMaterial} renderOrder={1} />
+    </group>
+  );
+}
+
+/** Sun-aligned volumetric shafts through each window. */
 export function WindowLightShafts() {
   const godRays = useStore((s) => s.environment.godRays);
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const exposure = useStore((s) => s.environment.exposure);
+  const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
 
+  const weatherShaft = weatherGodRayStrength(weather);
+
+  const bounds = useMemo(() => planBounds(geom), [geom]);
+  const geomKey = useMemo(
+    () => beamGeometryKey(timeOfDay, orientationDeg),
+    [timeOfDay, orientationDeg],
+  );
+
   const sun = useMemo(
-    () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)),
-    [timeOfDay, orientationDeg, geom],
+    () => sampleSun(timeOfDay, orientationDeg, bounds),
+    [timeOfDay, orientationDeg, bounds],
   );
 
   const beams = useMemo(
-    () => computeWindowBeams(geom, timeOfDay, orientationDeg),
-    [geom, timeOfDay, orientationDeg],
+    () => computeWindowBeams(geom, geomKey.time, geomKey.orient),
+    [geom, geomKey.time, geomKey.orient],
   );
 
-  const shaftMaterial = useMemo(() => {
-    const opacity = Math.min(0.42, sun.intensity * exposure * 0.28);
-    return createShaftMaterial(sun.color, opacity);
-  }, [sun.color, sun.intensity, exposure]);
+  const shaftMaterial = useMemo(() => createShaftMaterial(sun.color, 0.3), [sun.color]);
 
-  const splashTex = useMemo(() => {
-    const peak = Math.min(0.45, sun.intensity * exposure * 0.22);
-    return makeRectSplashTexture(sun.color, peak);
-  }, [sun.color, sun.intensity, exposure]);
+  const groupRefs = useRef<(THREE.Group | null)[]>([]);
 
   useEffect(() => () => shaftMaterial.dispose(), [shaftMaterial]);
-  useEffect(() => () => splashTex.dispose(), [splashTex]);
 
   useEffect(
     () => () => {
       for (const b of beams) {
         b.shaftGeometry.dispose();
-        b.splashQuad?.dispose();
       }
     },
     [beams],
   );
 
-  if (!godRays || sun.intensity < 0.12 || beams.length === 0) return null;
+  useFrame(() => {
+    const horizon = horizonFactor(timeOfDay, orientationDeg);
+    const shaftOpacity =
+      Math.min(0.42, sun.intensity * exposure * 0.3) * (1 - horizon * 0.4) * weatherShaft;
+    shaftMaterial.uniforms.uOpacity.value = shaftOpacity;
+  });
+
+  if (!godRays || weatherShaft < 0.02 || sun.intensity < 0.12 || beams.length === 0) return null;
 
   return (
     <group>
       {beams.map((beam, i) => (
-        <group key={`beam-${i}`}>
-          <mesh geometry={beam.shaftGeometry} material={shaftMaterial} renderOrder={1} />
-
-          {beam.splashQuad ? (
-            <mesh geometry={beam.splashQuad} renderOrder={2}>
-              <meshBasicMaterial
-                map={splashTex}
-                transparent
-                opacity={0.55}
-                depthWrite={false}
-                toneMapped={false}
-                side={THREE.DoubleSide}
-              />
-            </mesh>
-          ) : null}
-        </group>
+        <BeamMesh
+          key={`beam-${i}-${geomKey.time}-${geomKey.orient}`}
+          beam={beam}
+          shaftMaterial={shaftMaterial}
+          groupRef={(el) => {
+            groupRefs.current[i] = el;
+          }}
+        />
       ))}
     </group>
   );

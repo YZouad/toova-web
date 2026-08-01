@@ -8,7 +8,7 @@ import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { supabase } from '../lib/supabase';
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
-import { formatTimeOfDay, isDaytime } from '../lib/environment';
+import { formatTimeOfDay, isDaytime, WEATHER_OPTIONS } from '../lib/environment';
 import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item } from '../store';
 import { planBounds } from '../lib/roomGeometry';
 import { FurniturePreview } from './FurniturePreview';
@@ -105,9 +105,11 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
   const setTimeOfDay = useStore((s) => s.setTimeOfDay);
   const setOrientation = useStore((s) => s.setOrientation);
   const setExposure = useStore((s) => s.setExposure);
+  const setWeather = useStore((s) => s.setWeather);
   const setGodRays = useStore((s) => s.setGodRays);
   const setShadowRoof = useStore((s) => s.setShadowRoof);
   const godRays = useStore((s) => s.environment.godRays);
+  const weather = useStore((s) => s.environment.weather);
   const shadowRoof = useStore((s) => s.environment.shadowRoof);
   const roomGeometry = useStore((s) => s.roomGeometry);
   const setRoomHeight = useStore((s) => s.setRoomHeight);
@@ -352,32 +354,47 @@ export function Designer({ onBack, onEditFloorPlan }: DesignerProps) {
             />
             <span className="designer-env-orient-val">{Math.round(orientationDeg)}°</span>
           </div>
+          <div className="designer-env-weather">
+            {WEATHER_OPTIONS.map((opt) => (
+              <button
+                key={opt.id}
+                type="button"
+                className={`designer-env-preset designer-env-weather-btn${weather === opt.id ? ' active' : ''}`}
+                title={opt.label}
+                aria-label={opt.label}
+                aria-pressed={weather === opt.id}
+                onClick={() => setWeather(opt.id)}
+              >
+                {opt.glyph}
+              </button>
+            ))}
+          </div>
           <div className="designer-env-presets">
             <button
               type="button"
               className="designer-env-preset"
-              onClick={() => { setTimeOfDay(0); setExposure(0.35); setGodRays(false); }}
+              onClick={() => { setTimeOfDay(0); setExposure(0.35); setGodRays(false); setWeather('clear'); }}
             >
               Midnight
             </button>
             <button
               type="button"
               className="designer-env-preset"
-              onClick={() => { setTimeOfDay(7); setExposure(1); setGodRays(true); }}
+              onClick={() => { setTimeOfDay(7); setExposure(1); setGodRays(true); setWeather('partlyCloudy'); }}
             >
               Golden hour
             </button>
             <button
               type="button"
               className="designer-env-preset"
-              onClick={() => { setTimeOfDay(13); setExposure(1); }}
+              onClick={() => { setTimeOfDay(13); setExposure(1); setWeather('partlyCloudy'); }}
             >
               Noon
             </button>
             <button
               type="button"
               className="designer-env-preset"
-              onClick={() => { setTimeOfDay(11); setExposure(0.65); }}
+              onClick={() => { setTimeOfDay(11); setExposure(0.65); setWeather('overcast'); }}
             >
               Overcast
             </button>
