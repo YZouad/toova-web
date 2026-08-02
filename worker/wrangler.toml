@@ -1,0 +1,20 @@
+name = "toova-og-gateway"
+main = "src/index.ts"
+compatibility_date = "2025-05-01"
+workers_dev = true
+
+# Route toova.net through this Worker (configure in Cloudflare dashboard or via routes below).
+# routes = [
+#   { pattern = "toova.net/*", zone_name = "toova.net" },
+#   { pattern = "www.toova.net/*", zone_name = "toova.net" }
+# ]
+
+[vars]
+# Override per environment; secrets go in wrangler secret / GitHub Actions.
+# ORIGIN_HOST = "yaniszouad.github.io"
+# ORIGIN_BASE_PATH = "/"   # use "/" when custom domain or Pages project root
+
+# Secrets (set via `wrangler secret put` or CI):
+#   SUPABASE_URL
+#   SUPABASE_ANON_KEY
+#   CLOUDFLARE_API_TOKEN (CI only)

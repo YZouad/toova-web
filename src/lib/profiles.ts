@@ -59,6 +59,7 @@ export interface PublicRoomPayload {
     room_geometry: unknown;
     fork_count: number;
     forked_from: string | null;
+    thumbnail_path?: string | null;
   };
   items: unknown[];
   catalog_dims: Record<string, [number, number, number] | number[]>;

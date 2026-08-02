@@ -38,6 +38,7 @@ export interface SharedRoomRpcPayload {
     environment: unknown;
     room_geometry: unknown;
     fork_count?: number;
+    thumbnail_path?: string | null;
   };
   items: unknown[];
   catalog_dims: Record<string, [number, number, number] | number[]>;

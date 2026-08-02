@@ -19,6 +19,8 @@ import { ImportModelModal } from './ImportModelModal';
 import { SceneCheckoutPanel } from './SceneCheckoutPanel';
 import { ShareModal } from './ShareModal';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
+import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
+import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
 
 const RECENT_KEY = 'toova-recent-kinds';
@@ -275,6 +277,29 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
     }
     await save();
     setSavedLabel('Saved just now');
+
+    // Best-effort OG thumbnail (floor-plan card) — never fail the save.
+    if (user?.id) {
+      try {
+        const { items, order, roomGeometry } = useStore.getState();
+        const previewItems = order
+          .map((id) => items[id])
+          .filter((it): it is Item => Boolean(it))
+          .map((it) => ({
+            id: it.id,
+            kind: it.kind,
+            position: [...it.position] as [number, number, number],
+            rotationY: it.rotationY,
+            size: [...it.size] as [number, number, number],
+          }));
+        const blob = await renderRoomPreviewJpeg(roomGeometry, previewItems);
+        if (blob) {
+          await uploadRoomThumbnail(blob, user.id, workspace.id);
+        }
+      } catch (err) {
+        console.warn('[toova] room thumbnail capture failed', err);
+      }
+    }
   };
 
   const duplicateSelected = () => {

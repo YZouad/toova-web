@@ -56,6 +56,18 @@ The site deploys to GitHub Pages on every push to `main` via [`.github/workflows
 1. In the repo, go to **Settings → Pages** and set the source to **GitHub Actions**.
 2. Optionally set `VITE_TRELLIS_GENERATE_URL` under **Settings → Secrets and variables → Actions → Variables** so model import works in production.
 
+### Link previews (Cloudflare Worker)
+
+`toova.net` deep links (`/r/…`, `/u/…`) are served by a Cloudflare Worker that injects Open Graph tags and returns HTTP 200. See [`worker/README.md`](worker/README.md).
+
+GitHub secrets for [`.github/workflows/deploy-worker.yml`](.github/workflows/deploy-worker.yml):
+
+- `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
+- Worker secrets (set once with Wrangler): `SUPABASE_URL`, `SUPABASE_ANON_KEY`
+- Worker vars: `ORIGIN_HOST` (GitHub Pages host, **not** `toova.net`), optional `ORIGIN_BASE_PATH`
+
+Raw `*.github.io` URLs keep the SPA `404.html` fallback from Vite.
+
 ## Supabase database
 
 If room creation fails with a missing `environment` or `room_geometry` column, run this once in **Supabase Dashboard → SQL Editor**:
@@ -77,6 +89,7 @@ New projects should use [`supabase/sql/room_layout_schema.sql`](supabase/sql/roo
 ```
 src/          React app and 3D scene
 public/       Static assets (logo, demo videos)
+worker/       Cloudflare OG gateway for toova.net deep links
 supabase/     SQL migrations and Supabase config
 scripts/      Utility scripts
 ```

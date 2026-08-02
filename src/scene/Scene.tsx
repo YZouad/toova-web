@@ -228,11 +228,43 @@ function CompassRose() {
   );
 }
 
+/** Bridges imperative SceneHandle into the R3F canvas (needs controls). */
+function SceneApiBridge({
+  apiRef,
+  controlsRef,
+}: {
+  apiRef: RefObject<SceneHandle | null>;
+  controlsRef: RefObject<OrbitControlsType | null>;
+}) {
+  const geom = useStore((s) => s.roomGeometry);
+
+  useImperativeHandle(
+    apiRef,
+    () => ({
+      resetCamera() {
+        const ctrl = controlsRef.current;
+        if (!ctrl) return;
+        const b = planBounds(geom);
+        const [cx, cz] = planCentroid(geom);
+        const span = Math.max(b.width, b.depth);
+        ctrl.object.position.set(cx + span * 0.9, span * 0.55, cz + span * 1.1);
+        ctrl.target.set(cx, 30, cz);
+        ctrl.update();
+      },
+    }),
+    [controlsRef, geom],
+  );
+
+  return null;
+}
+
 function SceneInner({
   controlsRef,
+  apiRef,
   readOnly,
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
+  apiRef: RefObject<SceneHandle | null>;
   readOnly: boolean;
 }) {
   const deselect = useStore((s) => s.select);
@@ -278,6 +310,7 @@ function SceneInner({
       }}
       style={{ width: '100%', height: '100%', background: backdrop }}
     >
+      <SceneApiBridge apiRef={apiRef} controlsRef={controlsRef} />
       <AtmosphericFog />
       <ImageBasedLighting />
       <EnvironmentRig />
@@ -345,20 +378,13 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
   ref,
 ) {
   const controlsRef = useRef<OrbitControlsType>(null);
-  const geom = useStore((s) => s.roomGeometry);
+  const apiRef = useRef<SceneHandle | null>(null);
 
   useImperativeHandle(ref, () => ({
     resetCamera() {
-      const ctrl = controlsRef.current;
-      if (!ctrl) return;
-      const b = planBounds(geom);
-      const [cx, cz] = planCentroid(geom);
-      const span = Math.max(b.width, b.depth);
-      ctrl.object.position.set(cx + span * 0.9, span * 0.55, cz + span * 1.1);
-      ctrl.target.set(cx, 30, cz);
-      ctrl.update();
+      apiRef.current?.resetCamera();
     },
-  }), [geom]);
+  }));
 
-  return <SceneInner controlsRef={controlsRef} readOnly={readOnly} />;
+  return <SceneInner controlsRef={controlsRef} apiRef={apiRef} readOnly={readOnly} />;
 });
