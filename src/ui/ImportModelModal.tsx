@@ -74,6 +74,7 @@ export function ImportModelModal({
   const [heightIn, setHeightIn] = useState('24');
   const [depthIn, setDepthIn] = useState('24');
   const [clearanceIn, setClearanceIn] = useState('');
+  const [listInGallery, setListInGallery] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatePhase, setGeneratePhase] = useState<GeneratePhase>('idle');
@@ -221,6 +222,7 @@ export function ImportModelModal({
     setHeightIn('24');
     setDepthIn('24');
     setClearanceIn('');
+    setListInGallery(false);
     setFormError(null);
     setGenerateError(null);
     setElapsedSec(0);
@@ -447,6 +449,7 @@ export function ImportModelModal({
         thumbnail_path: thumbnailPath,
         tags,
         user_id: userId,
+        visibility: listInGallery ? 'public' : 'private',
       });
 
       if (insErr) throw new Error(insErr.message);
@@ -818,6 +821,21 @@ export function ImportModelModal({
                 disabled={submitting || decimating}
                 autoComplete="off"
               />
+            </label>
+
+            <label className="import-modal-field import-modal-check">
+              <span>
+                <input
+                  type="checkbox"
+                  checked={listInGallery}
+                  onChange={(e) => setListInGallery(e.target.checked)}
+                  disabled={submitting || decimating}
+                />{' '}
+                List in community gallery
+              </span>
+              <small>
+                Public models can be browsed, liked, and placed in anyone&apos;s room.
+              </small>
             </label>
 
             <div className="import-modal-dims">

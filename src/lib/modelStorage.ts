@@ -16,6 +16,18 @@ export async function signModelObjectPath(
   return data.signedUrl;
 }
 
+/**
+ * Sign a model path that is either owned by the caller or listed as a public
+ * catalog / public-room asset (RLS). Returns null if the object is private to
+ * someone else — use signShareAssetPaths for share-token access instead.
+ */
+export async function signBrowsableModelPath(
+  objectPath: string,
+  expiresSec = 60 * 60 * 24,
+): Promise<string | null> {
+  return signModelObjectPath(objectPath, expiresSec);
+}
+
 /** Upload a JPEG thumbnail under `{userId}/thumbnails/{uuid}.jpg`. */
 export async function uploadModelThumbnail(
   blob: Blob,

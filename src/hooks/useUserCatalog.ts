@@ -4,7 +4,8 @@ import {
   getSessionCatalogPreview,
 } from '../lib/catalogThumbnailBackfill';
 import { parseInchDims } from '../lib/importedItemSize';
-import { signModelObjectPath } from '../lib/modelStorage';
+import type { CatalogVisibility } from '../lib/catalogEngagement';
+import { signBrowsableModelPath } from '../lib/modelStorage';
 import { supabase } from '../lib/supabase';
 
 export interface UserCatalogEntry {
@@ -17,6 +18,10 @@ export interface UserCatalogEntry {
   depth_in: number;
   clearance_in: number | null;
   userId: string | null;
+  visibility: CatalogVisibility;
+  likesCount: number;
+  downloadsCount: number;
+  viewsCount: number;
   /** Object path in `model-files` bucket; empty if legacy full URL in DB. */
   storagePath: string;
   /** URL for useGLTF (signed or absolute). */
@@ -58,7 +63,7 @@ export function useUserCatalog(enabled: boolean) {
       const { data, error: qErr } = await supabase
         .from('furniture_catalog')
         .select(
-          'kind,label,description,tags,width_in,height_in,depth_in,clearance_in,model_url,thumbnail_path,user_id',
+          'kind,label,description,tags,width_in,height_in,depth_in,clearance_in,model_url,thumbnail_path,user_id,visibility,likes_count,downloads_count,views_count',
         )
         .eq('is_builtin', false)
         .order('label');
@@ -73,9 +78,10 @@ export function useUserCatalog(enabled: boolean) {
 
           const isAbsolute =
             path.startsWith('http://') || path.startsWith('https://');
+          // RLS: own folder or public catalog asset only — private others fail to sign.
           const signedUrl = isAbsolute
             ? path
-            : await signModelObjectPath(path);
+            : await signBrowsableModelPath(path);
 
           if (!signedUrl) return null;
 
@@ -85,10 +91,16 @@ export function useUserCatalog(enabled: boolean) {
           const thumbPath = (row.thumbnail_path as string | null)?.trim() ?? '';
           let previewUrl: string | null = null;
           if (thumbPath) {
-            previewUrl = await signModelObjectPath(thumbPath);
+            previewUrl = await signBrowsableModelPath(thumbPath);
           } else {
             previewUrl = getSessionCatalogPreview(row.kind as string) ?? null;
           }
+
+          const visibilityRaw = String(row.visibility ?? 'private');
+          const visibility: CatalogVisibility =
+            visibilityRaw === 'public' || visibilityRaw === 'unlisted'
+              ? visibilityRaw
+              : 'private';
 
           return {
             kind: row.kind as string,
@@ -103,6 +115,10 @@ export function useUserCatalog(enabled: boolean) {
                 ? n(row.clearance_in)
                 : null,
             userId: (row.user_id as string | null) ?? null,
+            visibility,
+            likesCount: Number(row.likes_count ?? 0),
+            downloadsCount: Number(row.downloads_count ?? 0),
+            viewsCount: Number(row.views_count ?? 0),
             storagePath: isAbsolute ? '' : path,
             signedUrl,
             previewUrl,
