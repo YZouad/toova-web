@@ -228,7 +228,13 @@ function CompassRose() {
   );
 }
 
-function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType | null> }) {
+function SceneInner({
+  controlsRef,
+  readOnly,
+}: {
+  controlsRef: RefObject<OrbitControlsType | null>;
+  readOnly: boolean;
+}) {
   const deselect = useStore((s) => s.select);
   const skyMode = useStore((s) => s.environment.skyMode);
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
@@ -261,7 +267,9 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
         near: 1,
         far: 2000,
       }}
-      onPointerMissed={() => deselect(null)}
+      onPointerMissed={() => {
+        if (!readOnly) deselect(null);
+      }}
       gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', toneMapping: THREE.ACESFilmicToneMapping }}
       onCreated={({ gl, scene }) => {
         gl.setClearColor(backdrop);
@@ -276,25 +284,33 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
       <ProceduralSky />
       <WeatherSystem />
 
-      <Grid
-        position={[planCentroid(geom)[0], 0.1, planCentroid(geom)[1]]}
-        args={[planBounds(geom).width, planBounds(geom).depth]}
-        cellSize={12}
-        cellThickness={0.6}
-        cellColor="#6a543a"
-        sectionSize={60}
-        sectionThickness={1.2}
-        sectionColor="#8a6e4e"
-        fadeDistance={500}
-        infiniteGrid={false}
-      />
-      <CompassRose />
+      {!readOnly ? (
+        <>
+          <Grid
+            position={[planCentroid(geom)[0], 0.1, planCentroid(geom)[1]]}
+            args={[planBounds(geom).width, planBounds(geom).depth]}
+            cellSize={12}
+            cellThickness={0.6}
+            cellColor="#6a543a"
+            sectionSize={60}
+            sectionThickness={1.2}
+            sectionColor="#8a6e4e"
+            fadeDistance={500}
+            infiniteGrid={false}
+          />
+          <CompassRose />
+        </>
+      ) : null}
 
       <Room />
       <ItemsLayer />
-      <ArcMenu />
-      <DragController />
-      <KeyboardShortcuts />
+      {!readOnly ? (
+        <>
+          <ArcMenu />
+          <DragController />
+          <KeyboardShortcuts />
+        </>
+      ) : null}
       <WindowLightShafts />
       <RoomVolumetricHaze />
 
@@ -320,7 +336,14 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
   );
 }
 
-export const Scene = forwardRef<SceneHandle>(function Scene(_, ref) {
+export interface SceneProps {
+  readOnly?: boolean;
+}
+
+export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
+  { readOnly = false },
+  ref,
+) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const geom = useStore((s) => s.roomGeometry);
 
@@ -337,5 +360,5 @@ export const Scene = forwardRef<SceneHandle>(function Scene(_, ref) {
     },
   }), [geom]);
 
-  return <SceneInner controlsRef={controlsRef} />;
+  return <SceneInner controlsRef={controlsRef} readOnly={readOnly} />;
 });

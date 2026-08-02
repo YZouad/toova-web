@@ -208,6 +208,7 @@ export function serializeLayoutForRoom(
         it.kind === 'bed' && it.blanketTexturePath
           ? it.blanketTexturePath
           : null,
+      emitter: it.emitter?.enabled ? it.emitter : null,
     };
     out.push(row);
   }

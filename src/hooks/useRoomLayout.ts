@@ -8,7 +8,23 @@ import {
   type RoomItemRow,
 } from '../lib/roomLayoutSerialize';
 import { signModelObjectPath } from '../lib/modelStorage';
-import { patchImportedItemsFromCatalog } from '../lib/patchImportedFromCatalog';
+import {
+  applyCatalogSizes,
+  catalogDimsFromRpc,
+  patchImportedItemsFromCatalog,
+} from '../lib/patchImportedFromCatalog';
+import {
+  fetchSharedRoom,
+  signGrantedAssetPaths,
+  type PublicAttribution,
+  type ShareRole,
+} from '../lib/roomShares';
+import {
+  fetchPublicRoom,
+  fetchRoomAttribution,
+  signPublicRoomAssetPaths,
+  type RoomAttributionPayload,
+} from '../lib/profiles';
 import type { Item, RoomEnvironment } from '../store';
 import { DEFAULT_ENVIRONMENT, useStore } from '../store';
 
@@ -17,11 +33,40 @@ export interface RoomLoadResult {
   order: string[];
   environment: RoomEnvironment;
   roomGeometry: RoomGeometry;
+  forkMeta?: RoomAttributionPayload | null;
+}
+
+export interface SharedRoomLoadResult extends RoomLoadResult {
+  roomId: string;
+  roomName: string;
+  role: ShareRole;
+  allowCopy: boolean;
+  ownerDisplay: string;
+  ownerHandle: string | null;
+  forkCount: number;
+  attribution: PublicAttribution | null;
+}
+
+export interface PublicRoomLoadResult extends RoomLoadResult {
+  roomId: string;
+  roomName: string;
+  allowCopy: boolean;
+  forkCount: number;
+  attribution: PublicAttribution | null;
+  owner: {
+    handle: string;
+    displayName: string;
+    avatarPath: string | null;
+  };
 }
 
 export async function loadRoomLayout(roomId: string): Promise<RoomLoadResult> {
   const [{ data: roomRow, error: roomErr }, { data: itemRows, error: itemErr }] = await Promise.all([
-    supabase.from('rooms').select('environment, room_geometry').eq('id', roomId).single(),
+    supabase
+      .from('rooms')
+      .select('environment, room_geometry, forked_from, fork_count, visibility')
+      .eq('id', roomId)
+      .single(),
     supabase.from('room_items').select('*').eq('room_id', roomId).order('sort_order', { ascending: true }),
   ]);
 
@@ -30,6 +75,18 @@ export async function loadRoomLayout(roomId: string): Promise<RoomLoadResult> {
 
   const environment = parseEnvironment(roomRow?.environment) ?? { ...DEFAULT_ENVIRONMENT };
   const roomGeometry = parseFloorPlan(roomRow?.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+
+  let forkMeta: RoomAttributionPayload | null = null;
+  try {
+    forkMeta = await fetchRoomAttribution(roomId);
+  } catch {
+    forkMeta = {
+      forked_from: (roomRow?.forked_from as string | null) ?? null,
+      fork_count: Number(roomRow?.fork_count ?? 0),
+      visibility: String(roomRow?.visibility ?? 'private'),
+      attribution: null,
+    };
+  }
 
   const rows = (itemRows ?? []) as RoomItemRow[];
   const items: Item[] = [];
@@ -74,6 +131,102 @@ export async function loadRoomLayout(roomId: string): Promise<RoomLoadResult> {
     order,
     environment,
     roomGeometry: roomGeometry!,
+    forkMeta,
+  };
+}
+
+/** Load via share token RPC; uses grant-gated signed URLs (works for anon). */
+export async function loadSharedRoomLayout(token: string): Promise<SharedRoomLoadResult> {
+  const payload = await fetchSharedRoom(token);
+  const signedAssets = await signGrantedAssetPaths(payload.asset_paths ?? []);
+
+  const environment = parseEnvironment(payload.room.environment) ?? { ...DEFAULT_ENVIRONMENT };
+  const roomGeometry = parseFloorPlan(payload.room.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+
+  const items: Item[] = [];
+  const order: string[] = [];
+  const rows = (payload.items ?? []) as RoomItemRow[];
+
+  for (const row of rows) {
+    const item = dbRowToItem(row);
+    if (!item) continue;
+    if (item.kind === 'imported' && item.importedStoragePath) {
+      const signed = signedAssets[item.importedStoragePath];
+      if (signed) item.importedUrl = signed;
+    }
+    if (item.kind === 'bed' && item.blanketTexturePath) {
+      const signed = signedAssets[item.blanketTexturePath];
+      if (signed) item.blanketTextureUrl = signed;
+    }
+    items.push(item);
+    order.push(item.id);
+  }
+
+  applyCatalogSizes(items, catalogDimsFromRpc(payload.catalog_dims));
+
+  return {
+    items,
+    order,
+    environment,
+    roomGeometry,
+    roomId: payload.room.id,
+    roomName: payload.room.name,
+    role: payload.role,
+    allowCopy: payload.allow_copy,
+    ownerDisplay: payload.owner_display,
+    ownerHandle: payload.owner_handle ?? null,
+    forkCount: Number(payload.room.fork_count ?? 0),
+    attribution: payload.attribution ?? null,
+  };
+}
+
+/** Load a published profile room (works for anon via path-scoped storage policy). */
+export async function loadPublicRoomLayout(
+  handle: string,
+  roomId: string,
+): Promise<PublicRoomLoadResult> {
+  const payload = await fetchPublicRoom(handle, roomId);
+  const signedAssets = await signPublicRoomAssetPaths(payload.asset_paths ?? []);
+
+  const environment = parseEnvironment(payload.room.environment) ?? { ...DEFAULT_ENVIRONMENT };
+  const roomGeometry = parseFloorPlan(payload.room.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+
+  const items: Item[] = [];
+  const order: string[] = [];
+  const rows = (payload.items ?? []) as RoomItemRow[];
+
+  for (const row of rows) {
+    const item = dbRowToItem(row);
+    if (!item) continue;
+    if (item.kind === 'imported' && item.importedStoragePath) {
+      const signed = signedAssets[item.importedStoragePath];
+      if (signed) item.importedUrl = signed;
+    }
+    if (item.kind === 'bed' && item.blanketTexturePath) {
+      const signed = signedAssets[item.blanketTexturePath];
+      if (signed) item.blanketTextureUrl = signed;
+    }
+    items.push(item);
+    order.push(item.id);
+  }
+
+  applyCatalogSizes(items, catalogDimsFromRpc(payload.catalog_dims));
+
+  return {
+    items,
+    order,
+    environment,
+    roomGeometry,
+    roomId: payload.room.id,
+    roomName: payload.room.name,
+    allowCopy: payload.allow_copy,
+    forkCount: Number(payload.room.fork_count ?? 0),
+    attribution: payload.attribution ?? null,
+    owner: {
+      handle: payload.owner.handle,
+      displayName: payload.owner.display_name,
+      avatarPath: payload.owner.avatar_path,
+    },
   };
 }
 

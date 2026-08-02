@@ -17,6 +17,9 @@ import { FeedbackModal } from './FeedbackModal';
 import { FurniturePreview } from './FurniturePreview';
 import { ImportModelModal } from './ImportModelModal';
 import { SceneCheckoutPanel } from './SceneCheckoutPanel';
+import { ShareModal } from './ShareModal';
+import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
+import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
 
 const RECENT_KEY = 'toova-recent-kinds';
 const MAX_RECENT = 6;
@@ -88,6 +91,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const sceneRef = useRef<SceneHandle>(null);
   const baseSizeRef = useRef<Map<string, [number, number, number]>>(new Map());
   const meshSizedRef = useRef<Set<string>>(new Set());
+  const [shareOpen, setShareOpen] = useState(false);
 
   const selectedId = useStore((s) => s.selectedId);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
@@ -124,6 +128,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
 
   const [roomName, setRoomName] = useState(workspace?.name ?? '');
   const [savedLabel, setSavedLabel] = useState('Saved');
+  const [forkMeta, setForkMeta] = useState<RoomAttributionPayload | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -144,6 +149,25 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   useEffect(() => {
     setRoomName(workspace?.name ?? '');
   }, [workspace?.name]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!workspace?.id) {
+      setForkMeta(null);
+      return;
+    }
+    void (async () => {
+      try {
+        const meta = await fetchRoomAttribution(workspace.id);
+        if (!cancelled) setForkMeta(meta);
+      } catch {
+        if (!cancelled) setForkMeta(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [workspace?.id]);
 
   useEffect(() => {
     if (!item || item.kind !== 'imported' || !item.importedNaturalSize) return;
@@ -295,12 +319,36 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
           <button type="button" onClick={onBack} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}>← Rooms</button>
           <div style={{ width: 1, height: 24, background: 'var(--border)' }} />
-          <input
-            value={roomName}
-            onChange={(e) => setRoomName(e.target.value)}
-            onBlur={() => void handleSave()}
-            style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 500, color: 'var(--text)', border: 'none', background: 'transparent', outline: 'none', padding: '4px 6px', borderRadius: 7, width: 300 }}
-          />
+          <div>
+            <input
+              value={roomName}
+              onChange={(e) => setRoomName(e.target.value)}
+              onBlur={() => void handleSave()}
+              style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 500, color: 'var(--text)', border: 'none', background: 'transparent', outline: 'none', padding: '4px 6px', borderRadius: 7, width: 300 }}
+            />
+            {forkMeta?.attribution?.visible ? (
+              <div className="room-attribution" style={{ paddingLeft: 6 }}>
+                Forked from{' '}
+                <button
+                  type="button"
+                  className="share-handle-link"
+                  onClick={() => {
+                    const a = forkMeta.attribution!;
+                    if (a.owner_handle && a.room_id) {
+                      navigate(publicRoomPath(a.owner_handle, a.room_id));
+                    } else if (a.owner_handle) {
+                      navigate(profilePath(a.owner_handle));
+                    }
+                  }}
+                >
+                  {forkMeta.attribution.room_name}
+                </button>
+                {' '}by {forkMeta.attribution.owner_display}
+              </div>
+            ) : forkMeta?.forked_from ? (
+              <div className="room-attribution" style={{ paddingLeft: 6 }}>Copied room</div>
+            ) : null}
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <button
@@ -317,6 +365,15 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           >
             Checklist
           </button>
+          {workspace?.isOwner ? (
+            <button
+              type="button"
+              onClick={() => setShareOpen(true)}
+              style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}
+            >
+              Share
+            </button>
+          ) : null}
           <button type="button" onClick={() => sceneRef.current?.resetCamera()} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}>Reset view</button>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-subtle)' }}>{saving ? 'Saving…' : savedLabel}</div>
           <button type="button" className="tv-btn-primary" style={{ fontSize: 13, padding: '9px 18px', borderRadius: 9 }} disabled={saving} onClick={() => void handleSave()}>Save</button>
@@ -816,6 +873,13 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         defaultEmail={user?.email ?? ''}
         userId={user?.id ?? null}
       />
+      {shareOpen && workspace?.id && user?.id && workspace.isOwner ? (
+        <ShareModal
+          roomId={workspace.id}
+          userId={user.id}
+          onClose={() => setShareOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
