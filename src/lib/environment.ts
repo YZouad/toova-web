@@ -1,3 +1,5 @@
+export type Weather = 'clear' | 'partlyCloudy' | 'overcast' | 'foggy' | 'rain' | 'snow';
+
 export interface SunSample {
   position: [number, number, number];
   color: string;
@@ -8,6 +10,36 @@ export interface SunSample {
   skyTop: string;
   skyBottom: string;
   glassTint: string;
+}
+
+export interface WeatherModulation {
+  skyTop: string;
+  skyBottom: string;
+  sunMul: number;
+  ambientMul: number;
+  fog: { color: string; near: number; far: number } | null;
+  cloudCover: number;
+  precip: 'rain' | 'snow' | null;
+  stars: boolean;
+}
+
+export interface ProceduralSkyParams {
+  sunPosition: [number, number, number];
+  turbidity: number;
+  rayleigh: number;
+  mieCoefficient: number;
+  mieDirectionalG: number;
+}
+
+export interface ColorGradingParams {
+  bloomIntensity: number;
+  bloomThreshold: number;
+  saturation: number;
+  brightness: number;
+  contrast: number;
+  hue: number;
+  vignetteDarkness: number;
+  toneExposure: number;
 }
 
 const DEG = Math.PI / 180;
@@ -164,3 +196,310 @@ export function isDaytime(hours: number): boolean {
   const dayPhase = (h - SUNRISE) / DAY_SPAN;
   return MAX_ELEVATION * Math.sin(dayPhase * Math.PI) > 0;
 }
+
+const WEATHER_SKY_GREY = '#8a9098';
+const WEATHER_SKY_COOL = '#b8c4d0';
+const WEATHER_FOG = '#c8ccd2';
+
+/**
+ * Modulates sun/sky for a chosen weather preset. Composes with time-of-day so
+ * golden-hour rain or starry clear nights stay coherent.
+ */
+export function applyWeather(
+  sun: SunSample,
+  weather: Weather,
+  roomSize?: { width: number; depth: number },
+): WeatherModulation {
+  const rw = roomSize?.width ?? 101;
+  const rd = roomSize?.depth ?? 180;
+  const span = Math.max(rw, rd);
+  const fogNear = span * 1.4 + 120;
+  const fogFar = span * 3.2 + 280;
+
+  const base: WeatherModulation = {
+    skyTop: sun.skyTop,
+    skyBottom: sun.skyBottom,
+    sunMul: 1,
+    ambientMul: 1,
+    fog: null,
+    cloudCover: 0,
+    precip: null,
+    stars: false,
+  };
+
+  switch (weather) {
+    case 'clear':
+      return {
+        ...base,
+        cloudCover: 0.08,
+        stars: !isDaytimeFromSun(sun),
+      };
+    case 'partlyCloudy':
+      return {
+        ...base,
+        skyTop: lerpHex(sun.skyTop, WEATHER_SKY_GREY, 0.22),
+        skyBottom: lerpHex(sun.skyBottom, '#a8b0b8', 0.18),
+        sunMul: 0.88,
+        ambientMul: 1.06,
+        cloudCover: 0.42,
+        stars: !isDaytimeFromSun(sun),
+      };
+    case 'overcast':
+      return {
+        ...base,
+        skyTop: lerpHex(sun.skyTop, WEATHER_SKY_GREY, 0.72),
+        skyBottom: lerpHex(sun.skyBottom, '#9aa0a8', 0.65),
+        sunMul: 0.42,
+        ambientMul: 1.22,
+        cloudCover: 0.88,
+      };
+    case 'foggy':
+      return {
+        ...base,
+        skyTop: lerpHex(sun.skyTop, WEATHER_FOG, 0.55),
+        skyBottom: lerpHex(sun.skyBottom, WEATHER_FOG, 0.7),
+        sunMul: 0.35,
+        ambientMul: 1.18,
+        fog: { color: WEATHER_FOG, near: fogNear, far: fogFar },
+        cloudCover: 0.55,
+      };
+    case 'rain':
+      return {
+        ...base,
+        skyTop: lerpHex(sun.skyTop, '#6a7480', 0.78),
+        skyBottom: lerpHex(sun.skyBottom, '#7a8490', 0.72),
+        sunMul: 0.28,
+        ambientMul: 1.28,
+        fog: { color: '#8a929c', near: fogNear * 0.95, far: fogFar * 0.9 },
+        cloudCover: 0.95,
+        precip: 'rain',
+      };
+    case 'snow':
+      return {
+        ...base,
+        skyTop: lerpHex(sun.skyTop, WEATHER_SKY_COOL, 0.45),
+        skyBottom: lerpHex(sun.skyBottom, '#d8e2ea', 0.55),
+        sunMul: 0.52,
+        ambientMul: 1.35,
+        fog: { color: '#dce4ec', near: fogNear, far: fogFar * 1.05 },
+        cloudCover: 0.75,
+        precip: 'snow',
+      };
+    default:
+      return base;
+  }
+}
+
+/** Infer daytime from sun intensity (avoids threading timeOfDay into applyWeather). */
+function isDaytimeFromSun(sun: SunSample): boolean {
+  return sun.intensity > 0.1;
+}
+
+/** Sun elevation/azimuth in degrees — shared by lighting and procedural sky. */
+export function sunAngles(timeOfDay: number, orientationDeg: number) {
+  const h = clamp(timeOfDay, 0, 24);
+  const dayPhase = (h - SUNRISE) / DAY_SPAN;
+  const elevationDeg = MAX_ELEVATION * Math.sin(dayPhase * Math.PI);
+  const azimuthDeg = 90 + 180 * dayPhase + orientationDeg;
+  return { elevationDeg, azimuthDeg, dayPhase };
+}
+
+/** 0 when sun is high, →1 near/below horizon — drives haze, bloom, and exposure guards. */
+export function horizonFactor(timeOfDay: number, orientationDeg: number): number {
+  const { elevationDeg } = sunAngles(timeOfDay, orientationDeg);
+  if (elevationDeg <= 0) return 0;
+  return clamp(1 - elevationDeg / 24, 0, 1);
+}
+
+/** Coarse keys so light-shaft geometry is not rebuilt every slider tick. */
+export const BEAM_TIME_QUANTUM = 0.25;
+export const BEAM_ORIENT_QUANTUM = 15;
+
+export function beamGeometryKey(timeOfDay: number, orientationDeg: number) {
+  return {
+    time: Math.round(timeOfDay / BEAM_TIME_QUANTUM) * BEAM_TIME_QUANTUM,
+    orient: Math.round(orientationDeg / BEAM_ORIENT_QUANTUM) * BEAM_ORIENT_QUANTUM,
+  };
+}
+
+function sunDirectionForSky(
+  sun: SunSample,
+  centroid: [number, number],
+): [number, number, number] {
+  const dx = sun.position[0] - centroid[0];
+  const dy = sun.position[1];
+  const dz = sun.position[2] - centroid[1];
+  const len = Math.hypot(dx, dy, dz) || 1;
+  return [dx / len, dy / len, dz / len];
+}
+
+/**
+ * Preetham-sky inputs for drei Sky, derived from time/weather. sunPosition is a
+ * unit direction toward the sun from the room centroid.
+ */
+export function proceduralSkyParams(
+  timeOfDay: number,
+  orientationDeg: number,
+  weather: Weather,
+  roomSize?: { width: number; depth: number; minX?: number; minZ?: number },
+): ProceduralSkyParams {
+  const sun = sampleSun(timeOfDay, orientationDeg, roomSize);
+  const cx = (roomSize?.minX ?? 0) + (roomSize?.width ?? 101) / 2;
+  const cz = (roomSize?.minZ ?? 0) + (roomSize?.depth ?? 180) / 2;
+  const sunPosition = sunDirectionForSky(sun, [cx, cz]);
+
+  let turbidity = 2;
+  let rayleigh = 1.8;
+  switch (weather) {
+    case 'clear':
+      turbidity = 2;
+      rayleigh = 2.2;
+      break;
+    case 'partlyCloudy':
+      turbidity = 5.5;
+      rayleigh = 1.4;
+      break;
+    case 'overcast':
+      turbidity = 14;
+      rayleigh = 0.45;
+      break;
+    case 'foggy':
+      turbidity = 18;
+      rayleigh = 0.28;
+      break;
+    case 'rain':
+      turbidity = 20;
+      rayleigh = 0.22;
+      break;
+    case 'snow':
+      turbidity = 11;
+      rayleigh = 0.75;
+      break;
+  }
+
+  if (!isDaytime(timeOfDay)) {
+    turbidity = Math.min(turbidity, 1.2);
+    rayleigh = 0.12;
+  } else {
+    const horizon = horizonFactor(timeOfDay, orientationDeg);
+    turbidity += horizon * 12;
+    rayleigh *= 1 - horizon * 0.5;
+  }
+
+  const horizon = isDaytime(timeOfDay) ? horizonFactor(timeOfDay, orientationDeg) : 0;
+
+  return {
+    sunPosition,
+    turbidity,
+    rayleigh,
+    mieCoefficient: (weather === 'snow' ? 0.003 : 0.005) + horizon * 0.006,
+    mieDirectionalG: 0.82,
+  };
+}
+
+/** Bloom + color-grade strengths from sun, weather, and exposure. */
+export function colorGradingParams(
+  timeOfDay: number,
+  orientationDeg: number,
+  weather: Weather,
+  exposure: number,
+  roomSize?: { width: number; depth: number },
+): ColorGradingParams {
+  const sun = sampleSun(timeOfDay, orientationDeg, roomSize);
+  const mod = applyWeather(sun, weather, roomSize);
+  const { elevationDeg } = sunAngles(timeOfDay, orientationDeg);
+  const day = isDaytime(timeOfDay);
+  const horizon = day ? horizonFactor(timeOfDay, orientationDeg) : 0;
+  // Warm band slightly above the horizon — not at the horizon itself (avoids blowout).
+  const goldenBand = day ? clamp(1 - Math.abs(elevationDeg - 14) / 22, 0, 1) : 0;
+
+  const bloomIntensity =
+    (day ? 0.09 + goldenBand * 0.16 : 0.05) *
+    exposure *
+    (0.68 + mod.sunMul * 0.38) *
+    (1 - horizon * 0.72);
+  const bloomThreshold = day ? 0.86 + horizon * 0.1 : 0.93;
+
+  let saturation = day ? 0.05 + goldenBand * 0.1 : -0.04;
+  if (weather === 'rain' || weather === 'overcast') saturation -= 0.14;
+  if (weather === 'foggy') saturation -= 0.08;
+  if (weather === 'snow') saturation -= 0.04;
+
+  const hue = day ? goldenBand * 0.035 - (weather === 'snow' ? 0.015 : 0) : 0.008;
+  const brightness =
+    (exposure - 1) * 0.07 + (mod.ambientMul - 1) * 0.04 - horizon * 0.16;
+  const contrast = day ? 0.04 + mod.sunMul * 0.06 + horizon * 0.04 : 0.02;
+  const vignetteDarkness = 0.28 + (day ? 0.05 + horizon * 0.06 : 0.14);
+  const toneExposure = exposure * (1 - horizon * 0.38);
+
+  return {
+    bloomIntensity: clamp(bloomIntensity, 0.03, 0.45),
+    bloomThreshold: clamp(bloomThreshold, 0.78, 0.98),
+    saturation: clamp(saturation, -0.22, 0.22),
+    brightness: clamp(brightness, -0.22, 0.12),
+    contrast: clamp(contrast, -0.02, 0.22),
+    hue: clamp(hue, -0.03, 0.05),
+    vignetteDarkness: clamp(vignetteDarkness, 0.24, 0.58),
+    toneExposure: clamp(toneExposure, 0.55, 1.35),
+  };
+}
+
+/** 0 = no shafts, 1 = full shafts — driven by weather preset. */
+export function weatherGodRayStrength(weather: Weather): number {
+  switch (weather) {
+    case 'clear':
+      return 1;
+    case 'partlyCloudy':
+      return 0.4;
+    case 'overcast':
+      return 0;
+    case 'foggy':
+    case 'rain':
+      return 0;
+    case 'snow':
+      return 0.08;
+    default:
+      return 0;
+  }
+}
+
+export interface InteriorHazeParams {
+  color: string;
+  scatterDensity: number;
+  sunDir: [number, number, number];
+}
+
+/** Interior air scatter when light shafts are enabled. */
+export function interiorHazeParams(
+  timeOfDay: number,
+  orientationDeg: number,
+  weather: Weather,
+  exposure: number,
+  roomSize?: { width: number; depth: number },
+): InteriorHazeParams | null {
+  const sun = sampleSun(timeOfDay, orientationDeg, roomSize);
+  if (sun.intensity < 0.12) return null;
+
+  const mod = applyWeather(sun, weather, roomSize);
+  const horizon = horizonFactor(timeOfDay, orientationDeg);
+  const weatherMul = weatherGodRayStrength(weather);
+  if (weatherMul < 0.02) return null;
+  const strength = sun.intensity * exposure * mod.sunMul * (1 - horizon * 0.55) * weatherMul;
+  if (strength < 0.04) return null;
+
+  const warm = lerpHex(sun.color, '#eef3fa', 0.45);
+  return {
+    color: warm,
+    scatterDensity: 0.065 * strength,
+    sunDir: sunLightDirection(timeOfDay, orientationDeg),
+  };
+}
+
+export const WEATHER_OPTIONS: { id: Weather; label: string; glyph: string }[] = [
+  { id: 'clear', label: 'Clear', glyph: '☀' },
+  { id: 'partlyCloudy', label: 'Partly cloudy', glyph: '⛅' },
+  { id: 'overcast', label: 'Overcast', glyph: '☁' },
+  { id: 'foggy', label: 'Foggy', glyph: '🌫' },
+  { id: 'rain', label: 'Rain', glyph: '🌧' },
+  { id: 'snow', label: 'Snow', glyph: '❄' },
+];

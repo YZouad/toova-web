@@ -7,10 +7,13 @@ import {
   windowOpenings,
   type RoomGeometry,
 } from './roomGeometry';
+import { ROOM } from '../units';
 
 const SURFACE_EPS = 0.02;
 const RAY_EPS = 0.5;
-const WINDOW_SUBDIV = 4;
+const WINDOW_SUBDIV = 6;
+/** Push shaft origin past the inner wall face so it reads inside the room, not in the wall slab. */
+const SHAFT_ROOM_INSET = ROOM.wallThickness * 0.5 + 2;
 
 interface RoomHit {
   point: THREE.Vector3;
@@ -20,7 +23,8 @@ interface RoomHit {
 export interface WindowBeam {
   lightDir: THREE.Vector3;
   shaftGeometry: THREE.BufferGeometry;
-  splashQuad: THREE.BufferGeometry | null;
+  windowCenter: THREE.Vector3;
+  windowOutward: THREE.Vector3;
 }
 
 function lightEntersWindow(lightDir: THREE.Vector3, outward: THREE.Vector3): boolean {
@@ -88,53 +92,177 @@ function beamExtent(corners: THREE.Vector3[]): number {
   );
 }
 
-function buildShellShaftGeometry(
+type ShaftAttrs = {
+  positions: number[];
+  beamFactors: number[];
+  crossU: number[];
+  crossV: number[];
+  faceKind: number[];
+  indices: number[];
+  vi: number;
+};
+
+function commitShaftGeometry(attrs: ShaftAttrs): THREE.BufferGeometry {
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(attrs.positions), 3));
+  geo.setAttribute('beamFactor', new THREE.BufferAttribute(new Float32Array(attrs.beamFactors), 1));
+  geo.setAttribute('crossU', new THREE.BufferAttribute(new Float32Array(attrs.crossU), 1));
+  geo.setAttribute('crossV', new THREE.BufferAttribute(new Float32Array(attrs.crossV), 1));
+  geo.setAttribute('faceKind', new THREE.BufferAttribute(new Float32Array(attrs.faceKind), 1));
+  geo.setIndex(attrs.indices);
+  geo.computeVertexNormals();
+  return geo;
+}
+
+function buildCapAttrs(
+  pts: THREE.Vector3[],
+  subdiv: number,
+  beamFactor: number,
+): ShaftAttrs | null {
+  if (pts.length !== subdiv * subdiv) return null;
+  const attrs: ShaftAttrs = {
+    positions: [],
+    beamFactors: [],
+    crossU: [],
+    crossV: [],
+    faceKind: [],
+    indices: [],
+    vi: 0,
+  };
+  const cell = subdiv;
+  for (let r = 0; r < cell; r++) {
+    for (let c = 0; c < cell; c++) {
+      const p = pts[r * cell + c]!;
+      const u = cell === 1 ? 0.5 : c / (cell - 1);
+      const v = cell === 1 ? 0.5 : r / (cell - 1);
+      attrs.positions.push(p.x, p.y, p.z);
+      attrs.beamFactors.push(beamFactor);
+      attrs.crossU.push(u);
+      attrs.crossV.push(v);
+      attrs.faceKind.push(1);
+      attrs.vi++;
+    }
+  }
+  const at = (r: number, c: number) => r * cell + c;
+  for (let r = 0; r < cell - 1; r++) {
+    for (let c = 0; c < cell - 1; c++) {
+      const f00 = at(r, c);
+      const f10 = at(r + 1, c);
+      const f01 = at(r, c + 1);
+      const f11 = at(r + 1, c + 1);
+      attrs.indices.push(f00, f01, f11, f00, f11, f10);
+    }
+  }
+  return attrs;
+}
+
+function buildShellAttrs(
+  nearPts: THREE.Vector3[],
+  farPts: THREE.Vector3[],
+  subdiv: number,
+): ShaftAttrs {
+  const cell = subdiv;
+  const attrs: ShaftAttrs = {
+    positions: [],
+    beamFactors: [],
+    crossU: [],
+    crossV: [],
+    faceKind: [],
+    indices: [],
+    vi: 0,
+  };
+  const pts = (far: boolean) => (far ? farPts : nearPts);
+  const row = (r: number, far: boolean) =>
+    Array.from({ length: cell }, (_, c) => pts(far)[r * cell + c]!);
+  const uv = (r: number, c: number) => ({
+    u: cell === 1 ? 0.5 : c / (cell - 1),
+    v: cell === 1 ? 0.5 : r / (cell - 1),
+  });
+
+  const addStrip = (
+    nearStrip: THREE.Vector3[],
+    farStrip: THREE.Vector3[],
+    coords: { u: number; v: number }[],
+  ) => {
+    const base = attrs.vi;
+    const n = nearStrip.length;
+    for (let i = 0; i < n; i++) {
+      const a = nearStrip[i]!;
+      const b = farStrip[i]!;
+      const { u, v } = coords[i]!;
+      attrs.positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
+      attrs.beamFactors.push(0, 1);
+      attrs.crossU.push(u, u);
+      attrs.crossV.push(v, v);
+      attrs.faceKind.push(0, 0);
+      attrs.vi += 2;
+    }
+    for (let i = 0; i < n - 1; i++) {
+      const i0 = base + i * 2;
+      attrs.indices.push(i0, i0 + 2, i0 + 3, i0, i0 + 3, i0 + 1);
+    }
+  };
+
+  addStrip(
+    row(0, false),
+    row(0, true),
+    Array.from({ length: cell }, (_, c) => uv(0, c)),
+  );
+  addStrip(
+    [...row(cell - 1, false)].reverse(),
+    [...row(cell - 1, true)].reverse(),
+    Array.from({ length: cell }, (_, c) => uv(cell - 1, cell - 1 - c)),
+  );
+  const col = (c: number, far: boolean) =>
+    Array.from({ length: cell }, (_, r) => pts(far)[r * cell + c]!);
+  addStrip(
+    col(0, false),
+    col(0, true),
+    Array.from({ length: cell }, (_, r) => uv(r, 0)),
+  );
+  addStrip(
+    [...col(cell - 1, false)].reverse(),
+    [...col(cell - 1, true)].reverse(),
+    Array.from({ length: cell }, (_, r) => uv(cell - 1 - r, cell - 1)),
+  );
+
+  return attrs;
+}
+
+function mergeShaftAttrs(parts: ShaftAttrs[]): THREE.BufferGeometry {
+  const merged: ShaftAttrs = {
+    positions: [],
+    beamFactors: [],
+    crossU: [],
+    crossV: [],
+    faceKind: [],
+    indices: [],
+    vi: 0,
+  };
+  for (const part of parts) {
+    const base = merged.vi;
+    merged.positions.push(...part.positions);
+    merged.beamFactors.push(...part.beamFactors);
+    merged.crossU.push(...part.crossU);
+    merged.crossV.push(...part.crossV);
+    merged.faceKind.push(...part.faceKind);
+    merged.vi += part.positions.length / 3;
+    for (const idx of part.indices) merged.indices.push(idx + base);
+  }
+  return commitShaftGeometry(merged);
+}
+
+function buildShaftGeometry(
   nearPts: THREE.Vector3[],
   farPts: THREE.Vector3[],
   subdiv: number,
 ): THREE.BufferGeometry {
-  const cell = subdiv;
-  const positions: number[] = [];
-  const beamFactors: number[] = [];
-  const lateral: number[] = [];
-  const indices: number[] = [];
-  const pts = (far: boolean) => (far ? farPts : nearPts);
-  const row = (r: number, far: boolean) =>
-    Array.from({ length: cell }, (_, c) => pts(far)[r * cell + c]!);
-
-  let vi = 0;
-  const addStrip = (nearStrip: THREE.Vector3[], farStrip: THREE.Vector3[]) => {
-    const base = vi;
-    const n = nearStrip.length;
-    for (let i = 0; i < n; i++) {
-      const t = n === 1 ? 0.5 : i / (n - 1);
-      const a = nearStrip[i]!;
-      const b = farStrip[i]!;
-      positions.push(a.x, a.y, a.z, b.x, b.y, b.z);
-      beamFactors.push(0, 1);
-      lateral.push(t, t);
-      vi += 2;
-    }
-    for (let i = 0; i < n - 1; i++) {
-      const i0 = base + i * 2;
-      indices.push(i0, i0 + 2, i0 + 3, i0, i0 + 3, i0 + 1);
-    }
-  };
-
-  addStrip(row(0, false), row(0, true));
-  addStrip([...row(cell - 1, false)].reverse(), [...row(cell - 1, true)].reverse());
-  const col = (c: number, far: boolean) =>
-    Array.from({ length: cell }, (_, r) => pts(far)[r * cell + c]!);
-  addStrip(col(0, false), col(0, true));
-  addStrip([...col(cell - 1, false)].reverse(), [...col(cell - 1, true)].reverse());
-
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geo.setAttribute('beamFactor', new THREE.BufferAttribute(new Float32Array(beamFactors), 1));
-  geo.setAttribute('lateral', new THREE.BufferAttribute(new Float32Array(lateral), 1));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return geo;
+  const parts: ShaftAttrs[] = [buildShellAttrs(nearPts, farPts, subdiv)];
+  const nearCap = buildCapAttrs(nearPts, subdiv, 0);
+  const farCap = buildCapAttrs(farPts, subdiv, 1);
+  if (nearCap) parts.push(nearCap);
+  if (farCap) parts.push(farCap);
+  return mergeShaftAttrs(parts);
 }
 
 export function createShaftMaterial(color: string, opacity: number): THREE.ShaderMaterial {
@@ -145,12 +273,14 @@ export function createShaftMaterial(color: string, opacity: number): THREE.Shade
     },
     vertexShader: `
       attribute float beamFactor;
-      attribute float lateral;
+      attribute float crossU;
+      attribute float crossV;
+      attribute float faceKind;
       varying float vBeam;
-      varying float vLat;
+      varying float vIsCap;
       void main() {
         vBeam = beamFactor;
-        vLat = lateral;
+        vIsCap = faceKind;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
@@ -158,44 +288,27 @@ export function createShaftMaterial(color: string, opacity: number): THREE.Shade
       uniform vec3 uColor;
       uniform float uOpacity;
       varying float vBeam;
-      varying float vLat;
+      varying float vIsCap;
       void main() {
-        float along = 1.0 - vBeam;
-        float lengthFade = along * along * (1.0 - vBeam * 0.65);
-        float edgeFade = smoothstep(0.0, 0.22, vLat) * smoothstep(1.0, 0.78, vLat);
-        float alpha = uOpacity * lengthFade * edgeFade;
-        if (alpha < 0.004) discard;
+        float lengthFade = pow(1.0 - vBeam, 1.75);
+        float alpha;
+
+        if (vIsCap > 0.5) {
+          // Full rectangular caps; only soften the far end.
+          alpha = uOpacity * mix(1.0, 0.32, vBeam);
+        } else {
+          alpha = uOpacity * lengthFade;
+        }
+
+        if (alpha < 0.003) discard;
         gl_FragColor = vec4(uColor, alpha);
       }
     `,
     transparent: true,
     depthWrite: false,
-    side: THREE.BackSide,
+    side: THREE.DoubleSide,
     toneMapped: false,
   });
-}
-
-function buildFarCapGeometry(farPts: THREE.Vector3[], subdiv: number): THREE.BufferGeometry | null {
-  if (farPts.length !== subdiv * subdiv) return null;
-  const positions: number[] = [];
-  const indices: number[] = [];
-  const cell = subdiv;
-  for (const p of farPts) positions.push(p.x, p.y, p.z);
-  const at = (r: number, c: number) => r * cell + c;
-  for (let r = 0; r < cell - 1; r++) {
-    for (let c = 0; c < cell - 1; c++) {
-      const f00 = at(r, c);
-      const f10 = at(r + 1, c);
-      const f01 = at(r, c + 1);
-      const f11 = at(r + 1, c + 1);
-      indices.push(f00, f01, f11, f00, f11, f10);
-    }
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(positions), 3));
-  geo.setIndex(indices);
-  geo.computeVertexNormals();
-  return geo;
 }
 
 export function computeWindowBeams(
@@ -216,6 +329,7 @@ export function computeWindowBeams(
     const seg = allWallSegments(geom).find((s) => s.wall.id === win.wallId);
     if (!seg) continue;
 
+    const interior = new THREE.Vector3(-outward.x, 0, -outward.z).normalize();
     const [tx, tz] = seg.tangent;
     const hw = p.w / 2;
     const hh = p.h / 2;
@@ -240,7 +354,7 @@ export function computeWindowBeams(
         const v = r / (WINDOW_SUBDIV - 1);
         const bottom = corners[0]!.clone().lerp(corners[1]!, u);
         const top = corners[3]!.clone().lerp(corners[2]!, u);
-        const nearPt = bottom.lerp(top, v);
+        const nearPt = bottom.lerp(top, v).addScaledVector(interior, SHAFT_ROOM_INSET);
         const hit = rayExitPolygonRoom(nearPt, lightDir, geom, win.wallId);
         if (!hit) {
           valid = false;
@@ -255,10 +369,12 @@ export function computeWindowBeams(
     if (!valid || farPts.length !== WINDOW_SUBDIV * WINDOW_SUBDIV) continue;
     if (beamExtent(farPts) < 4) continue;
 
+    const windowCenter = nearPts[Math.floor(nearPts.length / 2)]!.clone();
     beams.push({
       lightDir,
-      shaftGeometry: buildShellShaftGeometry(nearPts, farPts, WINDOW_SUBDIV),
-      splashQuad: buildFarCapGeometry(farPts, WINDOW_SUBDIV),
+      shaftGeometry: buildShaftGeometry(nearPts, farPts, WINDOW_SUBDIV),
+      windowCenter,
+      windowOutward: outward.clone(),
     });
   }
 

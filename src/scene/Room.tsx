@@ -2,7 +2,7 @@ import { useLayoutEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ROOM } from '../units';
-import { sampleSun } from '../lib/environment';
+import { sampleSun, horizonFactor } from '../lib/environment';
 import {
   allWallSegments,
   doorOpenings,
@@ -140,6 +140,12 @@ function WindowAssembly({ geom }: { geom: RoomGeometry }) {
     [timeOfDay, orientationDeg, geom],
   );
 
+  const fillIntensity = useMemo(() => {
+    const horizon = horizonFactor(timeOfDay, orientationDeg);
+    const base = sun.ambient * exposure * 0.55 + sun.intensity * exposure * 0.15;
+    return base * (1 - horizon * 0.42);
+  }, [sun, timeOfDay, orientationDeg, exposure]);
+
   return (
     <group>
       {placements.map((w, i) => (
@@ -150,7 +156,7 @@ function WindowAssembly({ geom }: { geom: RoomGeometry }) {
           key={`fill-${i}`}
           placement={w}
           color={sun.glassTint}
-          intensity={sun.ambient * exposure * 0.55 + sun.intensity * exposure * 0.15}
+          intensity={fillIntensity}
         />
       ))}
     </group>

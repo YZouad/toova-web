@@ -12,6 +12,7 @@ import {
   type RoomGeometry,
 } from './lib/roomGeometry';
 import { clampPositionInRoom } from './interaction/collision';
+import type { Weather } from './lib/environment';
 
 const BED_MIN_BODY_H = 4;
 export const DEFAULT_BLANKET_COLOR = '#6b8cae';
@@ -38,6 +39,7 @@ export interface RoomEnvironment {
   orientationDeg: number;  // 0..360, room yaw vs sun
   exposure: number;        // global brightness trim, default 1
   skyMode: 'gradient' | 'studio';
+  weather: Weather;
   godRays: boolean;
   /** Invisible ceiling plane that casts shadows (toggle). */
   shadowRoof: boolean;
@@ -48,6 +50,7 @@ export const DEFAULT_ENVIRONMENT: RoomEnvironment = {
   orientationDeg: 0,
   exposure: 1,
   skyMode: 'gradient',
+  weather: 'partlyCloudy',
   godRays: false,
   shadowRoof: false,
 };
@@ -111,6 +114,7 @@ interface StoreState {
   setOrientation: (deg: number) => void;
   setExposure: (x: number) => void;
   setSkyMode: (m: 'gradient' | 'studio') => void;
+  setWeather: (w: Weather) => void;
   setGodRays: (on: boolean) => void;
   setShadowRoof: (on: boolean) => void;
   setRoomGeometry: (geom: RoomGeometry) => void;
@@ -198,6 +202,8 @@ export const useStore = create<StoreState>((set) => ({
     set((s) => ({ environment: { ...s.environment, exposure: clamp(x, 0.2, 3) } })),
   setSkyMode: (m) =>
     set((s) => ({ environment: { ...s.environment, skyMode: m } })),
+  setWeather: (w) =>
+    set((s) => ({ environment: { ...s.environment, weather: w } })),
   setGodRays: (on) =>
     set((s) => ({ environment: { ...s.environment, godRays: on } })),
   setShadowRoof: (on) =>

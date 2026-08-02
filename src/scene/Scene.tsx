@@ -10,9 +10,13 @@ import { DragController } from '../interaction/DragController';
 import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
 import { ArcMenu } from './ArcMenu';
 import { useStore } from '../store';
-import { sampleSun } from '../lib/environment';
+import { applyWeather, sampleSun } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
 import { WindowLightShafts } from './WindowLightShafts';
+import { RoomVolumetricHaze } from './RoomVolumetricHaze';
+import { WeatherSystem } from './WeatherSystem';
+import { ProceduralSky } from './ProceduralSky';
+import { ScenePostProcessing } from './ScenePostProcessing';
 
 const SCENE_BG = '#E4DAC8';
 
@@ -36,13 +40,21 @@ function EnvironmentRig() {
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const exposure = useStore((s) => s.environment.exposure);
+  const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
   const lightRef = useRef<THREE.DirectionalLight>(null!);
   const targetRef = useRef<THREE.Object3D>(null!);
 
+  const bounds = useMemo(() => planBounds(geom), [geom]);
+
   const sun = useMemo(
-    () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)),
-    [timeOfDay, orientationDeg, geom],
+    () => sampleSun(timeOfDay, orientationDeg, bounds),
+    [timeOfDay, orientationDeg, bounds],
+  );
+
+  const mod = useMemo(
+    () => applyWeather(sun, weather, bounds),
+    [sun, weather, bounds],
   );
 
   const [cx, , cz] = useMemo(() => {
@@ -69,13 +81,17 @@ function EnvironmentRig() {
   return (
     <>
       <hemisphereLight
-        args={[sun.skyColor, sun.groundColor, sun.ambient * exposure * (1 - IBL_AMBIENT_FRACTION)]}
+        args={[
+          sun.skyColor,
+          sun.groundColor,
+          sun.ambient * exposure * (1 - IBL_AMBIENT_FRACTION) * mod.ambientMul,
+        ]}
       />
       <directionalLight
         ref={lightRef}
         position={sun.position}
         color={sun.color}
-        intensity={sun.intensity * exposure}
+        intensity={sun.intensity * exposure * mod.sunMul}
         castShadow
         shadow-mapSize={[2048, 2048]}
         shadow-camera-left={-shadowExtent}
@@ -133,46 +149,43 @@ function ImageBasedLighting() {
   return null;
 }
 
-function SkyBackground() {
+function AtmosphericFog() {
   const { scene, gl } = useThree();
+  const skyMode = useStore((s) => s.environment.skyMode);
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
-  const skyMode = useStore((s) => s.environment.skyMode);
+  const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
 
-  const sun = useMemo(
-    () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)),
-    [timeOfDay, orientationDeg, geom],
-  );
+  const bounds = useMemo(() => planBounds(geom), [geom]);
 
-  const texture = useMemo(() => {
-    const canvas = document.createElement('canvas');
-    canvas.width = 1;
-    canvas.height = 256;
-    const ctx = canvas.getContext('2d');
-    if (ctx) {
-      const grad = ctx.createLinearGradient(0, 0, 0, 256);
-      grad.addColorStop(0, sun.skyTop);
-      grad.addColorStop(1, sun.skyBottom);
-      ctx.fillStyle = grad;
-      ctx.fillRect(0, 0, 1, 256);
-    }
-    const tex = new THREE.CanvasTexture(canvas);
-    tex.needsUpdate = true;
-    return tex;
-  }, [sun.skyTop, sun.skyBottom]);
+  const mod = useMemo(() => {
+    const sun = sampleSun(timeOfDay, orientationDeg, bounds);
+    return applyWeather(sun, weather, bounds);
+  }, [timeOfDay, orientationDeg, weather, bounds]);
 
   useEffect(() => {
     if (skyMode === 'gradient') {
-      scene.background = texture;
-      gl.setClearColor(sun.skyBottom);
+      scene.background = null;
+      gl.setClearColor('#0a0e14');
     } else {
       scene.background = new THREE.Color(SCENE_BG);
       gl.setClearColor(SCENE_BG);
+      scene.fog = null;
     }
-  }, [skyMode, texture, scene, gl, sun.skyBottom]);
+  }, [skyMode, scene, gl]);
 
-  useEffect(() => () => texture.dispose(), [texture]);
+  useEffect(() => {
+    if (skyMode !== 'gradient') return;
+    if (mod.fog) {
+      scene.fog = new THREE.Fog(mod.fog.color, mod.fog.near, mod.fog.far);
+    } else {
+      scene.fog = null;
+    }
+    return () => {
+      scene.fog = null;
+    };
+  }, [skyMode, mod.fog, scene]);
 
   return null;
 }
@@ -220,6 +233,7 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
   const skyMode = useStore((s) => s.environment.skyMode);
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
+  const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
 
   const camera = useMemo(() => {
@@ -234,8 +248,9 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
 
   const backdrop = useMemo(() => {
     if (skyMode === 'studio') return SCENE_BG;
-    return sampleSun(timeOfDay, orientationDeg, planBounds(geom)).skyBottom;
-  }, [skyMode, timeOfDay, orientationDeg, geom]);
+    const sun = sampleSun(timeOfDay, orientationDeg, planBounds(geom));
+    return applyWeather(sun, weather, planBounds(geom)).skyBottom;
+  }, [skyMode, timeOfDay, orientationDeg, weather, geom]);
 
   return (
     <Canvas
@@ -247,7 +262,7 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
         far: 2000,
       }}
       onPointerMissed={() => deselect(null)}
-      gl={{ antialias: true, alpha: false, powerPreference: 'high-performance' }}
+      gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', toneMapping: THREE.ACESFilmicToneMapping }}
       onCreated={({ gl, scene }) => {
         gl.setClearColor(backdrop);
         scene.background = new THREE.Color(backdrop);
@@ -255,9 +270,11 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
       }}
       style={{ width: '100%', height: '100%', background: backdrop }}
     >
-      <SkyBackground />
+      <AtmosphericFog />
       <ImageBasedLighting />
       <EnvironmentRig />
+      <ProceduralSky />
+      <WeatherSystem />
 
       <Grid
         position={[planCentroid(geom)[0], 0.1, planCentroid(geom)[1]]}
@@ -279,6 +296,9 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
       <DragController />
       <KeyboardShortcuts />
       <WindowLightShafts />
+      <RoomVolumetricHaze />
+
+      <ScenePostProcessing />
 
       <OrbitControls
         ref={controlsRef as never}
