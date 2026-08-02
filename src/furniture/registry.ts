@@ -1,4 +1,12 @@
-export type FurnitureKind = 'bed' | 'dresser' | 'wardrobe' | 'desk' | 'chair' | 'nightstand' | 'imported';
+export type FurnitureKind =
+  | 'bed'
+  | 'dresser'
+  | 'wardrobe'
+  | 'desk'
+  | 'chair'
+  | 'nightstand'
+  | 'lamp'
+  | 'imported';
 
 export interface FurnitureDef {
   kind: FurnitureKind;
@@ -43,5 +51,10 @@ export const FURNITURE: Record<Exclude<FurnitureKind, 'imported'>, FurnitureDef>
     kind: 'nightstand',
     label: 'Nightstand',
     size: [18, 24, 18],
+  },
+  lamp: {
+    kind: 'lamp',
+    label: 'Lamp',
+    size: [10, 22, 10],
   },
 };

@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
+import { useRoute, navigateToAppHome } from './hooks/useRoute';
 import { createRoomWithGeometry, useRoomLoad } from './hooks/useRoomLayout';
 import { supabase } from './lib/supabase';
 import { useStore, DEFAULT_ENVIRONMENT } from './store';
@@ -16,6 +17,7 @@ import { FloorPlanSetup } from './ui/FloorPlanSetup';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
+import { SharedRoomPage } from './ui/SharedRoomPage';
 import { Dock, type DockNav } from './ui/Dock';
 
 type Screen = 'landing' | 'pitch-madness' | 'contact' | 'auth' | 'dashboard' | 'floor-plan' | 'designer' | 'admin' | 'ar' | 'checklist';
@@ -106,6 +108,7 @@ function ARPage({ onBack }: { onBack: () => void }) {
 
 export default function App() {
   const { loading, user, logout } = useAuth();
+  const route = useRoute();
   const [screen, setScreen] = useState<Screen>('landing');
   const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
@@ -248,6 +251,27 @@ export default function App() {
     setScreen('checklist');
   }, []);
 
+  if (route.name === 'shared') {
+    return (
+      <SharedRoomPage
+        token={route.token}
+        onOpenCopiedRoom={async (room) => {
+          try {
+            const layout = await load(room.id);
+            hydrateLayout(layout.items, layout.order);
+            hydrateRoomSettings(layout.environment, layout.roomGeometry);
+            setWorkspace({ id: room.id, name: room.name });
+            setScreen('designer');
+            navigateToAppHome();
+          } catch {
+            setScreen('dashboard');
+            navigateToAppHome();
+          }
+        }}
+      />
+    );
+  }
+
   const landingCallbacks = {
     loggedIn: !!user,
     onGoDashboard: () => setScreen('dashboard'),
@@ -277,6 +301,7 @@ export default function App() {
     return (
       <ChecklistPage
         onBack={() => setScreen(backTarget)}
+        canPlace={Boolean(workspace && user && checklistReturn === 'designer')}
         onDesign={() => {
           if (user) {
             if (workspace) setScreen('designer');

@@ -18,6 +18,7 @@ import { FeedbackModal } from './FeedbackModal';
 import { FurniturePreview } from './FurniturePreview';
 import { ImportModelModal } from './ImportModelModal';
 import { SceneCheckoutPanel } from './SceneCheckoutPanel';
+import { ShareModal } from './ShareModal';
 
 const RECENT_KEY = 'toova-recent-kinds';
 const MAX_RECENT = 6;
@@ -29,6 +30,7 @@ const BUILTIN_CATS: Record<Exclude<FurnitureKind, 'imported'>, string> = {
   desk: 'Office',
   chair: 'Seating',
   nightstand: 'Storage',
+  lamp: 'Lighting',
 };
 
 const KIND_COLORS: Record<string, string> = {
@@ -38,6 +40,7 @@ const KIND_COLORS: Record<string, string> = {
   desk: '#B5946C',
   chair: '#CBB28F',
   nightstand: '#C0A47A',
+  lamp: '#D4C4A0',
   imported: '#7E8A60',
 };
 
@@ -138,6 +141,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const [beddingBusy, setBeddingBusy] = useState(false);
   const { open: checklistOpen, closeChecklist } = useChecklistModal();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const { catalog, loading: catalogLoading, refresh: refreshCatalog } = useUserCatalog(Boolean(user?.id));
   const builtinPreviews = useBuiltinPreviews();
@@ -327,6 +331,15 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           >
             Checklist
           </button>
+          {workspace?.id ? (
+            <button
+              type="button"
+              className="designer-checklist-btn"
+              onClick={() => setShareOpen(true)}
+            >
+              Share
+            </button>
+          ) : null}
           <button type="button" onClick={() => sceneRef.current?.resetCamera()} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}>Reset view</button>
           <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-subtle)' }}>{saving ? 'Saving…' : savedLabel}</div>
           <button type="button" className="tv-btn-primary" style={{ fontSize: 13, padding: '9px 18px', borderRadius: 9 }} disabled={saving} onClick={() => void handleSave()}>Save</button>
@@ -826,6 +839,13 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         defaultEmail={user?.email ?? ''}
         userId={user?.id ?? null}
       />
+      {shareOpen && workspace?.id ? (
+        <ShareModal
+          roomId={workspace.id}
+          roomName={roomName || workspace.name}
+          onClose={() => setShareOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }

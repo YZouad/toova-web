@@ -23,6 +23,7 @@ const KNOWN_KINDS = new Set([
   'desk',
   'chair',
   'nightstand',
+  'lamp',
   'imported',
 ]);
 

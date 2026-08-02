@@ -20,6 +20,7 @@ const SWATCH_COLORS: Record<string, string> = {
   desk: '#B5946C',
   chair: '#CBB28F',
   nightstand: '#C0A47A',
+  lamp: '#D4C4A0',
   imported: '#7E8A60',
 };
 
@@ -30,6 +31,7 @@ const KIND_GLYPH: Record<string, string> = {
   desk: '▬',
   chair: '◫',
   nightstand: '▪',
+  lamp: '◔',
   imported: '◆',
 };
 
