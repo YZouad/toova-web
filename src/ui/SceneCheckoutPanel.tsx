@@ -96,6 +96,11 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
                   <li key={item.id}>
                     <label
                       className={`scene-checkout-mini-item${isChecked ? ' scene-checkout-mini-item--done' : ''}`}
+                      onMouseDown={(e) => {
+                        // Keep click from focusing the hidden input, which
+                        // would scroll nested overflow containers to the top.
+                        e.preventDefault();
+                      }}
                     >
                       <input
                         type="checkbox"
