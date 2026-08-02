@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { buildAndUploadCatalogThumbnail } from '../lib/buildCatalogThumbnail';
 import { createPosterGlb } from '../lib/createPosterGlb';
-import { decimateGlb } from '../lib/decimateGlb';
+import { decimateGlb, shouldSkipDecimation } from '../lib/decimateGlb';
 import { formatInchDim, readGlbAxisBounds } from '../lib/glbBounds';
+import type { InchSize } from '../lib/importedItemSize';
 import { DEFAULT_IMPORTED_MAX_SIDE, maxInchSide } from '../lib/importedItemSize';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { MODEL_FILES_BUCKET } from '../lib/modelStorage';
@@ -11,6 +12,41 @@ import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { PosterImageCrop } from './PosterImageCrop';
 
 type ModalTab = 'upload' | 'generate' | 'poster';
+type GeneratePhase = 'idle' | 'generating' | 'downloading';
+
+const GLB_BOUNDS_TIMEOUT_MS = 30_000;
+
+function isInvalidGlbContentType(contentType: string): boolean {
+  const ct = contentType.toLowerCase();
+  if (!ct) return false;
+  return ct.includes('text/html') || ct.includes('application/json');
+}
+
+async function readGlbAxisBoundsWithTimeout(
+  file: File,
+  timeoutMs: number,
+): Promise<InchSize | null> {
+  return Promise.race([
+    readGlbAxisBounds(file),
+    new Promise<null>((resolve) => {
+      window.setTimeout(() => resolve(null), timeoutMs);
+    }),
+  ]);
+}
+
+function applyBoundsToDimensions(bounds: InchSize, setters: {
+  setWidthIn: (v: string) => void;
+  setHeightIn: (v: string) => void;
+  setDepthIn: (v: string) => void;
+}): void {
+  const dims =
+    maxInchSide(bounds) > 3
+      ? bounds
+      : proportionalSizesFromMaxSide(bounds, DEFAULT_IMPORTED_MAX_SIDE);
+  setters.setWidthIn(formatInchDim(dims[0]));
+  setters.setHeightIn(formatInchDim(dims[1]));
+  setters.setDepthIn(formatInchDim(Math.max(0.25, dims[2])));
+}
 
 interface ImportModelModalProps {
   userId: string;
@@ -40,6 +76,8 @@ export function ImportModelModal({
   const [clearanceIn, setClearanceIn] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatePhase, setGeneratePhase] = useState<GeneratePhase>('idle');
+  const generateAbortRef = useRef<AbortController | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -106,32 +144,66 @@ export function ImportModelModal({
     setDecimationError(null);
     setDecimating(true);
 
-    void decimateGlb(file).then(async (result) => {
+    const dimensionSetters = { setWidthIn, setHeightIn, setDepthIn };
+
+    const finishWithUploadFile = async (
+      uploadReady: File,
+      info: {
+        originalTriangles: number;
+        finalTriangles: number;
+        skipped?: boolean;
+      },
+      warning: string | null = null,
+    ) => {
       if (cancelled) return;
-      setDecimatedFile(result.file);
-      setDecimationInfo({
-        originalTriangles: result.originalTriangles,
-        finalTriangles: result.finalTriangles,
-        skipped: result.skipped,
-      });
-      const bounds = await readGlbAxisBounds(result.file);
+      setDecimatedFile(uploadReady);
+      setDecimationInfo(info);
+      setDecimationError(warning);
+
+      const bounds = await readGlbAxisBoundsWithTimeout(uploadReady, GLB_BOUNDS_TIMEOUT_MS);
       if (!cancelled && bounds) {
-        const dims =
-          maxInchSide(bounds) > 3
-            ? bounds
-            : proportionalSizesFromMaxSide(bounds, DEFAULT_IMPORTED_MAX_SIDE);
-        setWidthIn(formatInchDim(dims[0]));
-        setHeightIn(formatInchDim(dims[1]));
-        setDepthIn(formatInchDim(Math.max(0.25, dims[2])));
+        applyBoundsToDimensions(bounds, dimensionSetters);
       }
-      setDecimating(false);
-    }).catch((err) => {
-      if (cancelled) return;
-      setDecimatedFile(null);
-      setDecimationInfo(null);
-      setDecimationError(err instanceof Error ? err.message : 'Mesh optimization failed.');
-      setDecimating(false);
-    });
+      if (!cancelled) setDecimating(false);
+    };
+
+    if (shouldSkipDecimation(file)) {
+      const warning =
+        file.name.toLowerCase() === 'generated.glb'
+          ? null
+          : 'Optimization skipped for large model — using original file.';
+      void finishWithUploadFile(
+        file,
+        { originalTriangles: 0, finalTriangles: 0, skipped: true },
+        warning,
+      );
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void decimateGlb(file)
+      .then(async (result) => {
+        await finishWithUploadFile(
+          result.file,
+          {
+            originalTriangles: result.originalTriangles,
+            finalTriangles: result.finalTriangles,
+            skipped: result.skipped,
+          },
+          null,
+        );
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message =
+          err instanceof Error ? err.message : 'Mesh optimization failed.';
+        void finishWithUploadFile(
+          file,
+          { originalTriangles: 0, finalTriangles: 0, skipped: true },
+          `Optimization skipped — using original model. (${message})`,
+        );
+      });
 
     return () => {
       cancelled = true;
@@ -153,6 +225,9 @@ export function ImportModelModal({
     setGenerateError(null);
     setElapsedSec(0);
     setGenerating(false);
+    setGeneratePhase('idle');
+    generateAbortRef.current?.abort();
+    generateAbortRef.current = null;
     setDecimatedFile(null);
     setDecimating(false);
     setDecimationError(null);
@@ -181,6 +256,8 @@ export function ImportModelModal({
   };
 
   const handleGenerate = async () => {
+    if (generating) return;
+
     setGenerateError(null);
 
     if (!imageFile) {
@@ -188,7 +265,12 @@ export function ImportModelModal({
       return;
     }
 
+    generateAbortRef.current?.abort();
+    const abortController = new AbortController();
+    generateAbortRef.current = abortController;
+
     setElapsedSec(0);
+    setGeneratePhase('generating');
     setGenerating(true);
     try {
       const fd = new FormData();
@@ -197,6 +279,7 @@ export function ImportModelModal({
       const res = await fetch(TRELLIS_GENERATE_URL, {
         method: 'POST',
         body: fd,
+        signal: abortController.signal,
       });
 
       if (!res.ok) {
@@ -204,23 +287,39 @@ export function ImportModelModal({
         throw new Error(errText || `Generation failed (${res.status})`);
       }
 
-      const contentType = (res.headers.get('content-type') ?? '').toLowerCase();
-      if (contentType.includes('text/html')) {
+      const contentType = res.headers.get('content-type') ?? '';
+      if (isInvalidGlbContentType(contentType)) {
         throw new Error(
-          'The server returned HTML instead of a 3D model. Check that VITE_TRELLIS_GENERATE_URL points at your HTTPS Trellis API (or HTTPS BFF), not GitHub Pages.',
+          contentType.includes('text/html')
+            ? 'The server returned HTML instead of a 3D model. Check that VITE_TRELLIS_GENERATE_URL points at your HTTPS mesh API (or HTTPS BFF), not GitHub Pages.'
+            : 'The server returned JSON instead of a 3D model.',
         );
       }
 
+      setGeneratePhase('downloading');
       const blob = await res.blob();
+
+      if (blob.size === 0) {
+        throw new Error('The server returned an empty model file.');
+      }
+
+      console.log('Received GLB:', { size: blob.size, type: blob.type });
+
       const glbFile = new File([blob], 'generated.glb', {
         type: blob.type || 'model/gltf-binary',
       });
       setFile(glbFile);
       setTab('upload');
     } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      console.error('Generation failed:', err);
       setGenerateError(err instanceof Error ? err.message : 'Generation failed');
     } finally {
       setGenerating(false);
+      setGeneratePhase('idle');
+      if (generateAbortRef.current === abortController) {
+        generateAbortRef.current = null;
+      }
     }
   };
 
@@ -470,7 +569,9 @@ export function ImportModelModal({
 
             {generating ? (
               <p className="import-modal-generate-status" aria-live="polite">
-                Generating 3D model… {elapsedSec}s elapsed (this may take several minutes)
+                {generatePhase === 'downloading'
+                  ? `Downloading model… ${elapsedSec}s elapsed`
+                  : `Generating 3D model… ${elapsedSec}s elapsed (this may take several minutes)`}
               </p>
             ) : (
               <p className="import-modal-generate-status">
@@ -514,7 +615,11 @@ export function ImportModelModal({
                 onClick={() => void handleGenerate()}
                 disabled={busy}
               >
-                {generating ? 'Generating…' : 'Generate 3D model'}
+                {generating
+                  ? generatePhase === 'downloading'
+                    ? 'Downloading…'
+                    : 'Generating…'
+                  : 'Generate 3D model'}
               </button>
             </div>
           </div>
@@ -617,11 +722,19 @@ export function ImportModelModal({
 
             {decimating ? (
               <p className="import-modal-generate-status" aria-live="polite">
-                Optimizing mesh… (may take a minute on large models)
+                {file?.name === 'generated.glb'
+                  ? 'Processing downloaded model…'
+                  : 'Optimizing mesh… (may take a minute on large models)'}
               </p>
             ) : null}
 
-            {decimationInfo?.skipped ? (
+            {decimationInfo?.skipped && file?.name.toLowerCase() === 'generated.glb' ? (
+              <p className="import-modal-decimate-skip">
+                AI-generated models skip browser polygon reduction. You can add to the library as-is.
+              </p>
+            ) : null}
+
+            {decimationInfo?.skipped && file?.name.toLowerCase().endsWith('.gltf') ? (
               <p className="import-modal-decimate-skip">
                 Polygon reduction applies to <strong>.glb</strong> only; .gltf files are uploaded as-is.
               </p>
@@ -635,12 +748,23 @@ export function ImportModelModal({
             ) : null}
 
             {decimationError ? (
-              <div className="import-modal-error" role="alert">
+              <div className="import-modal-error" role="status">
                 {decimationError}
               </div>
             ) : null}
 
-            {decimatedFile && !decimating && (file?.name?.toLowerCase() ?? '').endsWith('.glb') ? (
+            {file?.name === 'generated.glb' && decimatedFile && !decimating ? (
+              <p className="import-modal-generate-hint">
+                Model ready — set dimensions below, then add to library.
+              </p>
+            ) : null}
+
+            {decimatedFile &&
+            !decimating &&
+            (file?.name?.toLowerCase() ?? '').endsWith('.glb') &&
+            file?.name.toLowerCase() !== 'generated.glb' &&
+            decimationInfo &&
+            !decimationInfo.skipped ? (
               <button
                 type="button"
                 className="import-modal-decimate-btn"
@@ -649,12 +773,6 @@ export function ImportModelModal({
               >
                 Download 50K polygon version
               </button>
-            ) : null}
-
-            {file?.name === 'generated.glb' ? (
-              <p className="import-modal-generate-hint">
-                Using AI-generated model. Adjust dimensions below, then add to library.
-              </p>
             ) : null}
 
             {file?.name?.toLowerCase() === 'poster.glb' ? (

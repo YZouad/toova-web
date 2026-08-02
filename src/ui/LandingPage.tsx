@@ -1,6 +1,7 @@
-import { useRef, type RefObject } from 'react';
+import { useRef, useState, type RefObject } from 'react';
 import { useChecklistModal } from '../hooks/useChecklistModal';
 import { ChecklistModal } from './ChecklistModal';
+import { FeedbackModal } from './FeedbackModal';
 import { HeroTurntable } from './HeroTurntable';
 import { MarketingNav } from './MarketingNav';
 
@@ -63,6 +64,7 @@ interface LandingPageProps {
   onPitchMadness: () => void;
   onWatchDemo: () => void;
   onOpenChecklist: () => void;
+  onContact: () => void;
   onAdmin?: () => void;
   loggedIn?: boolean;
   onGoDashboard?: () => void;
@@ -103,12 +105,14 @@ export function LandingPage({
   onPitchMadness,
   onWatchDemo,
   onOpenChecklist,
+  onContact,
   onAdmin,
   loggedIn,
   onGoDashboard,
 }: LandingPageProps) {
   const doubled = [...MARQUEE_PIECES, ...MARQUEE_PIECES];
   const { open: checklistOpen, closeChecklist } = useChecklistModal();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const howRef = useRef<HTMLElement>(null);
   const galleryRef = useRef<HTMLElement>(null);
@@ -130,6 +134,11 @@ export function LandingPage({
         onClose={closeChecklist}
         onViewChecklist={onOpenChecklist}
       />
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        pageSource="landing"
+      />
       <MarketingNav
         page="landing"
         primaryLabel={primaryLabel}
@@ -137,6 +146,7 @@ export function LandingPage({
         onPrimary={primaryAction}
         onSecondary={secondaryAction}
         onPitchMadness={onPitchMadness}
+        onContact={onContact}
         onHowItWorks={() => scrollTo(howRef)}
         onGallery={() => scrollTo(galleryRef)}
         onPricing={() => scrollTo(pricingRef)}
@@ -416,6 +426,8 @@ export function LandingPage({
             <span style={{ fontFamily: 'var(--font-serif)', fontSize: 18, color: '#2B2620' }}>Toova</span>
           </div>
           <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+            <button type="button" className="landing-footer-link" onClick={onContact}>Contact</button>
+            <button type="button" className="landing-footer-link" onClick={() => setFeedbackOpen(true)}>Feedback</button>
             <span style={{ cursor: 'pointer' }}>Privacy</span>
             <span style={{ cursor: 'pointer' }}>Terms</span>
             {onAdmin ? (

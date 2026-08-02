@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-type NavPage = 'landing' | 'pitch-madness';
+type NavPage = 'landing' | 'pitch-madness' | 'contact';
 
 interface MarketingNavProps {
   page: NavPage;
@@ -14,6 +14,7 @@ interface MarketingNavProps {
   onHowItWorks?: () => void;
   onGallery?: () => void;
   onPricing?: () => void;
+  onContact?: () => void;
 }
 
 export function MarketingNav({
@@ -28,6 +29,7 @@ export function MarketingNav({
   onHowItWorks,
   onGallery,
   onPricing,
+  onContact,
 }: MarketingNavProps) {
   const [open, setOpen] = useState(false);
 
@@ -47,7 +49,7 @@ export function MarketingNav({
   return (
     <nav className="landing-nav">
       <div className="landing-nav-inner">
-        {page === 'pitch-madness' ? (
+        {page === 'pitch-madness' || page === 'contact' ? (
           <button type="button" className="landing-nav-brand" onClick={() => run(onHome)}>
             {brand}
           </button>
@@ -72,11 +74,19 @@ export function MarketingNav({
               <button type="button" className="landing-nav-link" onClick={() => run(onGallery)}>Gallery</button>
               <button type="button" className="landing-nav-link" onClick={() => run(onPricing)}>Pricing</button>
               <button type="button" className="landing-nav-link" onClick={() => run(onPitchMadness)}>Pitch Madness</button>
+              <button type="button" className="landing-nav-link" onClick={() => run(onContact)}>Contact</button>
+            </>
+          ) : page === 'contact' ? (
+            <>
+              <button type="button" className="landing-nav-link" onClick={() => run(onHome)}>Home</button>
+              <button type="button" className="landing-nav-link" onClick={() => run(onPitchMadness)}>Pitch Madness</button>
+              <span className="landing-nav-link landing-nav-link--active">Contact</span>
             </>
           ) : (
             <>
               <button type="button" className="landing-nav-link" onClick={() => run(onHome)}>Home</button>
               <button type="button" className="landing-nav-link" onClick={() => run(onSeeDemo)}>See demo</button>
+              <button type="button" className="landing-nav-link" onClick={() => run(onContact)}>Contact</button>
               <span className="landing-nav-link landing-nav-link--active">Pitch Madness</span>
             </>
           )}

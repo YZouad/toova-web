@@ -7,21 +7,52 @@ import {
 } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
+import { parseFloorPlan, type FloorPlan } from '../lib/roomGeometry';
 import { formatRelativeTime, userDisplayName, userFirstName, userInitials } from '../lib/userDisplay';
+import { FeedbackModal } from './FeedbackModal';
+import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
 
 const MAX_ROOMS = 5;
 
 const ROOM_TYPES = ['Living Room', 'Bedroom', 'Office', 'Dining', 'Studio'];
 
-const KIND_COLORS: Record<string, string> = {
-  bed: '#C9B391',
-  dresser: '#B08C5F',
-  wardrobe: '#A88457',
-  desk: '#B5946C',
-  chair: '#CBB28F',
-  nightstand: '#C0A47A',
-  imported: '#7E8A60',
-};
+const KNOWN_KINDS = new Set([
+  'bed',
+  'dresser',
+  'wardrobe',
+  'desk',
+  'chair',
+  'nightstand',
+  'imported',
+]);
+
+function n(v: string | number): number {
+  return typeof v === 'number' ? v : Number(v);
+}
+
+interface RoomItemPreviewRow {
+  id: string;
+  room_id: string;
+  kind: string;
+  pos_x: string | number;
+  pos_y: string | number;
+  pos_z: string | number;
+  rotation_y: string | number;
+  size_w: string | number;
+  size_h: string | number;
+  size_d: string | number;
+}
+
+function rowToPreviewItem(row: RoomItemPreviewRow): RoomPreviewItem | null {
+  if (!KNOWN_KINDS.has(row.kind)) return null;
+  return {
+    id: row.id,
+    kind: row.kind,
+    position: [n(row.pos_x), n(row.pos_y), n(row.pos_z)],
+    rotationY: n(row.rotation_y),
+    size: [n(row.size_w), n(row.size_h), n(row.size_d)],
+  };
+}
 
 export interface ListedRoomRow {
   id: string;
@@ -29,6 +60,8 @@ export interface ListedRoomRow {
   updated_at: string;
   sort_order: number;
   item_count: number;
+  geometry: FloorPlan | null;
+  items: RoomPreviewItem[];
 }
 
 function nextRoomName(rooms: ListedRoomRow[]): string {
@@ -64,11 +97,12 @@ export function Dashboard({
   const [newRoomName, setNewRoomName] = useState('');
   const [newRoomType, setNewRoomType] = useState('Living Room');
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const fetchRooms = useCallback(async () => {
     const { data: roomRows, error } = await supabase
       .from('rooms')
-      .select('id,name,updated_at,sort_order')
+      .select('id,name,updated_at,sort_order,room_geometry')
       .eq('user_id', user.id)
       .order('sort_order', { ascending: true });
 
@@ -77,19 +111,51 @@ export function Dashboard({
       return;
     }
 
-    const base = (roomRows ?? []) as Omit<ListedRoomRow, 'item_count'>[];
+    const base = (roomRows ?? []) as Array<{
+      id: string;
+      name: string;
+      updated_at: string;
+      sort_order: number;
+      room_geometry: unknown;
+    }>;
 
-    const withCounts = await Promise.all(
-      base.map(async (r): Promise<ListedRoomRow> => {
-        const { count } = await supabase
-          .from('room_items')
-          .select('id', { count: 'exact', head: true })
-          .eq('room_id', r.id);
-        return { ...r, item_count: count ?? 0 };
-      }),
-    );
+    const roomIds = base.map((r) => r.id);
+    const itemsByRoom = new Map<string, RoomPreviewItem[]>();
 
-    setRooms(withCounts);
+    if (roomIds.length > 0) {
+      const { data: itemRows, error: itemsErr } = await supabase
+        .from('room_items')
+        .select('id, room_id, kind, pos_x, pos_y, pos_z, rotation_y, size_w, size_h, size_d')
+        .in('room_id', roomIds);
+
+      if (itemsErr) {
+        setListError(itemsErr.message);
+        return;
+      }
+
+      for (const row of (itemRows ?? []) as RoomItemPreviewRow[]) {
+        const item = rowToPreviewItem(row);
+        if (!item) continue;
+        const list = itemsByRoom.get(row.room_id) ?? [];
+        list.push(item);
+        itemsByRoom.set(row.room_id, list);
+      }
+    }
+
+    const withPreviews: ListedRoomRow[] = base.map((r) => {
+      const items = itemsByRoom.get(r.id) ?? [];
+      return {
+        id: r.id,
+        name: r.name,
+        updated_at: r.updated_at,
+        sort_order: r.sort_order,
+        geometry: parseFloorPlan(r.room_geometry),
+        items,
+        item_count: items.length,
+      };
+    });
+
+    setRooms(withPreviews);
     setListError(null);
   }, [user.id]);
 
@@ -210,6 +276,13 @@ export function Dashboard({
 
   return (
     <div className="dashboard-page tv-scroll">
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        pageSource="dashboard"
+        defaultEmail={user.email ?? ''}
+        userId={user.id}
+      />
       <div className="dashboard-topbar">
         <div className="dashboard-topbar-inner">
           <button type="button" onClick={onGoLanding} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
@@ -217,6 +290,9 @@ export function Dashboard({
             <span className="tv-logo-text" style={{ fontSize: 22 }}>Toova</span>
           </button>
           <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
+            <button type="button" className="feedback-btn-ghost" onClick={() => setFeedbackOpen(true)}>
+              Feedback
+            </button>
             <div style={{ textAlign: 'right' }}>
               <div style={{ fontSize: 13, fontWeight: 600 }}>{userDisplayName(user.email)}</div>
               <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>Free plan</div>
@@ -266,21 +342,7 @@ export function Dashboard({
               return (
                 <div key={r.id} className={`dashboard-room-card${menuOpen ? ' dashboard-room-card--menu-open' : ''}`}>
                   <div className="dashboard-room-preview">
-                    {Array.from({ length: Math.min(r.item_count, 6) }).map((_, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          position: 'absolute',
-                          left: `${12 + (i % 3) * 28}%`,
-                          top: `${20 + Math.floor(i / 3) * 22}%`,
-                          width: `${18 + (i % 2) * 8}%`,
-                          height: `${12 + (i % 3) * 4}%`,
-                          borderRadius: 7,
-                          background: Object.values(KIND_COLORS)[i % Object.values(KIND_COLORS).length],
-                          opacity: 0.5,
-                        }}
-                      />
-                    ))}
+                    <RoomPreview geometry={r.geometry} items={r.items} />
                     <span style={{ position: 'absolute', left: 12, bottom: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: '#6B6357', background: 'rgba(251,247,240,.86)', padding: '3px 8px', borderRadius: 5 }}>Room</span>
                   </div>
                   <div className="dashboard-room-body">

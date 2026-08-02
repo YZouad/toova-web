@@ -13,6 +13,7 @@ import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item } from '../
 import { planBounds } from '../lib/roomGeometry';
 import { useChecklistModal } from '../hooks/useChecklistModal';
 import { ChecklistModal } from './ChecklistModal';
+import { FeedbackModal } from './FeedbackModal';
 import { FurniturePreview } from './FurniturePreview';
 import { ImportModelModal } from './ImportModelModal';
 import { SceneCheckoutPanel } from './SceneCheckoutPanel';
@@ -133,6 +134,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
 
   const [beddingBusy, setBeddingBusy] = useState(false);
   const { open: checklistOpen, closeChecklist } = useChecklistModal();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const { catalog, loading: catalogLoading, refresh: refreshCatalog } = useUserCatalog(Boolean(user?.id));
   const builtinPreviews = useBuiltinPreviews();
@@ -299,6 +301,13 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           />
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            type="button"
+            className="feedback-btn-ghost"
+            onClick={() => setFeedbackOpen(true)}
+          >
+            Feedback
+          </button>
           <button
             type="button"
             className="designer-checklist-btn"
@@ -782,6 +791,13 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         open={checklistOpen}
         onClose={closeChecklist}
         onViewChecklist={onOpenChecklist}
+      />
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        pageSource="designer"
+        defaultEmail={user?.email ?? ''}
+        userId={user?.id ?? null}
       />
     </div>
   );
