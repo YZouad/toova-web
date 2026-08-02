@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { buildAndUploadCatalogThumbnail } from '../lib/buildCatalogThumbnail';
 import { createPosterGlb } from '../lib/createPosterGlb';
 import { decimateGlb } from '../lib/decimateGlb';
 import { formatInchDim, readGlbAxisBounds } from '../lib/glbBounds';
@@ -323,6 +324,17 @@ export function ImportModelModal({
 
       if (upErr) throw new Error(upErr.message);
 
+      let thumbnailPath: string | null = null;
+      try {
+        thumbnailPath = await buildAndUploadCatalogThumbnail(userId, {
+          glbFile: uploadFile,
+          imageFile,
+          posterBlob: posterCroppedBlob,
+        });
+      } catch {
+        /* thumbnail is best-effort */
+      }
+
       const { error: insErr } = await supabase.from('furniture_catalog').insert({
         kind,
         label,
@@ -333,6 +345,7 @@ export function ImportModelModal({
         clearance_in: clearance,
         is_builtin: false,
         model_url: objectPath,
+        thumbnail_path: thumbnailPath,
         tags,
         user_id: userId,
       });

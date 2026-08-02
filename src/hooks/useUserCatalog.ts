@@ -1,7 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import { signModelObjectPath } from '../lib/modelStorage';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  enqueueCatalogThumbnailBackfill,
+  getSessionCatalogPreview,
+} from '../lib/catalogThumbnailBackfill';
 import { parseInchDims } from '../lib/importedItemSize';
+import { signModelObjectPath } from '../lib/modelStorage';
+import { supabase } from '../lib/supabase';
 
 export interface UserCatalogEntry {
   kind: string;
@@ -12,10 +16,13 @@ export interface UserCatalogEntry {
   height_in: number;
   depth_in: number;
   clearance_in: number | null;
+  userId: string | null;
   /** Object path in `model-files` bucket; empty if legacy full URL in DB. */
   storagePath: string;
   /** URL for useGLTF (signed or absolute). */
   signedUrl: string | null;
+  /** Signed thumbnail path or session snapshot. */
+  previewUrl: string | null;
 }
 
 function n(v: unknown): number {
@@ -27,6 +34,15 @@ export function useUserCatalog(enabled: boolean) {
   const [catalog, setCatalog] = useState<UserCatalogEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const currentUserIdRef = useRef<string | null>(null);
+
+  const patchPreview = useCallback((kind: string, previewUrl: string) => {
+    setCatalog((prev) =>
+      prev.map((entry) =>
+        entry.kind === kind ? { ...entry, previewUrl } : entry,
+      ),
+    );
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!enabled) {
@@ -36,10 +52,13 @@ export function useUserCatalog(enabled: boolean) {
     setLoading(true);
     setError(null);
     try {
+      const { data: authData } = await supabase.auth.getUser();
+      currentUserIdRef.current = authData.user?.id ?? null;
+
       const { data, error: qErr } = await supabase
         .from('furniture_catalog')
         .select(
-          'kind,label,description,tags,width_in,height_in,depth_in,clearance_in,model_url',
+          'kind,label,description,tags,width_in,height_in,depth_in,clearance_in,model_url,thumbnail_path,user_id',
         )
         .eq('is_builtin', false)
         .order('label');
@@ -63,6 +82,14 @@ export function useUserCatalog(enabled: boolean) {
           const dims = parseInchDims(row.width_in, row.height_in, row.depth_in);
           if (!dims) return null;
 
+          const thumbPath = (row.thumbnail_path as string | null)?.trim() ?? '';
+          let previewUrl: string | null = null;
+          if (thumbPath) {
+            previewUrl = await signModelObjectPath(thumbPath);
+          } else {
+            previewUrl = getSessionCatalogPreview(row.kind as string) ?? null;
+          }
+
           return {
             kind: row.kind as string,
             label: row.label as string,
@@ -75,8 +102,10 @@ export function useUserCatalog(enabled: boolean) {
               row.clearance_in != null && row.clearance_in !== ''
                 ? n(row.clearance_in)
                 : null,
+            userId: (row.user_id as string | null) ?? null,
             storagePath: isAbsolute ? '' : path,
             signedUrl,
+            previewUrl,
           };
         }),
       );
@@ -86,6 +115,22 @@ export function useUserCatalog(enabled: boolean) {
       );
 
       setCatalog(out);
+
+      const backfillJobs = out
+        .filter((e) => !e.previewUrl && e.signedUrl)
+        .map((e) => ({
+          kind: e.kind,
+          signedUrl: e.signedUrl!,
+          ownerUserId: e.userId,
+        }));
+
+      if (backfillJobs.length > 0) {
+        enqueueCatalogThumbnailBackfill(
+          backfillJobs,
+          currentUserIdRef.current,
+          patchPreview,
+        );
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to load models';
       setError(msg);
@@ -93,7 +138,7 @@ export function useUserCatalog(enabled: boolean) {
     } finally {
       setLoading(false);
     }
-  }, [enabled]);
+  }, [enabled, patchPreview]);
 
   useEffect(() => {
     void refresh();

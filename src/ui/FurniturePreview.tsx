@@ -5,8 +5,8 @@ interface FurniturePreviewProps {
   kind: string;
   /** Inch dimensions [w, h, d]. Shown as a proportion hint for imported models. */
   size?: [number, number, number];
-  /** Unused — palette previews are CSS-only to avoid exhausting WebGL contexts. */
-  url?: string;
+  /** Signed thumbnail or session snapshot URL for community/imported models. */
+  previewUrl?: string | null;
   className?: string;
   style?: CSSProperties;
 }
@@ -41,10 +41,14 @@ function labelForKind(kind: string): string {
 }
 
 /**
- * CSS-only palette thumbnail. Intentionally avoids WebGL so the designer scene
- * keeps its single context when the furniture palette is open.
+ * Palette thumbnail: JPEG preview when available, else CSS swatch (no WebGL per tile).
  */
-export function FurniturePreview({ kind, className, style }: FurniturePreviewProps) {
+export function FurniturePreview({
+  kind,
+  previewUrl,
+  className,
+  style,
+}: FurniturePreviewProps) {
   const color = SWATCH_COLORS[kind] ?? '#CBB28F';
   const glyph = KIND_GLYPH[kind] ?? '▢';
   const label = labelForKind(kind);
@@ -63,23 +67,32 @@ export function FurniturePreview({ kind, className, style }: FurniturePreviewPro
       title={label}
       aria-hidden
     >
-      <div
-        className="furniture-preview-swatch"
-        style={{
-          width: '72%',
-          height: '72%',
-          borderRadius: 10,
-          background: `linear-gradient(145deg, ${color} 0%, color-mix(in srgb, ${color} 68%, #2a2018) 100%)`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          fontSize: 'clamp(18px, 28%, 32px)',
-          color: 'color-mix(in srgb, #fff 55%, #2a2018)',
-          boxShadow: 'inset 0 1px 0 color-mix(in srgb, #fff 25%, transparent)',
-        }}
-      >
-        {glyph}
-      </div>
+      {previewUrl ? (
+        <img
+          className="furniture-preview-img"
+          src={previewUrl}
+          alt=""
+          draggable={false}
+        />
+      ) : (
+        <div
+          className="furniture-preview-swatch"
+          style={{
+            width: '72%',
+            height: '72%',
+            borderRadius: 10,
+            background: `linear-gradient(145deg, ${color} 0%, color-mix(in srgb, ${color} 68%, #2a2018) 100%)`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 'clamp(18px, 28%, 32px)',
+            color: 'color-mix(in srgb, #fff 55%, #2a2018)',
+            boxShadow: 'inset 0 1px 0 color-mix(in srgb, #fff 25%, transparent)',
+          }}
+        >
+          {glyph}
+        </div>
+      )}
     </div>
   );
 }
