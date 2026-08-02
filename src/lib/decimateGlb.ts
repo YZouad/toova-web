@@ -13,6 +13,14 @@ export type DecimateGlbResult = {
   skipped?: boolean;
 };
 
+/** Skip browser decimation above this size (large AI models can OOM in Three.js). */
+export const SKIP_DECIMATION_BYTES = 10 * 1024 * 1024;
+
+export function shouldSkipDecimation(file: File): boolean {
+  if (file.name.toLowerCase() === 'generated.glb') return true;
+  return file.size > SKIP_DECIMATION_BYTES;
+}
+
 function triangleCount(geometry: THREE.BufferGeometry): number {
   const position = geometry.getAttribute('position');
   if (!position) return 0;

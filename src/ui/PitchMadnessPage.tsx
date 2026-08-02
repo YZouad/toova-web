@@ -6,6 +6,7 @@ interface PitchMadnessPageProps {
   onGoHome: () => void;
   onGetStarted: () => void;
   onLogin: () => void;
+  onContact: () => void;
   onAdmin?: () => void;
   loggedIn?: boolean;
   onGoDashboard?: () => void;
@@ -98,6 +99,7 @@ export function PitchMadnessPage({
   onGoHome,
   onGetStarted,
   onLogin,
+  onContact,
   onAdmin,
   loggedIn,
   onGoDashboard,
@@ -138,6 +140,7 @@ export function PitchMadnessPage({
         onSecondary={secondaryAction}
         onHome={onGoHome}
         onSeeDemo={scrollToDemos}
+        onContact={onContact}
       />
 
       <header className="pitch-hero-band">
@@ -297,6 +300,7 @@ export function PitchMadnessPage({
             <span style={{ fontFamily: 'var(--font-serif)', fontSize: 18, color: '#2B2620' }}>Toova</span>
           </button>
           <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
+            <button type="button" className="landing-footer-link" onClick={onContact}>Contact</button>
             <span style={{ cursor: 'pointer' }}>Privacy</span>
             <span style={{ cursor: 'pointer' }}>Terms</span>
             {onAdmin ? (

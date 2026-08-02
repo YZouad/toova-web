@@ -15,9 +15,10 @@ import { Designer } from './ui/Designer';
 import { FloorPlanSetup } from './ui/FloorPlanSetup';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole } from './ui/AdminConsole';
+import { ContactPage } from './ui/ContactPage';
 import { Dock, type DockNav } from './ui/Dock';
 
-type Screen = 'landing' | 'pitch-madness' | 'auth' | 'dashboard' | 'floor-plan' | 'designer' | 'admin' | 'ar' | 'checklist';
+type Screen = 'landing' | 'pitch-madness' | 'contact' | 'auth' | 'dashboard' | 'floor-plan' | 'designer' | 'admin' | 'ar' | 'checklist';
 
 interface FloorPlanDraft {
   name: string;
@@ -227,10 +228,10 @@ export default function App() {
     screen === 'dashboard' ? 'rooms'
     : screen === 'admin' ? 'admin'
     : screen === 'ar' ? 'ar'
-    : screen === 'landing' || screen === 'pitch-madness' ? 'home'
+    : screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' ? 'home'
     : null;
 
-  const showDock = user && (screen === 'landing' || screen === 'pitch-madness' || screen === 'dashboard' || screen === 'admin' || screen === 'ar');
+  const showDock = user && (screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' || screen === 'dashboard' || screen === 'admin' || screen === 'ar');
 
   function handleDockNav(nav: DockNav) {
     if (nav === 'home') {
@@ -289,12 +290,31 @@ export default function App() {
     );
   }
 
+  if (screen === 'contact') {
+    return (
+      <>
+        <ContactPage
+          {...landingCallbacks}
+          onGoHome={() => setScreen('landing')}
+          onPitchMadness={() => {
+            setPitchScrollToDemos(false);
+            setScreen('pitch-madness');
+          }}
+        />
+        {showDock ? (
+          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
+        ) : null}
+      </>
+    );
+  }
+
   if (screen === 'landing') {
     return (
       <>
         <LandingPage
           {...landingCallbacks}
           onOpenChecklist={() => openChecklistFrom('landing')}
+          onContact={() => setScreen('contact')}
           onPitchMadness={() => {
             setPitchScrollToDemos(false);
             setScreen('pitch-madness');
@@ -317,6 +337,7 @@ export default function App() {
         <PitchMadnessPage
           {...landingCallbacks}
           onGoHome={() => setScreen('landing')}
+          onContact={() => setScreen('contact')}
           scrollToDemosOnMount={pitchScrollToDemos}
           onDemosScrolled={() => setPitchScrollToDemos(false)}
         />

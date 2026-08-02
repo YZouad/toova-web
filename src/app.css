@@ -1270,6 +1270,27 @@ button.landing-nav-brand { cursor: pointer; }
   border-radius: 16px 16px 0 0;
   overflow: hidden;
 }
+.room-preview-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.room-preview-floor {
+  fill: rgba(251, 247, 240, 0.72);
+}
+.room-preview-wall {
+  stroke: #9A7B5A;
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+  stroke-linecap: round;
+}
+.room-preview-furniture {
+  opacity: 0.82;
+  stroke: rgba(43, 38, 32, 0.18);
+  stroke-width: 0.75;
+  vector-effect: non-scaling-stroke;
+  rx: 1.5;
+}
 .dashboard-room-body { padding: 15px 16px 16px; }
 .dashboard-empty {
   border: 1px dashed #C9BBA0;
@@ -2283,6 +2304,151 @@ button.landing-nav-brand { cursor: pointer; }
   padding: 6px;
 }
 .checklist-modal-dismiss:hover { color: var(--text-muted); }
+
+/* ── Feedback modal ── */
+.feedback-modal {
+  max-width: 440px;
+}
+.feedback-modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  margin-top: 18px;
+}
+.feedback-modal-form .tv-label {
+  margin-top: 14px;
+}
+.feedback-modal-form .tv-label:first-of-type {
+  margin-top: 0;
+}
+.feedback-modal-form .tv-input {
+  margin-top: 6px;
+}
+.feedback-modal-select {
+  cursor: pointer;
+}
+.feedback-modal-textarea {
+  resize: vertical;
+  min-height: 96px;
+  font-family: inherit;
+  line-height: 1.45;
+}
+.feedback-modal-success {
+  margin-top: 18px;
+}
+
+/* ── Contact page ── */
+.contact-page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.contact-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px 72px;
+}
+.contact-inner {
+  width: 100%;
+  max-width: 560px;
+}
+.contact-title {
+  font-family: var(--font-serif);
+  font-size: clamp(36px, 6vw, 48px);
+  font-weight: 500;
+  margin: 0 0 14px;
+  color: var(--text);
+}
+.contact-lead {
+  font-size: 17px;
+  line-height: 1.55;
+  color: var(--text-muted);
+  margin: 0 0 32px;
+  max-width: 480px;
+}
+.contact-email-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+.contact-email-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: #fff;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 0.15s, background 0.15s;
+}
+.contact-email-card:hover {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+}
+.contact-email-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+.contact-email-address {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.contact-feedback-btn {
+  font-size: 15px;
+  padding: 12px 22px;
+  border-radius: 10px;
+}
+.contact-footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  font-family: inherit;
+}
+.landing-footer-link {
+  cursor: pointer;
+  background: none;
+  border: none;
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+  padding: 0;
+}
+.landing-footer-link:hover {
+  color: var(--text);
+}
+.landing-footer-link--active {
+  font-weight: 600;
+  color: var(--text);
+}
+.feedback-btn-ghost {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text-dark);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 9px;
+}
+.feedback-btn-ghost:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent);
+}
 
 /* ── Checklist page ── */
 .checklist-page {
