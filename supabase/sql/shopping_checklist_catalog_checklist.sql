@@ -1,0 +1,14 @@
+-- Post-deploy checks for shopping_checklist_catalog
+-- 1) RLS enabled on shopping tables
+-- select relname, relrowsecurity from pg_class
+--   where relname in ('checklist_categories','curated_products','user_checklist_progress','user_shopping_list');
+-- 2) Published catalog readable as anon
+-- select count(*) from checklist_categories where published;
+-- select count(*) from curated_products where published;
+-- 3) room_items.curated_product_id exists
+-- select column_name from information_schema.columns
+--   where table_name='room_items' and column_name='curated_product_id';
+-- 4) get_shared_room returns published_products key (call with a real token)
+-- select jsonb_object_keys(public.get_shared_room('<token>'));
+-- 5) product-images bucket is public
+-- select id, public from storage.buckets where id='product-images';

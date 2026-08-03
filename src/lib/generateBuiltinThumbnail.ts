@@ -185,6 +185,38 @@ function buildNightstandGroup(): THREE.Group {
   return group;
 }
 
+function buildLampGroup(): THREE.Group {
+  const [w, h, d] = FURNITURE.lamp.size;
+  const group = new THREE.Group();
+  const baseR = Math.min(w, d) * 0.4;
+  const baseH = h * 0.08;
+  const stemH = h * 0.55;
+  const shadeH = h * 0.32;
+  const base = new THREE.Mesh(
+    new THREE.CylinderGeometry(baseR * 0.85, baseR, baseH, 16),
+    new THREE.MeshStandardMaterial({ color: '#3a2e22', roughness: 0.55, metalness: 0.15 }),
+  );
+  base.position.y = baseH / 2;
+  group.add(base);
+  const stem = new THREE.Mesh(
+    new THREE.CylinderGeometry(baseR * 0.12, baseR * 0.12, stemH, 12),
+    new THREE.MeshStandardMaterial({ color: '#6b6357', roughness: 0.45, metalness: 0.2 }),
+  );
+  stem.position.y = baseH + stemH / 2;
+  group.add(stem);
+  const shade = new THREE.Mesh(
+    new THREE.CylinderGeometry(baseR * 0.45, baseR, shadeH, 16, 1, true),
+    new THREE.MeshStandardMaterial({
+      color: '#f2e6d4',
+      roughness: 0.85,
+      side: THREE.DoubleSide,
+    }),
+  );
+  shade.position.y = baseH + stemH + shadeH / 2;
+  group.add(shade);
+  return group;
+}
+
 const BUILDERS: Record<BuiltinKind, () => THREE.Group> = {
   bed: buildBedGroup,
   dresser: buildDresserGroup,
@@ -192,6 +224,7 @@ const BUILDERS: Record<BuiltinKind, () => THREE.Group> = {
   desk: buildDeskGroup,
   chair: buildChairGroup,
   nightstand: buildNightstandGroup,
+  lamp: buildLampGroup,
 };
 
 /** Render a builtin furniture kind to a JPEG palette thumbnail. */

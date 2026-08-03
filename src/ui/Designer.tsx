@@ -34,6 +34,7 @@ const BUILTIN_CATS: Record<Exclude<FurnitureKind, 'imported'>, string> = {
   desk: 'Office',
   chair: 'Seating',
   nightstand: 'Storage',
+  lamp: 'Lighting',
 };
 
 const KIND_COLORS: Record<string, string> = {
@@ -43,6 +44,7 @@ const KIND_COLORS: Record<string, string> = {
   desk: '#B5946C',
   chair: '#CBB28F',
   nightstand: '#C0A47A',
+  lamp: '#D4C4A0',
   imported: '#7E8A60',
 };
 

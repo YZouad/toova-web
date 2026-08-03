@@ -12,6 +12,7 @@ const KNOWN_KINDS: FurnitureKind[] = [
   'desk',
   'chair',
   'nightstand',
+  'lamp',
   'imported',
 ];
 
@@ -42,6 +43,7 @@ export interface RoomItemRow {
   blanket_color?: string | null;
   blanket_texture_path?: string | null;
   emitter?: EmitterConfig | null;
+  curated_product_id?: string | null;
 }
 
 export type RoomItemInsert = {
@@ -65,6 +67,7 @@ export type RoomItemInsert = {
   blanket_color: string | null;
   blanket_texture_path: string | null;
   emitter?: EmitterConfig | null;
+  curated_product_id: string | null;
 };
 
 function n(v: string | number): number {
@@ -125,6 +128,10 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
       : undefined;
 
   const emitter = parseEmitter(row.emitter);
+  const curatedProductId =
+    row.curated_product_id != null && String(row.curated_product_id).trim()
+      ? String(row.curated_product_id).trim()
+      : undefined;
 
   return {
     id: row.id,
@@ -142,6 +149,7 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     importedUrl,
     importedStoragePath,
     emitter,
+    curatedProductId,
   };
 }
 
@@ -208,6 +216,7 @@ export function serializeLayoutForRoom(
         it.kind === 'bed' && it.blanketTexturePath
           ? it.blanketTexturePath
           : null,
+      curated_product_id: it.curatedProductId ?? null,
       emitter: it.emitter?.enabled ? it.emitter : null,
     };
     out.push(row);
