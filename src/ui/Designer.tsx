@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useBuiltinPreviews, getBuiltinPreviewUrl } from '../hooks/useBuiltinPreviews';
 import { useRoomSave } from '../hooks/useRoomLayout';
 import { useUserCatalog, type UserCatalogEntry } from '../hooks/useUserCatalog';
+import { recordCatalogDownload } from '../lib/catalogEngagement';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { supabase } from '../lib/supabase';
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
@@ -241,12 +242,21 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           catalogSizeIn: dims,
         });
         baseSizeRef.current.set(id, dims);
+        if (
+          c.visibility === 'public' &&
+          c.userId &&
+          c.userId !== user?.id
+        ) {
+          void recordCatalogDownload(c.kind).catch(() => {
+            /* best-effort */
+          });
+        }
       }
       pushRecent(entry.kind);
       setRecentKinds(loadRecent());
       setPaletteOpen(false);
     },
-    [addItem],
+    [addItem, user?.id],
   );
 
   const uniformBase = item

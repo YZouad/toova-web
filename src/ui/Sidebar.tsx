@@ -3,6 +3,7 @@ import { useRoomWorkspace } from '../context/RoomWorkspaceContext';
 import { useAuth } from '../hooks/useAuth';
 import { useRoomSave } from '../hooks/useRoomLayout';
 import { useUserCatalog } from '../hooks/useUserCatalog';
+import { recordCatalogDownload } from '../lib/catalogEngagement';
 import { useStore } from '../store';
 import { FURNITURE } from '../furniture/registry';
 import { ImportModelModal } from './ImportModelModal';
@@ -49,6 +50,13 @@ export function Sidebar() {
               type="button"
               className="tile"
               disabled={!entry.signedUrl}
+              title={
+                entry.visibility === 'public'
+                  ? `${entry.likesCount} likes · ${entry.downloadsCount} downloads · ${entry.viewsCount} views`
+                  : entry.visibility === 'unlisted'
+                    ? 'Unlisted'
+                    : 'Private (only you)'
+              }
               onClick={() => {
                 if (!entry.signedUrl) return;
                 addItem('imported', {
@@ -58,6 +66,15 @@ export function Sidebar() {
                   size: [entry.width_in, entry.height_in, entry.depth_in],
                   catalogSizeIn: [entry.width_in, entry.height_in, entry.depth_in],
                 });
+                if (
+                  entry.visibility === 'public' &&
+                  entry.userId &&
+                  entry.userId !== user?.id
+                ) {
+                  void recordCatalogDownload(entry.kind).catch(() => {
+                    /* best-effort metric */
+                  });
+                }
               }}
             >
               {entry.label}

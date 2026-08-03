@@ -23,7 +23,7 @@ export function FeedbackModal({
   onClose,
   pageSource,
   defaultEmail = '',
-  userId = null,
+  userId: _userId = null,
 }: FeedbackModalProps) {
   const [category, setCategory] = useState<FeedbackCategory>('bug');
   const [email, setEmail] = useState(defaultEmail);
@@ -68,13 +68,13 @@ export function FeedbackModal({
     setSubmitting(true);
     try {
       const emailTrimmed = email.trim();
-      const { error: insertErr } = await supabase.from('feedback').insert({
-        user_id: userId,
-        email: emailTrimmed || null,
-        message: trimmed,
-        category,
-        page_source: pageSource,
-        user_agent: typeof navigator !== 'undefined' ? navigator.userAgent : null,
+      const { error: insertErr } = await supabase.rpc('submit_feedback', {
+        p_message: trimmed,
+        p_category: category,
+        p_page_source: pageSource,
+        p_email: emailTrimmed || null,
+        p_user_agent:
+          typeof navigator !== 'undefined' ? navigator.userAgent : null,
       });
       if (insertErr) throw insertErr;
       setSuccess(true);
