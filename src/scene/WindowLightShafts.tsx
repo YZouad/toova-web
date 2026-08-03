@@ -1,7 +1,14 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { beamGeometryKey, horizonFactor, sampleSun, weatherGodRayStrength } from '../lib/environment';
+import {
+  beamGeometryKey,
+  horizonFactor,
+  isDaytime,
+  sampleSun,
+  sunAngles,
+  weatherGodRayStrength,
+} from '../lib/environment';
 import { planBounds } from '../lib/roomGeometry';
 import {
   computeWindowBeams,
@@ -9,6 +16,7 @@ import {
   type WindowBeam,
 } from '../lib/windowLightShafts';
 import { useStore } from '../store';
+import { resolveRenderQuality } from '../lib/renderQuality';
 
 function BeamMesh({
   beam,
@@ -26,6 +34,15 @@ function BeamMesh({
   );
 }
 
+/** True only while the sun is meaningfully above the horizon — no moonlight shafts. */
+function shaftsAllowed(timeOfDay: number, sunIntensity: number): boolean {
+  if (!isDaytime(timeOfDay)) return false;
+  const { elevationDeg } = sunAngles(timeOfDay, 0);
+  // Drop shafts near the horizon so they don't crawl the floor after sunset.
+  if (elevationDeg < 2) return false;
+  return sunIntensity >= 0.12;
+}
+
 /** Sun-aligned volumetric shafts through each window. */
 export function WindowLightShafts() {
   const godRays = useStore((s) => s.environment.godRays);
@@ -34,6 +51,9 @@ export function WindowLightShafts() {
   const exposure = useStore((s) => s.environment.exposure);
   const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
+  const quality = useStore((s) => s.visual.quality);
+  const q = resolveRenderQuality(quality);
+  const envOk = q.envDetail !== 'minimal';
 
   const weatherShaft = weatherGodRayStrength(weather);
 
@@ -48,10 +68,12 @@ export function WindowLightShafts() {
     [timeOfDay, orientationDeg, bounds],
   );
 
-  const beams = useMemo(
-    () => computeWindowBeams(geom, geomKey.time, geomKey.orient),
-    [geom, geomKey.time, geomKey.orient],
-  );
+  const allowShafts = envOk && shaftsAllowed(timeOfDay, sun.intensity);
+
+  const beams = useMemo(() => {
+    if (!allowShafts) return [] as WindowBeam[];
+    return computeWindowBeams(geom, geomKey.time, geomKey.orient);
+  }, [geom, geomKey.time, geomKey.orient, allowShafts]);
 
   const shaftMaterial = useMemo(() => createShaftMaterial(sun.color, 0.3), [sun.color]);
 
@@ -69,13 +91,25 @@ export function WindowLightShafts() {
   );
 
   useFrame(() => {
+    if (!envOk || !allowShafts) {
+      shaftMaterial.uniforms.uOpacity.value = 0;
+      return;
+    }
     const horizon = horizonFactor(timeOfDay, orientationDeg);
+    const { elevationDeg } = sunAngles(timeOfDay, orientationDeg);
+    // Fade out in the last few degrees before sunset so beams don't linger.
+    const elevFade = THREE.MathUtils.clamp((elevationDeg - 2) / 10, 0, 1);
     const shaftOpacity =
-      Math.min(0.42, sun.intensity * exposure * 0.3) * (1 - horizon * 0.4) * weatherShaft;
+      Math.min(0.55, sun.intensity * exposure * 0.42) *
+      (1 - horizon * 0.25) *
+      weatherShaft *
+      elevFade;
     shaftMaterial.uniforms.uOpacity.value = shaftOpacity;
   });
 
-  if (!godRays || weatherShaft < 0.02 || sun.intensity < 0.12 || beams.length === 0) return null;
+  if (!envOk || !godRays || !allowShafts || weatherShaft < 0.02 || beams.length === 0) {
+    return null;
+  }
 
   return (
     <group>

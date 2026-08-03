@@ -9,8 +9,7 @@ import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { supabase } from '../lib/supabase';
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
-import { formatTimeOfDay, isDaytime, WEATHER_OPTIONS } from '../lib/environment';
-import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item } from '../store';
+import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item, type CameraPresetId } from '../store';
 import { planBounds } from '../lib/roomGeometry';
 import { useChecklistModal } from '../hooks/useChecklistModal';
 import { ChecklistModal } from './ChecklistModal';
@@ -18,6 +17,9 @@ import { FeedbackModal } from './FeedbackModal';
 import { FurniturePreview } from './FurniturePreview';
 import { ImportModelModal } from './ImportModelModal';
 import { SceneCheckoutPanel } from './SceneCheckoutPanel';
+import { AtmosphereStrip } from './AtmosphereStrip';
+import { LookDrawer } from './LookDrawer';
+import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
@@ -100,7 +102,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
 
   const selectedId = useStore((s) => s.selectedId);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
-  const order = useStore((s) => s.order);
   const addItem = useStore((s) => s.addItem);
   const removeItem = useStore((s) => s.removeItem);
   const updateRotation = useStore((s) => s.updateRotation);
@@ -112,22 +113,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const setBlanketColor = useStore((s) => s.setBlanketColor);
   const setBlanketTexture = useStore((s) => s.setBlanketTexture);
   const updatePosition = useStore((s) => s.updatePosition);
-  const timeOfDay = useStore((s) => s.environment.timeOfDay);
-  const orientationDeg = useStore((s) => s.environment.orientationDeg);
-  const setTimeOfDay = useStore((s) => s.setTimeOfDay);
-  const setOrientation = useStore((s) => s.setOrientation);
-  const setExposure = useStore((s) => s.setExposure);
-  const setWeather = useStore((s) => s.setWeather);
-  const setGodRays = useStore((s) => s.setGodRays);
-  const setShadowRoof = useStore((s) => s.setShadowRoof);
-  const godRays = useStore((s) => s.environment.godRays);
-  const weather = useStore((s) => s.environment.weather);
-  const shadowRoof = useStore((s) => s.environment.shadowRoof);
-  const roomGeometry = useStore((s) => s.roomGeometry);
-  const setRoomHeight = useStore((s) => s.setRoomHeight);
   const setEmitterEnabled = useStore((s) => s.setEmitterEnabled);
   const setEmitterConfig = useStore((s) => s.setEmitterConfig);
 
+  const roomGeometry = useStore((s) => s.roomGeometry);
   const roomBounds = planBounds(roomGeometry);
   const maxItemFootprint = Math.max(roomBounds.width, roomBounds.depth, 200);
 
@@ -142,7 +131,8 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const [paletteCat, setPaletteCat] = useState('All');
   const [sizeMode, setSizeMode] = useState<'uniform' | 'axis'>('uniform');
   const [recentKinds, setRecentKinds] = useState<string[]>(loadRecent);
-  const [roomPanelOpen, setRoomPanelOpen] = useState(false);
+  const [lookOpen, setLookOpen] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
 
   const [beddingBusy, setBeddingBusy] = useState(false);
   const { open: checklistOpen, closeChecklist } = useChecklistModal();
@@ -180,8 +170,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
     meshSizedRef.current.add(item.id);
     baseSizeRef.current.set(item.id, [item.size[0], item.size[1], item.size[2]]);
   }, [item]);
-
-  const placedCount = order.length;
 
   const paletteItems = useMemo((): PaletteEntry[] => {
     const builtins: PaletteEntry[] = (Object.keys(FURNITURE) as Array<keyof typeof FURNITURE>).map((k) => ({
@@ -426,152 +414,21 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           <Scene ref={sceneRef} />
         </div>
 
-        <div className="designer-hud">
-          <span className="landing-hero-dot" />
-          Drag furniture to move · drag empty space to orbit · click a piece to edit
-        </div>
-
-        <div className="designer-status-chip">
-          <span className="landing-hero-dot" />
-          <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{roomName}</span>
-          <span style={{ fontSize: 12, color: 'var(--text-subtle)' }}>· {placedCount} pieces</span>
-        </div>
-
         <SceneCheckoutPanel onOpenChecklist={onOpenChecklist} />
 
         <div className="designer-right-rail">
-        <div className="designer-env-panel">
-          <div className="designer-env-row">
-            <span className="designer-env-glyph" aria-hidden>
-              {isDaytime(timeOfDay) ? '☀' : '☾'}
-            </span>
-            <span className="designer-env-time">{formatTimeOfDay(timeOfDay)}</span>
-            <input
-              type="range"
-              className="designer-env-slider"
-              min={0}
-              max={24}
-              step={0.25}
-              value={timeOfDay}
-              onChange={(e) => setTimeOfDay(Number(e.target.value))}
-              aria-label="Time of day"
-            />
-          </div>
-          <div className="designer-env-row">
-            <span className="designer-env-label">N</span>
-            <input
-              type="range"
-              className="designer-env-slider designer-env-orient"
-              min={0}
-              max={360}
-              step={5}
-              value={orientationDeg}
-              onChange={(e) => setOrientation(Number(e.target.value))}
-              aria-label="Room orientation"
-            />
-            <span className="designer-env-orient-val">{Math.round(orientationDeg)}°</span>
-          </div>
-          <div className="designer-env-weather">
-            {WEATHER_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                className={`designer-env-preset designer-env-weather-btn${weather === opt.id ? ' active' : ''}`}
-                title={opt.label}
-                aria-label={opt.label}
-                aria-pressed={weather === opt.id}
-                onClick={() => setWeather(opt.id)}
-              >
-                {opt.glyph}
-              </button>
-            ))}
-          </div>
-          <div className="designer-env-presets">
-            <button
-              type="button"
-              className="designer-env-preset"
-              onClick={() => { setTimeOfDay(0); setExposure(0.35); setGodRays(false); setWeather('clear'); }}
-            >
-              Midnight
-            </button>
-            <button
-              type="button"
-              className="designer-env-preset"
-              onClick={() => { setTimeOfDay(7); setExposure(1); setGodRays(true); setWeather('partlyCloudy'); }}
-            >
-              Golden hour
-            </button>
-            <button
-              type="button"
-              className="designer-env-preset"
-              onClick={() => { setTimeOfDay(13); setExposure(1); setWeather('partlyCloudy'); }}
-            >
-              Noon
-            </button>
-            <button
-              type="button"
-              className="designer-env-preset"
-              onClick={() => { setTimeOfDay(11); setExposure(0.65); setWeather('overcast'); }}
-            >
-              Overcast
-            </button>
-          </div>
-          <div className="designer-env-row" style={{ marginTop: 6 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, flex: 1 }}>
-              <input
-                type="checkbox"
-                checked={godRays}
-                onChange={(e) => setGodRays(e.target.checked)}
-                style={{ accentColor: 'var(--accent)' }}
-              />
-              Light shafts
-            </label>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600, flex: 1 }}>
-              <input
-                type="checkbox"
-                checked={shadowRoof}
-                onChange={(e) => setShadowRoof(e.target.checked)}
-                style={{ accentColor: 'var(--accent)' }}
-              />
-              Shadow roof
-            </label>
-            <button
-              type="button"
-              className="designer-env-preset"
-              onClick={() => setRoomPanelOpen((v) => !v)}
-            >
-              Room {roomPanelOpen ? '▾' : '▸'}
-            </button>
-          </div>
-          {roomPanelOpen ? (
-            <div className="designer-room-panel">
-              <div className="designer-env-row">
-                <span className="designer-env-label" style={{ minWidth: 52 }}>Height</span>
-                <input
-                  type="range"
-                  className="designer-env-slider"
-                  min={72}
-                  max={144}
-                  step={2}
-                  value={roomGeometry.height}
-                  onChange={(e) => setRoomHeight(Number(e.target.value))}
-                />
-                <span className="designer-env-orient-val">{Math.round(roomGeometry.height)}″</span>
-              </div>
-              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-                {onEditFloorPlan ? (
-                  <button type="button" className="designer-env-preset" onClick={onEditFloorPlan}>
-                    Edit floor plan
-                  </button>
-                ) : null}
-              </div>
-              <p style={{ fontSize: 11, color: 'var(--text-subtle)', marginTop: 8, marginBottom: 0 }}>
-                {roomGeometry.walls.length} walls · {roomGeometry.openings.filter((o) => o.kind === 'door').length} doors ·{' '}
-                {roomGeometry.openings.filter((o) => o.kind === 'window').length} windows
-              </p>
-            </div>
-          ) : null}
-        </div>
+          <AtmosphereStrip
+            lookOpen={lookOpen}
+            onToggleLook={() => setLookOpen((v) => !v)}
+            onCloseLook={() => setLookOpen(false)}
+          />
+          <LookDrawer
+            open={lookOpen}
+            onClose={() => setLookOpen(false)}
+            onGoToPreset={(id: CameraPresetId) => sceneRef.current?.goToPreset(id)}
+            onOpenExport={() => setExportOpen(true)}
+            onEditFloorPlan={onEditFloorPlan}
+          />
         </div>
 
         {!selectedId ? (
@@ -910,6 +767,9 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         defaultEmail={user?.email ?? ''}
         userId={user?.id ?? null}
       />
+      {exportOpen ? (
+        <ExportRenderDialog sceneRef={sceneRef} onClose={() => setExportOpen(false)} />
+      ) : null}
       {shareOpen && workspace?.id && user?.id && workspace.isOwner ? (
         <ShareModal
           roomId={workspace.id}

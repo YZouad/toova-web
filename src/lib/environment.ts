@@ -490,7 +490,8 @@ export function interiorHazeParams(
   const warm = lerpHex(sun.color, '#eef3fa', 0.45);
   return {
     color: warm,
-    scatterDensity: 0.065 * strength,
+    // Keep haze subtle so it doesn't muddy the floor into a uniform shade.
+    scatterDensity: 0.038 * strength,
     sunDir: sunLightDirection(timeOfDay, orientationDeg),
   };
 }
