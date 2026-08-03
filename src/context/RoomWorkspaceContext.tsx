@@ -3,6 +3,8 @@ import { createContext, useContext, type ReactNode } from 'react';
 export interface RoomWorkspaceValue {
   id: string;
   name: string;
+  /** Owner-only actions (share links, delete). False for redeemed collaborators. */
+  isOwner: boolean;
 }
 
 interface RoomWorkspaceCtx {

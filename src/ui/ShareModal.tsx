@@ -1,128 +1,273 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { buildShareUrl } from '../lib/shareLinks';
 import {
-  buildShareUrl,
   createRoomShare,
   listRoomShares,
+  removeRoomCollaborator,
   revokeRoomShare,
+  updateRoomShareAllowCopy,
+  type RoomShareRow,
+  type ShareRole,
 } from '../lib/roomShares';
+import {
+  fetchRoomAttribution,
+  listRoomCollaboratorProfiles,
+  type CollaboratorProfileRow,
+} from '../lib/profiles';
+import { navigate, profilePath } from '../hooks/useRoute';
 
 interface ShareModalProps {
   roomId: string;
-  roomName: string;
+  userId: string;
   onClose: () => void;
 }
 
-export function ShareModal({ roomId, roomName, onClose }: ShareModalProps) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+export function ShareModal({ roomId, userId, onClose }: ShareModalProps) {
+  const [shares, setShares] = useState<RoomShareRow[]>([]);
+  const [collaborators, setCollaborators] = useState<CollaboratorProfileRow[]>([]);
+  const [forkCount, setForkCount] = useState(0);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [newRole, setNewRole] = useState<ShareRole>('viewer');
+  const [allowCopy, setAllowCopy] = useState(true);
 
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const existing = await listRoomShares(roomId);
-        const viewer = existing.find((s) => s.role === 'viewer');
-        if (!cancelled && viewer) setUrl(buildShareUrl(String(viewer.token)));
-      } catch {
-        /* ignore */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const [s, c, meta] = await Promise.all([
+        listRoomShares(roomId),
+        listRoomCollaboratorProfiles(roomId),
+        fetchRoomAttribution(roomId).catch(() => null),
+      ]);
+      setShares(s);
+      setCollaborators(c);
+      setForkCount(meta?.fork_count ?? 0);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not load share settings.');
+    } finally {
+      setLoading(false);
+    }
   }, [roomId]);
 
-  async function createLink() {
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  async function handleCreate() {
     setBusy(true);
     setError(null);
     try {
-      const created = await createRoomShare(roomId, { role: 'viewer', allowCopy: true });
-      setUrl(created.url);
+      const { token, url } = await createRoomShare(roomId, userId, {
+        role: newRole,
+        allowCopy,
+      });
+      await navigator.clipboard.writeText(url);
+      setCopiedToken(token);
+      await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not create link');
+      setError(e instanceof Error ? e.message : 'Could not create link.');
     } finally {
       setBusy(false);
     }
   }
 
-  async function copyLink() {
-    if (!url) return;
+  async function handleCopy(token: string) {
     try {
-      await navigator.clipboard.writeText(url);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
+      await navigator.clipboard.writeText(buildShareUrl(token));
+      setCopiedToken(token);
     } catch {
-      setError('Could not copy to clipboard');
+      setError('Could not copy to clipboard.');
     }
   }
 
-  async function revoke() {
-    if (!url) return;
-    const token = url.split('/r/').pop();
-    if (!token) return;
+  async function handleRevoke(token: string) {
     setBusy(true);
+    setError(null);
     try {
-      await revokeRoomShare(decodeURIComponent(token));
-      setUrl(null);
+      await revokeRoomShare(token);
+      await refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not revoke link');
+      setError(e instanceof Error ? e.message : 'Could not revoke link.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleToggleCopy(token: string, next: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      await updateRoomShareAllowCopy(token, next);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not update link.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleRemoveCollaborator(uid: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      await removeRoomCollaborator(roomId, uid);
+      await refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not remove collaborator.');
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="product-drawer-backdrop" role="presentation" onClick={onClose}>
+    <div className="share-modal-backdrop" role="presentation" onClick={onClose}>
       <div
         className="share-modal"
         role="dialog"
-        aria-modal="true"
-        aria-label="Share room"
+        aria-labelledby="share-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="product-drawer-head">
-          <div>
-            <p className="product-drawer-eyebrow">Share</p>
-            <h2 className="product-drawer-title">{roomName}</h2>
-          </div>
-          <button type="button" className="product-drawer-close" onClick={onClose} aria-label="Close">
+        <div className="share-modal-header">
+          <h2 id="share-modal-title">Share room</h2>
+          <button type="button" className="share-modal-close" onClick={onClose} aria-label="Close">
             ×
           </button>
-        </header>
-        <p className="share-modal-copy">
-          Create a view-only link. Visitors can browse items in To buy and shop affiliate picks
-          without editing your room.
+        </div>
+
+        <p className="share-modal-hint">
+          Anyone with a link can view this room. Editor links grant write access when redeemed — treat them like passwords.
+          {forkCount > 0 ? ` ${forkCount} copies have been made of this room.` : ''}
         </p>
-        {error ? <p className="share-modal-error" role="alert">{error}</p> : null}
-        {url ? (
-          <>
-            <input className="share-modal-input" readOnly value={url} />
-            <div className="share-modal-actions">
-              <button type="button" className="tv-btn-primary" onClick={() => void copyLink()}>
-                {copied ? 'Copied' : 'Copy link'}
-              </button>
-              <button
-                type="button"
-                className="tv-btn-ghost product-drawer-btn"
-                disabled={busy}
-                onClick={() => void revoke()}
-              >
-                Revoke
-              </button>
-            </div>
-          </>
-        ) : (
+
+        {error ? (
+          <div className="tv-banner-error" role="alert">{error}</div>
+        ) : null}
+
+        <div className="share-create">
+          <label className="share-field">
+            <span>Link type</span>
+            <select
+              value={newRole}
+              onChange={(e) => setNewRole(e.target.value as ShareRole)}
+              disabled={busy}
+            >
+              <option value="viewer">Viewer (recommended)</option>
+              <option value="editor">Editor</option>
+            </select>
+          </label>
+          <label className="share-check">
+            <input
+              type="checkbox"
+              checked={allowCopy}
+              onChange={(e) => setAllowCopy(e.target.checked)}
+              disabled={busy}
+            />
+            Allow “Make a copy”
+          </label>
+          {newRole === 'editor' ? (
+            <p className="share-warn">
+              Editor links let anyone who opens them save changes to your room (last write wins).
+            </p>
+          ) : null}
           <button
             type="button"
             className="tv-btn-primary"
             disabled={busy}
-            onClick={() => void createLink()}
+            onClick={() => void handleCreate()}
           >
-            {busy ? 'Creating…' : 'Create view link'}
+            Create link &amp; copy
           </button>
-        )}
+        </div>
+
+        <div className="share-section">
+          <h3>Active links</h3>
+          {loading ? (
+            <p className="share-muted">Loading…</p>
+          ) : shares.length === 0 ? (
+            <p className="share-muted">No active links yet.</p>
+          ) : (
+            <ul className="share-list">
+              {shares.map((s) => (
+                <li key={s.token} className="share-list-item">
+                  <div>
+                    <div className="share-list-title">
+                      {s.role === 'editor' ? 'Editor' : 'Viewer'} · {s.view_count} views
+                    </div>
+                    <div className="share-list-url">{buildShareUrl(s.token)}</div>
+                    <label className="share-check share-check--compact">
+                      <input
+                        type="checkbox"
+                        checked={s.allow_copy}
+                        disabled={busy}
+                        onChange={(e) => void handleToggleCopy(s.token, e.target.checked)}
+                      />
+                      Allow copies
+                    </label>
+                  </div>
+                  <div className="share-list-actions">
+                    <button type="button" disabled={busy} onClick={() => void handleCopy(s.token)}>
+                      {copiedToken === s.token ? 'Copied' : 'Copy'}
+                    </button>
+                    <button type="button" disabled={busy} onClick={() => void handleRevoke(s.token)}>
+                      Revoke
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="share-section">
+          <h3>Collaborators</h3>
+          <p className="share-muted">
+            Revoking a link does not remove people who already redeemed an editor link.
+          </p>
+          {collaborators.length === 0 ? (
+            <p className="share-muted">No collaborators yet.</p>
+          ) : (
+            <ul className="share-list">
+              {collaborators.map((c) => (
+                <li key={c.user_id} className="share-list-item">
+                  <div>
+                    <div className="share-list-title">
+                      {c.display_name}
+                      {c.handle ? (
+                        c.is_public ? (
+                          <>
+                            {' · '}
+                            <button
+                              type="button"
+                              className="share-handle-link"
+                              onClick={() => navigate(profilePath(c.handle!))}
+                            >
+                              @{c.handle}
+                            </button>
+                          </>
+                        ) : (
+                          ` · @${c.handle}`
+                        )
+                      ) : null}
+                    </div>
+                    <div className="share-list-url">{c.role} access</div>
+                  </div>
+                  <div className="share-list-actions">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void handleRemoveCollaborator(c.user_id)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
     </div>
   );

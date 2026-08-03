@@ -217,6 +217,7 @@ export function serializeLayoutForRoom(
           ? it.blanketTexturePath
           : null,
       curated_product_id: it.curatedProductId ?? null,
+      emitter: it.emitter?.enabled ? it.emitter : null,
     };
     out.push(row);
   }

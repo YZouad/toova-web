@@ -1,19 +1,38 @@
 import { supabase } from './supabase';
-import { signShareAssetPaths, urlFromShareMap } from './shareAssets';
-import {
-  dbRowToItem,
-  type RoomItemRow,
-} from './roomLayoutSerialize';
-import { parseEnvironment } from './environmentPersist';
-import { parseFloorPlan, DEFAULT_ROOM_GEOMETRY, type RoomGeometry } from './roomGeometry';
-import { DEFAULT_ENVIRONMENT, type Item, type RoomEnvironment } from '../store';
-import { mapProduct } from './shoppingCatalog';
-import type { CuratedProduct } from './dormChecklist';
-import { productImagePublicUrl } from './dormChecklist';
+import { MODEL_FILES_BUCKET } from './modelStorage';
+import { requestUnfurlDeploy } from './requestUnfurlDeploy';
+import { buildShareUrl } from './shareLinks';
 
 export type ShareRole = 'viewer' | 'editor';
 
-export interface SharedRoomPayload {
+export interface RoomShareRow {
+  token: string;
+  room_id: string;
+  role: ShareRole;
+  allow_copy: boolean;
+  created_at: string;
+  expires_at: string | null;
+  revoked_at: string | null;
+  view_count: number;
+}
+
+export interface RoomCollaboratorRow {
+  room_id: string;
+  user_id: string;
+  role: ShareRole;
+  added_via: string | null;
+  created_at: string;
+}
+
+export interface PublicAttribution {
+  visible: boolean;
+  room_id?: string;
+  room_name?: string;
+  owner_handle?: string;
+  owner_display?: string;
+}
+
+export interface SharedRoomRpcPayload {
   room: {
     id: string;
     name: string;
@@ -22,89 +41,116 @@ export interface SharedRoomPayload {
     fork_count?: number;
     thumbnail_path?: string | null;
   };
-  items: RoomItemRow[];
-  catalog_dims?: Record<string, [number, number, number] | number[]>;
-  published_products?: Record<string, Record<string, unknown>>;
-  asset_paths?: string[];
+  items: unknown[];
+  catalog_dims: Record<string, [number, number, number] | number[]>;
+  asset_paths: string[];
   role: ShareRole;
   allow_copy: boolean;
-  owner_display?: string;
+  owner_display: string;
   owner_handle?: string | null;
+  attribution?: PublicAttribution | null;
 }
 
-export interface SharedRoomLoadResult {
-  roomId: string;
-  roomName: string;
-  role: ShareRole;
-  allowCopy: boolean;
-  ownerDisplay: string;
-  items: Item[];
-  order: string[];
-  environment: RoomEnvironment;
-  roomGeometry: RoomGeometry;
-  productsById: Record<string, CuratedProduct>;
-}
-
-function buildSharePath(token: string): string {
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-  return `${base}/r/${encodeURIComponent(token)}`;
-}
-
-export function buildShareUrl(token: string): string {
-  if (typeof window === 'undefined') return buildSharePath(token);
-  return `${window.location.origin}${buildSharePath(token)}`;
-}
-
-export function parseShareTokenFromPath(pathname: string): string | null {
-  const base = (import.meta.env.BASE_URL || '/').replace(/\/$/, '');
-  const path = pathname.startsWith(base) ? pathname.slice(base.length) : pathname;
-  const match = path.match(/^\/r\/([^/]+)\/?$/);
-  if (!match) return null;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
+function shareErrorMessage(err: unknown): string {
+  if (err && typeof err === 'object' && 'message' in err) {
+    const msg = String((err as { message: string }).message);
+    if (msg.toLowerCase().includes('invalid share link')) {
+      return 'This share link is invalid or has been revoked.';
+    }
+    if (msg.toLowerCase().includes('copying is disabled')) {
+      return 'The owner disabled copies for this link.';
+    }
+    if (msg.toLowerCase().includes('room limit')) {
+      return msg;
+    }
+    return msg;
   }
+  return 'Something went wrong with this share link.';
 }
 
-export async function fetchSharedRoom(token: string): Promise<SharedRoomPayload> {
+export async function fetchSharedRoom(token: string): Promise<SharedRoomRpcPayload> {
   const { data, error } = await supabase.rpc('get_shared_room', { p_token: token });
-  if (error) throw new Error(error.message || 'Invalid share link');
-  return data as SharedRoomPayload;
+  if (error) throw new Error(shareErrorMessage(error));
+  if (!data || typeof data !== 'object') {
+    throw new Error('This share link is invalid or has been revoked.');
+  }
+  return data as SharedRoomRpcPayload;
 }
 
-export async function createRoomShare(
-  roomId: string,
-  opts?: { role?: ShareRole; allowCopy?: boolean },
-): Promise<{ token: string; url: string }> {
-  const { data: tokenData, error: tokenErr } = await supabase.rpc('gen_share_token');
-  if (tokenErr) throw new Error(tokenErr.message);
-  const token = String(tokenData);
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error('Sign in to create a share link');
+/** After get_shared_room granted paths, mint short-lived signed URLs as anon/auth. */
+export async function signGrantedAssetPaths(
+  paths: string[],
+  expiresSec = 60 * 60,
+): Promise<Record<string, string>> {
+  const unique = [...new Set(paths.map((p) => p.trim()).filter(Boolean))];
+  if (unique.length === 0) return {};
 
-  const { error } = await supabase.from('room_shares').insert({
-    token,
-    room_id: roomId,
-    role: opts?.role ?? 'viewer',
-    allow_copy: opts?.allowCopy ?? true,
-    created_by: user.id,
+  const out: Record<string, string> = {};
+  const { data, error } = await supabase.storage
+    .from(MODEL_FILES_BUCKET)
+    .createSignedUrls(unique, expiresSec);
+
+  if (error || !data) return out;
+
+  for (const row of data) {
+    if (row.path && row.signedUrl && !row.error) {
+      out[row.path] = row.signedUrl;
+    }
+  }
+  return out;
+}
+
+export async function redeemShareToken(token: string): Promise<string> {
+  const { data, error } = await supabase.rpc('redeem_share_token', { p_token: token });
+  if (error) throw new Error(shareErrorMessage(error));
+  if (!data || typeof data !== 'string') {
+    throw new Error('Could not open this shared room.');
+  }
+  return data;
+}
+
+export async function forkSharedRoom(token: string, name?: string): Promise<string> {
+  const { data, error } = await supabase.rpc('fork_shared_room', {
+    p_token: token,
+    p_name: name != null && name.trim() ? name.trim() : null,
   });
-  if (error) throw new Error(error.message);
-  return { token, url: buildShareUrl(token) };
+  if (error) throw new Error(shareErrorMessage(error));
+  if (!data || typeof data !== 'string') {
+    throw new Error('Could not make a copy of this room.');
+  }
+  return data;
 }
 
-export async function listRoomShares(roomId: string) {
+export async function listRoomShares(roomId: string): Promise<RoomShareRow[]> {
   const { data, error } = await supabase
     .from('room_shares')
-    .select('token,role,allow_copy,created_at,revoked_at,view_count')
+    .select('token, room_id, role, allow_copy, created_at, expires_at, revoked_at, view_count')
     .eq('room_id', roomId)
     .is('revoked_at', null)
     .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return data ?? [];
+  return (data ?? []) as RoomShareRow[];
+}
+
+export async function createRoomShare(
+  roomId: string,
+  userId: string,
+  opts: { role?: ShareRole; allowCopy?: boolean } = {},
+): Promise<{ token: string; url: string }> {
+  const { data, error } = await supabase
+    .from('room_shares')
+    .insert({
+      room_id: roomId,
+      created_by: userId,
+      role: opts.role ?? 'viewer',
+      allow_copy: opts.allowCopy ?? true,
+    })
+    .select('token')
+    .single();
+  if (error) throw new Error(error.message);
+  const token = data.token as string;
+  void requestUnfurlDeploy();
+  return { token, url: buildShareUrl(token) };
 }
 
 export async function revokeRoomShare(token: string): Promise<void> {
@@ -113,81 +159,69 @@ export async function revokeRoomShare(token: string): Promise<void> {
     .update({ revoked_at: new Date().toISOString() })
     .eq('token', token);
   if (error) throw new Error(error.message);
+  void requestUnfurlDeploy();
 }
 
-export async function redeemShareToken(token: string): Promise<string> {
-  const { data, error } = await supabase.rpc('redeem_share_token', { p_token: token });
+export async function updateRoomShareAllowCopy(
+  token: string,
+  allowCopy: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from('room_shares')
+    .update({ allow_copy: allowCopy })
+    .eq('token', token);
   if (error) throw new Error(error.message);
-  return String(data);
 }
 
-export async function forkSharedRoom(token: string, name?: string): Promise<string> {
-  const { data, error } = await supabase.rpc('fork_shared_room', {
-    p_token: token,
-    p_name: name ?? null,
-  });
+export async function listRoomCollaborators(
+  roomId: string,
+): Promise<RoomCollaboratorRow[]> {
+  const { data, error } = await supabase
+    .from('room_collaborators')
+    .select('room_id, user_id, role, added_via, created_at')
+    .eq('room_id', roomId)
+    .order('created_at', { ascending: false });
   if (error) throw new Error(error.message);
-  return String(data);
+  return (data ?? []) as RoomCollaboratorRow[];
 }
 
-export async function loadSharedRoomLayout(token: string): Promise<SharedRoomLoadResult> {
-  const payload = await fetchSharedRoom(token);
-  const urls = await signShareAssetPaths(token);
+export async function removeRoomCollaborator(
+  roomId: string,
+  userId: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('room_collaborators')
+    .delete()
+    .eq('room_id', roomId)
+    .eq('user_id', userId);
+  if (error) throw new Error(error.message);
+}
 
-  const environment = parseEnvironment(payload.room.environment) ?? { ...DEFAULT_ENVIRONMENT };
-  const roomGeometry =
-    parseFloorPlan(payload.room.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+export async function listSharedWithMeRooms(userId: string): Promise<
+  Array<{ id: string; name: string; updated_at: string; role: ShareRole }>
+> {
+  const { data: collabs, error: cErr } = await supabase
+    .from('room_collaborators')
+    .select('room_id, role')
+    .eq('user_id', userId);
+  if (cErr) throw new Error(cErr.message);
+  const rows = collabs ?? [];
+  if (rows.length === 0) return [];
 
-  const items: Item[] = [];
-  const order: string[] = [];
-  for (const row of payload.items ?? []) {
-    const item = dbRowToItem(row);
-    if (!item) continue;
+  const ids = rows.map((r) => r.room_id as string);
+  const roleByRoom = new Map(rows.map((r) => [r.room_id as string, r.role as ShareRole]));
 
-    if (item.kind === 'imported' && item.importedStoragePath && !item.importedUrl) {
-      const signed = urlFromShareMap(item.importedStoragePath, urls);
-      if (signed) item.importedUrl = signed;
-    }
-    if (item.kind === 'bed' && item.blanketTexturePath && !item.blanketTextureUrl) {
-      const signed = urlFromShareMap(item.blanketTexturePath, urls);
-      if (signed) item.blanketTextureUrl = signed;
-    }
+  const { data: rooms, error: rErr } = await supabase
+    .from('rooms')
+    .select('id, name, updated_at')
+    .in('id', ids)
+    .order('updated_at', { ascending: false });
+  if (rErr) throw new Error(rErr.message);
 
-    const dims = payload.catalog_dims?.[item.importedStoragePath ?? ''];
-    if (dims && Array.isArray(dims) && dims.length === 3) {
-      item.catalogSizeIn = [Number(dims[0]), Number(dims[1]), Number(dims[2])];
-    }
-
-    items.push(item);
-    order.push(item.id);
-  }
-
-  const productsById: Record<string, CuratedProduct> = {};
-  for (const [id, raw] of Object.entries(payload.published_products ?? {})) {
-    const mapped = mapProduct({
-      ...raw,
-      id: raw.id ?? id,
-      category_id: raw.category_id ?? 'shared',
-      slug: raw.slug ?? id,
-      sort_order: raw.sort_order ?? 0,
-      published: true,
-    });
-    if (!mapped.imageUrl && mapped.imagePath) {
-      mapped.imageUrl = productImagePublicUrl(mapped.imagePath);
-    }
-    productsById[id] = mapped;
-  }
-
-  return {
-    roomId: payload.room.id,
-    roomName: payload.room.name,
-    role: payload.role,
-    allowCopy: Boolean(payload.allow_copy),
-    ownerDisplay: payload.owner_display ?? 'Toova designer',
-    items,
-    order,
-    environment,
-    roomGeometry,
-    productsById,
-  };
+  return (rooms ?? []).map((r) => ({
+    id: r.id as string,
+    name: r.name as string,
+    updated_at: r.updated_at as string,
+    role: roleByRoom.get(r.id as string) ?? 'editor',
+  }));
 }
