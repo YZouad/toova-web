@@ -84,7 +84,13 @@ DROP POLICY IF EXISTS checklist_categories_public_read ON public.checklist_categ
 CREATE POLICY checklist_categories_public_read ON public.checklist_categories
   FOR SELECT
   TO anon, authenticated
-  USING (published = true OR public.is_admin((SELECT auth.uid())));
+  USING (published = true);
+
+DROP POLICY IF EXISTS checklist_categories_admin_read ON public.checklist_categories;
+CREATE POLICY checklist_categories_admin_read ON public.checklist_categories
+  FOR SELECT
+  TO authenticated
+  USING (public.is_admin((SELECT auth.uid())));
 
 DROP POLICY IF EXISTS checklist_categories_admin_write ON public.checklist_categories;
 CREATE POLICY checklist_categories_admin_write ON public.checklist_categories
@@ -98,12 +104,18 @@ CREATE POLICY curated_products_public_read ON public.curated_products
   FOR SELECT
   TO anon, authenticated
   USING (
-    (published = true AND EXISTS (
+    published = true
+    AND EXISTS (
       SELECT 1 FROM public.checklist_categories c
       WHERE c.id = category_id AND c.published = true
-    ))
-    OR public.is_admin((SELECT auth.uid()))
+    )
   );
+
+DROP POLICY IF EXISTS curated_products_admin_read ON public.curated_products;
+CREATE POLICY curated_products_admin_read ON public.curated_products
+  FOR SELECT
+  TO authenticated
+  USING (public.is_admin((SELECT auth.uid())));
 
 DROP POLICY IF EXISTS curated_products_admin_write ON public.curated_products;
 CREATE POLICY curated_products_admin_write ON public.curated_products

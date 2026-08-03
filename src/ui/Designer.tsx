@@ -21,6 +21,7 @@ import { AtmosphereStrip } from './AtmosphereStrip';
 import { LookDrawer } from './LookDrawer';
 import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
+import { UnsavedLeaveModal } from './UnsavedLeaveModal';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
@@ -28,6 +29,17 @@ import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
 
 const RECENT_KEY = 'toova-recent-kinds';
 const MAX_RECENT = 6;
+
+function roomDirtyFingerprint(name: string): string {
+  const { items, order, environment, roomGeometry } = useStore.getState();
+  return JSON.stringify({
+    name: name.trim(),
+    order,
+    items,
+    environment,
+    roomGeometry,
+  });
+}
 
 const BUILTIN_CATS: Record<Exclude<FurnitureKind, 'imported'>, string> = {
   bed: 'Bedroom',
@@ -133,6 +145,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const [recentKinds, setRecentKinds] = useState<string[]>(loadRecent);
   const [lookOpen, setLookOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [leaveSaving, setLeaveSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const dirtyBaselineRef = useRef('');
 
   const [beddingBusy, setBeddingBusy] = useState(false);
   const { open: checklistOpen, closeChecklist } = useChecklistModal();
@@ -144,6 +160,20 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   useEffect(() => {
     setRoomName(workspace?.name ?? '');
   }, [workspace?.name]);
+
+  useEffect(() => {
+    dirtyBaselineRef.current = roomDirtyFingerprint(workspace?.name ?? '');
+    setDirty(false);
+    setLeaveConfirmOpen(false);
+  }, [workspace?.id, workspace?.name]);
+
+  useEffect(() => {
+    const syncDirty = () => {
+      setDirty(roomDirtyFingerprint(roomName) !== dirtyBaselineRef.current);
+    };
+    syncDirty();
+    return useStore.subscribe(syncDirty);
+  }, [roomName]);
 
   useEffect(() => {
     let cancelled = false;
@@ -269,13 +299,15 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
     setItemSize(item.id, proportionalSizesFromMaxSide(base, target));
   };
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     if (!workspace?.id) return;
     const trimmed = roomName.trim();
     if (trimmed && trimmed !== workspace.name) {
       await supabase.from('rooms').update({ name: trimmed }).eq('id', workspace.id);
     }
     await save();
+    dirtyBaselineRef.current = roomDirtyFingerprint(roomName);
+    setDirty(false);
     setSavedLabel('Saved just now');
 
     // Best-effort OG thumbnail (floor-plan card) — never fail the save.
@@ -300,7 +332,37 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         console.warn('[toova] room thumbnail capture failed', err);
       }
     }
-  };
+  }, [workspace?.id, workspace?.name, roomName, save, user?.id]);
+
+  const requestLeave = useCallback(() => {
+    if (!dirty) {
+      onBack();
+      return;
+    }
+    setLeaveConfirmOpen(true);
+  }, [dirty, onBack]);
+
+  const confirmLeaveWithoutSaving = useCallback(() => {
+    setLeaveConfirmOpen(false);
+    onBack();
+  }, [onBack]);
+
+  const confirmSaveAndLeave = useCallback(async () => {
+    setLeaveSaving(true);
+    try {
+      await handleSave();
+      setLeaveConfirmOpen(false);
+      onBack();
+    } catch {
+      // keep dialog open; saveError banner surfaces the failure
+    } finally {
+      setLeaveSaving(false);
+    }
+  }, [handleSave, onBack]);
+
+  const stayInRoom = useCallback(() => {
+    if (!leaveSaving) setLeaveConfirmOpen(false);
+  }, [leaveSaving]);
 
   const duplicateSelected = () => {
     if (!item) return;
@@ -342,7 +404,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
     <div className="designer-page">
       <header className="designer-topbar">
         <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <button type="button" onClick={onBack} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}>← Rooms</button>
+          <button type="button" onClick={requestLeave} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}>← Rooms</button>
           <div style={{ width: 1, height: 24, background: 'var(--border)' }} />
           <div>
             <input
@@ -777,6 +839,13 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           onClose={() => setShareOpen(false)}
         />
       ) : null}
+      <UnsavedLeaveModal
+        open={leaveConfirmOpen}
+        saving={leaveSaving}
+        onStay={stayInRoom}
+        onLeave={confirmLeaveWithoutSaving}
+        onSaveAndLeave={() => void confirmSaveAndLeave()}
+      />
     </div>
   );
 }

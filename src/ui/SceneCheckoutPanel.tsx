@@ -12,6 +12,7 @@ import { parseInchDims } from '../lib/importedItemSize';
 import { supabase } from '../lib/supabase';
 import { recordCatalogDownload } from '../lib/catalogEngagement';
 import { resolveAffiliateForItem } from '../lib/affiliateLinks';
+import { GlassSurface } from './GlassSurface';
 
 interface SceneCheckoutPanelProps {
   onOpenChecklist: () => void;
@@ -179,7 +180,68 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
 
   return (
     <div className="scene-side-panels">
-      <div className="scene-checkout">
+      <GlassSurface compact className="scene-checkout scene-checklist-panel">
+        <button
+          type="button"
+          className="scene-checkout-toggle"
+          onClick={() => setChecklistOpen((v) => !v)}
+          aria-expanded={checklistOpen}
+        >
+          <span className="scene-checkout-title">Checklist</span>
+          <span className="scene-checkout-badge">
+            {checklistDone}/{categories.length}
+          </span>
+          <span className="scene-checkout-chevron" aria-hidden>
+            {checklistOpen ? '▾' : '▸'}
+          </span>
+        </button>
+
+        {checklistOpen ? (
+          <div className="scene-checkout-body">
+            <ul className="scene-checkout-mini-list">
+              {categories.map((item) => {
+                const isChecked = isCategoryDone(item.id);
+                return (
+                  <li key={item.id}>
+                    <div
+                      className={`scene-checkout-mini-item${isChecked ? ' scene-checkout-mini-item--done' : ''}`}
+                    >
+                      <label
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => void toggleChecked(item.id)}
+                        />
+                        <span className="scene-checkout-mini-box" aria-hidden />
+                      </label>
+                      <button
+                        type="button"
+                        className="scene-checkout-mini-name-btn"
+                        onClick={() => setOpenCategoryId(item.id)}
+                      >
+                        {item.name}
+                      </button>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+            <button
+              type="button"
+              className="scene-checkout-mini-link"
+              onClick={onOpenChecklist}
+            >
+              Open full checklist →
+            </button>
+          </div>
+        ) : null}
+      </GlassSurface>
+
+      <GlassSurface compact className="scene-checkout">
         <button
           type="button"
           className="scene-checkout-toggle"
@@ -342,68 +404,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
             </p>
           </div>
         ) : null}
-      </div>
-
-      <div className="scene-checkout scene-checklist-panel">
-        <button
-          type="button"
-          className="scene-checkout-toggle"
-          onClick={() => setChecklistOpen((v) => !v)}
-          aria-expanded={checklistOpen}
-        >
-          <span className="scene-checkout-title">Checklist</span>
-          <span className="scene-checkout-badge">
-            {checklistDone}/{categories.length}
-          </span>
-          <span className="scene-checkout-chevron" aria-hidden>
-            {checklistOpen ? '▾' : '▸'}
-          </span>
-        </button>
-
-        {checklistOpen ? (
-          <div className="scene-checkout-body">
-            <ul className="scene-checkout-mini-list">
-              {categories.map((item) => {
-                const isChecked = isCategoryDone(item.id);
-                return (
-                  <li key={item.id}>
-                    <div
-                      className={`scene-checkout-mini-item${isChecked ? ' scene-checkout-mini-item--done' : ''}`}
-                    >
-                      <label
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => void toggleChecked(item.id)}
-                        />
-                        <span className="scene-checkout-mini-box" aria-hidden />
-                      </label>
-                      <button
-                        type="button"
-                        className="scene-checkout-mini-name-btn"
-                        onClick={() => setOpenCategoryId(item.id)}
-                      >
-                        {item.name}
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-            <button
-              type="button"
-              className="scene-checkout-mini-link"
-              onClick={onOpenChecklist}
-            >
-              Open full checklist →
-            </button>
-          </div>
-        ) : null}
-      </div>
+      </GlassSurface>
 
       {openCategory ? (
         <ProductDrawer
