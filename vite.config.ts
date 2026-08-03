@@ -1,6 +1,7 @@
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import type { ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
+import { copyFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,6 +9,20 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 /** Same-origin path the app calls; Vite forwards to TRELLIS `/generate`. */
 const trellisProxyPath = '/api/trellis/generate';
+
+/** GitHub Pages SPA fallback: unknown paths serve 404.html (= index.html). */
+function spa404Fallback(): Plugin {
+  return {
+    name: 'spa-404-fallback',
+    closeBundle() {
+      const indexHtml = path.resolve(rootDir, 'dist/index.html');
+      const notFoundHtml = path.resolve(rootDir, 'dist/404.html');
+      if (existsSync(indexHtml)) {
+        copyFileSync(indexHtml, notFoundHtml);
+      }
+    },
+  };
+}
 
 function buildTrellisProxy(trellisOrigin: string): Record<string, ProxyOptions> {
   return {
@@ -54,7 +69,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
-    plugins: [react()],
+    plugins: [react(), spa404Fallback()],
     build: {
       rollupOptions: {
         input: {

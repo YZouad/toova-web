@@ -6,6 +6,7 @@ import { Wardrobe } from './Wardrobe';
 import { Desk } from './Desk';
 import { Chair } from './Chair';
 import { Nightstand } from './Nightstand';
+import { Lamp } from './Lamp';
 import { ImportedModel } from './ImportedModel';
 import { ItemEmitter } from './ItemEmitter';
 import { EmitterGlow } from './EmitterGlow';
@@ -65,6 +66,7 @@ function FurnitureBody({ item, selected, invalid }: { item: Item; selected: bool
     case 'desk': return <Desk item={item} selected={selected} invalid={invalid} />;
     case 'chair': return <Chair item={item} selected={selected} invalid={invalid} />;
     case 'nightstand': return <Nightstand item={item} selected={selected} invalid={invalid} />;
+    case 'lamp': return <Lamp item={item} selected={selected} invalid={invalid} />;
     case 'imported': return <ImportedModel item={item} selected={selected} invalid={invalid} />;
   }
 }

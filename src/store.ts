@@ -117,6 +117,8 @@ export interface Item {
   /** Signed URL for blanket texture (runtime only; not persisted). */
   blanketTextureUrl?: string;
   emitter?: EmitterConfig;
+  /** Verified curated shopping product linked to this placement. */
+  curatedProductId?: string;
 }
 
 interface StoreState {
@@ -161,6 +163,7 @@ interface StoreState {
       label?: string;
       size?: [number, number, number];
       catalogSizeIn?: [number, number, number];
+      curatedProductId?: string;
     },
   ) => string;
   /** Clone an item with a new id, slight position offset; appends and selects it. */
@@ -342,6 +345,7 @@ export const useStore = create<StoreState>((set) => ({
       importedStoragePath: opts?.storagePath,
       catalogSizeIn,
       label: opts?.label ?? (def ? def.label : 'Model'),
+      curatedProductId: opts?.curatedProductId,
     };
     set((s) => ({
       items: { ...s.items, [id]: item },

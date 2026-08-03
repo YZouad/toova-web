@@ -8,9 +8,18 @@ import {
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { parseFloorPlan, type FloorPlan } from '../lib/roomGeometry';
-import { formatRelativeTime, userDisplayName, userFirstName, userInitials } from '../lib/userDisplay';
+import {
+  formatRelativeTime,
+  profileDisplayName,
+  profileFirstName,
+} from '../lib/userDisplay';
 import { FeedbackModal } from './FeedbackModal';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
+import { listSharedWithMeRooms, type PublicAttribution, type ShareRole } from '../lib/roomShares';
+import { fetchRoomAttribution, setRoomVisibility } from '../lib/profiles';
+import { navigate, profilePath } from '../hooks/useRoute';
+import { UserAvatar } from './UserAvatar';
+import type { Profile } from '../lib/profiles';
 
 const MAX_ROOMS = 5;
 
@@ -23,6 +32,7 @@ const KNOWN_KINDS = new Set([
   'desk',
   'chair',
   'nightstand',
+  'lamp',
   'imported',
 ]);
 
@@ -62,6 +72,10 @@ export interface ListedRoomRow {
   item_count: number;
   geometry: FloorPlan | null;
   items: RoomPreviewItem[];
+  visibility: 'private' | 'unlisted' | 'public';
+  fork_count: number;
+  forked_from: string | null;
+  attribution: PublicAttribution | null;
 }
 
 function nextRoomName(rooms: ListedRoomRow[]): string {
@@ -73,14 +87,18 @@ function nextRoomName(rooms: ListedRoomRow[]): string {
 
 interface DashboardProps {
   user: User;
+  profile: Profile | null;
+  avatarUrl: string | null;
   loadingLayout: boolean;
-  onPickExisting: (room: { id: string; name: string }) => Promise<void>;
+  onPickExisting: (room: { id: string; name: string; isOwner?: boolean }) => Promise<void>;
   onStartFloorPlan: (name: string) => void;
   onGoLanding: () => void;
 }
 
 export function Dashboard({
   user,
+  profile,
+  avatarUrl,
   loadingLayout,
   onPickExisting,
   onStartFloorPlan,
@@ -98,11 +116,14 @@ export function Dashboard({
   const [newRoomType, setNewRoomType] = useState('Living Room');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [sharedWithMe, setSharedWithMe] = useState<
+    Array<{ id: string; name: string; updated_at: string; role: ShareRole }>
+  >([]);
 
   const fetchRooms = useCallback(async () => {
     const { data: roomRows, error } = await supabase
       .from('rooms')
-      .select('id,name,updated_at,sort_order,room_geometry')
+      .select('id,name,updated_at,sort_order,room_geometry,visibility,fork_count,forked_from')
       .eq('user_id', user.id)
       .order('sort_order', { ascending: true });
 
@@ -117,10 +138,14 @@ export function Dashboard({
       updated_at: string;
       sort_order: number;
       room_geometry: unknown;
+      visibility: 'private' | 'unlisted' | 'public';
+      fork_count: number;
+      forked_from: string | null;
     }>;
 
     const roomIds = base.map((r) => r.id);
     const itemsByRoom = new Map<string, RoomPreviewItem[]>();
+    const attributionByRoom = new Map<string, PublicAttribution | null>();
 
     if (roomIds.length > 0) {
       const { data: itemRows, error: itemsErr } = await supabase
@@ -140,6 +165,19 @@ export function Dashboard({
         list.push(item);
         itemsByRoom.set(row.room_id, list);
       }
+
+      await Promise.all(
+        base
+          .filter((r) => r.forked_from)
+          .map(async (r) => {
+            try {
+              const meta = await fetchRoomAttribution(r.id);
+              attributionByRoom.set(r.id, meta?.attribution ?? null);
+            } catch {
+              attributionByRoom.set(r.id, null);
+            }
+          }),
+      );
     }
 
     const withPreviews: ListedRoomRow[] = base.map((r) => {
@@ -152,6 +190,10 @@ export function Dashboard({
         geometry: parseFloorPlan(r.room_geometry),
         items,
         item_count: items.length,
+        visibility: r.visibility ?? 'private',
+        fork_count: Number(r.fork_count ?? 0),
+        forked_from: r.forked_from,
+        attribution: attributionByRoom.get(r.id) ?? null,
       };
     });
 
@@ -159,14 +201,24 @@ export function Dashboard({
     setListError(null);
   }, [user.id]);
 
+  const fetchSharedWithMe = useCallback(async () => {
+    try {
+      const rows = await listSharedWithMeRooms(user.id);
+      setSharedWithMe(rows);
+    } catch {
+      setSharedWithMe([]);
+    }
+  }, [user.id]);
+
   useEffect(() => {
     void fetchRooms();
-  }, [fetchRooms]);
+    void fetchSharedWithMe();
+  }, [fetchRooms, fetchSharedWithMe]);
 
   const totalPlacements = rooms.reduce((s, r) => s + r.item_count, 0);
   const atLimit = rooms.length >= MAX_ROOMS;
 
-  async function openRoom(room: { id: string; name: string }) {
+  async function openRoom(room: { id: string; name: string; isOwner?: boolean }) {
     setMenuRoomId(null);
     setActionError(null);
     try {
@@ -243,6 +295,20 @@ export function Dashboard({
     }
   }
 
+  async function handleSetVisibility(roomId: string, visibility: 'private' | 'public') {
+    setMenuRoomId(null);
+    setBusyId(roomId);
+    setActionError(null);
+    try {
+      await setRoomVisibility(roomId, visibility);
+      await fetchRooms();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not update visibility');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   async function commitRename(roomId: string) {
     const trimmed = renameValue.trim();
     if (!trimmed) return;
@@ -293,13 +359,23 @@ export function Dashboard({
             <button type="button" className="feedback-btn-ghost" onClick={() => setFeedbackOpen(true)}>
               Feedback
             </button>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 13, fontWeight: 600 }}>{userDisplayName(user.email)}</div>
-              <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>Free plan</div>
-            </div>
-            <div style={{ width: 36, height: 36, borderRadius: 99, background: 'var(--accent)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 600, fontSize: 14 }}>
-              {userInitials(user.email)}
-            </div>
+            <button
+              type="button"
+              className="dashboard-profile-chip"
+              onClick={() => {
+                if (profile?.handle) navigate(profilePath(profile.handle));
+              }}
+              disabled={!profile?.handle}
+              title={profile?.handle ? `Open @${profile.handle}` : 'Profile loading…'}
+            >
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>{profileDisplayName(profile, user.email)}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
+                  {profile?.handle ? `@${profile.handle}` : 'Free plan'}
+                </div>
+              </div>
+              <UserAvatar name={profileDisplayName(profile, user.email)} src={avatarUrl} size={36} />
+            </button>
           </div>
         </div>
       </div>
@@ -307,7 +383,7 @@ export function Dashboard({
       <div className="dashboard-main">
         <div className="dashboard-header">
           <div>
-            <div className="dashboard-kicker">Welcome back, {userFirstName(user.email)}</div>
+            <div className="dashboard-kicker">Welcome back, {profileFirstName(profile, user.email)}</div>
             <h1 className="dashboard-title">Your rooms</h1>
           </div>
           <button
@@ -343,7 +419,9 @@ export function Dashboard({
                 <div key={r.id} className={`dashboard-room-card${menuOpen ? ' dashboard-room-card--menu-open' : ''}`}>
                   <div className="dashboard-room-preview">
                     <RoomPreview geometry={r.geometry} items={r.items} />
-                    <span style={{ position: 'absolute', left: 12, bottom: 10, fontFamily: 'var(--font-mono)', fontSize: 11, color: '#6B6357', background: 'rgba(251,247,240,.86)', padding: '3px 8px', borderRadius: 5 }}>Room</span>
+                    <span className={`profile-vis-badge profile-vis-badge--${r.visibility}`}>
+                      {r.visibility}
+                    </span>
                   </div>
                   <div className="dashboard-room-body">
                     {isRenaming ? (
@@ -369,7 +447,17 @@ export function Dashboard({
                         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
                           <div style={{ minWidth: 0 }}>
                             <div style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 500, letterSpacing: '-.01em', lineHeight: 1.15 }}>{r.name}</div>
-                            <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginTop: 3 }}>{r.item_count} pieces · {formatRelativeTime(r.updated_at)}</div>
+                            <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginTop: 3 }}>
+                              {r.item_count} pieces · {formatRelativeTime(r.updated_at)}
+                              {r.fork_count > 0 ? ` · ${r.fork_count} copies` : ''}
+                            </div>
+                            {r.attribution?.visible ? (
+                              <div className="room-attribution">
+                                Forked from {r.attribution.room_name} by {r.attribution.owner_display}
+                              </div>
+                            ) : r.forked_from ? (
+                              <div className="room-attribution">Copied room</div>
+                            ) : null}
                           </div>
                           <div style={{ position: 'relative' }}>
                             <button type="button" onClick={(e) => toggleMenu(e, r.id)} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-muted)', width: 30, height: 30, borderRadius: 8, fontSize: 15, lineHeight: 1 }}>⋯</button>
@@ -378,6 +466,11 @@ export function Dashboard({
                                 <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => void openRoom({ id: r.id, name: r.name })}>Open &amp; design</button>
                                 <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => { setRenamingId(r.id); setRenameValue(r.name); setMenuRoomId(null); }}>Rename</button>
                                 <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => void handleDuplicate(r.id, r.name)} disabled={atLimit}>Duplicate</button>
+                                {r.visibility === 'public' ? (
+                                  <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => void handleSetVisibility(r.id, 'private')}>Remove from profile</button>
+                                ) : (
+                                  <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => void handleSetVisibility(r.id, 'public')}>Publish to profile</button>
+                                )}
                                 <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit', color: 'var(--danger)' }} onClick={() => { setConfirmDeleteId(r.id); setMenuRoomId(null); }}>Delete</button>
                               </div>
                             ) : null}
@@ -410,6 +503,47 @@ export function Dashboard({
             })}
           </div>
         )}
+
+        {sharedWithMe.length > 0 ? (
+          <div className="dashboard-shared-section">
+            <h2 className="dashboard-shared-title">Shared with me</h2>
+            <p className="dashboard-shared-lead">Rooms you can edit via a share link.</p>
+            <div className="dashboard-grid">
+              {sharedWithMe.map((r) => (
+                <div key={r.id} className="dashboard-room-card">
+                  <div className="dashboard-room-body" style={{ paddingTop: 18 }}>
+                    <div style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 500 }}>
+                      {r.name}
+                    </div>
+                    <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginTop: 3 }}>
+                      {r.role} · {formatRelativeTime(r.updated_at)}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={loadingLayout}
+                      onClick={() => void openRoom({ id: r.id, name: r.name, isOwner: false })}
+                      style={{
+                        width: '100%',
+                        marginTop: 13,
+                        cursor: 'pointer',
+                        border: '1px solid var(--accent-line)',
+                        background: 'var(--accent-bg)',
+                        color: 'var(--accent)',
+                        fontFamily: 'inherit',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        padding: 11,
+                        borderRadius: 10,
+                      }}
+                    >
+                      Open &amp; edit →
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {showNewRoom ? (

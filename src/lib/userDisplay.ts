@@ -1,3 +1,5 @@
+import type { Profile } from './profiles';
+
 export function userInitials(email: string | undefined | null): string {
   if (!email) return '?';
   const local = email.split('@')[0] ?? '';
@@ -18,6 +20,35 @@ export function userDisplayName(email: string | undefined | null): string {
 export function userFirstName(email: string | undefined | null): string {
   const name = userDisplayName(email);
   return name.split(' ')[0] ?? name;
+}
+
+/** Prefer profile display name; fall back to email-derived name. */
+export function profileDisplayName(
+  profile: Pick<Profile, 'display_name'> | null | undefined,
+  email?: string | null,
+): string {
+  const fromProfile = profile?.display_name?.trim();
+  if (fromProfile) return fromProfile;
+  return userDisplayName(email);
+}
+
+export function profileFirstName(
+  profile: Pick<Profile, 'display_name'> | null | undefined,
+  email?: string | null,
+): string {
+  const name = profileDisplayName(profile, email);
+  return name.split(/\s+/)[0] ?? name;
+}
+
+export function profileInitials(
+  profile: Pick<Profile, 'display_name'> | null | undefined,
+  email?: string | null,
+): string {
+  const name = profileDisplayName(profile, email);
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  if (parts[0]) return parts[0].slice(0, 2).toUpperCase();
+  return userInitials(email);
 }
 
 export function shortenId(id: string): string {

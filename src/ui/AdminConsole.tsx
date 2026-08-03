@@ -7,8 +7,9 @@ import {
   type AdminUserRollupRow,
 } from '../hooks/useAdminStats';
 import { shortenId } from '../lib/userDisplay';
+import { AdminShoppingPanel } from './AdminShoppingPanel';
 
-type AdminTab = 'overview' | 'users' | 'rooms' | 'jobs' | 'usage';
+type AdminTab = 'overview' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping';
 
 const NAV: { id: AdminTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -16,11 +17,12 @@ const NAV: { id: AdminTab; label: string }[] = [
   { id: 'rooms', label: 'Rooms' },
   { id: 'jobs', label: 'Jobs' },
   { id: 'usage', label: 'Usage' },
+  { id: 'shopping', label: 'Shopping' },
 ];
 
 const KIND_COLORS: Record<string, string> = {
   bed: '#C9B391', dresser: '#B08C5F', wardrobe: '#A88457', desk: '#B5946C',
-  chair: '#CBB28F', nightstand: '#C0A47A', imported: '#7E8A60',
+  chair: '#CBB28F', nightstand: '#C0A47A', lamp: '#D4C4A0', imported: '#7E8A60',
 };
 
 function swatch(kind: string) {
@@ -328,6 +330,8 @@ export function AdminConsole({
               </div>
             </>
           ) : null}
+
+          {tab === 'shopping' ? <AdminShoppingPanel /> : null}
         </div>
       </div>
     </div>

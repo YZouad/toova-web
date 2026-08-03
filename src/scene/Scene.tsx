@@ -474,6 +474,7 @@ function SceneInner({
   controlsRef,
   apiRef,
   animRequestRef,
+  readOnly,
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
   apiRef: MutableRefObject<CaptureApi | null>;
@@ -481,6 +482,7 @@ function SceneInner({
     framing: ReturnType<typeof framingForPreset> | null;
     t: number;
   }>;
+  readOnly: boolean;
 }) {
   const deselect = useStore((s) => s.select);
   const skyMode = useStore((s) => s.environment.skyMode);
@@ -501,7 +503,7 @@ function SceneInner({
     return applyWeather(sun, weather, planBounds(geom)).skyBottom;
   }, [skyMode, timeOfDay, orientationDeg, weather, geom]);
 
-  const showChrome = !capturing;
+  const showChrome = !capturing && !readOnly;
   const showWeatherFx = q.envDetail === 'full';
   const cheapGpu = q.tier === 'low' || q.tier === 'balanced';
 
@@ -516,7 +518,9 @@ function SceneInner({
         near: 1,
         far: 2000,
       }}
-      onPointerMissed={() => deselect(null)}
+      onPointerMissed={() => {
+        if (!readOnly) deselect(null);
+      }}
       gl={{
         antialias: q.tier !== 'low',
         alpha: false,
@@ -583,7 +587,14 @@ function SceneInner({
   );
 }
 
-export const Scene = forwardRef<SceneHandle>(function Scene(_, ref) {
+export interface SceneProps {
+  readOnly?: boolean;
+}
+
+export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
+  { readOnly = false },
+  ref,
+) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const apiRef = useRef<CaptureApi | null>(null);
   const animRequestRef = useRef<{
@@ -630,6 +641,7 @@ export const Scene = forwardRef<SceneHandle>(function Scene(_, ref) {
       controlsRef={controlsRef}
       apiRef={apiRef}
       animRequestRef={animRequestRef}
+      readOnly={readOnly}
     />
   );
 });

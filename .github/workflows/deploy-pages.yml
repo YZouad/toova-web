@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  repository_dispatch:
+    types: [unfurl-refresh]
 
 permissions:
   contents: read
@@ -33,6 +35,14 @@ jobs:
           # to https://<service>.onrender.com/api/trellis/generate (Settings → Secrets and variables → Actions → Variables).
           # Optional: override with secret VITE_TRELLIS_GENERATE_URL instead.
           VITE_TRELLIS_GENERATE_URL: ${{ vars.VITE_TRELLIS_GENERATE_URL || secrets.VITE_TRELLIS_GENERATE_URL }}
+      - name: Generate static unfurl pages
+        run: npm run generate:unfurls
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SITE_ORIGIN: https://toova.net
+      # SPA deep links (/r/:token) need a 404 fallback on GitHub Pages.
+      - run: cp dist/index.html dist/404.html
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
