@@ -4,6 +4,7 @@ import type { CuratedProduct } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
 import { resolveAffiliateForItem } from '../lib/affiliateLinks';
 import { useShoppingCatalogContext } from '../context/ShoppingCatalogContext';
+import { GlassSurface } from './GlassSurface';
 
 interface SharedToBuyPanelProps {
   productsById: Record<string, CuratedProduct>;
@@ -56,7 +57,7 @@ export function SharedToBuyPanel({ productsById }: SharedToBuyPanelProps) {
     : [];
 
   return (
-    <div className="scene-checkout shared-tobuy">
+    <GlassSurface compact className="scene-checkout shared-tobuy">
       <button
         type="button"
         className="scene-checkout-toggle"
@@ -141,6 +142,6 @@ export function SharedToBuyPanel({ productsById }: SharedToBuyPanelProps) {
           </p>
         </div>
       ) : null}
-    </div>
+    </GlassSurface>
   );
 }

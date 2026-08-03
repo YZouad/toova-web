@@ -66,8 +66,14 @@ html, body, #root { height: 100%; margin: 0; }
   background: var(--accent);
   color: #fff;
   font-family: inherit;
+  font-size: 14px;
   font-weight: 600;
-  border-radius: 999px;
+  line-height: 1.2;
+  padding: 11px 18px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: background 0.15s;
 }
 .tv-btn-primary:hover:not(:disabled) { background: var(--accent-h); }
@@ -79,8 +85,14 @@ html, body, #root { height: 100%; margin: 0; }
   background: rgba(244, 238, 228, 0.06);
   color: #F8F3EA;
   font-family: inherit;
+  font-size: 14px;
   font-weight: 600;
-  border-radius: 999px;
+  line-height: 1.2;
+  padding: 11px 18px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   backdrop-filter: blur(6px);
   transition: background 0.15s;
 }
@@ -1923,7 +1935,7 @@ button.landing-nav-brand { cursor: pointer; }
 .scene-side-panels {
   position: absolute;
   left: 18px;
-  top: 56px;
+  top: 16px;
   z-index: 6;
   width: min(280px, calc(100% - 36px));
   display: flex;
@@ -1940,11 +1952,9 @@ button.landing-nav-brand { cursor: pointer; }
   top: auto;
   z-index: auto;
   width: 100%;
-  background: rgba(251, 247, 240, 0.88);
-  backdrop-filter: blur(8px);
-  border: 1px solid rgba(227, 217, 200, 0.7);
-  border-radius: 14px;
-  overflow: visible;
+}
+.scene-checkout.glass-surface {
+  overflow: hidden;
 }
 .scene-checklist-panel .scene-checkout-body {
   max-height: min(360px, calc(100vh - 220px));
@@ -1987,8 +1997,7 @@ button.landing-nav-brand { cursor: pointer; }
   padding: 0 12px 12px;
   max-height: min(520px, calc(100vh - 160px));
   overflow-y: auto;
-  border-top: 1px solid rgba(227, 217, 200, 0.7);
-  border-radius: 0 0 14px 14px;
+  border-top: 1px solid rgba(255, 255, 255, 0.35);
 }
 .scene-checkout-empty {
   margin: 10px 0 0;
@@ -2096,17 +2105,6 @@ button.landing-nav-brand { cursor: pointer; }
 .scene-checkout-mini-item input:checked + .scene-checkout-mini-box {
   background: var(--accent);
   border-color: var(--accent);
-}
-.scene-checkout-mini-item input:checked + .scene-checkout-mini-box::after {
-  content: '';
-  position: absolute;
-  left: 3px;
-  top: 0;
-  width: 4px;
-  height: 8px;
-  border: solid #fff;
-  border-width: 0 1.5px 1.5px 0;
-  transform: rotate(45deg);
 }
 .scene-checkout-mini-name {
   overflow: hidden;
@@ -2753,6 +2751,87 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .tv-dock-label { font-size: 10px; font-weight: 600; color: var(--text-muted); }
 .tv-dock-divider { width: 1px; align-self: stretch; background: rgba(43, 38, 32, 0.12); margin: 2px 4px; }
+
+/* ── Unsaved leave confirm ── */
+.unsaved-leave-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(43, 38, 32, 0.45);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.unsaved-leave-dialog {
+  width: min(400px, 100%);
+}
+.unsaved-leave-inner {
+  padding: 26px 26px 22px;
+}
+.unsaved-leave-eyebrow {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.unsaved-leave-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.15;
+}
+.unsaved-leave-hint {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.unsaved-leave-actions {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.unsaved-leave-actions .tv-btn-primary {
+  width: 100%;
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.unsaved-leave-discard,
+.unsaved-leave-stay {
+  cursor: pointer;
+  border: 1px solid rgba(227, 217, 200, 0.9);
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--text-dark);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 12px 14px;
+  border-radius: 10px;
+  line-height: 1.2;
+}
+.unsaved-leave-discard:hover:not(:disabled),
+.unsaved-leave-stay:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.75);
+}
+.unsaved-leave-discard:disabled,
+.unsaved-leave-stay:disabled,
+.unsaved-leave-actions .tv-btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 
 /* ── Checklist modal teaser ── */
 .checklist-modal-backdrop {
@@ -4191,18 +4270,33 @@ button.landing-nav-brand { cursor: pointer; }
 .product-drawer-price--na { color: var(--text-subtle); }
 .product-drawer-desc { margin: 0; font-size: 13px; color: #6b6357; line-height: 1.45; flex: 1; }
 .product-drawer-retailer { margin: 0; font-size: 12px; color: var(--text-subtle); }
-.product-drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.product-drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
 .product-drawer-btn {
   color: var(--text-dark) !important;
   background: #fff !important;
   border: 1px solid var(--border) !important;
-  padding: 8px 12px !important;
-  border-radius: 9px !important;
+  padding: 10px 14px !important;
+  border-radius: 10px !important;
   font-size: 13px !important;
   font-weight: 600 !important;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
 }
-.product-drawer-shop { text-decoration: none; display: inline-flex; align-items: center; }
+.product-drawer-shop {
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+  min-width: 0;
+}
 .product-drawer-hint { margin: 0; font-size: 12px; color: var(--text-subtle); }
 .product-drawer-empty { color: var(--text-muted); }
 
@@ -4308,7 +4402,11 @@ button.landing-nav-brand { cursor: pointer; }
   justify-content: center;
   text-decoration: none;
   font-size: 13px;
-  padding: 8px 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.2;
 }
 
 .purchase-review-copy { color: var(--text-muted); font-size: 14px; margin: 6px 0 0; max-width: 52ch; }

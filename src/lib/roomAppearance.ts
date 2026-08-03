@@ -32,7 +32,7 @@ export const DEFAULT_APPEARANCE: RoomAppearance = {
   ceilingPreset: 'whiteCeiling',
   trimPreset: 'whiteTrim',
   showCeiling: true,
-  recessedLights: false,
+  recessedLights: true,
   showBaseboards: true,
 };
 
@@ -89,7 +89,8 @@ export function parseAppearance(raw: unknown): RoomAppearance {
     ceilingPreset: pickPreset(o.ceilingPreset, DEFAULT_APPEARANCE.ceilingPreset),
     trimPreset: pickPreset(o.trimPreset, DEFAULT_APPEARANCE.trimPreset),
     showCeiling: o.showCeiling === undefined ? DEFAULT_APPEARANCE.showCeiling : o.showCeiling === true,
-    recessedLights: o.recessedLights === true,
+    recessedLights:
+      o.recessedLights === undefined ? DEFAULT_APPEARANCE.recessedLights : o.recessedLights === true,
     showBaseboards:
       o.showBaseboards === undefined ? DEFAULT_APPEARANCE.showBaseboards : o.showBaseboards === true,
   };
