@@ -3,6 +3,7 @@ import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
 import { createRoomWithGeometry, useRoomLoad } from './hooks/useRoomLayout';
+import { navigate, publicRoomPath, sharePath, useRoute } from './hooks/useRoute';
 import { supabase } from './lib/supabase';
 import { useStore, DEFAULT_ENVIRONMENT } from './store';
 import type { FloorPlan } from './lib/floorPlanGeometry';
@@ -16,6 +17,9 @@ import { FloorPlanSetup } from './ui/FloorPlanSetup';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
+import { SharedRoomPage } from './ui/SharedRoomPage';
+import { ProfilePage } from './ui/ProfilePage';
+import { PublicRoomPage } from './ui/PublicRoomPage';
 import { Dock, type DockNav } from './ui/Dock';
 
 type Screen = 'landing' | 'pitch-madness' | 'contact' | 'auth' | 'dashboard' | 'floor-plan' | 'designer' | 'admin' | 'ar' | 'checklist';
@@ -105,18 +109,24 @@ function ARPage({ onBack }: { onBack: () => void }) {
 }
 
 export default function App() {
-  const { loading, user, logout } = useAuth();
+  const { loading, user, logout, refreshProfile, profile, avatarUrl } = useAuth();
+  const route = useRoute();
   const [screen, setScreen] = useState<Screen>('landing');
   const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
-  const [workspace, setWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [workspace, setWorkspace] = useState<{ id: string; name: string; isOwner: boolean } | null>(null);
   const [floorPlanDraft, setFloorPlanDraft] = useState<FloorPlanDraft | null>(null);
   const [floorPlanBusy, setFloorPlanBusy] = useState(false);
+  const [pendingShareToken, setPendingShareToken] = useState<string | null>(null);
+  const [pendingPublicRoom, setPendingPublicRoom] = useState<{ handle: string; roomId: string } | null>(null);
   const resetLayout = useStore((s) => s.resetLayout);
   const hydrateLayout = useStore((s) => s.hydrateLayout);
   const hydrateRoomSettings = useStore((s) => s.hydrateRoomSettings);
   const { load, loading: layoutLoading } = useRoomLoad();
+
+  const routeIsPublic =
+    route.name === 'shared' || route.name === 'profile' || route.name === 'publicRoom';
 
   const {
     isAdmin,
@@ -131,20 +141,37 @@ export default function App() {
 
   useEffect(() => {
     if (!user) {
-      resetLayout();
-      setWorkspace(null);
+      if (!routeIsPublic) {
+        resetLayout();
+        setWorkspace(null);
+      }
       if (
         screen !== 'landing'
         && screen !== 'auth'
         && screen !== 'pitch-madness'
         && screen !== 'checklist'
+        && screen !== 'contact'
+        && !routeIsPublic
       ) {
         setScreen('landing');
       }
     } else if (screen === 'auth') {
-      setScreen('dashboard');
+      if (pendingShareToken) {
+        const token = pendingShareToken;
+        setPendingShareToken(null);
+        navigate(sharePath(token), true);
+        setScreen('landing');
+      } else if (pendingPublicRoom) {
+        const pending = pendingPublicRoom;
+        setPendingPublicRoom(null);
+        navigate(publicRoomPath(pending.handle, pending.roomId), true);
+        setScreen('landing');
+      } else {
+        setScreen('dashboard');
+        if (routeIsPublic) navigate('/', true);
+      }
     }
-  }, [user, resetLayout, screen]);
+  }, [user, resetLayout, screen, routeIsPublic, pendingShareToken, pendingPublicRoom]);
 
   useEffect(() => {
     if (screen === 'admin' && !adminStatsLoading && !isAdmin) {
@@ -159,13 +186,17 @@ export default function App() {
   }, [resetLayout]);
 
   const handlePickExisting = useCallback(
-    async (room: { id: string; name: string }) => {
+    async (room: { id: string; name: string; isOwner?: boolean }) => {
       resetLayout();
       const data = await load(room.id);
       hydrateLayout(data.items, data.order);
       hydrateRoomSettings(data.environment, data.roomGeometry);
-      setWorkspace({ id: room.id, name: room.name });
+      setWorkspace({ id: room.id, name: room.name, isOwner: room.isOwner !== false });
       setScreen('designer');
+      const path = window.location.pathname;
+      if (path.startsWith('/r/') || path.startsWith('/u/')) {
+        navigate('/', true);
+      }
     },
     [hydrateLayout, hydrateRoomSettings, load, resetLayout],
   );
@@ -184,7 +215,7 @@ export default function App() {
         resetLayout();
         hydrateLayout([], []);
         hydrateRoomSettings({ ...DEFAULT_ENVIRONMENT }, plan);
-        setWorkspace({ id: room.id, name: room.name });
+        setWorkspace({ id: room.id, name: room.name, isOwner: true });
         setFloorPlanDraft(null);
         setScreen('designer');
       } finally {
@@ -263,6 +294,86 @@ export default function App() {
     },
     onAdmin: isAdmin ? () => setScreen('admin') : undefined,
   };
+
+  // Auth overlay for share-link / public-room CTAs (URL may still be /r/… or /u/…)
+  if (screen === 'auth' && !user) {
+    if (loading) return <AuthSplash />;
+    return (
+      <AuthPage
+        initialMode={authMode}
+        onBack={() => {
+          if (pendingShareToken) {
+            navigate(sharePath(pendingShareToken), true);
+            setScreen('landing');
+            return;
+          }
+          if (pendingPublicRoom) {
+            navigate(publicRoomPath(pendingPublicRoom.handle, pendingPublicRoom.roomId), true);
+            setScreen('landing');
+            return;
+          }
+          setScreen('landing');
+          if (routeIsPublic) navigate('/', true);
+        }}
+      />
+    );
+  }
+
+  if (route.name === 'shared') {
+    return (
+      <SharedRoomPage
+        token={route.token}
+        userId={user?.id ?? null}
+        authLoading={loading}
+        onRequestAuth={(mode) => {
+          setPendingShareToken(route.token);
+          setAuthMode(mode);
+          setScreen('auth');
+        }}
+        onOpenRoom={handlePickExisting}
+        onGoHome={() => {
+          navigate('/');
+          setScreen(user ? 'dashboard' : 'landing');
+        }}
+      />
+    );
+  }
+
+  if (route.name === 'publicRoom') {
+    return (
+      <PublicRoomPage
+        handle={route.handle}
+        roomId={route.roomId}
+        userId={user?.id ?? null}
+        authLoading={loading}
+        onRequestAuth={(mode) => {
+          setPendingPublicRoom({ handle: route.handle, roomId: route.roomId });
+          setAuthMode(mode);
+          setScreen('auth');
+        }}
+        onOpenRoom={handlePickExisting}
+        onGoHome={() => {
+          navigate('/');
+          setScreen(user ? 'dashboard' : 'landing');
+        }}
+      />
+    );
+  }
+
+  if (route.name === 'profile') {
+    return (
+      <ProfilePage
+        handle={route.handle}
+        viewerUserId={user?.id ?? null}
+        authLoading={loading}
+        onRefreshAuthProfile={refreshProfile}
+        onGoHome={() => {
+          navigate('/');
+          setScreen(user ? 'dashboard' : 'landing');
+        }}
+      />
+    );
+  }
 
   if (screen === 'checklist') {
     const backTarget =
@@ -348,16 +459,6 @@ export default function App() {
     );
   }
 
-  if (screen === 'auth' && !user) {
-    if (loading) return <AuthSplash />;
-    return (
-      <AuthPage
-        initialMode={authMode}
-        onBack={() => setScreen('landing')}
-      />
-    );
-  }
-
   if (loading && !user) return <AuthSplash />;
 
   if (screen === 'admin' && isAdmin) {
@@ -432,6 +533,8 @@ export default function App() {
       <>
         <Dashboard
           user={user}
+          profile={profile}
+          avatarUrl={avatarUrl}
           loadingLayout={layoutLoading}
           onPickExisting={handlePickExisting}
           onStartFloorPlan={handleStartFloorPlan}
