@@ -29,7 +29,7 @@ main().catch((err) => {
 });
 
 async function main() {
-  const supabaseUrl = requireEnv('SUPABASE_URL').replace(/\/+$/, '');
+  const supabaseUrl = requireSupabaseUrl();
   const serviceKey = requireEnv('SUPABASE_SERVICE_ROLE_KEY');
 
   const shellPath = join(DIST_DIR, 'index.html');
@@ -382,4 +382,41 @@ function requireEnv(name) {
   const v = process.env[name]?.trim();
   if (!v) throw new Error(`Missing required env: ${name}`);
   return v;
+}
+
+/** Accepts full project URL; strips accidental wrapping quotes. Never logs the secret. */
+function requireSupabaseUrl() {
+  let raw = requireEnv('SUPABASE_URL');
+  // Common GitHub secret mistake: paste value with quotes.
+  if (
+    (raw.startsWith('"') && raw.endsWith('"')) ||
+    (raw.startsWith("'") && raw.endsWith("'"))
+  ) {
+    raw = raw.slice(1, -1).trim();
+  }
+  raw = raw.replace(/\/+$/, '');
+
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error(
+      'SUPABASE_URL is not a valid URL. Set the GitHub Actions secret to the full Project URL, e.g. https://YOUR_REF.supabase.co (no quotes, must include https://).',
+    );
+  }
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    throw new Error(
+      'SUPABASE_URL must start with https:// (e.g. https://YOUR_REF.supabase.co).',
+    );
+  }
+  // Project ref alone or a JWT accidentally pasted into SUPABASE_URL.
+  if (!parsed.hostname.includes('.')) {
+    throw new Error(
+      'SUPABASE_URL looks incomplete. Use https://YOUR_REF.supabase.co from Project Settings → API.',
+    );
+  }
+  console.log(
+    `[generate-static-unfurls] using SUPABASE_URL host=${parsed.hostname}`,
+  );
+  return raw;
 }
