@@ -1,6 +1,10 @@
 import { defineConfig, loadEnv } from 'vite';
 import type { ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 /** Same-origin path the app calls; Vite forwards to TRELLIS `/generate`. */
 const trellisProxyPath = '/api/trellis/generate';
@@ -51,6 +55,14 @@ export default defineConfig(({ mode }) => {
   return {
     base,
     plugins: [react()],
+    build: {
+      rollupOptions: {
+        input: {
+          main: path.resolve(rootDir, 'index.html'),
+          visual: path.resolve(rootDir, 'visual.html'),
+        },
+      },
+    },
     server: {
       port: 5173,
       ...(trellisProxy ? { proxy: trellisProxy } : {}),

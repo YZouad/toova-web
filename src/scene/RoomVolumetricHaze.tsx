@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { interiorHazeParams } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
 import { useStore } from '../store';
+import { resolveRenderQuality } from '../lib/renderQuality';
 
 function createHazeMaterial(color: string): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
@@ -53,6 +54,10 @@ export function RoomVolumetricHaze() {
   const weather = useStore((s) => s.environment.weather);
   const exposure = useStore((s) => s.environment.exposure);
   const geom = useStore((s) => s.roomGeometry);
+  const quality = useStore((s) => s.visual.quality);
+  const q = resolveRenderQuality(quality);
+  const envOk =
+    q.envDetail === 'full' || (q.envDetail === 'standard' && godRays);
 
   const meshRef = useRef<THREE.Mesh>(null);
   const { camera } = useThree();
@@ -62,8 +67,11 @@ export function RoomVolumetricHaze() {
   const height = geom.height;
 
   const haze = useMemo(
-    () => interiorHazeParams(timeOfDay, orientationDeg, weather, exposure, bounds),
-    [timeOfDay, orientationDeg, weather, exposure, bounds],
+    () =>
+      envOk
+        ? interiorHazeParams(timeOfDay, orientationDeg, weather, exposure, bounds)
+        : null,
+    [envOk, timeOfDay, orientationDeg, weather, exposure, bounds],
   );
 
   const material = useMemo(
@@ -74,13 +82,13 @@ export function RoomVolumetricHaze() {
   useEffect(() => () => material?.dispose(), [material]);
 
   useFrame(() => {
-    if (!material || !haze || !godRays) return;
+    if (!envOk || !material || !haze || !godRays) return;
     material.uniforms.uSunDir.value.set(...haze.sunDir);
     material.uniforms.uDensity.value = haze.scatterDensity;
     material.uniforms.uCameraPos.value.copy(camera.position);
   });
 
-  if (!godRays || !haze || !material) return null;
+  if (!envOk || !godRays || !haze || !material) return null;
 
   return (
     <mesh

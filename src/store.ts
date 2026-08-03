@@ -13,10 +13,24 @@ import {
 } from './lib/roomGeometry';
 import { clampPositionInRoom } from './interaction/collision';
 import type { Weather } from './lib/environment';
+import {
+  DEFAULT_APPEARANCE,
+  type RoomAppearance,
+} from './lib/roomAppearance';
+import {
+  DEFAULT_VISUAL_SETTINGS,
+  loadVisualSettings,
+  saveVisualSettings,
+  type CameraPresetId,
+  type CutawayMode,
+  type RenderQualityTier,
+  type VisualSettings,
+} from './lib/renderQuality';
 
 const BED_MIN_BODY_H = 4;
 export const DEFAULT_BLANKET_COLOR = '#6b8cae';
 
+export type { RoomAppearance, VisualSettings, CameraPresetId, CutawayMode, RenderQualityTier };
 /**
  * Legacy beds used frame-bottom coordinates: position.y === leg height on the floor,
  * and size[1] was only the frame+mattress stack (legs not included). New format:
@@ -43,6 +57,8 @@ export interface RoomEnvironment {
   godRays: boolean;
   /** Invisible ceiling plane that casts shadows (toggle). */
   shadowRoof: boolean;
+  /** Persisted room finishes (walls/floor/ceiling/trim). */
+  appearance: RoomAppearance;
 }
 
 export const DEFAULT_ENVIRONMENT: RoomEnvironment = {
@@ -52,7 +68,8 @@ export const DEFAULT_ENVIRONMENT: RoomEnvironment = {
   skyMode: 'gradient',
   weather: 'partlyCloudy',
   godRays: false,
-  shadowRoof: false,
+  shadowRoof: true,
+  appearance: { ...DEFAULT_APPEARANCE },
 };
 
 export interface EmitterConfig {
@@ -110,6 +127,10 @@ interface StoreState {
 
   environment: RoomEnvironment;
   roomGeometry: RoomGeometry;
+  /** Client-only render prefs (not persisted to Supabase). */
+  visual: VisualSettings;
+  /** Transient: hide editor chrome while capturing a frame. */
+  captureMode: boolean;
   setTimeOfDay: (h: number) => void;
   setOrientation: (deg: number) => void;
   setExposure: (x: number) => void;
@@ -117,6 +138,12 @@ interface StoreState {
   setWeather: (w: Weather) => void;
   setGodRays: (on: boolean) => void;
   setShadowRoof: (on: boolean) => void;
+  setAppearance: (patch: Partial<RoomAppearance>) => void;
+  setAppearanceFull: (appearance: RoomAppearance) => void;
+  setVisualQuality: (q: RenderQualityTier) => void;
+  setCameraPreset: (p: CameraPresetId) => void;
+  setCutaway: (m: CutawayMode) => void;
+  setCaptureMode: (on: boolean) => void;
   setRoomGeometry: (geom: RoomGeometry) => void;
   setRoomHeight: (height: number) => void;
 
@@ -191,8 +218,10 @@ export const useStore = create<StoreState>((set) => ({
   selectedId: null,
   invalid: false,
 
-  environment: { ...DEFAULT_ENVIRONMENT },
+  environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
   roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
+  visual: loadVisualSettings(),
+  captureMode: false,
 
   setTimeOfDay: (h) =>
     set((s) => ({ environment: { ...s.environment, timeOfDay: clamp(h, 0, 24) } })),
@@ -208,6 +237,36 @@ export const useStore = create<StoreState>((set) => ({
     set((s) => ({ environment: { ...s.environment, godRays: on } })),
   setShadowRoof: (on) =>
     set((s) => ({ environment: { ...s.environment, shadowRoof: on } })),
+  setAppearance: (patch) =>
+    set((s) => ({
+      environment: {
+        ...s.environment,
+        appearance: { ...s.environment.appearance, ...patch },
+      },
+    })),
+  setAppearanceFull: (appearance) =>
+    set((s) => ({
+      environment: { ...s.environment, appearance: { ...appearance } },
+    })),
+  setVisualQuality: (q) =>
+    set((s) => {
+      const visual = { ...s.visual, quality: q };
+      saveVisualSettings(visual);
+      return { visual };
+    }),
+  setCameraPreset: (p) =>
+    set((s) => {
+      const visual = { ...s.visual, cameraPreset: p };
+      saveVisualSettings(visual);
+      return { visual };
+    }),
+  setCutaway: (m) =>
+    set((s) => {
+      const visual = { ...s.visual, cutaway: m };
+      saveVisualSettings(visual);
+      return { visual };
+    }),
+  setCaptureMode: (on) => set({ captureMode: on }),
 
   setRoomGeometry: (geom) => set({ roomGeometry: normalizeRoomGeometry(geom) }),
 
@@ -234,7 +293,10 @@ export const useStore = create<StoreState>((set) => ({
 
   hydrateRoomSettings: (environment, roomGeometry) =>
     set(() => ({
-      environment: { ...environment },
+      environment: {
+        ...environment,
+        appearance: { ...(environment.appearance ?? DEFAULT_APPEARANCE) },
+      },
       roomGeometry: normalizeRoomGeometry(roomGeometry),
     })),
 
@@ -246,7 +308,7 @@ export const useStore = create<StoreState>((set) => ({
         order: [],
         selectedId: null,
         invalid: false,
-        environment: { ...DEFAULT_ENVIRONMENT },
+        environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
         roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
       };
     }),

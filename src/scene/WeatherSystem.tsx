@@ -6,7 +6,7 @@ import { applyWeather, sampleSun } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
 import { useStore } from '../store';
 
-const PRECIP_COUNT = 1500;
+const PRECIP_COUNT = 400;
 const FOOTPRINT_PAD = 8;
 const OUTER_MARGIN = 64;
 

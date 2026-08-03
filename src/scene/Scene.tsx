@@ -1,6 +1,16 @@
-import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, type RefObject } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
-import { OrbitControls, Grid, Text } from '@react-three/drei';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  type MutableRefObject,
+  type RefObject,
+} from 'react';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
+import { OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
@@ -9,31 +19,36 @@ import { ItemsLayer } from '../furniture/ItemsLayer';
 import { DragController } from '../interaction/DragController';
 import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
 import { ArcMenu } from './ArcMenu';
-import { useStore } from '../store';
-import { applyWeather, sampleSun } from '../lib/environment';
+import { useStore, type CameraPresetId } from '../store';
+import { applyWeather, isDaytime, sampleSun } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
 import { WindowLightShafts } from './WindowLightShafts';
 import { RoomVolumetricHaze } from './RoomVolumetricHaze';
 import { WeatherSystem } from './WeatherSystem';
 import { ProceduralSky } from './ProceduralSky';
 import { ScenePostProcessing } from './ScenePostProcessing';
+import { resolveRenderQuality } from '../lib/renderQuality';
+import { framingForPreset } from '../lib/presentationCameras';
 
 const SCENE_BG = '#E4DAC8';
 
-// Image-based lighting: a deterministic in-memory RoomEnvironment PMREM gives PBR
-// materials the indirect/reflection term they need. Community GLBs (metallic or
-// reflection-baked) render nearly black without it; built-ins never had an env map.
-//
-// Neutral swap: the hemisphere fill cedes IBL_AMBIENT_FRACTION of its role to the
-// env map so built-ins keep ~the same total irradiance while imports gain reflections.
-// scene.environmentIntensity is the `k` from k = f·A·S/(π·L_env); both terms scale with
-// sun.ambient so the balance tracks the day/night cycle. Tune these two if built-ins
-// drift brighter/darker after the swap.
 const IBL_AMBIENT_FRACTION = 0.4;
-const IBL_INTENSITY_SCALE = 0.25;
+const IBL_INTENSITY_SCALE = 0.22;
+
+export interface CaptureOptions {
+  width?: number;
+  height?: number;
+  format?: 'image/png' | 'image/jpeg';
+  quality?: number;
+  cameraPreset?: CameraPresetId;
+  /** Hide editor chrome (gizmos). */
+  presentation?: boolean;
+}
 
 export interface SceneHandle {
   resetCamera: () => void;
+  goToPreset: (preset: CameraPresetId) => void;
+  captureFrame: (opts?: CaptureOptions) => Promise<Blob>;
 }
 
 function EnvironmentRig() {
@@ -42,6 +57,8 @@ function EnvironmentRig() {
   const exposure = useStore((s) => s.environment.exposure);
   const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
+  const quality = useStore((s) => s.visual.quality);
+  const q = resolveRenderQuality(quality);
   const lightRef = useRef<THREE.DirectionalLight>(null!);
   const targetRef = useRef<THREE.Object3D>(null!);
 
@@ -69,7 +86,7 @@ function EnvironmentRig() {
 
   const shadowExtent = useMemo(() => {
     const b = planBounds(geom);
-    return Math.max(b.width, b.depth) * 0.85 + 50;
+    return Math.max(b.width, b.depth) * 1.1 + 80;
   }, [geom]);
 
   useLayoutEffect(() => {
@@ -78,44 +95,93 @@ function EnvironmentRig() {
     if (light && t) light.target = t;
   }, []);
 
+  useEffect(() => {
+    const light = lightRef.current;
+    if (!light) return;
+    const size = q.shadowMapSize;
+    if (light.shadow.mapSize.x !== size || light.shadow.mapSize.y !== size) {
+      // Three won't rebuild the shadow RT unless the old one is cleared.
+      light.shadow.map?.dispose();
+      light.shadow.map = null;
+      light.shadow.mapSize.set(size, size);
+    }
+    light.shadow.camera.updateProjectionMatrix();
+    light.shadow.needsUpdate = true;
+    light.shadow.autoUpdate = true;
+  }, [q.shadowMapSize]);
+
+  useEffect(() => {
+    const light = lightRef.current;
+    if (!light) return;
+    light.shadow.map?.dispose();
+    light.shadow.map = null;
+    light.shadow.needsUpdate = true;
+  }, [quality]);
+
+  const shadowFrame = useRef(0);
+  useFrame(() => {
+    const light = lightRef.current;
+    if (!light) return;
+    const everyN = q.shadowUpdateEveryN;
+    if (everyN <= 1) {
+      light.shadow.autoUpdate = true;
+      return;
+    }
+    light.shadow.autoUpdate = false;
+    shadowFrame.current += 1;
+    const nightSlow = !isDaytime(timeOfDay) ? everyN * 2 : everyN;
+    if (shadowFrame.current % nightSlow === 0) {
+      light.shadow.needsUpdate = true;
+    }
+  });
+
+  const ambientScale = 0.6;
+  const sunScale = 1.05;
+
   return (
     <>
       <hemisphereLight
         args={[
           sun.skyColor,
           sun.groundColor,
-          sun.ambient * exposure * (1 - IBL_AMBIENT_FRACTION) * mod.ambientMul,
+          sun.ambient * exposure * (1 - IBL_AMBIENT_FRACTION) * mod.ambientMul * ambientScale,
         ]}
       />
       <directionalLight
         ref={lightRef}
         position={sun.position}
         color={sun.color}
-        intensity={sun.intensity * exposure * mod.sunMul}
+        intensity={sun.intensity * exposure * mod.sunMul * sunScale}
         castShadow
-        shadow-mapSize={[2048, 2048]}
+        shadow-mapSize={[q.shadowMapSize, q.shadowMapSize]}
         shadow-camera-left={-shadowExtent}
         shadow-camera-right={shadowExtent}
         shadow-camera-top={shadowExtent}
         shadow-camera-bottom={-shadowExtent}
         shadow-camera-near={1}
-        shadow-camera-far={800}
-        // normalBias offsets along the surface normal to kill self-shadow acne on
-        // dense/curved imported meshes; the small negative bias removes residual banding.
-        shadow-normalBias={1.5}
-        shadow-bias={-0.0004}
+        shadow-camera-far={1200}
+        shadow-radius={0}
+        shadow-normalBias={0.12}
+        shadow-bias={-0.0002}
       />
-      {/* World-space target — must not be parented under the light or shadows aim wrong. */}
       <object3D ref={targetRef} position={target} />
     </>
   );
 }
 
-/**
- * Builds a RoomEnvironment PMREM once and drives its strength from the sun so
- * IBL dims at night. Applies to every MeshStandardMaterial in the scene via
- * `scene.environment` (built-ins and imports alike carry no own envMap).
- */
+function SoftShadowType() {
+  const soft = useStore((s) => resolveRenderQuality(s.visual.quality).softShadows);
+  const quality = useStore((s) => s.visual.quality);
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    gl.shadowMap.enabled = true;
+    gl.shadowMap.autoUpdate = true;
+    gl.shadowMap.type = soft ? THREE.PCFSoftShadowMap : THREE.PCFShadowMap;
+    gl.shadowMap.needsUpdate = true;
+  }, [gl, soft, quality]);
+  return null;
+}
+
 function ImageBasedLighting() {
   const gl = useThree((s) => s.gl);
   const scene = useThree((s) => s.scene);
@@ -123,8 +189,15 @@ function ImageBasedLighting() {
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const exposure = useStore((s) => s.environment.exposure);
   const geom = useStore((s) => s.roomGeometry);
+  const quality = useStore((s) => s.visual.quality);
+  const q = resolveRenderQuality(quality);
 
   useEffect(() => {
+    if (!q.ibl) {
+      scene.environment = null;
+      scene.environmentIntensity = 0;
+      return;
+    }
     const pmrem = new THREE.PMREMGenerator(gl);
     const room = new RoomEnvironment();
     const envMap = pmrem.fromScene(room, 0.04).texture;
@@ -135,7 +208,7 @@ function ImageBasedLighting() {
       envMap.dispose();
       pmrem.dispose();
     };
-  }, [gl, scene]);
+  }, [gl, scene, q.ibl]);
 
   const ambient = useMemo(
     () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)).ambient,
@@ -143,8 +216,12 @@ function ImageBasedLighting() {
   );
 
   useEffect(() => {
-    scene.environmentIntensity = ambient * exposure * IBL_INTENSITY_SCALE;
-  }, [scene, ambient, exposure]);
+    if (!q.ibl) {
+      scene.environmentIntensity = 0;
+      return;
+    }
+    scene.environmentIntensity = ambient * exposure * IBL_INTENSITY_SCALE * 0.55;
+  }, [scene, ambient, exposure, q.ibl]);
 
   return null;
 }
@@ -156,6 +233,8 @@ function AtmosphericFog() {
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
+  const quality = useStore((s) => s.visual.quality);
+  const proceduralSky = resolveRenderQuality(quality).proceduralSky;
 
   const bounds = useMemo(() => planBounds(geom), [geom]);
 
@@ -166,17 +245,28 @@ function AtmosphericFog() {
 
   useEffect(() => {
     if (skyMode === 'gradient') {
-      scene.background = null;
-      gl.setClearColor('#0a0e14');
+      // Low skips the Shader Sky — keep a solid backdrop so the void isn't black.
+      if (proceduralSky) {
+        scene.background = null;
+        gl.setClearColor('#0a0e14');
+      } else {
+        scene.background = new THREE.Color(mod.skyBottom);
+        gl.setClearColor(mod.skyBottom);
+      }
     } else {
       scene.background = new THREE.Color(SCENE_BG);
       gl.setClearColor(SCENE_BG);
       scene.fog = null;
     }
-  }, [skyMode, scene, gl]);
+  }, [skyMode, scene, gl, proceduralSky, mod.skyBottom]);
 
   useEffect(() => {
     if (skyMode !== 'gradient') return;
+    // Fog is cheap visually but still a fragment cost — skip on Minimal env.
+    if (!proceduralSky) {
+      scene.fog = null;
+      return;
+    }
     if (mod.fog) {
       scene.fog = new THREE.Fog(mod.fog.color, mod.fog.near, mod.fog.far);
     } else {
@@ -185,66 +275,225 @@ function AtmosphericFog() {
     return () => {
       scene.fog = null;
     };
-  }, [skyMode, mod.fog, scene]);
+  }, [skyMode, mod.fog, scene, proceduralSky]);
 
   return null;
 }
 
-function CompassRose() {
-  const orientationDeg = useStore((s) => s.environment.orientationDeg);
-  const geom = useStore((s) => s.roomGeometry);
-  const [cx, cz] = planCentroid(geom);
-  const r = 28;
-  const yaw = -(orientationDeg * Math.PI) / 180;
-
-  const labels: { text: string; angle: number }[] = [
-    { text: 'N', angle: 0 },
-    { text: 'E', angle: Math.PI / 2 },
-    { text: 'S', angle: Math.PI },
-    { text: 'W', angle: (3 * Math.PI) / 2 },
-  ];
-
-  return (
-    <group position={[cx, 0.2, cz]} rotation={[0, yaw, 0]}>
-      {labels.map(({ text, angle }) => {
-        const x = Math.sin(angle) * r;
-        const z = Math.cos(angle) * r;
-        return (
-          <Text
-            key={text}
-            position={[x, 0, z]}
-            rotation={[-Math.PI / 2, 0, 0]}
-            fontSize={6}
-            color="#6a543a"
-            fillOpacity={0.35}
-            anchorX="center"
-            anchorY="middle"
-          >
-            {text}
-          </Text>
-        );
-      })}
-    </group>
-  );
+function DprCap() {
+  const quality = useStore((s) => s.visual.quality);
+  const setDpr = useThree((s) => s.setDpr);
+  useEffect(() => {
+    const cap = resolveRenderQuality(quality).dprCap;
+    const device = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
+    setDpr(Math.min(device, cap));
+  }, [quality, setDpr]);
+  return null;
 }
 
-function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType | null> }) {
+function ColorSpaceSetup() {
+  const gl = useThree((s) => s.gl);
+  useEffect(() => {
+    gl.outputColorSpace = THREE.SRGBColorSpace;
+    gl.toneMapping = THREE.ACESFilmicToneMapping;
+    gl.toneMappingExposure = 1;
+  }, [gl]);
+  return null;
+}
+
+/**
+ * EffectComposer permanently sets gl.autoClear=false and restores that false
+ * value after every frame. Force clear back on so the canvas never smears when
+ * post is off — and so any offscreen passes that rely on autoClear still work.
+ */
+function AutoClearGuard() {
+  const gl = useThree((s) => s.gl);
+
+  useFrame(() => {
+    gl.autoClear = true;
+  }, -1);
+
+  useEffect(() => {
+    gl.autoClear = true;
+    gl.toneMapping = THREE.ACESFilmicToneMapping;
+  }, [gl]);
+  return null;
+}
+
+/** Animate orbit controls toward a framing. */
+function CameraAnimator({
+  controlsRef,
+  requestRef,
+}: {
+  controlsRef: RefObject<OrbitControlsType | null>;
+  requestRef: MutableRefObject<{
+    framing: ReturnType<typeof framingForPreset> | null;
+    t: number;
+  }>;
+}) {
+  const invalidate = useThree((s) => s.invalidate);
+  const fromPos = useRef(new THREE.Vector3());
+  const fromTarget = useRef(new THREE.Vector3());
+  const toPos = useRef(new THREE.Vector3());
+  const toTarget = useRef(new THREE.Vector3());
+  const startFov = useRef(50);
+  const animating = useRef(false);
+
+  useFrame((_, dt) => {
+    const req = requestRef.current;
+    const ctrl = controlsRef.current;
+    if (!req?.framing || !ctrl) {
+      animating.current = false;
+      return;
+    }
+    const f = req.framing;
+    if (!animating.current) {
+      animating.current = true;
+      fromPos.current.copy(ctrl.object.position);
+      fromTarget.current.copy(ctrl.target);
+      toPos.current.set(...f.position);
+      toTarget.current.set(...f.target);
+      const cam = ctrl.object as THREE.PerspectiveCamera;
+      startFov.current = 'fov' in cam ? cam.fov : 50;
+      req.t = 0;
+    }
+    req.t = Math.min(1, req.t + dt * 2.2);
+    const k = 1 - Math.pow(1 - req.t, 3);
+    const cam = ctrl.object as THREE.PerspectiveCamera;
+    cam.position.lerpVectors(fromPos.current, toPos.current, k);
+    ctrl.target.lerpVectors(fromTarget.current, toTarget.current, k);
+    if ('fov' in cam && typeof f.fov === 'number') {
+      cam.fov = THREE.MathUtils.lerp(startFov.current, f.fov, k);
+      cam.updateProjectionMatrix();
+    }
+    ctrl.update();
+    invalidate();
+    if (req.t >= 1) {
+      req.framing = null;
+      animating.current = false;
+    }
+  });
+  return null;
+}
+
+type CaptureApi = {
+  capture: (opts?: CaptureOptions) => Promise<Blob>;
+  applyPreset: (preset: CameraPresetId) => void;
+};
+
+function CaptureBridge({
+  apiRef,
+  controlsRef,
+}: {
+  apiRef: MutableRefObject<CaptureApi | null>;
+  controlsRef: RefObject<OrbitControlsType | null>;
+}) {
+  const { gl, scene, camera, size } = useThree();
+  const geom = useStore((s) => s.roomGeometry);
+
+  const applyPreset = useCallback(
+    (preset: CameraPresetId) => {
+      const ctrl = controlsRef.current;
+      if (!ctrl) return;
+      const f = framingForPreset(geom, preset);
+      ctrl.object.position.set(...f.position);
+      ctrl.target.set(...f.target);
+      const cam = ctrl.object as THREE.PerspectiveCamera;
+      if ('fov' in cam) {
+        cam.fov = f.fov;
+        cam.updateProjectionMatrix();
+      }
+      ctrl.update();
+    },
+    [controlsRef, geom],
+  );
+
+  const capture = useCallback(
+    async (opts: CaptureOptions = {}) => {
+      const width = opts.width ?? 1920;
+      const height = opts.height ?? 1080;
+      const format = opts.format ?? 'image/png';
+      const quality = opts.quality ?? 0.92;
+      const prevSize = { w: size.width, h: size.height };
+      const prevPR = gl.getPixelRatio();
+      const ctrl = controlsRef.current;
+
+      const prevCam = ctrl
+        ? {
+            pos: ctrl.object.position.clone(),
+            target: ctrl.target.clone(),
+            fov: (ctrl.object as THREE.PerspectiveCamera).fov,
+          }
+        : null;
+
+      if (opts.presentation !== false) useStore.getState().setCaptureMode(true);
+      if (opts.cameraPreset) applyPreset(opts.cameraPreset);
+
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+
+      gl.setPixelRatio(1);
+      gl.setSize(width, height, false);
+      gl.render(scene, camera);
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        gl.domElement.toBlob(
+          (b) => (b ? resolve(b) : reject(new Error('Failed to encode frame'))),
+          format,
+          quality,
+        );
+      });
+
+      gl.setPixelRatio(prevPR);
+      gl.setSize(prevSize.w, prevSize.h, false);
+      useStore.getState().setCaptureMode(false);
+
+      if (ctrl && prevCam) {
+        ctrl.object.position.copy(prevCam.pos);
+        ctrl.target.copy(prevCam.target);
+        const cam = ctrl.object as THREE.PerspectiveCamera;
+        if ('fov' in cam) {
+          cam.fov = prevCam.fov;
+          cam.updateProjectionMatrix();
+        }
+        ctrl.update();
+      }
+
+      return blob;
+    },
+    [gl, scene, camera, size, controlsRef, applyPreset],
+  );
+
+  useEffect(() => {
+    apiRef.current = { capture, applyPreset };
+  }, [apiRef, capture, applyPreset]);
+
+  return null;
+}
+
+function SceneInner({
+  controlsRef,
+  apiRef,
+  animRequestRef,
+}: {
+  controlsRef: RefObject<OrbitControlsType | null>;
+  apiRef: MutableRefObject<CaptureApi | null>;
+  animRequestRef: MutableRefObject<{
+    framing: ReturnType<typeof framingForPreset> | null;
+    t: number;
+  }>;
+}) {
   const deselect = useStore((s) => s.select);
   const skyMode = useStore((s) => s.environment.skyMode);
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
+  const quality = useStore((s) => s.visual.quality);
+  const cameraPreset = useStore((s) => s.visual.cameraPreset);
+  const capturing = useStore((s) => s.captureMode);
+  const q = resolveRenderQuality(quality);
 
-  const camera = useMemo(() => {
-    const b = planBounds(geom);
-    const [cx, cz] = planCentroid(geom);
-    const span = Math.max(b.width, b.depth);
-    return {
-      position: [cx + span * 0.9, span * 0.55, cz + span * 1.1] as [number, number, number],
-      target: [cx, 30, cz] as [number, number, number],
-    };
-  }, [geom]);
+  const framing = useMemo(() => framingForPreset(geom, cameraPreset), [geom, cameraPreset]);
 
   const backdrop = useMemo(() => {
     if (skyMode === 'studio') return SCENE_BG;
@@ -252,60 +501,74 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
     return applyWeather(sun, weather, planBounds(geom)).skyBottom;
   }, [skyMode, timeOfDay, orientationDeg, weather, geom]);
 
+  const showChrome = !capturing;
+  const showWeatherFx = q.envDetail === 'full';
+  const cheapGpu = q.tier === 'low' || q.tier === 'balanced';
+
   return (
     <Canvas
+      frameloop="always"
       shadows
+      dpr={[1, q.dprCap]}
       camera={{
-        position: camera.position,
-        fov: 35,
+        position: framing.position,
+        fov: framing.fov,
         near: 1,
         far: 2000,
       }}
       onPointerMissed={() => deselect(null)}
-      gl={{ antialias: true, alpha: false, powerPreference: 'high-performance', toneMapping: THREE.ACESFilmicToneMapping }}
+      gl={{
+        antialias: q.tier !== 'low',
+        alpha: false,
+        powerPreference: cheapGpu ? 'low-power' : 'default',
+        toneMapping: THREE.ACESFilmicToneMapping,
+        preserveDrawingBuffer: false,
+        outputColorSpace: THREE.SRGBColorSpace,
+      }}
       onCreated={({ gl, scene }) => {
         gl.setClearColor(backdrop);
         scene.background = new THREE.Color(backdrop);
+        gl.autoClear = true;
+        gl.toneMapping = THREE.ACESFilmicToneMapping;
+        gl.shadowMap.enabled = true;
+        gl.shadowMap.type = THREE.PCFShadowMap;
+        gl.shadowMap.autoUpdate = true;
         gl.domElement.addEventListener('webglcontextlost', (e) => e.preventDefault(), false);
       }}
       style={{ width: '100%', height: '100%', background: backdrop }}
     >
+      <ColorSpaceSetup />
+      <AutoClearGuard />
+      <SoftShadowType />
+      <DprCap />
       <AtmosphericFog />
       <ImageBasedLighting />
       <EnvironmentRig />
       <ProceduralSky />
-      <WeatherSystem />
-
-      <Grid
-        position={[planCentroid(geom)[0], 0.1, planCentroid(geom)[1]]}
-        args={[planBounds(geom).width, planBounds(geom).depth]}
-        cellSize={12}
-        cellThickness={0.6}
-        cellColor="#6a543a"
-        sectionSize={60}
-        sectionThickness={1.2}
-        sectionColor="#8a6e4e"
-        fadeDistance={500}
-        infiniteGrid={false}
-      />
-      <CompassRose />
+      {showWeatherFx ? <WeatherSystem /> : null}
 
       <Room />
       <ItemsLayer />
-      <ArcMenu />
-      <DragController />
-      <KeyboardShortcuts />
+      {showChrome ? (
+        <>
+          <ArcMenu />
+          <DragController />
+          <KeyboardShortcuts />
+        </>
+      ) : null}
       <WindowLightShafts />
       <RoomVolumetricHaze />
 
       <ScenePostProcessing />
+      <CameraAnimator controlsRef={controlsRef} requestRef={animRequestRef} />
+      <CaptureBridge apiRef={apiRef} controlsRef={controlsRef} />
 
       <OrbitControls
         ref={controlsRef as never}
-        target={camera.target}
+        target={framing.target}
         minDistance={60}
         maxDistance={650}
-        minPolarAngle={0.1}
+        minPolarAngle={0.05}
         maxPolarAngle={Math.PI / 2 - 0.05}
         enableDamping
         dampingFactor={0.08}
@@ -322,20 +585,51 @@ function SceneInner({ controlsRef }: { controlsRef: RefObject<OrbitControlsType 
 
 export const Scene = forwardRef<SceneHandle>(function Scene(_, ref) {
   const controlsRef = useRef<OrbitControlsType>(null);
+  const apiRef = useRef<CaptureApi | null>(null);
+  const animRequestRef = useRef<{
+    framing: ReturnType<typeof framingForPreset> | null;
+    t: number;
+  }>({ framing: null, t: 0 });
   const geom = useStore((s) => s.roomGeometry);
+  const cameraPreset = useStore((s) => s.visual.cameraPreset);
 
-  useImperativeHandle(ref, () => ({
-    resetCamera() {
-      const ctrl = controlsRef.current;
-      if (!ctrl) return;
-      const b = planBounds(geom);
-      const [cx, cz] = planCentroid(geom);
-      const span = Math.max(b.width, b.depth);
-      ctrl.object.position.set(cx + span * 0.9, span * 0.55, cz + span * 1.1);
-      ctrl.target.set(cx, 30, cz);
-      ctrl.update();
-    },
-  }), [geom]);
+  useImperativeHandle(
+    ref,
+    () => ({
+      resetCamera() {
+        const f = framingForPreset(geom, cameraPreset);
+        const ctrl = controlsRef.current;
+        if (!ctrl) return;
+        ctrl.object.position.set(...f.position);
+        ctrl.target.set(...f.target);
+        const cam = ctrl.object as THREE.PerspectiveCamera;
+        if ('fov' in cam) {
+          cam.fov = f.fov;
+          cam.updateProjectionMatrix();
+        }
+        ctrl.update();
+      },
+      goToPreset(preset: CameraPresetId) {
+        animRequestRef.current = {
+          framing: framingForPreset(geom, preset),
+          t: 0,
+        };
+        useStore.getState().setCameraPreset(preset);
+      },
+      async captureFrame(opts?: CaptureOptions) {
+        const api = apiRef.current;
+        if (!api) throw new Error('Scene not ready');
+        return api.capture(opts);
+      },
+    }),
+    [geom, cameraPreset],
+  );
 
-  return <SceneInner controlsRef={controlsRef} />;
+  return (
+    <SceneInner
+      controlsRef={controlsRef}
+      apiRef={apiRef}
+      animRequestRef={animRequestRef}
+    />
+  );
 });

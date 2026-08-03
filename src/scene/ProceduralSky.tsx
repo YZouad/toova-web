@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { proceduralSkyParams } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
 import { useStore } from '../store';
+import { resolveRenderQuality } from '../lib/renderQuality';
 
 export function ProceduralSky() {
   const skyMode = useStore((s) => s.environment.skyMode);
@@ -11,6 +12,8 @@ export function ProceduralSky() {
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
+  const quality = useStore((s) => s.visual.quality);
+  const q = resolveRenderQuality(quality);
   const groupRef = useRef<THREE.Group>(null);
 
   const bounds = useMemo(() => planBounds(geom), [geom]);
@@ -35,7 +38,7 @@ export function ProceduralSky() {
     });
   }, [params]);
 
-  if (skyMode !== 'gradient') return null;
+  if (skyMode !== 'gradient' || !q.proceduralSky) return null;
 
   return (
     <group ref={groupRef} position={[cx, 0, cz]}>
