@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { MODEL_FILES_BUCKET } from './modelStorage';
+import { requestUnfurlDeploy } from './requestUnfurlDeploy';
 import { buildShareUrl } from './shareLinks';
 
 export type ShareRole = 'viewer' | 'editor';
@@ -148,6 +149,7 @@ export async function createRoomShare(
     .single();
   if (error) throw new Error(error.message);
   const token = data.token as string;
+  void requestUnfurlDeploy();
   return { token, url: buildShareUrl(token) };
 }
 
@@ -157,6 +159,7 @@ export async function revokeRoomShare(token: string): Promise<void> {
     .update({ revoked_at: new Date().toISOString() })
     .eq('token', token);
   if (error) throw new Error(error.message);
+  void requestUnfurlDeploy();
 }
 
 export async function updateRoomShareAllowCopy(

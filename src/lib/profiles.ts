@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { MODEL_FILES_BUCKET } from './modelStorage';
+import { requestUnfurlDeploy } from './requestUnfurlDeploy';
 
 export const PROFILE_AVATARS_BUCKET = 'profile-avatars';
 
@@ -138,6 +139,9 @@ export async function updateOwnProfile(input: {
     p_clear_avatar: input.avatarPath === null,
   });
   if (error) throw new Error(profileErrorMessage(error, 'Could not update profile.'));
+  if (input.isPublic !== undefined) {
+    void requestUnfurlDeploy();
+  }
   return data as Profile;
 }
 
@@ -150,6 +154,7 @@ export async function setRoomVisibility(
     p_visibility: visibility,
   });
   if (error) throw new Error(profileErrorMessage(error, 'Could not update room visibility.'));
+  void requestUnfurlDeploy();
 }
 
 export async function fetchPublicRoom(
