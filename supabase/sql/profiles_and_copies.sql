@@ -596,7 +596,8 @@ BEGIN
     bed_leg_height, natural_w, natural_h, natural_d,
     sort_order, model_url,
     bedding_enabled, blanket_color, blanket_texture_path,
-    emitter
+    emitter, curated_product_id,
+    instance_key, hanging_config
   )
   SELECT
     new_id, kind, label,
@@ -605,7 +606,8 @@ BEGIN
     bed_leg_height, natural_w, natural_h, natural_d,
     sort_order, model_url,
     bedding_enabled, blanket_color, blanket_texture_path,
-    emitter
+    emitter, curated_product_id,
+    instance_key, hanging_config
   FROM public.room_items
   WHERE room_id = room_row.id
   ORDER BY sort_order;

@@ -3,7 +3,11 @@
  */
 
 import type { FurnitureKind } from '../furniture/registry';
-import { DEFAULT_BLANKET_COLOR, type EmitterConfig, type Item } from '../store';
+import { DEFAULT_BLANKET_COLOR, newAttachmentKey, type EmitterConfig, type Item } from '../store';
+import {
+  parseHangingConfig,
+  type HangingDecorationConfig,
+} from './hangingDecorGeometry';
 
 const KNOWN_KINDS: FurnitureKind[] = [
   'bed',
@@ -14,6 +18,7 @@ const KNOWN_KINDS: FurnitureKind[] = [
   'nightstand',
   'lamp',
   'imported',
+  'hanging',
 ];
 
 function isFurnitureKind(k: string): k is FurnitureKind {
@@ -44,6 +49,8 @@ export interface RoomItemRow {
   blanket_texture_path?: string | null;
   emitter?: EmitterConfig | null;
   curated_product_id?: string | null;
+  instance_key?: string | null;
+  hanging_config?: HangingDecorationConfig | null;
 }
 
 export type RoomItemInsert = {
@@ -68,6 +75,8 @@ export type RoomItemInsert = {
   blanket_texture_path: string | null;
   emitter?: EmitterConfig | null;
   curated_product_id: string | null;
+  instance_key: string;
+  hanging_config: HangingDecorationConfig | null;
 };
 
 function n(v: string | number): number {
@@ -133,6 +142,15 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
       ? String(row.curated_product_id).trim()
       : undefined;
 
+  const attachmentKey =
+    row.instance_key != null && String(row.instance_key).trim()
+      ? String(row.instance_key).trim()
+      : newAttachmentKey();
+
+  const hanging =
+    row.kind === 'hanging' ? parseHangingConfig(row.hanging_config) : undefined;
+  if (row.kind === 'hanging' && !hanging) return null;
+
   return {
     id: row.id,
     kind: row.kind,
@@ -150,6 +168,8 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     importedStoragePath,
     emitter,
     curatedProductId,
+    attachmentKey,
+    hanging: hanging ?? undefined,
   };
 }
 
@@ -218,6 +238,8 @@ export function serializeLayoutForRoom(
           : null,
       curated_product_id: it.curatedProductId ?? null,
       emitter: it.emitter?.enabled ? it.emitter : null,
+      instance_key: it.attachmentKey || newAttachmentKey(),
+      hanging_config: it.kind === 'hanging' && it.hanging ? it.hanging : null,
     };
     out.push(row);
   }

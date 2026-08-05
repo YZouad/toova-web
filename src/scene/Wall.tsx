@@ -120,6 +120,7 @@ export function Wall({
   innerFaceCenter,
   rotationY: rotationYProp,
   holes = [],
+  wallId,
   cutAway = false,
   color,
 }: WallProps) {
@@ -219,6 +220,10 @@ export function Wall({
         receiveShadow={false}
         frustumCulled={false}
         material={shadowMaterial}
+        userData={{ hangingPick: false }}
+        raycast={() => {
+          /* shadow-only proxy — never participate in hanging surface picks */
+        }}
       />
       <mesh
         geometry={geometry}
@@ -227,6 +232,7 @@ export function Wall({
         castShadow={false}
         receiveShadow
         material={material}
+        userData={wallId ? { wallId } : undefined}
       />
     </group>
   );

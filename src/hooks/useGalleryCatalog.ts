@@ -109,7 +109,7 @@ async function resolveUrls(row: GalleryCatalogRow): Promise<{
 /** Fallback builtins when RPC has no Toova rows yet (e.g. migration pending). */
 function localBuiltinModels(category: string | null, query: string): GalleryModel[] {
   const q = query.trim().toLowerCase();
-  return (Object.keys(FURNITURE) as Array<Exclude<FurnitureKind, 'imported'>>)
+  return (Object.keys(FURNITURE) as Array<Exclude<FurnitureKind, 'imported' | 'hanging'>>)
     .map((k) => {
       const def = FURNITURE[k];
       const cats = BUILTIN_CATEGORIES[k] ?? ['other'];

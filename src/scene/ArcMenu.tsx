@@ -38,45 +38,62 @@ export function ArcMenu() {
     setItemSize(item.id, proportionalSizesFromMaxSide(item.size, curMax * factor));
   };
 
-  const buttons: ArcButton[] = [
-    {
-      key: 'rotate',
-      title: 'Rotate 45°',
-      icon: '↻',
-      onClick: () => updateRotation(item.id, item.rotationY + Math.PI / 4),
-    },
-    {
-      key: 'smaller',
-      title: 'Smaller',
-      icon: '–',
-      onClick: () => scaleBy(1 / SCALE_STEP),
-    },
-    {
-      key: 'bigger',
-      title: 'Bigger',
-      icon: '＋',
-      onClick: () => scaleBy(SCALE_STEP),
-    },
-    {
-      key: 'wall',
-      title: item.wallMounted ? 'Unmount from wall' : 'Wall mount',
-      icon: '▦',
-      onClick: () => setWallMounted(item.id, !item.wallMounted),
-    },
-    {
-      key: 'duplicate',
-      title: 'Duplicate',
-      icon: '⧉',
-      onClick: () => duplicateItem(item.id),
-    },
-    {
-      key: 'delete',
-      title: 'Delete',
-      icon: '✕',
-      onClick: () => removeItem(item.id),
-      danger: true,
-    },
-  ];
+  const buttons: ArcButton[] =
+    item.kind === 'hanging'
+      ? [
+          {
+            key: 'duplicate',
+            title: 'Duplicate',
+            icon: '⧉',
+            onClick: () => duplicateItem(item.id),
+          },
+          {
+            key: 'delete',
+            title: 'Delete',
+            icon: '✕',
+            onClick: () => removeItem(item.id),
+            danger: true,
+          },
+        ]
+      : [
+          {
+            key: 'rotate',
+            title: 'Rotate 45°',
+            icon: '↻',
+            onClick: () => updateRotation(item.id, item.rotationY + Math.PI / 4),
+          },
+          {
+            key: 'smaller',
+            title: 'Smaller',
+            icon: '–',
+            onClick: () => scaleBy(1 / SCALE_STEP),
+          },
+          {
+            key: 'bigger',
+            title: 'Bigger',
+            icon: '＋',
+            onClick: () => scaleBy(SCALE_STEP),
+          },
+          {
+            key: 'wall',
+            title: item.wallMounted ? 'Unmount from wall' : 'Wall mount',
+            icon: '▦',
+            onClick: () => setWallMounted(item.id, !item.wallMounted),
+          },
+          {
+            key: 'duplicate',
+            title: 'Duplicate',
+            icon: '⧉',
+            onClick: () => duplicateItem(item.id),
+          },
+          {
+            key: 'delete',
+            title: 'Delete',
+            icon: '✕',
+            onClick: () => removeItem(item.id),
+            danger: true,
+          },
+        ];
 
   const angles = [-104, -62, -21, 21, 62, 104];
   const radius = 88;

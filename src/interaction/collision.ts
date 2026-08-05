@@ -60,6 +60,7 @@ export function topSurfaceY(item: Item): number {
  * Touching edges (eps gap) are allowed — only real penetration is blocked.
  */
 export function volumeConflict(a: Item, b: Item, eps = 0.5): boolean {
+  if (a.kind === 'hanging' || b.kind === 'hanging') return false;
   if (!rectsOverlap(itemRect(a), itemRect(b), -eps)) return false;
   const aY0 = a.position[1], aY1 = aY0 + a.size[1];
   const bY0 = b.position[1], bY1 = bY0 + b.size[1];
@@ -156,6 +157,8 @@ export interface ValidationResult { ok: boolean; reason?: string; }
  * Objects are allowed to float; gravity is handled separately.
  */
 export function validatePlacement(candidate: Item, others: Item[]): ValidationResult {
+  if (candidate.kind === 'hanging') return { ok: true };
+
   const rect = itemRect(candidate);
   const r = room();
 
@@ -165,6 +168,7 @@ export function validatePlacement(candidate: Item, others: Item[]): ValidationRe
 
   for (const other of others) {
     if (other.id === candidate.id) continue;
+    if (other.kind === 'hanging') continue;
     if (!volumeConflict(candidate, other)) continue;
 
     // Tuck-under exception: item fits inside the interior clearance of a host (bed legs / desk space).
@@ -195,6 +199,7 @@ export function validatePlacement(candidate: Item, others: Item[]): ValidationRe
 export function itemsFitPlan(items: Item[], plan: RoomGeometry): Item[] {
   const outside: Item[] = [];
   for (const item of items) {
+    if (item.kind === 'hanging') continue;
     const rect = itemRect(item);
     if (!footprintInsideRoom(rect, plan)) outside.push(item);
   }

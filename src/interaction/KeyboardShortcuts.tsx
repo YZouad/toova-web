@@ -8,6 +8,8 @@ const STEP_LARGE = Math.PI / 2;
  * R / Shift+R   rotate selected item (placement is revalidated + gravity applied in store)
  * Delete/Bksp   delete selected item
  * Escape        deselect
+ *
+ * Skipped while a hanging-decoration draft is active (placement controller owns keys).
  */
 export function KeyboardShortcuts() {
   useEffect(() => {
@@ -15,13 +17,17 @@ export function KeyboardShortcuts() {
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
 
-      const { selectedId, items, updateRotation, removeItem, select } = useStore.getState();
+      const state = useStore.getState();
+      if (state.hangingDraft) return;
+      if (state.designerTool !== 'select') return;
+
+      const { selectedId, items, updateRotation, removeItem, select } = state;
       if (!selectedId) return;
 
       if (e.key === 'r' || e.key === 'R') {
-        e.preventDefault();
         const item = items[selectedId];
-        if (!item) return;
+        if (!item || item.kind === 'hanging') return;
+        e.preventDefault();
         const delta = e.shiftKey ? STEP_LARGE : STEP;
         updateRotation(selectedId, item.rotationY + delta);
       } else if (e.key === 'Delete' || e.key === 'Backspace') {

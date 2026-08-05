@@ -21,6 +21,8 @@ import { LookDrawer } from './LookDrawer';
 import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
+import { HangingDecorToolRail } from './HangingDecorToolRail';
+import { HangingDecorPanel } from './HangingDecorPanel';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
@@ -46,6 +48,7 @@ const KIND_COLORS: Record<string, string> = {
   nightstand: '#C0A47A',
   lamp: '#D4C4A0',
   imported: '#7E8A60',
+  hanging: '#6B9AC4',
 };
 
 function getBaseSize(
@@ -394,6 +397,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         </div>
 
         <SceneCheckoutPanel onOpenChecklist={onOpenChecklist} />
+        <HangingDecorToolRail />
 
         <div className="designer-right-rail">
           <AtmosphereStrip
@@ -414,6 +418,19 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           <button type="button" className="designer-add-btn" onClick={() => setPaletteOpen(true)}>
             <span style={{ fontSize: 20, lineHeight: 0, marginTop: -2 }}>＋</span> Add furniture
           </button>
+        ) : item?.kind === 'hanging' ? (
+          <div className="designer-quick-bar">
+            <span style={{ fontSize: 13, fontWeight: 600, padding: '0 4px' }}>{item.label}</span>
+            <div style={{ width: 1, height: 32, background: 'var(--border)' }} />
+            <button
+              type="button"
+              className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
+              aria-pressed={advancedOpen}
+              onClick={() => setAdvancedOpen((v) => !v)}
+            >
+              Customize <span>⤢</span>
+            </button>
+          </div>
         ) : item ? (
           <div className="designer-quick-bar">
             <div className="designer-quick-size">
@@ -448,7 +465,11 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           }}
         />
 
-        {advancedOpen && item ? (
+        {advancedOpen && item?.kind === 'hanging' ? (
+          <HangingDecorPanel onClose={() => setAdvancedOpen(false)} />
+        ) : null}
+
+        {advancedOpen && item && item.kind !== 'hanging' ? (
           <aside className="designer-advanced tv-scroll">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--accent)' }}>Advanced · selected piece</span>

@@ -18,7 +18,9 @@ import { Room } from './Room';
 import { ItemsLayer } from '../furniture/ItemsLayer';
 import { DragController } from '../interaction/DragController';
 import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
+import { HangingPlacementController } from '../interaction/HangingPlacementController';
 import { ArcMenu } from './ArcMenu';
+import { HangingDraftPreview } from '../furniture/HangingDecoration';
 import { useStore, type CameraPresetId } from '../store';
 import { applyWeather, isDaytime, sampleSun } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
@@ -518,6 +520,9 @@ function SceneInner({
   const showChrome = !capturing && !readOnly;
   const showWeatherFx = q.envDetail === 'full';
   const cheapGpu = q.tier === 'low' || q.tier === 'balanced';
+  const designerTool = useStore((s) => s.designerTool);
+  const hangingTool =
+    !readOnly && !capturing && (designerTool === 'hanging-leaves' || designerTool === 'hanging-lights');
 
   return (
     <Canvas
@@ -565,7 +570,13 @@ function SceneInner({
 
       <Room />
       <ItemsLayer />
-      {showChrome ? (
+      {hangingTool ? (
+        <>
+          <HangingPlacementController />
+          <HangingDraftPreview />
+        </>
+      ) : null}
+      {showChrome && !hangingTool ? (
         <>
           <ArcMenu />
           <DragController />

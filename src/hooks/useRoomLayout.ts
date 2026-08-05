@@ -271,12 +271,14 @@ export async function saveRoomLayout(
 }
 
 const ROOM_SCHEMA_MIGRATION_HINT =
-  'Run supabase/sql/add_room_environment_geometry_emitter.sql in the Supabase SQL Editor (Dashboard → SQL).';
+  'Run supabase/sql/add_room_environment_geometry_emitter.sql and supabase/sql/hanging_decorations.sql in the Supabase SQL Editor (Dashboard → SQL).';
 
 function formatRoomDbError(message: string): string {
   if (
     message.includes("'environment'") ||
     message.includes("'room_geometry'") ||
+    message.includes("'instance_key'") ||
+    message.includes("'hanging_config'") ||
     message.includes('schema cache')
   ) {
     return `Database is missing room layout columns. ${ROOM_SCHEMA_MIGRATION_HINT}`;

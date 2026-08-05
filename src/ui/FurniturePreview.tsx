@@ -36,8 +36,9 @@ const KIND_GLYPH: Record<string, string> = {
 };
 
 function labelForKind(kind: string): string {
+  if (kind === 'hanging') return 'Hanging decor';
   if (kind !== 'imported' && kind in FURNITURE) {
-    return FURNITURE[kind as Exclude<FurnitureKind, 'imported'>].label;
+    return FURNITURE[kind as Exclude<FurnitureKind, 'imported' | 'hanging'>].label;
   }
   return kind === 'imported' ? 'Model' : kind;
 }

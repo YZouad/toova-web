@@ -8,6 +8,7 @@ import { Chair } from './Chair';
 import { Nightstand } from './Nightstand';
 import { Lamp } from './Lamp';
 import { ImportedModel } from './ImportedModel';
+import { HangingDecoration } from './HangingDecoration';
 import { ItemEmitter } from './ItemEmitter';
 import { EmitterGlow } from './EmitterGlow';
 
@@ -16,6 +17,8 @@ export function ItemsLayer() {
   const order = useStore((s) => s.order);
   const selectedId = useStore((s) => s.selectedId);
   const invalid = useStore((s) => s.invalid);
+  const designerTool = useStore((s) => s.designerTool);
+  const placing = designerTool === 'hanging-leaves' || designerTool === 'hanging-lights';
 
   return (
     <>
@@ -23,16 +26,22 @@ export function ItemsLayer() {
         const item = items[id];
         if (!item) return null;
         const isSelected = id === selectedId;
+        // Hanging visuals are authored in world-relative local space around item.position.
         return (
           <group
             key={id}
             position={item.position}
-            rotation={[0, item.rotationY, 0]}
-            userData={{ itemId: id }}
+            rotation={[0, item.kind === 'hanging' ? 0 : item.rotationY, 0]}
+            userData={{ itemId: id, hanging: item.kind === 'hanging' }}
           >
-            <Selectable id={id}>
-              <ItemVisual item={item} selected={isSelected} invalid={isSelected && invalid} />
-            </Selectable>
+            {placing ? (
+              // Still raycastable for furniture anchors, but selection is suppressed upstream.
+              <ItemVisual item={item} selected={false} invalid={false} />
+            ) : (
+              <Selectable id={id}>
+                <ItemVisual item={item} selected={isSelected} invalid={isSelected && invalid} />
+              </Selectable>
+            )}
           </group>
         );
       })}
@@ -41,6 +50,10 @@ export function ItemsLayer() {
 }
 
 function ItemVisual({ item, selected, invalid }: { item: Item; selected: boolean; invalid: boolean }) {
+  if (item.kind === 'hanging') {
+    return <HangingDecoration item={item} selected={selected} invalid={invalid} />;
+  }
+
   const emitter = item.emitter?.enabled ? item.emitter : null;
   const body = <FurnitureBody item={item} selected={selected} invalid={invalid} />;
 
@@ -68,5 +81,6 @@ function FurnitureBody({ item, selected, invalid }: { item: Item; selected: bool
     case 'nightstand': return <Nightstand item={item} selected={selected} invalid={invalid} />;
     case 'lamp': return <Lamp item={item} selected={selected} invalid={invalid} />;
     case 'imported': return <ImportedModel item={item} selected={selected} invalid={invalid} />;
+    case 'hanging': return null;
   }
 }

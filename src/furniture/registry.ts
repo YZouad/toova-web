@@ -6,7 +6,9 @@ export type FurnitureKind =
   | 'chair'
   | 'nightstand'
   | 'lamp'
-  | 'imported';
+  | 'imported'
+  /** Procedural hanging garland / LED string — not in the furniture gallery. */
+  | 'hanging';
 
 export interface FurnitureDef {
   kind: FurnitureKind;
@@ -20,7 +22,7 @@ export interface FurnitureDef {
   categories?: string[];
 }
 
-export const FURNITURE: Record<Exclude<FurnitureKind, 'imported'>, FurnitureDef> = {
+export const FURNITURE: Record<Exclude<FurnitureKind, 'imported' | 'hanging'>, FurnitureDef> = {
   bed: {
     kind: 'bed',
     label: 'Twin Bed',
