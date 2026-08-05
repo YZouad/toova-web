@@ -17,6 +17,7 @@ import {
   wallLength,
 } from '../lib/floorPlanGeometry';
 import { FpSpotlightCard } from './FpSpotlightCard';
+import { NumberStepper } from './kit/NumberStepper';
 
 export type GridSnapSize = 3 | 6 | 12;
 
@@ -105,21 +106,14 @@ function NumField({
   onChange: (v: number) => void;
 }) {
   return (
-    <div className="fp-field">
-      <label className="fp-field-label">{label}</label>
-      <input
-        type="number"
-        className="fp-field-input"
-        value={value}
-        min={min}
-        max={max}
-        step={step}
-        onChange={(e) => {
-          const v = parseFloat(e.target.value);
-          if (Number.isFinite(v)) onChange(v);
-        }}
-      />
-    </div>
+    <NumberStepper
+      label={label.slice(0, 6)}
+      value={value}
+      min={min ?? 1}
+      max={max}
+      step={step}
+      onChange={onChange}
+    />
   );
 }
 

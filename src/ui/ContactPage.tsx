@@ -1,6 +1,13 @@
 import { useState } from 'react';
 import { FeedbackModal } from './FeedbackModal';
-import { MarketingNav } from './MarketingNav';
+import {
+  Button,
+  DisplayHeading,
+  Eyebrow,
+  Footer,
+  MarketingNav,
+  MonoMeta,
+} from './kit';
 
 const SUPPORT_EMAILS = [
   { address: 'ag@toova.net', label: 'General support' },
@@ -28,74 +35,108 @@ export function ContactPage({
   onAdmin,
 }: ContactPageProps) {
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [hoverEmail, setHoverEmail] = useState<string | null>(null);
 
   const primaryAction = loggedIn && onGoDashboard ? onGoDashboard : onGetStarted;
   const secondaryAction = loggedIn && onGoDashboard ? onGoDashboard : onLogin;
-  const primaryLabel = loggedIn ? 'Go to dashboard' : 'Get started';
-  const secondaryLabel = loggedIn ? 'Dashboard' : 'Log in';
 
   return (
-    <div className="landing-page contact-page">
-      <FeedbackModal
-        open={feedbackOpen}
-        onClose={() => setFeedbackOpen(false)}
-        pageSource="contact"
-      />
+    <div className="toova-page">
+      <div className="toova-paper" aria-hidden />
+      <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} pageSource="contact" />
 
       <MarketingNav
-        page="contact"
-        primaryLabel={primaryLabel}
-        secondaryLabel={secondaryLabel}
-        onPrimary={primaryAction}
-        onSecondary={secondaryAction}
-        onHome={onGoHome}
-        onPitchMadness={onPitchMadness}
+        brandOnClick={onGoHome}
+        links={[
+          { label: 'Home', onClick: onGoHome },
+          { label: 'Pitch Madness', onClick: onPitchMadness },
+          { label: 'Contact', active: true },
+          { label: loggedIn ? 'Dashboard' : 'Log in', onClick: secondaryAction },
+        ]}
+        cta={
+          <Button size="sm" onClick={primaryAction}>
+            {loggedIn ? 'Go to dashboard' : 'Get started'}
+          </Button>
+        }
       />
 
-      <main className="contact-main">
-        <div className="contact-inner">
-          <p className="landing-section-label">Customer support</p>
-          <h1 className="contact-title">Contact us</h1>
-          <p className="contact-lead">
+      <div className="toova-frame" style={{ paddingTop: 104 }}>
+        <Eyebrow level="page" style={{ marginBottom: 40 }}>
+          Customer support
+        </Eyebrow>
+        <DisplayHeading level={3}>Contact us</DisplayHeading>
+
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'var(--sidenote-col) 1fr',
+            gap: 'var(--col-gap)',
+            marginTop: 64,
+            paddingTop: 44,
+            borderTop: '1px solid var(--rule-heavy)',
+            alignItems: 'start',
+          }}
+          className="toova-grid-label-prose"
+        >
+          <p style={{ font: 'var(--type-body)', color: 'var(--ink-2)', margin: 0, gridColumn: '1 / -1' }}>
             Questions, bugs, or partnership ideas — reach the team directly or send feedback through the app.
           </p>
-
-          <div className="contact-email-list">
-            {SUPPORT_EMAILS.map(({ address, label }) => (
-              <a key={address} className="contact-email-card" href={`mailto:${address}`}>
-                <span className="contact-email-label">{label}</span>
-                <span className="contact-email-address">{address}</span>
-              </a>
-            ))}
+          <div style={{ gridColumn: '1 / -1' }}>
+            <div style={{ borderTop: '1px solid var(--rule-heavy)' }}>
+              {SUPPORT_EMAILS.map(({ address, label }, i) => {
+                const hover = hoverEmail === address;
+                return (
+                  <a
+                    key={address}
+                    href={`mailto:${address}`}
+                    onMouseEnter={() => setHoverEmail(address)}
+                    onMouseLeave={() => setHoverEmail(null)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      justifyContent: 'space-between',
+                      gap: 24,
+                      padding: '20px 4px',
+                      borderBottom: i === SUPPORT_EMAILS.length - 1 ? 'none' : '1px solid var(--rule-hair)',
+                      background: hover ? 'var(--bg-quiet)' : 'transparent',
+                      transition: 'var(--transition-color)',
+                      color: 'inherit',
+                      textDecoration: 'none',
+                    }}
+                  >
+                    <span
+                      style={{
+                        font: 'var(--type-h5)',
+                        letterSpacing: 'var(--tracking-h-tight)',
+                        color: hover ? 'var(--accent)' : 'var(--text-heading)',
+                      }}
+                    >
+                      {label}
+                    </span>
+                    <MonoMeta size="lg" tone="default" style={{ color: hover ? 'var(--accent)' : undefined }}>
+                      {address}
+                    </MonoMeta>
+                  </a>
+                );
+              })}
+            </div>
+            <div style={{ marginTop: 36 }}>
+              <Button size="md" onClick={() => setFeedbackOpen(true)}>
+                Report a bug or send feedback
+              </Button>
+            </div>
           </div>
-
-          <button
-            type="button"
-            className="tv-btn-primary contact-feedback-btn"
-            onClick={() => setFeedbackOpen(true)}
-          >
-            Report a bug or send feedback
-          </button>
         </div>
-      </main>
+      </div>
 
-      <footer className="landing-footer">
-        <div className="landing-footer-inner">
-          <button type="button" className="contact-footer-brand" onClick={onGoHome}>
-            <div style={{ width: 20, height: 20, borderRadius: 6, background: 'var(--accent)' }} />
-            <span style={{ fontFamily: 'var(--font-serif)', fontSize: 18, color: '#2B2620' }}>Toova</span>
-          </button>
-          <div style={{ display: 'flex', gap: 24, alignItems: 'center' }}>
-            <span className="landing-footer-link landing-footer-link--active">Contact</span>
-            <span style={{ cursor: 'pointer' }}>Privacy</span>
-            <span style={{ cursor: 'pointer' }}>Terms</span>
-            {onAdmin ? (
-              <button type="button" style={{ cursor: 'pointer', background: 'none', border: 'none', fontFamily: 'inherit', fontSize: 'inherit', color: 'inherit' }} onClick={onAdmin}>Admin</button>
-            ) : null}
-            <span>© 2026 Toova</span>
-          </div>
-        </div>
-      </footer>
+      <Footer
+        links={[
+          { label: 'Contact' },
+          { label: 'Privacy' },
+          { label: 'Terms' },
+          ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
+        ]}
+      />
     </div>
   );
 }

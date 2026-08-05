@@ -9,6 +9,16 @@ import { signBrowsableModelPath } from '../lib/modelStorage';
 import { parseInchDims } from '../lib/importedItemSize';
 import { supabase } from '../lib/supabase';
 import { recordCatalogDownload } from '../lib/catalogEngagement';
+import {
+  Banner,
+  Button,
+  Checkbox,
+  Eyebrow,
+  Logo,
+  MonoMeta,
+  SectionOpener,
+  Spinner,
+} from './kit';
 
 interface ChecklistPageProps {
   onBack: () => void;
@@ -81,99 +91,81 @@ export function ChecklistPage({ onBack, onDesign, canPlace = false }: ChecklistP
   );
 
   return (
-    <div className="checklist-page">
-      <header className="checklist-page-topbar">
-        <button type="button" className="checklist-page-back" onClick={onBack}>
-          ← Back
-        </button>
-        <div className="checklist-page-brand">
-          <div className="tv-logo-mark" style={{ width: 25, height: 25, borderRadius: 7, fontSize: 17 }}>
-            t
-          </div>
-          <span className="tv-logo-text" style={{ fontSize: 22 }}>
-            Toova
-          </span>
+    <div className="toova-page app-page checklist-page tv-scroll">
+      <div className="toova-paper" aria-hidden />
+
+      <header className="app-topbar">
+        <div className="app-topbar-inner">
+          <Button variant="mono" onClick={onBack}>
+            ← Back
+          </Button>
+          <Logo size={21} />
+          {onDesign ? (
+            <Button size="sm" onClick={onDesign}>
+              Design your room
+            </Button>
+          ) : (
+            <span style={{ width: 96 }} aria-hidden />
+          )}
         </div>
-        {onDesign ? (
-          <button type="button" className="tv-btn-primary checklist-page-design" onClick={onDesign}>
-            Design your room
-          </button>
-        ) : (
-          <span className="checklist-page-topbar-spacer" />
-        )}
       </header>
 
-      <main className="checklist-page-main">
-        <div className="checklist-page-intro">
-          <p className="checklist-page-eyebrow">Dorm essentials</p>
-          <h1 className="checklist-page-title">The Toova checklist</h1>
-          <p className="checklist-page-copy">
-            Tap an item to compare our curated picks. Shop affiliate links, add them to your list,
-            and place matching pieces in your room before you buy.
-          </p>
-          <div className="checklist-page-progress" aria-live="polite">
-            <span className="checklist-page-progress-label">
-              {done} of {total} packed
-            </span>
-            <div className="checklist-page-progress-track" aria-hidden>
-              <div
-                className="checklist-page-progress-fill"
-                style={{ width: `${total ? (done / total) * 100 : 0}%` }}
-              />
-            </div>
-          </div>
-        </div>
+      <main className="app-main">
+        <Eyebrow level="page">Dorm essentials</Eyebrow>
+        <SectionOpener
+          level={4}
+          title="The Toova checklist."
+          note={`${done} of ${total} packed`}
+          style={{ marginTop: 24 }}
+        />
+        <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', maxWidth: 'var(--measure-body)', margin: '16px 0 32px' }}>
+          Tap an item to compare our curated picks. Shop affiliate links, add them to your list,
+          and place matching pieces in your room before you buy.
+        </p>
 
-        {loading ? <p className="checklist-page-status">Loading checklist…</p> : null}
-        {error ? (
-          <p className="checklist-page-status checklist-page-status--error" role="alert">
-            {error}
-          </p>
-        ) : null}
+        {loading ? <Spinner label="Loading checklist…" /> : null}
+        {error ? <Banner tone="error">{error}</Banner> : null}
 
-        <ul className="checklist-page-list">
-          {categories.map((item) => {
+        <div className="kit-ruled-list">
+          {categories.map((item, index) => {
             const isChecked = isCategoryDone(item.id);
             const count = item.products.length;
             return (
-              <li
+              <div
                 key={item.id}
-                className={`checklist-page-row${isChecked ? ' checklist-page-row--done' : ''}`}
+                className={[
+                  'kit-ruled-list__row',
+                  index === categories.length - 1 ? 'kit-ruled-list__row--last-in-col' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               >
-                <label
-                  className="checklist-page-check"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isChecked}
-                    onChange={() => void toggleChecked(item.id)}
-                  />
-                  <span className="checklist-page-box" aria-hidden />
-                </label>
+                <Checkbox
+                  checked={isChecked}
+                  onChange={() => void toggleChecked(item.id)}
+                  label=""
+                  style={{ flex: 'none' }}
+                />
                 <button
                   type="button"
-                  className="checklist-page-open"
+                  className="checklist-row-action"
                   onClick={() => setOpenCategoryId(item.id)}
                 >
-                  <span className="checklist-page-name">{item.name}</span>
-                  <span className="checklist-page-links">
-                    {count === 0 ? (
-                      <span className="checklist-page-soon">Coming soon</span>
-                    ) : (
-                      <span className="checklist-page-shop">
-                        View {count} pick{count === 1 ? '' : 's'}
-                      </span>
-                    )}
+                  <span className={`checklist-row-name${isChecked ? ' checklist-row-name--done' : ''}`}>
+                    {item.name}
                   </span>
+                  <MonoMeta size="sm" tone="dense" className="kit-ruled-list__meta">
+                    {count === 0 ? 'Coming soon' : `View ${count} pick${count === 1 ? '' : 's'}`}
+                  </MonoMeta>
                 </button>
-              </li>
+              </div>
             );
           })}
-        </ul>
-        <p className="checklist-page-disclaimer">
+        </div>
+
+        <MonoMeta size="xs" tone="subtle" style={{ display: 'block', marginTop: 32 }}>
           As an Amazon Associate, Toova may earn from qualifying purchases. Prices may change.
-        </p>
+        </MonoMeta>
       </main>
 
       {openCategory ? (

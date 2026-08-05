@@ -6,6 +6,7 @@ import {
 } from '../lib/catalogCategories';
 import type { GallerySort, GallerySource } from '../lib/galleryCatalog';
 import type { RoomGallerySort } from '../lib/roomGallery';
+import { Button, Input, Tabs } from './kit';
 
 type FilterSource = Exclude<GallerySource, 'toova'> | 'toova';
 
@@ -18,6 +19,10 @@ interface GalleryFiltersProps {
   query: string;
   showMine?: boolean;
   dense?: boolean;
+  /** Show search field in this row (e.g. designer embed). */
+  showSearch?: boolean;
+  /** Hide sort / category (parent page owns them in the header). */
+  hideSortAndCategory?: boolean;
   onSourceChange: (source: GallerySource) => void;
   onSortChange: (sort: GallerySort | RoomGallerySort) => void;
   onCategoryChange: (category: string | null) => void;
@@ -40,12 +45,161 @@ const ROOM_SORTS: { id: RoomGallerySort; label: string }[] = [
   { id: 'newest', label: 'Newest' },
 ];
 
-function sortLabel(
-  entity: 'models' | 'rooms',
-  sort: string,
-): string {
+export function gallerySortLabel(entity: 'models' | 'rooms', sort: string): string {
   const opts = entity === 'models' ? MODEL_SORTS : ROOM_SORTS;
   return opts.find((s) => s.id === sort)?.label ?? 'Sort';
+}
+
+export function GallerySortMenu({
+  entity,
+  sort,
+  source,
+  onSortChange,
+}: {
+  entity: 'models' | 'rooms';
+  sort: GallerySort | RoomGallerySort;
+  source?: GallerySource;
+  onSortChange: (sort: GallerySort | RoomGallerySort) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const allOptions = entity === 'models' ? MODEL_SORTS : ROOM_SORTS;
+  const sortOptions =
+    entity === 'models' && source === 'mine'
+      ? allOptions.filter((s) => s.id !== 'hot')
+      : allOptions;
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const activeSort =
+    entity === 'models' && source === 'mine' && sort === 'hot' ? 'newest' : sort;
+
+  return (
+    <div className="gallery-chip-menu" ref={wrapRef}>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={menuId}
+      >
+        {gallerySortLabel(entity, activeSort)} ▾
+      </Button>
+      {open ? (
+        <ul id={menuId} className="gallery-menu" role="listbox" aria-label="Sort by">
+          {sortOptions.map((s) => (
+            <li key={s.id} role="presentation">
+              <button
+                type="button"
+                role="option"
+                aria-selected={activeSort === s.id}
+                className={`gallery-menu-item${activeSort === s.id ? ' is-active' : ''}`}
+                onClick={() => {
+                  onSortChange(s.id);
+                  setOpen(false);
+                }}
+              >
+                {s.label}
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+export function GalleryCategoryMenu({
+  category,
+  onCategoryChange,
+}: {
+  category: string | null;
+  onCategoryChange: (category: string | null) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const menuId = useId();
+  const categoryLabel = category ? catalogCategoryLabel(category) : 'Category';
+
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDoc);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="gallery-chip-menu" ref={wrapRef}>
+      <Button
+        size="sm"
+        variant={category ? 'primary' : 'outline'}
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-controls={menuId}
+      >
+        {category ? categoryLabel : 'Category'} ▾
+      </Button>
+      {open ? (
+        <div id={menuId} className="gallery-cat-panel" role="dialog" aria-label="Filter by category">
+          <button
+            type="button"
+            className={`gallery-cat-option${category == null ? ' is-active' : ''}`}
+            onClick={() => {
+              onCategoryChange(null);
+              setOpen(false);
+            }}
+          >
+            All categories
+          </button>
+          <div className="gallery-cat-grid">
+            {CATALOG_CATEGORY_DEFS.map((c) => (
+              <button
+                key={c.slug}
+                type="button"
+                className={`gallery-cat-option${category === c.slug ? ' is-active' : ''}`}
+                onClick={() => {
+                  onCategoryChange(
+                    category === c.slug ? null : (c.slug as CatalogCategorySlug),
+                  );
+                  setOpen(false);
+                }}
+              >
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function GalleryFilters({
@@ -56,47 +210,15 @@ export function GalleryFilters({
   query,
   showMine,
   dense,
+  showSearch = false,
+  hideSortAndCategory = false,
   onSourceChange,
   onSortChange,
   onCategoryChange,
   onQueryChange,
 }: GalleryFiltersProps) {
-  const [sortOpen, setSortOpen] = useState(false);
-  const [catOpen, setCatOpen] = useState(false);
-  const sortWrapRef = useRef<HTMLDivElement>(null);
-  const catWrapRef = useRef<HTMLDivElement>(null);
-  const sortMenuId = useId();
-  const catMenuId = useId();
-
-  useEffect(() => {
-    if (!sortOpen && !catOpen) return;
-    const onDoc = (e: MouseEvent) => {
-      const t = e.target as Node;
-      if (sortOpen && sortWrapRef.current && !sortWrapRef.current.contains(t)) {
-        setSortOpen(false);
-      }
-      if (catOpen && catWrapRef.current && !catWrapRef.current.contains(t)) {
-        setCatOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setSortOpen(false);
-        setCatOpen(false);
-      }
-    };
-    document.addEventListener('mousedown', onDoc);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('mousedown', onDoc);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [sortOpen, catOpen]);
-
-  const categoryLabel = category ? catalogCategoryLabel(category) : 'Category';
-  const sortOptions = entity === 'models' ? MODEL_SORTS : ROOM_SORTS;
-  const showCategory = entity === 'models';
   const showSourceTabs = entity === 'models';
+  const showTools = showSearch || !hideSortAndCategory;
   const sourceTabs: { id: FilterSource; label: string }[] = [
     { id: 'community', label: 'Community' },
     { id: 'toova', label: 'Toova' },
@@ -104,147 +226,47 @@ export function GalleryFilters({
   ];
 
   return (
-    <div className={`gallery-filters${dense ? ' gallery-filters--dense' : ''}`}>
-      {showSourceTabs ? (
-        <div className="gallery-source-tabs" role="tablist" aria-label="Gallery source">
-          {sourceTabs.map((tab) => (
-            <button
-              key={tab.id}
-              type="button"
-              role="tab"
-              aria-selected={source === tab.id}
-              className={`gallery-source-tab${source === tab.id ? ' is-active' : ''}`}
-              onClick={() => onSourceChange(tab.id)}
-            >
-              {tab.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="gallery-search">
-        <span aria-hidden>⌕</span>
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          placeholder={
-            entity === 'models'
-              ? 'Search models, categories, creators…'
-              : 'Search rooms, creators…'
-          }
-          aria-label={entity === 'models' ? 'Search models' : 'Search rooms'}
-        />
-      </div>
-
-      <div className="gallery-toolbar">
-        {entity === 'rooms' || source !== 'mine' ? (
-          <div className="gallery-toolbar-left">
-            <div className="gallery-menu-wrap" ref={sortWrapRef}>
-              <button
-                type="button"
-                className={`gallery-chip gallery-chip--menu is-active${sortOpen ? ' is-open' : ''}`}
-                aria-haspopup="listbox"
-                aria-expanded={sortOpen}
-                aria-controls={sortMenuId}
-                onClick={() => {
-                  setSortOpen((v) => !v);
-                  setCatOpen(false);
-                }}
-              >
-                <span>{sortLabel(entity, sort)}</span>
-                <span className="gallery-chip-caret" aria-hidden>
-                  ▾
-                </span>
-              </button>
-              {sortOpen ? (
-                <ul
-                  id={sortMenuId}
-                  className="gallery-menu"
-                  role="listbox"
-                  aria-label="Sort by"
-                >
-                  {sortOptions.map((s) => (
-                    <li key={s.id} role="presentation">
-                      <button
-                        type="button"
-                        role="option"
-                        aria-selected={sort === s.id}
-                        className={`gallery-menu-item${sort === s.id ? ' is-active' : ''}`}
-                        onClick={() => {
-                          onSortChange(s.id);
-                          setSortOpen(false);
-                        }}
-                      >
-                        {s.label}
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          </div>
+    <div
+      className="gallery-filters-row"
+      style={{ marginTop: dense ? 0 : 28, marginBottom: 8 }}
+    >
+      <div className="gallery-page-header" style={{ width: '100%', marginBottom: 0 }}>
+        {showSourceTabs ? (
+          <Tabs
+            active={source}
+            onChange={(id) => onSourceChange(id as GallerySource)}
+            style={{ flex: 1, minWidth: 0 }}
+            tabs={sourceTabs.map((t) => ({ id: t.id, label: t.label }))}
+          />
         ) : (
-          <p className="gallery-mine-hint">Newest first</p>
+          <div style={{ flex: 1 }} />
         )}
 
-        {showCategory ? (
-          <div className="gallery-menu-wrap gallery-menu-wrap--cat" ref={catWrapRef}>
-            <button
-              type="button"
-              className={`gallery-chip gallery-chip--menu${category ? ' is-active' : ''}${catOpen ? ' is-open' : ''}`}
-              aria-haspopup="dialog"
-              aria-expanded={catOpen}
-              aria-controls={catMenuId}
-              onClick={() => {
-                setCatOpen((v) => !v);
-                setSortOpen(false);
-              }}
-            >
-              <span className="gallery-chip-label">
-                {category ? categoryLabel : 'Category'}
-              </span>
-              <span className="gallery-chip-caret" aria-hidden>
-                ▾
-              </span>
-            </button>
-            {catOpen ? (
-              <div
-                id={catMenuId}
-                className="gallery-cat-panel"
-                role="dialog"
-                aria-label="Filter by category"
-              >
-                <button
-                  type="button"
-                  className={`gallery-cat-option${category == null ? ' is-active' : ''}`}
-                  onClick={() => {
-                    onCategoryChange(null);
-                    setCatOpen(false);
-                  }}
-                >
-                  All categories
-                </button>
-                <div className="gallery-cat-grid">
-                  {CATALOG_CATEGORY_DEFS.map((c) => (
-                    <button
-                      key={c.slug}
-                      type="button"
-                      className={`gallery-cat-option${category === c.slug ? ' is-active' : ''}`}
-                      onClick={() => {
-                        onCategoryChange(
-                          category === c.slug
-                            ? null
-                            : (c.slug as CatalogCategorySlug),
-                        );
-                        setCatOpen(false);
-                      }}
-                    >
-                      {c.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+        {showTools ? (
+          <div className="gallery-filters-bar">
+            {showSearch ? (
+              <Input
+                placeholder={entity === 'rooms' ? 'Search rooms' : 'Search models'}
+                value={query}
+                onChange={(e) => onQueryChange(e.target.value)}
+                style={{ width: dense ? 180 : 220 }}
+              />
+            ) : null}
+            {!hideSortAndCategory ? (
+              <>
+                <GallerySortMenu
+                  entity={entity}
+                  sort={sort}
+                  source={source}
+                  onSortChange={onSortChange}
+                />
+                {entity === 'models' ? (
+                  <GalleryCategoryMenu
+                    category={category}
+                    onCategoryChange={onCategoryChange}
+                  />
+                ) : null}
+              </>
             ) : null}
           </div>
         ) : null}

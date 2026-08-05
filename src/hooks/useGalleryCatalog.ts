@@ -209,7 +209,7 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
         try {
           const result = await fetchGalleryCatalog({
             source,
-            sort: source === 'mine' ? 'newest' : sort,
+            sort,
             category,
             query,
             limit: pageSize,

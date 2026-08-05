@@ -489,6 +489,7 @@ function SceneInner({
   apiRef,
   animRequestRef,
   readOnly,
+  autoRotate,
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
   apiRef: MutableRefObject<CaptureApi | null>;
@@ -497,6 +498,7 @@ function SceneInner({
     t: number;
   }>;
   readOnly: boolean;
+  autoRotate: boolean;
 }) {
   const deselect = useStore((s) => s.select);
   const skyMode = useStore((s) => s.environment.skyMode);
@@ -600,10 +602,14 @@ function SceneInner({
         enableDamping
         dampingFactor={0.08}
         makeDefault
+        autoRotate={autoRotate}
+        autoRotateSpeed={0.55}
+        enableZoom={!readOnly}
+        enablePan={!readOnly}
         mouseButtons={{
           LEFT: THREE.MOUSE.ROTATE,
-          MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.PAN,
+          MIDDLE: readOnly ? THREE.MOUSE.ROTATE : THREE.MOUSE.DOLLY,
+          RIGHT: readOnly ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN,
         }}
       />
     </Canvas>
@@ -612,10 +618,12 @@ function SceneInner({
 
 export interface SceneProps {
   readOnly?: boolean;
+  /** Slow orbit for marketing embeds. */
+  autoRotate?: boolean;
 }
 
 export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
-  { readOnly = false },
+  { readOnly = false, autoRotate = false },
   ref,
 ) {
   const controlsRef = useRef<OrbitControlsType>(null);
@@ -665,6 +673,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
       apiRef={apiRef}
       animRequestRef={animRequestRef}
       readOnly={readOnly}
+      autoRotate={autoRotate}
     />
   );
 });

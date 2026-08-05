@@ -6,6 +6,19 @@ import {
 import type { ChecklistCategoryWithProducts, CuratedProduct } from '../lib/dormChecklist';
 import { PRODUCT_IMAGES_BUCKET, formatPriceCents } from '../lib/dormChecklist';
 import { FURNITURE } from '../furniture/registry';
+import {
+  Badge,
+  Banner,
+  Button,
+  Checkbox,
+  Field,
+  Input,
+  MonoMeta,
+  RuledTable,
+  SectionOpener,
+  Select,
+  Spinner,
+} from './kit';
 
 function slugify(input: string): string {
   return input
@@ -14,6 +27,13 @@ function slugify(input: string): string {
     .replace(/^-|-$/g, '')
     .slice(0, 48) || `item-${Date.now()}`;
 }
+
+const panelStyle = {
+  background: 'var(--bg-raised)',
+  border: '1px solid var(--rule-soft)',
+  boxShadow: 'var(--shadow-panel)',
+  padding: 14,
+} as const;
 
 export function AdminShoppingPanel() {
   const [categories, setCategories] = useState<ChecklistCategoryWithProducts[]>([]);
@@ -194,136 +214,179 @@ export function AdminShoppingPanel() {
 
   return (
     <div className="admin-shopping">
-      {error ? <div className="tv-banner-error" role="alert">{error}</div> : null}
-      {loading ? <p>Loading shopping catalog…</p> : null}
+      {error ? <Banner tone="error">{error}</Banner> : null}
+      {loading ? <Spinner label="Loading shopping catalog…" /> : null}
 
       <div className="admin-shopping-layout">
-        <aside className="admin-shopping-cats">
+        <aside className="admin-shopping-cats" style={panelStyle}>
           <div className="admin-shopping-cats-head">
-            <h3>Categories</h3>
-            <button type="button" className="tv-btn-ghost product-drawer-btn" disabled={busy} onClick={() => void addCategory()}>
+            <h3 className="admin-shopping-cats-title">Categories.</h3>
+            <Button size="sm" variant="outline" disabled={busy} onClick={() => void addCategory()}>
               + Add
-            </button>
+            </Button>
+          </div>
+          <div className="admin-shopping-cats-cols" aria-hidden>
+            <span>Category</span>
+            <span>Published</span>
           </div>
           <ul>
             {categories.map((cat) => (
-              <li key={cat.id}>
+              <li key={cat.id} className="admin-shopping-cat-row">
                 <button
                   type="button"
                   className={cat.id === selectedCategoryId ? 'is-active' : undefined}
                   onClick={() => setSelectedCategoryId(cat.id)}
                 >
-                  <span>{cat.name}</span>
-                  <span>{cat.products.length}</span>
+                  <span className="admin-shopping-cat-name">{cat.name}</span>
+                  <Badge tone="neutral">{cat.products.length}</Badge>
                 </button>
-                <label className="admin-shopping-publish">
-                  <input
-                    type="checkbox"
-                    checked={cat.published}
-                    onChange={(e) => void toggleCategoryPublished(cat.id, e.target.checked)}
-                  />
-                  Published
-                </label>
+                <Checkbox
+                  checked={cat.published}
+                  ariaLabel={`Published: ${cat.name}`}
+                  onChange={(next) => void toggleCategoryPublished(cat.id, next)}
+                  disabled={busy}
+                  className="admin-shopping-cat-pub"
+                />
               </li>
             ))}
           </ul>
         </aside>
 
-        <div className="admin-shopping-products">
+        <div className="admin-shopping-products" style={panelStyle}>
           {selected ? (
             <>
-              <h3>{selected.name} products</h3>
-              <ul className="admin-shopping-product-list">
-                {selected.products.map((p) => (
-                  <li key={p.id} className="admin-shopping-product-card">
-                    <div className="admin-shopping-thumb" aria-hidden>
-                      {p.imageUrl ? <img src={p.imageUrl} alt="" /> : <span>{p.name.slice(0, 1)}</span>}
-                    </div>
-                    <div>
-                      <strong>{p.name}</strong>
-                      <div>{formatPriceCents(p.priceCents, p.currency) ?? 'No price'} · {p.retailer}</div>
-                      <div className="admin-shopping-product-actions">
-                        <label className="tv-btn-ghost product-drawer-btn">
-                          Image
-                          <input
-                            type="file"
-                            accept="image/*"
-                            hidden
-                            onChange={(e) => {
-                              const file = e.target.files?.[0];
-                              if (file) void uploadImage(p, file);
-                            }}
-                          />
-                        </label>
-                        <button type="button" className="tv-btn-ghost product-drawer-btn" onClick={() => void toggleProductPublished(p)}>
-                          {p.published ? 'Unpublish' : 'Publish'}
-                        </button>
-                        <button type="button" className="tv-btn-ghost product-drawer-btn" onClick={() => void deleteProduct(p.id)}>
-                          Delete
-                        </button>
+              <SectionOpener level={5} title={`${selected.name} products.`} style={{ marginBottom: 16 }} />
+              {selected.products.length === 0 ? (
+                <MonoMeta size="sm" tone="dense">No products in this category yet.</MonoMeta>
+              ) : (
+                <RuledTable
+                  columns={[
+                    { label: 'Product' },
+                    { label: 'Price', align: 'right' },
+                    { label: 'Status', align: 'right' },
+                    { label: 'Actions', align: 'right' },
+                  ]}
+                  rows={selected.products.map((p) => [
+                    <div key={`${p.id}-info`}>
+                      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                        <div className="admin-shopping-thumb" aria-hidden>
+                          {p.imageUrl ? <img src={p.imageUrl} alt="" /> : <span>{p.name.slice(0, 1)}</span>}
+                        </div>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ font: 'var(--type-ui-sm)', fontWeight: 600 }}>{p.name}</div>
+                          <MonoMeta size="xs" tone="dense" style={{ display: 'block', marginTop: 4 }}>
+                            {p.retailer}
+                            {p.affiliateUrl ? ' · ' : null}
+                            {p.affiliateUrl ? (
+                              <a
+                                href={p.affiliateUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                style={{ color: 'var(--accent-text)', wordBreak: 'break-all' }}
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                {p.affiliateUrl}
+                              </a>
+                            ) : null}
+                          </MonoMeta>
+                        </div>
                       </div>
-                      <a href={p.affiliateUrl} target="_blank" rel="noopener noreferrer">
-                        {p.affiliateUrl}
-                      </a>
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    </div>,
+                    <MonoMeta key={`${p.id}-price`} size="sm">
+                      {formatPriceCents(p.priceCents, p.currency) ?? 'No price'}
+                    </MonoMeta>,
+                    <Badge key={`${p.id}-pub`} tone={p.published ? 'success' : 'neutral'}>
+                      {p.published ? 'Published' : 'Draft'}
+                    </Badge>,
+                    <div key={`${p.id}-actions`} style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+                      <label>
+                        <Button size="sm" variant="outline" as="span">Image</Button>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          hidden
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) void uploadImage(p, file);
+                          }}
+                        />
+                      </label>
+                      <Button size="sm" variant="outline" onClick={() => void toggleProductPublished(p)}>
+                        {p.published ? 'Unpublish' : 'Publish'}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => void deleteProduct(p.id)} style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+                        Delete
+                      </Button>
+                    </div>,
+                  ])}
+                  style={{ marginBottom: 24 }}
+                />
+              )}
 
-              <div className="admin-shopping-form">
-                <h4>Add product</h4>
-                <input
-                  placeholder="Name"
-                  value={productForm.name}
-                  onChange={(e) => setProductForm((f) => ({ ...f, name: e.target.value }))}
-                />
-                <textarea
-                  placeholder="Description"
-                  value={productForm.description}
-                  onChange={(e) => setProductForm((f) => ({ ...f, description: e.target.value }))}
-                  rows={3}
-                />
-                <input
-                  placeholder="Affiliate URL"
-                  value={productForm.affiliateUrl}
-                  onChange={(e) => setProductForm((f) => ({ ...f, affiliateUrl: e.target.value }))}
-                />
-                <div className="admin-shopping-form-row">
-                  <input
-                    placeholder="Price (USD)"
-                    value={productForm.priceDollars}
-                    onChange={(e) => setProductForm((f) => ({ ...f, priceDollars: e.target.value }))}
+              <SectionOpener level={5} title="Add product." style={{ marginBottom: 16 }} />
+              <div className="admin-shopping-form" style={{ display: 'grid', gap: 12 }}>
+                <Field label="Name">
+                  <Input
+                    placeholder="Name"
+                    value={productForm.name}
+                    onChange={(e) => setProductForm((f) => ({ ...f, name: e.target.value }))}
                   />
-                  <input
-                    placeholder="Retailer"
-                    value={productForm.retailer}
-                    onChange={(e) => setProductForm((f) => ({ ...f, retailer: e.target.value }))}
+                </Field>
+                <Field label="Description">
+                  <textarea
+                    className="kit-input"
+                    placeholder="Description"
+                    value={productForm.description}
+                    onChange={(e) => setProductForm((f) => ({ ...f, description: e.target.value }))}
+                    rows={3}
+                    style={{ width: '100%', resize: 'vertical' }}
                   />
-                  <select
-                    value={productForm.placeBuiltinKind}
-                    onChange={(e) => setProductForm((f) => ({ ...f, placeBuiltinKind: e.target.value }))}
-                  >
-                    <option value="">No place mapping</option>
-                    {builtinKinds.map((k) => (
-                      <option key={k} value={k}>{k}</option>
-                    ))}
-                  </select>
+                </Field>
+                <Field label="Affiliate URL">
+                  <Input
+                    placeholder="Affiliate URL"
+                    value={productForm.affiliateUrl}
+                    onChange={(e) => setProductForm((f) => ({ ...f, affiliateUrl: e.target.value }))}
+                  />
+                </Field>
+                <div className="admin-shopping-form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+                  <Field label="Price (USD)">
+                    <Input
+                      placeholder="Price (USD)"
+                      value={productForm.priceDollars}
+                      onChange={(e) => setProductForm((f) => ({ ...f, priceDollars: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Retailer">
+                    <Input
+                      placeholder="Retailer"
+                      value={productForm.retailer}
+                      onChange={(e) => setProductForm((f) => ({ ...f, retailer: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Place mapping">
+                    <Select
+                      value={productForm.placeBuiltinKind}
+                      onChange={(value) => setProductForm((f) => ({ ...f, placeBuiltinKind: value }))}
+                      options={[
+                        { value: '', label: 'No place mapping' },
+                        ...builtinKinds.map((k) => ({ value: k, label: k })),
+                      ]}
+                    />
+                  </Field>
                 </div>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={productForm.published}
-                    onChange={(e) => setProductForm((f) => ({ ...f, published: e.target.checked }))}
-                  />{' '}
-                  Published
-                </label>
-                <button type="button" className="tv-btn-primary" disabled={busy} onClick={() => void addProduct()}>
+                <Checkbox
+                  checked={productForm.published}
+                  label="Published"
+                  onChange={(next) => setProductForm((f) => ({ ...f, published: next }))}
+                />
+                <Button size="sm" disabled={busy} onClick={() => void addProduct()}>
                   Add product
-                </button>
+                </Button>
               </div>
             </>
           ) : (
-            <p>Select a category</p>
+            <MonoMeta size="sm" tone="dense">Select a category</MonoMeta>
           )}
         </div>
       </div>

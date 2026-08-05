@@ -1,4 +1,7 @@
-import { useEffect } from 'react';
+import {
+  Button,
+  Modal,
+} from './kit';
 
 interface ChecklistModalProps {
   open: boolean;
@@ -8,62 +11,32 @@ interface ChecklistModalProps {
 
 /** Compact promo teaser — full list lives on the checklist page. */
 export function ChecklistModal({ open, onClose, onViewChecklist }: ChecklistModalProps) {
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
-    };
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open, onClose]);
-
-  if (!open) return null;
-
   return (
-    <div
-      className="checklist-modal-backdrop"
-      role="presentation"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-    >
-      <div
-        className="checklist-modal checklist-modal--teaser"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="checklist-modal-title"
-      >
-        <button type="button" className="checklist-modal-close" onClick={onClose} aria-label="Close">
-          ×
-        </button>
-        <p className="checklist-modal-eyebrow">Move-in ready</p>
-        <h2 id="checklist-modal-title" className="checklist-modal-title">
-          Get the Toova checklist
-        </h2>
-        <p className="checklist-modal-hint">
-          A dorm essentials list you can check off as you shop — then design your room so you know what fits.
-        </p>
-        <div className="checklist-modal-footer checklist-modal-footer--teaser">
-          <button
-            type="button"
-            className="tv-btn-primary"
+    <Modal
+      open={open}
+      meta="Move-in ready"
+      title="Get the Toova checklist"
+      onClose={onClose}
+      footer={
+        <>
+          <Button size="sm" variant="outline" onClick={onClose}>
+            Not now
+          </Button>
+          <Button
+            size="sm"
             onClick={() => {
               onClose();
               onViewChecklist();
             }}
           >
             Open checklist
-          </button>
-          <button type="button" className="checklist-modal-dismiss" onClick={onClose}>
-            Not now
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </>
+      }
+    >
+      <p style={{ margin: 0, font: 'var(--type-body-sm)', color: 'var(--ink-4)', lineHeight: 1.5 }}>
+        A dorm essentials list you can check off as you shop — then design your room so you know what fits.
+      </p>
+    </Modal>
   );
 }

@@ -1,7 +1,9 @@
 import type { ReactNode } from 'react';
+import { SectionOpener } from './kit';
 
 interface GalleryShelfProps {
   title: string;
+  note?: string;
   seeAllHref?: string | null;
   onSeeAll?: () => void;
   children: ReactNode;
@@ -10,6 +12,7 @@ interface GalleryShelfProps {
 
 export function GalleryShelf({
   title,
+  note,
   seeAllHref,
   onSeeAll,
   children,
@@ -18,23 +21,20 @@ export function GalleryShelf({
   if (empty) return null;
 
   return (
-    <section className="gallery-shelf-section">
-      <div className="gallery-shelf-header">
-        <h2 className="gallery-shelf-title">{title}</h2>
-        {onSeeAll || seeAllHref ? (
-          <button
-            type="button"
-            className="gallery-shelf-see-all"
-            onClick={() => {
-              if (onSeeAll) onSeeAll();
-              else if (seeAllHref) window.location.assign(seeAllHref);
-            }}
-          >
-            See all →
-          </button>
-        ) : null}
-      </div>
-      <div className="gallery-shelf tv-scroll">{children}</div>
+    <section style={{ marginTop: 56 }}>
+      <SectionOpener
+        level={5}
+        title={`${title}.`}
+        note={note ?? (onSeeAll || seeAllHref ? 'See all →' : undefined)}
+        noteOnClick={
+          onSeeAll
+            ? onSeeAll
+            : seeAllHref
+              ? () => window.location.assign(seeAllHref)
+              : undefined
+        }
+      />
+      <div style={{ paddingTop: 28 }}>{children}</div>
     </section>
   );
 }

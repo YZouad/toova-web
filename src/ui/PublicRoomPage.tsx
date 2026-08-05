@@ -6,6 +6,7 @@ import { recordRoomView, toggleRoomLike } from '../lib/roomEngagement';
 import { useStore } from '../store';
 import { Scene } from '../scene/Scene';
 import { UserAvatar } from './UserAvatar';
+import { Button, DisplayHeading, Logo, MonoMeta } from './kit';
 
 interface PublicRoomPageProps {
   handle: string;
@@ -206,86 +207,164 @@ export function PublicRoomPage({
   const attr = attributionText(attribution);
 
   return (
-    <div className="shared-page">
-      <header className="shared-topbar">
-        <button type="button" className="shared-brand" onClick={onGoHome}>
-          <span className="tv-logo-mark" style={{ width: 25, height: 25, borderRadius: 7, fontSize: 17 }}>t</span>
-          <span className="tv-logo-text" style={{ fontSize: 20 }}>Toova</span>
+    <div className="shared-page toova-page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="toova-paper" aria-hidden />
+      <header
+        className="shared-topbar"
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '200px 1fr auto',
+          gap: 32,
+          alignItems: 'center',
+          padding: '20px var(--page-gutter)',
+          borderBottom: '1px solid var(--rule-heavy)',
+          background: 'var(--bg-raised)',
+          position: 'relative',
+          zIndex: 2,
+        }}
+      >
+        <button
+          type="button"
+          className="shared-brand"
+          onClick={onGoHome}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            background: 'none',
+            border: 'none',
+            cursor: 'pointer',
+            padding: 0,
+          }}
+        >
+          <Logo size={20} />
         </button>
         <div className="shared-topbar-meta">
-          <div className="shared-room-title">{roomName}</div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
+            <DisplayHeading level={6} as="div">
+              {roomName}
+            </DisplayHeading>
+            <MonoMeta size="sm" tone="dense" upper>
+              view only
+            </MonoMeta>
+          </div>
           <button
             type="button"
             className="shared-room-sub shared-owner-link"
             onClick={() => navigate(profilePath(ownerHandle))}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 14,
+              marginTop: 8,
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: 0,
+              font: 'var(--type-ui-sm)',
+              fontWeight: 400,
+              color: 'var(--ink-4)',
+            }}
           >
             <UserAvatar name={ownerName} src={avatarUrl} size={22} />
-            <span>by {ownerName} · view only</span>
+            <span>by {ownerName}</span>
           </button>
-          <div className="shared-room-fork-meta">
-            <span>♥ {formatCount(likesCount)}</span>
-            <span> · 👁 {formatCount(viewsCount)}</span>
-            <span> · ⧉ {formatCount(forkCount)} copies</span>
-            {attr ? ` · ${attr}` : null}
+          <div style={{ marginTop: 6 }}>
+            <MonoMeta size="sm" tone="dense">
+              {formatCount(likesCount)} likes · {formatCount(viewsCount)} views · {formatCount(forkCount)} copies
+              {attr ? ` · ${attr}` : ''}
+            </MonoMeta>
           </div>
         </div>
-        <div className="shared-topbar-actions">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
           {!isOwner ? (
-            <button
-              type="button"
-              className={`shared-btn-secondary${likedByMe ? ' is-liked' : ''}`}
+            <Button
+              size="sm"
+              variant="outline"
               disabled={likeBusy}
               onClick={() => void handleLike()}
               aria-pressed={likedByMe}
             >
               {likedByMe ? '♥ Liked' : '♡ Like'}
-            </button>
+            </Button>
           ) : null}
-          <button
-            type="button"
-            className="tv-btn-primary"
-            disabled={busy}
-            onClick={requireAuthThenCopy}
-          >
+          <Button size="sm" disabled={busy} onClick={requireAuthThenCopy}>
             Make a copy
-          </button>
+          </Button>
         </div>
       </header>
 
       {actionError ? (
-        <div className="tv-banner-error" style={{ margin: '0 20px' }} role="alert">
+        <div className="tv-banner-error" style={{ margin: '0 20px', position: 'relative', zIndex: 2 }} role="alert">
           {actionError}
         </div>
       ) : null}
 
-      <div className="shared-canvas">
+      <div className="shared-canvas" style={{ position: 'relative', flex: 1, minHeight: 420, background: 'var(--board)', zIndex: 2 }}>
         <Scene readOnly />
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            right: 0,
+            bottom: 22,
+            display: 'flex',
+            justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <MonoMeta size="sm" style={{ color: 'var(--board-ink)' }}>
+            Drag to orbit · scroll to zoom
+          </MonoMeta>
+        </div>
       </div>
 
-      <div className="shared-hud">Drag to orbit · scroll to zoom</div>
-
       {showAuthWall ? (
-        <div className="shared-auth-wall">
-          <div className="shared-auth-card">
-            <h2>Sign in to continue</h2>
-            <p>Create an account or sign in to like rooms or save a copy.</p>
-            <div className="shared-auth-actions">
-              <button type="button" className="tv-btn-primary" onClick={() => onRequestAuth('signup')}>
+        <div
+          className="shared-auth-wall"
+          style={{
+            position: 'fixed',
+            inset: 0,
+            zIndex: 80,
+            background: 'rgba(43,38,32,.62)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              width: 460,
+              maxWidth: '100%',
+              background: 'var(--bg-page)',
+              border: '1px solid var(--rule-soft)',
+              boxShadow: 'var(--shadow-modal)',
+              padding: '32px 34px 34px',
+            }}
+          >
+            <DisplayHeading level={6} as="div" style={{ marginBottom: 12 }}>
+              Sign in to continue
+            </DisplayHeading>
+            <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', margin: '0 0 28px' }}>
+              Create an account or sign in to like rooms or save a copy.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' }}>
+              <Button size="sm" onClick={() => onRequestAuth('signup')}>
                 Sign up
-              </button>
-              <button type="button" className="shared-btn-secondary" onClick={() => onRequestAuth('signin')}>
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => onRequestAuth('signin')}>
                 Sign in
-              </button>
-              <button
-                type="button"
-                className="shared-auth-dismiss"
+              </Button>
+              <Button
+                variant="mono"
                 onClick={() => {
                   setShowAuthWall(false);
                   writePendingCopy(false);
                 }}
               >
                 Keep viewing
-              </button>
+              </Button>
             </div>
           </div>
         </div>

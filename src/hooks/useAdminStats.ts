@@ -20,10 +20,15 @@ export interface AdminRoomRollupRow {
   room_name: string;
   item_count: number;
   owner_user_id: string;
+  owner_handle: string | null;
+  owner_display_name: string | null;
+  updated_at: string | null;
 }
 
 export interface AdminUserRollupRow {
   user_id: string;
+  handle: string | null;
+  display_name: string | null;
   room_count: number;
   total_item_placements: number;
 }
@@ -36,6 +41,24 @@ export interface AdminBundlePairRow {
   room_cooccurrence_count: number;
 }
 
+export type AdminConversionJobStatus = 'queued' | 'processing' | 'completed' | 'failed';
+export type AdminConversionJobSource = 'trellis' | 'upload' | 'poster';
+
+export interface AdminConversionJobRow {
+  id: string;
+  user_id: string;
+  handle: string | null;
+  display_name: string | null;
+  kind: string | null;
+  label: string | null;
+  source: AdminConversionJobSource;
+  status: AdminConversionJobStatus;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+}
+
 export interface UseAdminStatsResult {
   isAdmin: boolean;
   loading: boolean;
@@ -44,6 +67,7 @@ export interface UseAdminStatsResult {
   rooms: AdminRoomRollupRow[];
   users: AdminUserRollupRow[];
   bundles: AdminBundlePairRow[];
+  jobs: AdminConversionJobRow[];
   refetch: () => Promise<void>;
 }
 
@@ -63,6 +87,7 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
   const [rooms, setRooms] = useState<AdminRoomRollupRow[]>([]);
   const [users, setUsers] = useState<AdminUserRollupRow[]>([]);
   const [bundles, setBundles] = useState<AdminBundlePairRow[]>([]);
+  const [jobs, setJobs] = useState<AdminConversionJobRow[]>([]);
 
   const fetchAll = useCallback(async () => {
     if (!userId) {
@@ -71,6 +96,7 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
       setRooms([]);
       setUsers([]);
       setBundles([]);
+      setJobs([]);
       setError(null);
       setLoading(false);
       return;
@@ -92,6 +118,7 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
         setRooms([]);
         setUsers([]);
         setBundles([]);
+        setJobs([]);
         setError(adminErr.message);
         return;
       }
@@ -102,16 +129,18 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
         setRooms([]);
         setUsers([]);
         setBundles([]);
+        setJobs([]);
         return;
       }
 
       setIsAdmin(true);
 
-      const [invRes, roomsRes, usersRes, bundleRes] = await Promise.all([
+      const [invRes, roomsRes, usersRes, bundleRes, jobsRes] = await Promise.all([
         supabase.rpc('get_admin_inventory_stats'),
         supabase.rpc('get_admin_room_item_counts'),
         supabase.rpc('get_admin_user_item_totals'),
         supabase.rpc('get_admin_bundle_suggestions', { p_min_room_cooccurrences: 2 }),
+        supabase.rpc('get_admin_conversion_jobs', { p_hours: 24 * 365 * 5 }),
       ]);
 
       const errMsg =
@@ -119,6 +148,7 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
         roomsRes.error?.message ??
         usersRes.error?.message ??
         bundleRes.error?.message ??
+        jobsRes.error?.message ??
         null;
 
       if (errMsg) {
@@ -126,6 +156,7 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
         setRooms([]);
         setUsers([]);
         setBundles([]);
+        setJobs([]);
         setError(errMsg);
         return;
       }
@@ -147,10 +178,24 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
         room_name: String(r.room_name ?? ''),
         item_count: Number(r.item_count),
         owner_user_id: String(r.owner_user_id ?? ''),
+        owner_handle:
+          r.owner_handle != null && String(r.owner_handle).trim()
+            ? String(r.owner_handle)
+            : null,
+        owner_display_name:
+          r.owner_display_name != null && String(r.owner_display_name).trim()
+            ? String(r.owner_display_name)
+            : null,
+        updated_at: r.updated_at != null ? String(r.updated_at) : null,
       })));
 
       setUsers(((usersRes.data ?? []) as Partial<AdminUserRollupRow>[]).map((r) => ({
         user_id: String(r.user_id ?? ''),
+        handle: r.handle != null && String(r.handle).trim() ? String(r.handle) : null,
+        display_name:
+          r.display_name != null && String(r.display_name).trim()
+            ? String(r.display_name)
+            : null,
         room_count: Number(r.room_count),
         total_item_placements: Number(r.total_item_placements),
       })));
@@ -162,11 +207,36 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
         label_b: String(r.label_b ?? ''),
         room_cooccurrence_count: Number(r.room_cooccurrence_count),
       })));
+
+      const allowedStatus = new Set(['queued', 'processing', 'completed', 'failed']);
+      const allowedSource = new Set(['trellis', 'upload', 'poster']);
+      setJobs(((jobsRes.data ?? []) as Partial<AdminConversionJobRow>[]).map((r) => {
+        const statusRaw = String(r.status ?? 'failed');
+        const sourceRaw = String(r.source ?? 'upload');
+        return {
+          id: String(r.id ?? ''),
+          user_id: String(r.user_id ?? ''),
+          handle: r.handle != null && String(r.handle).trim() ? String(r.handle) : null,
+          display_name:
+            r.display_name != null && String(r.display_name).trim()
+              ? String(r.display_name)
+              : null,
+          kind: r.kind != null && String(r.kind).trim() ? String(r.kind) : null,
+          label: r.label != null && String(r.label).trim() ? String(r.label) : null,
+          source: (allowedSource.has(sourceRaw) ? sourceRaw : 'upload') as AdminConversionJobSource,
+          status: (allowedStatus.has(statusRaw) ? statusRaw : 'failed') as AdminConversionJobStatus,
+          error: r.error != null && String(r.error).trim() ? String(r.error) : null,
+          created_at: String(r.created_at ?? ''),
+          updated_at: String(r.updated_at ?? ''),
+          completed_at: r.completed_at != null ? String(r.completed_at) : null,
+        };
+      }));
     } catch (e) {
       setStats([]);
       setRooms([]);
       setUsers([]);
       setBundles([]);
+      setJobs([]);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setLoading(false);
@@ -186,8 +256,9 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
       rooms,
       users,
       bundles,
+      jobs,
       refetch: fetchAll,
     }),
-    [bundles, error, fetchAll, isAdmin, loading, rooms, stats, users],
+    [bundles, error, fetchAll, isAdmin, jobs, loading, rooms, stats, users],
   );
 }

@@ -4,7 +4,7 @@ import type { CuratedProduct } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
 import { resolveAffiliateForItem } from '../lib/affiliateLinks';
 import { useShoppingCatalogContext } from '../context/ShoppingCatalogContext';
-import { GlassSurface } from './GlassSurface';
+import { Badge, Button, DisplayHeading, MonoMeta } from './kit';
 
 interface SharedToBuyPanelProps {
   productsById: Record<string, CuratedProduct>;
@@ -17,6 +17,12 @@ interface GroupedRow {
   itemIds: string[];
   sample: Item;
 }
+
+const panelStyle = {
+  background: 'var(--bg-raised)',
+  border: '1px solid var(--rule-soft)',
+  boxShadow: 'var(--shadow-panel)',
+} as const;
 
 export function SharedToBuyPanel({ productsById }: SharedToBuyPanelProps) {
   const items = useStore((s) => s.items);
@@ -57,15 +63,17 @@ export function SharedToBuyPanel({ productsById }: SharedToBuyPanelProps) {
     : [];
 
   return (
-    <GlassSurface compact className="scene-checkout shared-tobuy">
+    <div className="scene-checkout shared-tobuy" style={panelStyle}>
       <button
         type="button"
         className="scene-checkout-toggle"
         onClick={() => setExpanded((v) => !v)}
         aria-expanded={expanded}
       >
-        <span className="scene-checkout-title">To buy</span>
-        <span className="scene-checkout-badge">{order.length}</span>
+        <DisplayHeading level={6} as="span" className="scene-checkout-title">
+          To buy
+        </DisplayHeading>
+        <Badge tone="accent">{order.length}</Badge>
         <span className="scene-checkout-chevron" aria-hidden>
           {expanded ? '▾' : '▸'}
         </span>
@@ -74,7 +82,9 @@ export function SharedToBuyPanel({ productsById }: SharedToBuyPanelProps) {
       {expanded ? (
         <div className="scene-checkout-body">
           {rows.length === 0 ? (
-            <p className="scene-checkout-empty">This room has no items yet.</p>
+            <MonoMeta size="sm" tone="dense" className="scene-checkout-empty">
+              This room has no items yet.
+            </MonoMeta>
           ) : (
             <ul className="scene-checkout-list">
               {rows.map((row) => (
@@ -88,7 +98,7 @@ export function SharedToBuyPanel({ productsById }: SharedToBuyPanelProps) {
                     }}
                   >
                     <span className="scene-checkout-label">{row.label}</span>
-                    <span className="scene-checkout-qty">×{row.count}</span>
+                    <MonoMeta size="xs" tone="dense" className="scene-checkout-qty">×{row.count}</MonoMeta>
                   </button>
                 </li>
               ))}
@@ -97,24 +107,26 @@ export function SharedToBuyPanel({ productsById }: SharedToBuyPanelProps) {
 
           {active ? (
             <div className="shared-tobuy-detail">
-              <h3>{active.label}</h3>
+              <DisplayHeading level={6} as="div">{active.label}</DisplayHeading>
               {offers.map((offer) => (
                 <div key={offer.url} className="shared-tobuy-offer">
                   {!offer.approximate && offer.priceCents != null ? (
-                    <p className="shared-tobuy-price">
+                    <MonoMeta size="sm" tone="dense" className="shared-tobuy-price">
                       {formatPriceCents(offer.priceCents, offer.currency) ?? ''}
-                    </p>
+                    </MonoMeta>
                   ) : null}
                   {offer.approximate ? (
-                    <p className="shared-tobuy-approx">
+                    <MonoMeta size="sm" tone="dense" className="shared-tobuy-approx">
                       Not a verified Toova product — results may not match this object.
-                    </p>
+                    </MonoMeta>
                   ) : null}
                   {offer.description && !offer.approximate ? (
-                    <p className="shared-tobuy-desc">{offer.description}</p>
+                    <MonoMeta size="sm" tone="dense" className="shared-tobuy-desc">
+                      {offer.description}
+                    </MonoMeta>
                   ) : null}
                   <a
-                    className="tv-btn-primary"
+                    className="kit-btn kit-btn--primary kit-btn--sm"
                     href={offer.url}
                     target="_blank"
                     rel="noopener noreferrer"
@@ -122,26 +134,28 @@ export function SharedToBuyPanel({ productsById }: SharedToBuyPanelProps) {
                     {offer.label}
                   </a>
                   {offer.productId ? (
-                    <button
-                      type="button"
-                      className="tv-btn-ghost product-drawer-btn"
+                    <Button
+                      size="sm"
+                      variant="outline"
                       onClick={() => void addToList(offer.productId!)}
                     >
                       Add to my list
-                    </button>
+                    </Button>
                   ) : null}
                 </div>
               ))}
             </div>
           ) : (
-            <p className="scene-checkout-empty">Select an item to shop similar or exact picks.</p>
+            <MonoMeta size="sm" tone="dense" className="scene-checkout-empty">
+              Select an item to shop similar or exact picks.
+            </MonoMeta>
           )}
 
-          <p className="scene-checkout-affiliate">
+          <MonoMeta size="xs" tone="dense" className="scene-checkout-affiliate">
             As an Amazon Associate, Toova may earn from qualifying purchases.
-          </p>
+          </MonoMeta>
         </div>
       ) : null}
-    </GlassSurface>
+    </div>
   );
 }

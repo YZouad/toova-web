@@ -99,8 +99,7 @@ function mapRow(row: Record<string, unknown>): GalleryCatalogRow {
 export async function fetchGalleryCatalog(
   params: FetchGalleryParams,
 ): Promise<{ rows: GalleryCatalogRow[]; total: number }> {
-  const sort =
-    params.source === 'mine' ? 'newest' : (params.sort ?? 'hot');
+  const sort = params.sort ?? (params.source === 'mine' ? 'newest' : 'hot');
 
   const { data, error } = await supabase.rpc('get_gallery_catalog', {
     p_source: params.source,

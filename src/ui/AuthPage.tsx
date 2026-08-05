@@ -1,5 +1,18 @@
 import { type FormEvent, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import {
+  Banner,
+  Button,
+  DisplayEm,
+  DisplayHeading,
+  Eyebrow,
+  Field,
+  Input,
+  Logo,
+  MonoMeta,
+  StatRow,
+  Tabs,
+} from './kit';
 
 type Mode = 'signin' | 'signup';
 
@@ -86,57 +99,99 @@ export function AuthPage({ onBack, initialMode = 'signin' }: AuthPageProps) {
 
   return (
     <div className="auth-page">
-      <div className="auth-brand">
-        <button type="button" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: 'none', border: 'none', position: 'relative', zIndex: 2, padding: 0 }}>
-          <div className="tv-logo-mark" style={{ width: 26, height: 26, borderRadius: 7, fontSize: 17 }}>t</div>
-          <span style={{ fontFamily: 'var(--font-serif)', fontSize: 23, fontWeight: 600, color: '#F8F3EA' }}>Toova</span>
-        </button>
-        <div style={{ position: 'relative', zIndex: 2 }}>
-          <h2 style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 42, lineHeight: 1.1, color: '#F8F3EA', margin: '0 0 16px', maxWidth: 380 }}>
-            Photos become furniture. Rooms become yours.
-          </h2>
-          <p style={{ fontSize: 16, color: 'rgba(248,243,234,.65)', maxWidth: 340, lineHeight: 1.55 }}>
-            Pick up where thousands of designers left off — your saved rooms are waiting.
-          </p>
+      <div className="toova-paper" aria-hidden />
+
+      <div className="auth-poster">
+        <Logo size={21} onClick={onBack} />
+        <div style={{ marginTop: 'auto' }}>
+          <Eyebrow level="page" style={{ marginBottom: 32 }}>
+            Toova — a room planner
+          </Eyebrow>
+          <DisplayHeading level={3}>
+            Own it
+            <br />
+            before you
+            <br />
+            <DisplayEm>buy</DisplayEm> it.
+          </DisplayHeading>
+          <div style={{ marginTop: 44, paddingTop: 22, borderTop: '1px solid var(--rule-heavy)' }}>
+            <StatRow items={['Photo → 3D in 32.4s', '18 categories', 'Free for five rooms']} />
+          </div>
         </div>
-        <div style={{ position: 'relative', zIndex: 2, fontFamily: 'var(--font-mono)', fontSize: 12, color: 'rgba(244,238,228,.4)' }}>v2.4 · spatial styling</div>
-        <div className="auth-brand-glow" />
       </div>
 
       <div className="auth-form-side">
         <div className="auth-form-wrap">
-          <h1 className="auth-title">{mode === 'signin' ? 'Welcome back' : 'Create your account'}</h1>
-          <p className="auth-sub">
-            {mode === 'signin' ? 'Sign in to access your saved rooms.' : 'Start designing rooms in minutes.'}
-          </p>
+          <Tabs
+            active={mode}
+            onChange={(id) => {
+              setMode(id as Mode);
+              setError(null);
+              setInfo(null);
+            }}
+            style={{ marginBottom: 32 }}
+            tabs={[
+              { id: 'signin', label: 'Sign in' },
+              { id: 'signup', label: 'Create account' },
+            ]}
+          />
 
-          {info ? <div className="tv-banner-info" role="status">{info}</div> : null}
-          {error ? <div className="tv-banner-error" role="alert">{error}</div> : null}
+          {info ? <Banner tone="info" style={{ marginBottom: 22 }}>{info}</Banner> : null}
+          {error ? <Banner tone="error" style={{ marginBottom: 22 }}>{error}</Banner> : null}
 
           <form onSubmit={(e) => void handleSubmit(e)} noValidate>
-            {mode === 'signup' ? (
-              <>
-                <label className="tv-label" htmlFor="auth-name">Full name</label>
-                <input id="auth-name" className="tv-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Maya Chen" style={{ marginBottom: 16 }} />
-              </>
-            ) : null}
-            <label className="tv-label" htmlFor="auth-email">Email</label>
-            <input id="auth-email" className="tv-input" type="email" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" style={{ marginBottom: 16 }} />
-            <label className="tv-label" htmlFor="auth-pass">Password</label>
-            <input id="auth-pass" className="tv-input" type="password" autoComplete={mode === 'signin' ? 'current-password' : 'new-password'} value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" style={{ marginBottom: 24 }} />
-            <button type="submit" className="tv-btn-primary" style={{ width: '100%', padding: 14, borderRadius: 10 }} disabled={loading}>
-              {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+              {mode === 'signup' ? (
+                <Field label="Name">
+                  <Input
+                    id="auth-name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Maya Chen"
+                  />
+                </Field>
+              ) : null}
+              <Field label="Email">
+                <Input
+                  id="auth-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@school.edu"
+                />
+              </Field>
+              <Field
+                label="Password"
+                hint={mode === 'signup' ? 'At least 6 characters.' : undefined}
+              >
+                <Input
+                  id="auth-pass"
+                  type="password"
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                />
+              </Field>
+              <Button size="md" full type="submit" disabled={loading}>
+                {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+              </Button>
+              <div className="auth-form-footer">
+                <Button variant="mono" type="button">
+                  Forgot password →
+                </Button>
+                <MonoMeta size="sm" tone="subtle" upper>
+                  No card to start
+                </MonoMeta>
+              </div>
+            </div>
           </form>
 
-          <div className="auth-switch">
-            {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
-            <button type="button" className="auth-switch-link" onClick={() => { setMode(mode === 'signin' ? 'signup' : 'signin'); setError(null); setInfo(null); }}>
-              {mode === 'signin' ? 'Sign up' : 'Sign in'}
+          <div className="auth-back-row">
+            <button type="button" onClick={onBack}>
+              ← Back to home
             </button>
-          </div>
-          <div className="auth-back">
-            <button type="button" onClick={onBack}>← Back to home</button>
           </div>
         </div>
       </div>

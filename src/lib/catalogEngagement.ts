@@ -107,6 +107,25 @@ export async function recordCatalogView(kind: string): Promise<number | null> {
   return Number(data ?? 0);
 }
 
+/**
+ * Whether placing this model should increment downloads_count.
+ * Public community models count (including curated ones with no owner).
+ * Own models and builtins do not.
+ */
+export function shouldRecordCatalogDownload(
+  model: {
+    visibility: CatalogVisibility | string;
+    userId?: string | null;
+    isBuiltin?: boolean;
+  },
+  currentUserId: string | null | undefined,
+): boolean {
+  if (model.isBuiltin) return false;
+  if (model.visibility !== 'public') return false;
+  if (model.userId && currentUserId && model.userId === currentUserId) return false;
+  return true;
+}
+
 /** Call when placing a public community model into the current user's room. */
 export async function recordCatalogDownload(kind: string): Promise<number> {
   const { data, error } = await supabase.rpc('record_catalog_download', {

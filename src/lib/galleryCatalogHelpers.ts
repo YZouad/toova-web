@@ -82,7 +82,7 @@ export function parseGallerySearchParams(
   return {
     mode,
     source,
-    sort: source === 'mine' ? 'newest' : sort,
+    sort: source === 'mine' && sort === 'hot' ? 'newest' : sort,
     roomSort,
     category: sp.get('category'),
     query: sp.get('q') ?? '',

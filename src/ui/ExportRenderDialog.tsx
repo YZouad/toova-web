@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import type { SceneHandle, CaptureOptions } from '../scene/Scene';
 import type { CameraPresetId } from '../store';
+import { Button } from './kit/Button';
+import { Field } from './kit/Field';
+import { Modal } from './kit/Modal';
+import { Select } from './kit/Select';
+import { Spinner } from './kit/Spinner';
 
 type ExportPreset = 'catalog' | 'square' | 'topDown';
 
@@ -59,59 +64,45 @@ export function ExportRenderDialog({ sceneRef, onClose }: ExportRenderDialogProp
   }
 
   return (
-    <div className="designer-palette-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="designer-palette"
-        role="dialog"
-        aria-modal="true"
-        aria-label="Export render"
-        onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: 420, height: 'auto', maxHeight: '80vh' }}
-      >
-        <div className="palette-head">
-          <div className="palette-head-row">
-            <div className="palette-title">Export render</div>
-            <button type="button" className="palette-close" onClick={onClose}>✕</button>
-          </div>
-        </div>
-        <div className="palette-body" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600 }}>
-            Preset
-            <select
-              value={preset}
-              onChange={(e) => setPreset(e.target.value as ExportPreset)}
-              style={{ fontSize: 13, padding: 8, borderRadius: 8, border: '1px solid var(--border)' }}
-            >
-              {(Object.keys(PRESETS) as ExportPreset[]).map((k) => (
-                <option key={k} value={k}>{PRESETS[k].label}</option>
-              ))}
-            </select>
-          </label>
-          <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13, fontWeight: 600 }}>
-            Format
-            <select
-              value={format}
-              onChange={(e) => setFormat(e.target.value as 'image/png' | 'image/jpeg')}
-              style={{ fontSize: 13, padding: 8, borderRadius: 8, border: '1px solid var(--border)' }}
-            >
-              <option value="image/png">PNG</option>
-              <option value="image/jpeg">JPEG</option>
-            </select>
-          </label>
-          {error ? (
-            <p style={{ color: 'var(--danger, #b33)', fontSize: 12, margin: 0 }}>{error}</p>
-          ) : null}
-          <button
-            type="button"
-            className="tv-btn-primary"
-            disabled={busy}
-            onClick={() => void handleExport()}
-            style={{ marginTop: 8 }}
-          >
-            {busy ? 'Rendering…' : 'Download'}
-          </button>
-        </div>
+    <Modal
+      open
+      meta="Export render"
+      title="Save a frame."
+      onClose={onClose}
+      width={420}
+      footer={
+        <>
+          <Button size="sm" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button size="sm" onClick={() => void handleExport()} disabled={busy}>
+            {busy ? 'Exporting…' : 'Download'}
+          </Button>
+        </>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+        <Field label="Preset">
+          <Select
+            value={preset}
+            onChange={(v) => setPreset(v as ExportPreset)}
+            options={(Object.keys(PRESETS) as ExportPreset[]).map((k) => ({
+              value: k,
+              label: PRESETS[k].label,
+            }))}
+          />
+        </Field>
+        <Field label="Format">
+          <Select
+            value={format}
+            onChange={(v) => setFormat(v as 'image/png' | 'image/jpeg')}
+            options={[
+              { value: 'image/png', label: 'PNG' },
+              { value: 'image/jpeg', label: 'JPEG' },
+            ]}
+          />
+        </Field>
+        {busy ? <Spinner label="Rendering frame…" /> : null}
+        {error ? <div className="tv-banner-error" role="alert">{error}</div> : null}
       </div>
-    </div>
+    </Modal>
   );
 }

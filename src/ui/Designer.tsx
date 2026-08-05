@@ -3,7 +3,7 @@ import { useRoomWorkspace } from '../context/RoomWorkspaceContext';
 import { useAuth } from '../hooks/useAuth';
 import { useRoomSave } from '../hooks/useRoomLayout';
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
-import { recordCatalogDownload } from '../lib/catalogEngagement';
+import { recordCatalogDownload, shouldRecordCatalogDownload } from '../lib/catalogEngagement';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { supabase } from '../lib/supabase';
 import { type FurnitureKind } from '../furniture/registry';
@@ -27,6 +27,12 @@ import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profil
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
+import { Button } from './kit/Button';
+import { Checkbox } from './kit/Checkbox';
+import { MonoMeta } from './kit/MonoMeta';
+import { RangeControl } from './kit/RangeControl';
+import { Rule } from './kit/Rule';
+import { Tabs } from './kit/Tabs';
 
 function roomDirtyFingerprint(name: string): string {
   const { items, order, environment, roomGeometry } = useStore.getState();
@@ -48,7 +54,7 @@ const KIND_COLORS: Record<string, string> = {
   nightstand: '#C0A47A',
   lamp: '#D4C4A0',
   imported: '#7E8A60',
-  hanging: '#6B9AC4',
+  hanging: '#8A8478',
 };
 
 function getBaseSize(
@@ -183,11 +189,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           catalogSizeIn: dims,
         });
         baseSizeRef.current.set(id, dims);
-        if (
-          model.visibility === 'public' &&
-          model.userId &&
-          model.userId !== user?.id
-        ) {
+        if (shouldRecordCatalogDownload(model, user?.id)) {
           void recordCatalogDownload(model.kind).catch(() => {
             /* best-effort */
           });
@@ -323,15 +325,15 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   return (
     <div className="designer-page">
       <header className="designer-topbar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-          <button type="button" onClick={requestLeave} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}>← Rooms</button>
-          <div style={{ width: 1, height: 24, background: 'var(--border)' }} />
+        <div className="designer-topbar-start">
+          <button type="button" className="designer-topbar-btn" onClick={requestLeave}>← Rooms</button>
+          <div className="designer-topbar-divider" />
           <div>
             <input
+              className="designer-room-name"
               value={roomName}
               onChange={(e) => setRoomName(e.target.value)}
               onBlur={() => void handleSave()}
-              style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 500, color: 'var(--text)', border: 'none', background: 'transparent', outline: 'none', padding: '4px 6px', borderRadius: 7, width: 300 }}
             />
             {forkMeta?.attribution?.visible ? (
               <div className="room-attribution" style={{ paddingLeft: 6 }}>
@@ -357,33 +359,25 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
             ) : null}
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <button
-            type="button"
-            className="feedback-btn-ghost"
-            onClick={() => setFeedbackOpen(true)}
-          >
+        <div className="designer-topbar-end">
+          <Button size="sm" variant="outline" onClick={() => setFeedbackOpen(true)}>
             Feedback
-          </button>
-          <button
-            type="button"
-            className="designer-checklist-btn"
-            onClick={onOpenChecklist}
-          >
+          </Button>
+          <Button size="sm" variant="outline" onClick={onOpenChecklist}>
             Checklist
-          </button>
+          </Button>
           {workspace?.isOwner ? (
-            <button
-              type="button"
-              onClick={() => setShareOpen(true)}
-              style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}
-            >
+            <Button size="sm" variant="outline" onClick={() => setShareOpen(true)}>
               Share
-            </button>
+            </Button>
           ) : null}
-          <button type="button" onClick={() => sceneRef.current?.resetCamera()} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '8px 14px', borderRadius: 9 }}>Reset view</button>
-          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-subtle)' }}>{saving ? 'Saving…' : savedLabel}</div>
-          <button type="button" className="tv-btn-primary" style={{ fontSize: 13, padding: '9px 18px', borderRadius: 9 }} disabled={saving} onClick={() => void handleSave()}>Save</button>
+          <Button size="sm" variant="outline" onClick={() => sceneRef.current?.resetCamera()}>
+            Reset view
+          </Button>
+          <MonoMeta size="sm" tone="dense" className="designer-save-status">
+            {saving ? 'Saving…' : savedLabel}
+          </MonoMeta>
+          <Button size="sm" disabled={saving} onClick={() => void handleSave()}>Save</Button>
         </div>
       </header>
 
@@ -415,40 +409,47 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         </div>
 
         {!selectedId ? (
-          <button type="button" className="designer-add-btn" onClick={() => setPaletteOpen(true)}>
-            <span style={{ fontSize: 20, lineHeight: 0, marginTop: -2 }}>＋</span> Add furniture
-          </button>
+          <Button
+            size="lg"
+            className="designer-add-btn"
+            onClick={() => setPaletteOpen(true)}
+          >
+            Add furniture
+          </Button>
         ) : item?.kind === 'hanging' ? (
           <div className="designer-quick-bar">
-            <span style={{ fontSize: 13, fontWeight: 600, padding: '0 4px' }}>{item.label}</span>
-            <div style={{ width: 1, height: 32, background: 'var(--border)' }} />
+            <span className="designer-quick-bar-label">{item.label}</span>
+            <div className="designer-quick-bar-divider" />
             <button
               type="button"
               className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
               aria-pressed={advancedOpen}
               onClick={() => setAdvancedOpen((v) => !v)}
             >
-              Customize <span>⤢</span>
+              Customize
             </button>
           </div>
         ) : item ? (
           <div className="designer-quick-bar">
-            <div className="designer-quick-size">
-              <div className="designer-quick-size-labels">
-                <span style={{ fontWeight: 600 }}>Size</span>
-                <span style={{ fontFamily: 'var(--font-mono)' }}>{uniformPct}%</span>
-              </div>
-              <input type="range" min={40} max={220} step={5} value={uniformPct} onChange={(e) => handleUniformChange(Number(e.target.value))} />
-            </div>
-            <div style={{ width: 1, height: 32, background: 'var(--border)' }} />
-            <button type="button" title="Add another piece" onClick={() => setPaletteOpen(true)} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 19, fontWeight: 600, width: 38, height: 38, borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>＋</button>
+            <RangeControl
+              label="Size"
+              value={uniformPct}
+              min={40}
+              max={220}
+              step={5}
+              unit="%"
+              onChange={handleUniformChange}
+              style={{ width: 180, marginBottom: 0 }}
+            />
+            <div className="designer-quick-bar-divider" />
+            <button type="button" className="designer-quick-add-btn" title="Add another piece" onClick={() => setPaletteOpen(true)}>+</button>
             <button
               type="button"
               className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
               aria-pressed={advancedOpen}
               onClick={() => setAdvancedOpen((v) => !v)}
             >
-              Advanced <span>⤢</span>
+              Advanced
             </button>
           </div>
         ) : null}
@@ -471,127 +472,144 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
 
         {advancedOpen && item && item.kind !== 'hanging' ? (
           <aside className="designer-advanced tv-scroll">
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--accent)' }}>Advanced · selected piece</span>
-              <button type="button" onClick={() => setAdvancedOpen(false)} style={{ cursor: 'pointer', width: 28, height: 28, borderRadius: 8, border: '1px solid var(--border)', background: '#fff', color: 'var(--text-muted)', fontSize: 13 }}>✕</button>
+            <div className="designer-advanced-head">
+              <span className="designer-advanced-eyebrow">Advanced · selected piece</span>
+              <button type="button" className="designer-advanced-close" onClick={() => setAdvancedOpen(false)} aria-label="Close">×</button>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 11, padding: 12, border: '1px solid var(--border)', borderRadius: 12, background: '#fff', marginBottom: 18 }}>
-              <div style={{ width: 40, height: 40, borderRadius: 8, background: KIND_COLORS[item.kind] ?? '#CBB28F' }} />
+            <div className="designer-advanced-item-card">
+              <div className="designer-advanced-swatch" style={{ background: KIND_COLORS[item.kind] ?? '#CBB28F' }} />
               <div>
-                <div style={{ fontSize: 14, fontWeight: 600 }}>{item.label}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>{item.kind}</div>
+                <div className="designer-advanced-item-title">{item.label}</div>
+                <div className="designer-advanced-item-meta">{item.kind}</div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>Size</span>
-              <div style={{ display: 'flex', background: '#EDE5D8', borderRadius: 8, padding: 3 }}>
-                <button type="button" onClick={() => setSizeMode('uniform')} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: sizeMode === 'uniform' ? '#fff' : 'transparent' }}>Uniform</button>
-                <button type="button" onClick={() => setSizeMode('axis')} style={{ padding: '4px 10px', borderRadius: 6, border: 'none', fontFamily: 'inherit', fontSize: 12, fontWeight: 600, cursor: 'pointer', background: sizeMode === 'axis' ? '#fff' : 'transparent' }}>Size (in)</button>
-              </div>
+            <Tabs
+              active={sizeMode}
+              onChange={(id) => setSizeMode(id as 'uniform' | 'axis')}
+              style={{ marginBottom: 16 }}
+              tabs={[
+                { id: 'uniform', label: 'Uniform' },
+                { id: 'axis', label: 'Size (in)' },
+              ]}
+            />
+
+            <div className="designer-advanced-section">
+              {sizeMode === 'uniform' ? (
+                <RangeControl
+                  label="Scale"
+                  value={uniformPct}
+                  min={40}
+                  max={220}
+                  step={5}
+                  unit="%"
+                  onChange={handleUniformChange}
+                />
+              ) : (
+                (['Width', 'Height', 'Depth'] as const).map((label, i) => (
+                  <RangeControl
+                    key={label}
+                    label={label}
+                    value={Math.round(item.size[i])}
+                    min={1}
+                    max={maxItemFootprint}
+                    step={1}
+                    unit="″"
+                    onChange={(v) => {
+                      const next = [...item.size] as [number, number, number];
+                      next[i] = v;
+                      setItemSize(item.id, next);
+                    }}
+                  />
+                ))
+              )}
+
+              <RangeControl
+                label="Rotation"
+                value={rotDeg}
+                min={0}
+                max={360}
+                step={15}
+                unit="°"
+                onChange={(v) => updateRotation(item.id, (v * Math.PI) / 180)}
+              />
+
+              {item.kind !== 'bed' ? (
+                <RangeControl
+                  label="Height off floor"
+                  value={Math.round(item.position[1])}
+                  min={0}
+                  max={maxElevation}
+                  step={2}
+                  unit="″"
+                  onChange={(v) => setItemElevation(item.id, v)}
+                />
+              ) : null}
+
+              {item.kind === 'bed' ? (
+                <>
+                  <RangeControl
+                    label="Leg height"
+                    value={item.bedLegHeight ?? 8}
+                    min={4}
+                    max={36}
+                    step={1}
+                    unit="″"
+                    onChange={(v) => setBedHeight(item.id, v)}
+                  />
+                  <Checkbox
+                    checked={!!item.beddingEnabled}
+                    label="Bedding"
+                    onChange={(checked) => setBeddingEnabled(item.id, checked)}
+                  />
+                  {item.beddingEnabled ? (
+                    <div style={{ marginBottom: 8 }}>
+                      <input type="color" value={item.blanketColor ?? DEFAULT_BLANKET_COLOR} onChange={(e) => setBlanketColor(item.id, e.target.value)} disabled={beddingBusy} style={{ width: '100%', height: 36, marginBottom: 8, borderRadius: 'var(--radius-xs)', border: '1px solid var(--rule-hair)' }} />
+                      <MonoMeta size="xs" tone="dense" upper style={{ display: 'block', marginBottom: 6 }}>Blanket pattern</MonoMeta>
+                      <input type="file" accept="image/*" disabled={beddingBusy} onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = '';
+                        if (!file) return;
+                        setBeddingBusy(true);
+                        try {
+                          const { uploadBlanketTexture, removeBlanketTexture } = await import('../lib/beddingStorage');
+                          const prevPath = item.blanketTexturePath;
+                          const { path, signedUrl } = await uploadBlanketTexture(file);
+                          setBlanketTexture(item.id, { path, url: signedUrl });
+                          if (prevPath && prevPath !== path) await removeBlanketTexture(prevPath).catch(() => {});
+                        } finally {
+                          setBeddingBusy(false);
+                        }
+                      }} />
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
             </div>
 
-            {sizeMode === 'uniform' ? (
-              <>
-                <div style={{ fontSize: 12, color: 'var(--text-dark)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Scale</span><span style={{ fontFamily: 'var(--font-mono)' }}>{uniformPct}%</span>
-                </div>
-                <input type="range" min={40} max={220} step={5} value={uniformPct} onChange={(e) => handleUniformChange(Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)', marginBottom: 20 }} />
-              </>
-            ) : (
-              (['Width', 'Height', 'Depth'] as const).map((label, i) => (
-                <div key={label}>
-                  <div style={{ fontSize: 12, color: 'var(--text-dark)', marginBottom: 5, display: 'flex', justifyContent: 'space-between' }}>
-                    <span>{label}</span><span style={{ fontFamily: 'var(--font-mono)' }}>{Math.round(item.size[i])}″</span>
-                  </div>
-                  <input type="range" min={1} max={maxItemFootprint} step={1} value={item.size[i]} onChange={(e) => { const next = [...item.size] as [number, number, number]; next[i] = Number(e.target.value); setItemSize(item.id, next); }} style={{ width: '100%', accentColor: 'var(--accent)', marginBottom: 12 }} />
-                </div>
-              ))
-            )}
+            <Rule weight="hair" spacing={16} />
 
-            <div style={{ fontSize: 12, color: 'var(--text-dark)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-              <span>Rotation</span><span style={{ fontFamily: 'var(--font-mono)' }}>{rotDeg}°</span>
-            </div>
-            <input type="range" min={0} max={360} step={15} value={rotDeg} onChange={(e) => updateRotation(item.id, (Number(e.target.value) * Math.PI) / 180)} style={{ width: '100%', accentColor: 'var(--accent)', marginBottom: 18 }} />
-
-            {item.kind !== 'bed' ? (
-              <>
-                <div style={{ fontSize: 12, color: 'var(--text-dark)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Height off floor</span><span style={{ fontFamily: 'var(--font-mono)' }}>{Math.round(item.position[1])}″</span>
-                </div>
-                <input type="range" min={0} max={maxElevation} step={2} value={item.position[1]} onChange={(e) => setItemElevation(item.id, Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)', marginBottom: 18 }} />
-              </>
-            ) : null}
-
-            {item.kind === 'bed' ? (
-              <>
-                <div style={{ fontSize: 12, color: 'var(--text-dark)', marginBottom: 6, display: 'flex', justifyContent: 'space-between' }}>
-                  <span>Leg height</span><span style={{ fontFamily: 'var(--font-mono)' }}>{item.bedLegHeight ?? 8}″</span>
-                </div>
-                <input type="range" min={4} max={36} step={1} value={item.bedLegHeight ?? 8} onChange={(e) => setBedHeight(item.id, Number(e.target.value))} style={{ width: '100%', accentColor: 'var(--accent)', marginBottom: 18 }} />
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 14, fontWeight: 600 }}>
-                  <input type="checkbox" checked={!!item.beddingEnabled} onChange={(e) => setBeddingEnabled(item.id, e.target.checked)} style={{ accentColor: 'var(--accent)' }} />
-                  Bedding
-                </label>
-                {item.beddingEnabled ? (
-                  <div style={{ marginBottom: 16 }}>
-                    <input type="color" value={item.blanketColor ?? DEFAULT_BLANKET_COLOR} onChange={(e) => setBlanketColor(item.id, e.target.value)} disabled={beddingBusy} style={{ width: '100%', height: 36, marginBottom: 8 }} />
-                    <label style={{ display: 'block', fontSize: 12, color: 'var(--text-muted)', marginBottom: 6 }}>Blanket pattern</label>
-                    <input type="file" accept="image/*" disabled={beddingBusy} onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      e.target.value = '';
-                      if (!file) return;
-                      setBeddingBusy(true);
-                      try {
-                        const { uploadBlanketTexture, removeBlanketTexture } = await import('../lib/beddingStorage');
-                        const prevPath = item.blanketTexturePath;
-                        const { path, signedUrl } = await uploadBlanketTexture(file);
-                        setBlanketTexture(item.id, { path, url: signedUrl });
-                        if (prevPath && prevPath !== path) await removeBlanketTexture(prevPath).catch(() => {});
-                      } finally {
-                        setBeddingBusy(false);
-                      }
-                    }} />
-                  </div>
-                ) : null}
-              </>
-            ) : null}
-
-            <button type="button" onClick={() => setWallMounted(item.id, !item.wallMounted)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', padding: '11px 13px', border: '1px solid var(--border)', borderRadius: 10, background: '#fff', cursor: 'pointer', marginBottom: 16, fontFamily: 'inherit', fontSize: 14, fontWeight: 600 }}>
+            <button type="button" className="designer-advanced-toggle-row" onClick={() => setWallMounted(item.id, !item.wallMounted)}>
               Wall mounted
-              <span style={{ fontSize: 12, color: item.wallMounted ? 'var(--accent)' : 'var(--text-subtle)' }}>{item.wallMounted ? 'On' : 'Off'}</span>
+              <MonoMeta size="sm" tone="dense">{item.wallMounted ? 'On' : 'Off'}</MonoMeta>
             </button>
 
-            <div style={{ marginBottom: 16, padding: 12, border: '1px solid var(--border)', borderRadius: 10, background: '#fff' }}>
-              <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10, fontSize: 14, fontWeight: 600 }}>
-                <input
-                  type="checkbox"
-                  checked={!!emitter?.enabled}
-                  onChange={(e) => setEmitterEnabled(item.id, e.target.checked)}
-                  style={{ accentColor: 'var(--accent)' }}
-                />
-                Emits light
-              </label>
+            <div className="designer-advanced-panel-block">
+              <Checkbox
+                checked={!!emitter?.enabled}
+                label="Emits light"
+                onChange={(checked) => setEmitterEnabled(item.id, checked)}
+              />
               {emitter?.enabled ? (
                 <>
-                  <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                  <div className="designer-advanced-emitter-type">
                     {(['point', 'spot'] as const).map((t) => (
                       <button
                         key={t}
                         type="button"
+                        className={(emitter.type ?? DEFAULT_EMITTER.type) === t ? 'active' : ''}
                         onClick={() => setEmitterConfig(item.id, { type: t })}
-                        style={{
-                          flex: 1,
-                          padding: '6px 8px',
-                          borderRadius: 8,
-                          border: '1px solid var(--border)',
-                          background: (emitter.type ?? DEFAULT_EMITTER.type) === t ? 'var(--accent-soft)' : '#fff',
-                          fontFamily: 'inherit',
-                          fontSize: 12,
-                          fontWeight: 600,
-                          cursor: 'pointer',
-                        }}
                       >
                         {t}
                       </button>
@@ -601,63 +619,48 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
                     type="color"
                     value={emitter.color ?? DEFAULT_EMITTER.color}
                     onChange={(e) => setEmitterConfig(item.id, { color: e.target.value })}
-                    style={{ width: '100%', height: 32, marginBottom: 8 }}
+                    style={{ width: '100%', height: 32, marginBottom: 8, borderRadius: 'var(--radius-xs)', border: '1px solid var(--rule-hair)' }}
                   />
                   {(['intensity', 'range'] as const).map((field) => (
-                    <div key={field}>
-                      <div style={{ fontSize: 12, marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
-                        <span style={{ textTransform: 'capitalize' }}>{field}</span>
-                        <span style={{ fontFamily: 'var(--font-mono)' }}>{(emitter[field] ?? DEFAULT_EMITTER[field]).toFixed(1)}</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={field === 'intensity' ? 0.1 : 20}
-                        max={field === 'intensity' ? 8 : 200}
-                        step={field === 'intensity' ? 0.1 : 5}
-                        value={emitter[field] ?? DEFAULT_EMITTER[field]}
-                        onChange={(e) => setEmitterConfig(item.id, { [field]: Number(e.target.value) })}
-                        style={{ width: '100%', accentColor: 'var(--accent)', marginBottom: 8 }}
-                      />
-                    </div>
+                    <RangeControl
+                      key={field}
+                      label={field}
+                      value={emitter[field] ?? DEFAULT_EMITTER[field]}
+                      min={field === 'intensity' ? 0.1 : 20}
+                      max={field === 'intensity' ? 8 : 200}
+                      step={field === 'intensity' ? 0.1 : 5}
+                      formatValue={(v) => v.toFixed(1)}
+                      onChange={(v) => setEmitterConfig(item.id, { [field]: v })}
+                    />
                   ))}
                   {(emitter.type ?? 'point') === 'spot' ? (
-                    <div>
-                      <div style={{ fontSize: 12, marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
-                        <span>Angle</span>
-                        <span style={{ fontFamily: 'var(--font-mono)' }}>{emitter.angleDeg ?? 45}°</span>
-                      </div>
-                      <input
-                        type="range"
-                        min={15}
-                        max={90}
-                        step={5}
-                        value={emitter.angleDeg ?? 45}
-                        onChange={(e) => setEmitterConfig(item.id, { angleDeg: Number(e.target.value) })}
-                        style={{ width: '100%', accentColor: 'var(--accent)', marginBottom: 8 }}
-                      />
-                    </div>
-                  ) : null}
-                  <div>
-                    <div style={{ fontSize: 12, marginBottom: 4, display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Glow</span>
-                      <span style={{ fontFamily: 'var(--font-mono)' }}>{Math.round((emitter.emissiveBoost ?? 0.35) * 100)}%</span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.05}
-                      value={emitter.emissiveBoost ?? 0.35}
-                      onChange={(e) => setEmitterConfig(item.id, { emissiveBoost: Number(e.target.value) })}
-                      style={{ width: '100%', accentColor: 'var(--accent)' }}
+                    <RangeControl
+                      label="Angle"
+                      value={emitter.angleDeg ?? 45}
+                      min={15}
+                      max={90}
+                      step={5}
+                      unit="°"
+                      onChange={(v) => setEmitterConfig(item.id, { angleDeg: v })}
                     />
-                  </div>
+                  ) : null}
+                  <RangeControl
+                    label="Glow"
+                    value={Math.round((emitter.emissiveBoost ?? 0.35) * 100)}
+                    min={0}
+                    max={100}
+                    step={5}
+                    unit="%"
+                    onChange={(v) => setEmitterConfig(item.id, { emissiveBoost: v / 100 })}
+                  />
                 </>
               ) : null}
             </div>
 
-            <button type="button" onClick={duplicateSelected} style={{ width: '100%', cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: 10, borderRadius: 9, marginBottom: 8 }}>Duplicate</button>
-            <button type="button" onClick={() => { removeItem(item.id); setAdvancedOpen(false); }} style={{ width: '100%', cursor: 'pointer', border: '1px solid #EBCFC8', background: 'var(--danger-bg)', color: 'var(--danger)', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: 10, borderRadius: 9 }}>Delete piece</button>
+            <div className="designer-advanced-actions">
+              <Button size="sm" variant="outline" full onClick={duplicateSelected}>Duplicate</Button>
+              <Button size="sm" variant="outline" full onClick={() => { removeItem(item.id); setAdvancedOpen(false); }} style={{ color: 'var(--danger)', borderColor: 'var(--danger)', background: 'var(--danger-bg)' }}>Delete piece</Button>
+            </div>
           </aside>
         ) : null}
       </div>

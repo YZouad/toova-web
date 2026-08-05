@@ -6,11 +6,10 @@ const TOOLS: {
   id: DesignerTool;
   label: string;
   hint: string;
-  icon: string;
 }[] = [
-  { id: 'select', label: 'Select', hint: 'Move furniture', icon: '↖' },
-  { id: 'hanging-leaves', label: 'Leaves', hint: 'Hang leafy garlands', icon: '🌿' },
-  { id: 'hanging-lights', label: 'Lights', hint: 'Hang LED strings', icon: '✦' },
+  { id: 'select', label: 'Select', hint: 'Move furniture' },
+  { id: 'hanging-leaves', label: 'Leaves', hint: 'Hang leafy garlands' },
+  { id: 'hanging-lights', label: 'Lights', hint: 'Hang LED strings' },
 ];
 
 export function HangingDecorToolRail() {
@@ -43,9 +42,6 @@ export function HangingDecorToolRail() {
               aria-pressed={tool === t.id}
               onClick={() => setDesignerTool(t.id)}
             >
-              <span className="hang-rail-tool-icon" aria-hidden>
-                {t.icon}
-              </span>
               <span className="hang-rail-tool-label">{t.label}</span>
             </button>
           ))}

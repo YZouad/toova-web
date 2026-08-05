@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import { recordCatalogDownload } from '../lib/catalogEngagement';
 import { resolveAffiliateForItem } from '../lib/affiliateLinks';
 import { GlassSurface } from './GlassSurface';
+import { Button } from './kit/Button';
 
 interface SceneCheckoutPanelProps {
   onOpenChecklist: () => void;
@@ -257,11 +258,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
 
         {toBuyOpen ? (
           <div className="scene-checkout-body">
-            {roomLines.length === 0 && listOnlyLines.length === 0 ? (
-              <p className="scene-checkout-empty">
-                Place furniture in the room — every piece shows up here to shop.
-              </p>
-            ) : (
+            {roomLines.length === 0 && listOnlyLines.length === 0 ? null : (
               <ul className="scene-checkout-list">
                 {roomLines.map((line) => {
                   const price = line.product
@@ -388,13 +385,9 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
                     : `${formatPriceCents(subtotalCents.sum) ?? '$0'}+`}
                 </strong>
                 {reviewLines.length > 0 ? (
-                  <button
-                    type="button"
-                    className="tv-btn-primary scene-checkout-review"
-                    onClick={() => setReviewOpen(true)}
-                  >
+                  <Button size="sm" className="scene-checkout-review" onClick={() => setReviewOpen(true)}>
                     Review purchases
-                  </button>
+                  </Button>
                 ) : null}
               </div>
             ) : null}

@@ -8,7 +8,6 @@ import {
   fetchProfileCatalogModels,
   fetchProfilePage,
   isValidHandle,
-  profilePath,
   publicRoomPath,
   signAvatarPath,
   updateOwnProfile,
@@ -17,11 +16,26 @@ import {
   type ProfileRoomCard,
 } from '../lib/profiles';
 import { formatRelativeTime } from '../lib/userDisplay';
-import { navigate, galleryPath } from '../hooks/useRoute';
-import { catalogCategoryLabel } from '../lib/catalogCategories';
+import { profilePath, navigate, galleryPath } from '../hooks/useRoute';
 import { signBrowsableModelPath } from '../lib/modelStorage';
+import { planBounds } from '../lib/roomGeometry';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
 import { UserAvatar } from './UserAvatar';
+import {
+  Badge,
+  Banner,
+  Button,
+  Checkbox,
+  DisplayHeading,
+  EmptyState,
+  Field,
+  Input,
+  Logo,
+  MonoMeta,
+  Plate,
+  PlateCard,
+  SectionOpener,
+} from './kit';
 
 interface ProfilePageProps {
   handle: string;
@@ -39,6 +53,19 @@ function toPreviewItems(room: ProfileRoomCard): RoomPreviewItem[] {
     rotationY: Number(row.rotation_y),
     size: [Number(row.size_w), Number(row.size_h), Number(row.size_d)],
   }));
+}
+
+function formatSqft(geometry: ReturnType<typeof parseFloorPlan>): string {
+  if (!geometry) return '—';
+  const b = planBounds(geometry);
+  const sqft = Math.round((b.width * b.depth) / 144);
+  return sqft > 0 ? `${sqft} sq ft` : '—';
+}
+
+function visibilityLabel(v: string): string {
+  if (v === 'public') return 'Public';
+  if (v === 'unlisted') return 'Unlisted';
+  return 'Private';
 }
 
 function attributionLabel(room: ProfileRoomCard): string | null {
@@ -232,165 +259,230 @@ export function ProfilePage({
 
   const { profile } = payload;
 
+  const totalLikes = rooms.reduce((s, r) => s + Number(r.likes_count ?? 0), 0);
+  const totalViews = rooms.reduce((s, r) => s + Number(r.views_count ?? 0), 0);
+
   return (
-    <div className="profile-page tv-scroll">
-      <header className="profile-topbar">
-        <button type="button" className="shared-brand" onClick={onGoHome}>
-          <span className="tv-logo-mark" style={{ width: 25, height: 25, borderRadius: 7, fontSize: 17 }}>t</span>
-          <span className="tv-logo-text" style={{ fontSize: 20 }}>Toova</span>
-        </button>
-        {isOwner ? (
-          <button
-            type="button"
-            className="shared-btn-secondary"
-            onClick={() => {
-              setEditing((v) => !v);
-              setFormError(null);
-            }}
-          >
-            {editing ? 'Close editor' : 'Edit profile'}
-          </button>
-        ) : null}
+    <div className="toova-page app-page profile-page tv-scroll">
+      <div className="toova-paper" aria-hidden />
+
+      <header className="app-topbar">
+        <div className="app-topbar-inner">
+          <Logo size={21} onClick={onGoHome} />
+          {isOwner ? (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                setEditing((v) => !v);
+                setFormError(null);
+              }}
+            >
+              {editing ? 'Close editor' : 'Edit profile'}
+            </Button>
+          ) : null}
+        </div>
       </header>
 
-      <div className="profile-main">
-        <section className="profile-hero">
-          <UserAvatar name={profile.display_name} src={avatarUrl} size={88} />
-          <div className="profile-hero-text">
-            <h1 className="profile-name">{profile.display_name}</h1>
-            <div className="profile-handle">@{profile.handle}</div>
-            {profile.bio ? <p className="profile-bio">{profile.bio}</p> : null}
-            <div className="profile-meta">
-              {profile.is_public ? 'Public profile' : 'Private profile'}
-              {isOwner ? ' · only you can see private rooms here' : null}
-            </div>
+      <main className="app-main">
+        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 32, alignItems: 'start' }}>
+          <Plate height={160} src={avatarUrl ?? undefined}>
+            {!avatarUrl ? (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
+                <UserAvatar name={profile.display_name} src={null} size={72} />
+              </div>
+            ) : null}
+          </Plate>
+          <div>
+            <DisplayHeading level={4}>{profile.display_name}</DisplayHeading>
+            <MonoMeta size="md" tone="dense" style={{ display: 'block', marginTop: 8 }}>
+              @{profile.handle}
+            </MonoMeta>
+            {profile.bio ? (
+              <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', margin: '12px 0 0', maxWidth: 540 }}>
+                {profile.bio}
+              </p>
+            ) : null}
+            <MonoMeta size="sm" tone="dense" className="profile-stats-line">
+              {[
+                `${rooms.length} room${rooms.length === 1 ? '' : 's'}`,
+                `${totalLikes} like${totalLikes === 1 ? '' : 's'}`,
+                `${totalViews} view${totalViews === 1 ? '' : 's'}`,
+                profile.is_public ? 'Public' : 'Private',
+              ].join(' · ')}
+            </MonoMeta>
           </div>
-        </section>
+        </div>
 
         {editing && isOwner ? (
-          <form className="profile-edit-card" onSubmit={(e) => void handleSave(e)}>
-            <h2>Edit profile</h2>
-            {formError ? <div className="tv-banner-error" role="alert">{formError}</div> : null}
+          <form
+            onSubmit={(e) => void handleSave(e)}
+            style={{
+              marginTop: 40,
+              padding: '28px 0',
+              borderTop: '1px solid var(--rule-heavy)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 18,
+              maxWidth: 480,
+            }}
+          >
+            <SectionOpener level={5} title="Edit profile." />
+            {formError ? <Banner tone="error">{formError}</Banner> : null}
 
-            <label className="tv-label">Avatar</label>
-            <div className="profile-avatar-actions">
-              <label className="shared-btn-secondary profile-file-btn">
-                Upload photo
-                <input
-                  type="file"
-                  accept="image/*"
-                  hidden
-                  disabled={busy}
-                  onChange={(e) => void handleAvatarChange(e.target.files?.[0] ?? null)}
-                />
-              </label>
-              {profile.avatar_path ? (
-                <button type="button" className="shared-btn-secondary" disabled={busy} onClick={() => void handleClearAvatar()}>
-                  Remove
-                </button>
-              ) : null}
-            </div>
+            <Field label="Avatar">
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <label>
+                  <Button size="sm" variant="outline" as="span">
+                    Upload photo
+                  </Button>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    hidden
+                    disabled={busy}
+                    onChange={(e) => void handleAvatarChange(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+                {profile.avatar_path ? (
+                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void handleClearAvatar()}>
+                    Remove
+                  </Button>
+                ) : null}
+              </div>
+            </Field>
 
-            <label className="tv-label" htmlFor="profile-handle">Handle</label>
-            <input
-              id="profile-handle"
-              className="tv-input"
-              value={editHandle}
-              onChange={(e) => setEditHandle(e.target.value.toLowerCase())}
-              maxLength={30}
-              disabled={busy}
-            />
-
-            <label className="tv-label" htmlFor="profile-name">Display name</label>
-            <input
-              id="profile-name"
-              className="tv-input"
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-              maxLength={60}
-              disabled={busy}
-            />
-
-            <label className="tv-label" htmlFor="profile-bio">Bio</label>
-            <textarea
-              id="profile-bio"
-              className="tv-input profile-bio-input"
-              value={editBio}
-              onChange={(e) => setEditBio(e.target.value)}
-              maxLength={280}
-              rows={3}
-              disabled={busy}
-            />
-
-            <label className="profile-toggle">
-              <input
-                type="checkbox"
-                checked={editPublic}
-                onChange={(e) => setEditPublic(e.target.checked)}
+            <Field label="Handle" htmlFor="profile-handle">
+              <Input
+                id="profile-handle"
+                value={editHandle}
+                onChange={(e) => setEditHandle(e.target.value.toLowerCase())}
+                maxLength={30}
                 disabled={busy}
               />
-              Make profile public
-            </label>
-            <p className="profile-toggle-hint">
-              Public profiles can list rooms you publish. Private rooms stay hidden.
-            </p>
+            </Field>
 
-            <button type="submit" className="tv-btn-primary" disabled={busy}>
+            <Field label="Display name" htmlFor="profile-name">
+              <Input
+                id="profile-name"
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                maxLength={60}
+                disabled={busy}
+              />
+            </Field>
+
+            <Field label="Bio" htmlFor="profile-bio">
+              <textarea
+                id="profile-bio"
+                className="kit-input"
+                value={editBio}
+                onChange={(e) => setEditBio(e.target.value)}
+                maxLength={280}
+                rows={3}
+                disabled={busy}
+                style={{ width: '100%', resize: 'vertical' }}
+              />
+            </Field>
+
+            <Checkbox
+              checked={editPublic}
+              onChange={setEditPublic}
+              disabled={busy}
+              label="Make profile public"
+            />
+            <MonoMeta size="xs" tone="subtle">
+              Public profiles can list rooms you publish. Private rooms stay hidden.
+            </MonoMeta>
+
+            <Button type="submit" size="md" disabled={busy}>
               Save profile
-            </button>
+            </Button>
           </form>
         ) : null}
 
-        <section className="profile-rooms">
-          <h2 className="profile-rooms-title">
-            {isOwner ? 'Your rooms' : 'Published rooms'}
-          </h2>
+        <section className="profile-ledger">
+          <SectionOpener
+            level={5}
+            title={isOwner ? 'Your rooms.' : 'Published rooms.'}
+            note={`${rooms.length} room${rooms.length === 1 ? '' : 's'}`}
+          />
           {rooms.length === 0 ? (
-            <div className="profile-empty">
-              {isOwner
-                ? 'No rooms yet. Publish a room from your dashboard to show it here.'
-                : 'No published rooms yet.'}
-            </div>
+            <EmptyState
+              style={{ marginTop: 32 }}
+              label="No rooms"
+              title={
+                isOwner
+                  ? 'No rooms yet.'
+                  : 'No published rooms yet.'
+              }
+              body={
+                isOwner
+                  ? 'Publish a room from your dashboard to show it here.'
+                  : undefined
+              }
+            />
           ) : (
-            <div className="dashboard-grid">
-              {rooms.map((room) => {
+            <div style={{ marginTop: 28 }}>
+              <div className="app-ledger-head">
+                <span>Plan</span>
+                <span>Room</span>
+                <span>Engagement</span>
+                <span>Floor area</span>
+                <span>Updated</span>
+                <span className="app-ledger-head__right">Visibility</span>
+                <span aria-hidden />
+              </div>
+              {rooms.map((room, i) => {
                 const items = toPreviewItems(room);
                 const geometry = parseFloorPlan(room.room_geometry);
                 const attr = attributionLabel(room);
                 const canOpenPublic = room.visibility === 'public' && profile.is_public;
                 return (
-                  <div key={room.id} className="dashboard-room-card">
-                    <div className="dashboard-room-preview">
-                      <RoomPreview geometry={geometry} items={items} />
-                      <span className={`profile-vis-badge profile-vis-badge--${room.visibility}`}>
-                        {room.visibility}
-                      </span>
-                    </div>
-                    <div className="dashboard-room-body">
-                      <div className="profile-room-title">{room.name}</div>
-                      <div className="profile-room-sub">
-                        ♥ {Number(room.likes_count ?? 0)} · 👁 {Number(room.views_count ?? 0)} · ⧉{' '}
-                        {room.fork_count} copies
-                        {' · '}
-                        {formatRelativeTime(room.updated_at)}
+                  <div
+                    key={room.id}
+                    className={[
+                      'app-ledger-row',
+                      canOpenPublic ? 'app-ledger-row--interactive' : '',
+                      i === 0 ? 'app-ledger-row--first' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    onClick={
+                      canOpenPublic
+                        ? () => navigate(publicRoomPath(profile.handle, room.id))
+                        : undefined
+                    }
+                    role={canOpenPublic ? 'button' : undefined}
+                    tabIndex={canOpenPublic ? 0 : undefined}
+                  >
+                    <Plate height={84} topCaption={`${room.name.slice(0, 12).toLowerCase()}.jpg`}>
+                      <div className="app-ledger-plate-preview">
+                        <RoomPreview geometry={geometry} items={items} />
                       </div>
-                      {attr ? <div className="room-attribution">{attr}</div> : null}
-                      {canOpenPublic ? (
-                        <button
-                          type="button"
-                          className="profile-room-open"
-                          onClick={() => navigate(publicRoomPath(profile.handle, room.id))}
-                        >
-                          Open room →
-                        </button>
-                      ) : isOwner ? (
-                        <div className="profile-room-private-note">
+                    </Plate>
+                    <div>
+                      <div className="app-ledger-name">{room.name}</div>
+                      {attr ? <div className="app-ledger-attribution">{attr}</div> : null}
+                      {isOwner && !canOpenPublic ? (
+                        <MonoMeta size="xs" tone="subtle" style={{ display: 'block', marginTop: 4 }}>
                           {room.visibility === 'public'
-                            ? 'Published — make your profile public to share this link.'
-                            : 'Private — publish from the dashboard to show visitors.'}
-                        </div>
+                            ? 'Make your profile public to share this link.'
+                            : 'Publish from the dashboard to show visitors.'}
+                        </MonoMeta>
                       ) : null}
                     </div>
+                    <MonoMeta size="md" tone="default">
+                      ♥ {Number(room.likes_count ?? 0)} · 👁 {Number(room.views_count ?? 0)}
+                    </MonoMeta>
+                    <MonoMeta size="md" tone="default">{formatSqft(geometry)}</MonoMeta>
+                    <MonoMeta size="md" tone="default">{formatRelativeTime(room.updated_at)}</MonoMeta>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <Badge tone={room.visibility === 'public' ? 'accent' : 'neutral'} dot={room.visibility === 'public'}>
+                        {visibilityLabel(room.visibility)}
+                      </Badge>
+                    </div>
+                    <span />
                   </div>
                 );
               })}
@@ -398,58 +490,36 @@ export function ProfilePage({
           )}
         </section>
 
-        <section className="profile-rooms">
-          <h2 className="profile-rooms-title">
-            {isOwner ? 'Your models' : 'Published models'}
-          </h2>
+        <section style={{ marginTop: 56 }}>
+          <SectionOpener
+            level={5}
+            title={isOwner ? 'Your models.' : 'Published models.'}
+            note={`${models.length} model${models.length === 1 ? '' : 's'}`}
+          />
           {models.length === 0 ? (
-            <div className="profile-empty">
-              {isOwner
-                ? 'No models yet. Create one from the gallery or designer.'
-                : 'No published models yet.'}
-            </div>
+            <EmptyState
+              style={{ marginTop: 32 }}
+              label="No models"
+              title={isOwner ? 'No models yet.' : 'No published models yet.'}
+              body={isOwner ? 'Create one from the gallery or designer.' : undefined}
+            />
           ) : (
-            <div className="profile-models-grid">
+            <div className="gallery-plate-grid gallery-plate-grid--models" style={{ marginTop: 28 }}>
               {models.map((m) => (
-                <button
+                <PlateCard
                   key={m.kind}
-                  type="button"
-                  className="profile-model-card"
+                  name={m.label}
+                  meta={`♥ ${m.likes_count} · ↓ ${m.downloads_count} · 👁 ${m.views_count}`}
+                  height={180}
+                  filename={`${m.kind.split('-')[0]}.glb`}
+                  src={modelThumbs[m.kind]}
                   onClick={() => navigate(galleryPath('?source=community'))}
-                >
-                  <div className="profile-model-thumb">
-                    {modelThumbs[m.kind] ? (
-                      <img src={modelThumbs[m.kind]} alt="" />
-                    ) : (
-                      <span>◆</span>
-                    )}
-                    {isOwner ? (
-                      <span className={`profile-vis-badge profile-vis-badge--${m.visibility}`}>
-                        {m.visibility}
-                      </span>
-                    ) : null}
-                  </div>
-                  <div className="profile-model-body">
-                    <div className="profile-room-title">{m.label}</div>
-                    <div className="profile-room-sub">
-                      ♥ {m.likes_count} · ↓ {m.downloads_count} · 👁 {m.views_count}
-                    </div>
-                    {m.categories?.length ? (
-                      <div className="model-card-cats">
-                        {m.categories.slice(0, 3).map((c) => (
-                          <span key={c} className="model-card-cat">
-                            {catalogCategoryLabel(c)}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                </button>
+                />
               ))}
             </div>
           )}
         </section>
-      </div>
+      </main>
     </div>
   );
 }

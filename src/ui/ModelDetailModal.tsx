@@ -16,6 +16,7 @@ import { deleteCatalogModel, updateCatalogModel } from '../lib/galleryCatalog';
 import { MODEL_FILES_BUCKET } from '../lib/modelStorage';
 import { supabase } from '../lib/supabase';
 import { profilePath, navigate } from '../hooks/useRoute';
+import { Banner, Button, Field, Input, MonoMeta } from './kit';
 import { FurniturePreview } from './FurniturePreview';
 
 interface ModelDetailModalProps {
@@ -299,11 +300,7 @@ export function ModelDetailModal({
           ) : null}
         </div>
 
-        {error ? (
-          <div className="tv-banner-error" role="alert">
-            {error}
-          </div>
-        ) : null}
+        {error ? <Banner tone="error">{error}</Banner> : null}
 
         {editing && isOwner ? (
           <div className="model-detail-edit">
@@ -326,29 +323,29 @@ export function ModelDetailModal({
               </button>
             </div>
 
-            <label className="tv-label">
-              Name
-              <input
-                className="tv-input"
+            <Field label="Name">
+              <Input
                 value={label}
                 maxLength={80}
                 disabled={busy}
                 onChange={(e) => setLabel(e.target.value)}
               />
-            </label>
-            <label className="tv-label">
-              Description
+            </Field>
+            <Field label="Description">
               <textarea
-                className="tv-input"
+                className="kit-input"
                 value={description}
                 maxLength={500}
                 rows={3}
                 disabled={busy}
                 onChange={(e) => setDescription(e.target.value)}
+                style={{ width: '100%', resize: 'vertical' }}
               />
-            </label>
+            </Field>
             <div className="model-detail-cats-readonly">
-              <span className="tv-label">Categories (locked)</span>
+              <MonoMeta size="sm" tone="dense" upper style={{ display: 'block', marginBottom: 8 }}>
+                Categories (locked)
+              </MonoMeta>
               <div className="model-detail-cats">
                 {model.categories.map((c) => (
                   <span key={c} className="model-card-cat">
@@ -464,22 +461,17 @@ export function ModelDetailModal({
             </button>
           ) : null}
           {editing && isOwner ? (
-            <button
-              type="button"
-              className="tv-btn-primary"
+            <Button
+              size="sm"
               disabled={busy || !label.trim()}
               onClick={() => void handleSaveEdit()}
             >
               Save
-            </button>
+            </Button>
           ) : null}
-          <button
-            type="button"
-            className="tv-btn-primary"
-            onClick={() => onPlace(model)}
-          >
+          <Button size="sm" onClick={() => onPlace(model)}>
             {placeLabel}
-          </button>
+          </Button>
         </footer>
       </div>
     </div>

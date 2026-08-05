@@ -3,7 +3,14 @@ import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
 import { createRoomWithGeometry, useRoomLoad } from './hooks/useRoomLayout';
-import { navigate, publicRoomPath, sharePath, galleryPath, useRoute } from './hooks/useRoute';
+import {
+  navigate,
+  publicRoomPath,
+  sharePath,
+  galleryPath,
+  profilePath,
+  useRoute,
+} from './hooks/useRoute';
 import { supabase } from './lib/supabase';
 import { useStore, DEFAULT_ENVIRONMENT } from './store';
 import type { FloorPlan } from './lib/floorPlanGeometry';
@@ -21,10 +28,18 @@ import { SharedRoomPage } from './ui/SharedRoomPage';
 import { ProfilePage } from './ui/ProfilePage';
 import { PublicRoomPage } from './ui/PublicRoomPage';
 import { GalleryPage } from './ui/GalleryPage';
-import { Dock, type DockNav } from './ui/Dock';
+import { AppRailChrome } from './ui/AppRailChrome';
 import type { GalleryModel } from './hooks/useGalleryCatalog';
-import { recordCatalogDownload } from './lib/catalogEngagement';
+import { recordCatalogDownload, shouldRecordCatalogDownload } from './lib/catalogEngagement';
 import type { FurnitureKind } from './furniture/registry';
+import { profileInitials } from './lib/userDisplay';
+import {
+  AppShell,
+  type AppShellNavId,
+  DisplayHeading,
+  MonoMeta,
+  Plate,
+} from './ui/kit';
 
 type Screen = 'landing' | 'pitch-madness' | 'contact' | 'auth' | 'dashboard' | 'floor-plan' | 'designer' | 'admin' | 'ar' | 'checklist' | 'gallery';
 
@@ -85,30 +100,28 @@ function AuthSplash() {
   );
 }
 
-function ARPage({ onBack }: { onBack: () => void }) {
+function ARPage() {
   return (
-    <div className="ar-page">
-      <header className="dashboard-topbar">
-        <div className="dashboard-topbar-inner">
-          <button type="button" onClick={onBack} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
-            <div className="tv-logo-mark" style={{ width: 25, height: 25, borderRadius: 7, fontSize: 17 }}>t</div>
-            <span className="tv-logo-text" style={{ fontSize: 22 }}>Toova</span>
-          </button>
-        </div>
-      </header>
-      <main className="ar-main">
-        <div className="ar-card">
-          <h1 style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 28, margin: '0 0 12px' }}>AR experience</h1>
-          <p style={{ color: 'var(--text-muted)', margin: '0 0 8px' }}>
-            Scan the QR code to download the Toova app on iPhone and start using AR.
-          </p>
-          <div className="ar-qr-frame">
-            <DecorativeQrGraphic />
-          </div>
-          <p style={{ fontSize: 13, color: 'var(--text-subtle)' }}>iPhone only</p>
-        </div>
-      </main>
-    </div>
+    <main className="ar-main" style={{ position: 'relative', zIndex: 2, flex: 1 }}>
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 460,
+        }}
+      >
+        <DisplayHeading level={4} as="div" style={{ marginBottom: 12 }}>
+          AR experience
+        </DisplayHeading>
+        <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 28, maxWidth: 'var(--measure-body)' }}>
+          Scan the QR code to download the Toova app on iPhone and start using AR.
+        </MonoMeta>
+        <Plate
+          height={280}
+          placeholder={<DecorativeQrGraphic />}
+          topCaption="iPhone only"
+        />
+      </div>
+    </main>
   );
 }
 
@@ -145,6 +158,7 @@ export default function App() {
     bundles: adminBundlePairs,
     rooms: adminRoomRollups,
     users: adminUserRollups,
+    jobs: adminConversionJobs,
     refetch: refetchAdminInventory,
   } = useAdminStats(user?.id);
 
@@ -214,11 +228,7 @@ export default function App() {
           size: dims,
           catalogSizeIn: dims,
         });
-        if (
-          model.visibility === 'public' &&
-          model.userId &&
-          model.userId !== user?.id
-        ) {
+        if (shouldRecordCatalogDownload(model, user?.id)) {
           void recordCatalogDownload(model.kind).catch(() => {});
         }
       }
@@ -307,7 +317,7 @@ export default function App() {
     [hydrateRoomSettings, workspace?.id],
   );
 
-  const dockActive: DockNav | null =
+  const railActive: AppShellNavId | null =
     screen === 'dashboard' ? 'rooms'
     : screen === 'admin' ? 'admin'
     : screen === 'ar' ? 'ar'
@@ -315,9 +325,11 @@ export default function App() {
     : screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' ? 'home'
     : null;
 
-  const showDock = user && (screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' || screen === 'dashboard' || screen === 'admin' || screen === 'ar' || screen === 'gallery' || route.name === 'gallery');
+  const showMarketingRail =
+    !!user &&
+    (screen === 'landing' || screen === 'pitch-madness' || screen === 'contact');
 
-  function handleDockNav(nav: DockNav) {
+  function handleAppNav(nav: AppShellNavId) {
     if (nav === 'home') {
       navigate('/');
       setScreen('landing');
@@ -326,14 +338,42 @@ export default function App() {
     if (nav === 'rooms') {
       navigate('/');
       setScreen('dashboard');
+      return;
     }
     if (nav === 'gallery') {
       navigate(galleryPath());
       setScreen('gallery');
+      return;
     }
-    if (nav === 'admin' && isAdmin) setScreen('admin');
-    if (nav === 'ar') setScreen('ar');
+    if (nav === 'admin' && isAdmin) {
+      // Leave /gallery (and other public paths) so route checks don't trap us.
+      navigate('/');
+      setScreen('admin');
+      return;
+    }
+    if (nav === 'ar') {
+      navigate('/');
+      setScreen('ar');
+    }
   }
+
+  function handleLogout() {
+    void logout();
+    setScreen('landing');
+  }
+
+  const railChrome = showMarketingRail ? (
+    <AppRailChrome
+      active={railActive}
+      showAdmin={isAdmin}
+      profileInitials={profileInitials(profile, user?.email)}
+      onNavigate={handleAppNav}
+      onLogout={handleLogout}
+      onProfile={
+        profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
+      }
+    />
+  ) : null;
 
   const openChecklistFrom = useCallback((from: Screen) => {
     setChecklistReturn(from);
@@ -436,30 +476,77 @@ export default function App() {
     );
   }
 
-  if (route.name === 'gallery' || screen === 'gallery') {
+  // App destinations before /gallery URL matching — rail nav must not be trapped.
+  if (screen === 'admin' && user && isAdmin) {
     return (
       <>
-        <GalleryPage
-          loggedIn={!!user}
-          onGoHome={() => {
-            navigate('/');
-            setScreen(user ? 'dashboard' : 'landing');
-          }}
-          onRequestAuth={(mode) => {
-            setAuthMode(mode);
-            setScreen('auth');
-          }}
-          onUseInRoom={(model) => {
-            setPendingGalleryModel(model);
-            if (!user) return;
-            navigate('/');
-            setScreen('dashboard');
-          }}
+        <div className="kit-app-rail-pad">
+          <AdminConsole
+            stats={adminInventoryStats}
+            bundles={adminBundlePairs}
+            rooms={adminRoomRollups}
+            users={adminUserRollups}
+            jobs={adminConversionJobs}
+            loading={adminStatsLoading}
+            error={adminStatsError}
+            onRefresh={refetchAdminInventory}
+          />
+        </div>
+        <AppRailChrome
+          active="admin"
+          showAdmin
+          profileInitials={profileInitials(profile, user.email)}
+          onNavigate={handleAppNav}
+          onLogout={handleLogout}
+          onProfile={
+            profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
+          }
         />
-        {showDock ? (
-          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
-        ) : null}
       </>
+    );
+  }
+
+  if (screen === 'ar' && user) {
+    return (
+      <AppShell
+        active="ar"
+        title="AR"
+        meta="iPhone only"
+        showAdmin={isAdmin}
+        profileInitials={profileInitials(profile, user.email)}
+        onNavigate={handleAppNav}
+        onLogout={handleLogout}
+        onProfile={
+          profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
+        }
+      >
+        <ARPage />
+      </AppShell>
+    );
+  }
+
+  if (route.name === 'gallery' || screen === 'gallery') {
+    return (
+      <GalleryPage
+        loggedIn={!!user}
+        showAdmin={isAdmin}
+        onGoHome={() => {
+          navigate('/');
+          setScreen(user ? 'dashboard' : 'landing');
+        }}
+        onRequestAuth={(mode) => {
+          setAuthMode(mode);
+          setScreen('auth');
+        }}
+        onUseInRoom={(model) => {
+          setPendingGalleryModel(model);
+          if (!user) return;
+          navigate('/');
+          setScreen('dashboard');
+        }}
+        onNavigate={handleAppNav}
+        onLogout={user ? handleLogout : undefined}
+      />
     );
   }
 
@@ -492,17 +579,17 @@ export default function App() {
   if (screen === 'contact') {
     return (
       <>
-        <ContactPage
-          {...landingCallbacks}
-          onGoHome={() => setScreen('landing')}
-          onPitchMadness={() => {
-            setPitchScrollToDemos(false);
-            setScreen('pitch-madness');
-          }}
-        />
-        {showDock ? (
-          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
-        ) : null}
+        <div className={showMarketingRail ? 'kit-app-rail-pad' : undefined}>
+          <ContactPage
+            {...landingCallbacks}
+            onGoHome={() => setScreen('landing')}
+            onPitchMadness={() => {
+              setPitchScrollToDemos(false);
+              setScreen('pitch-madness');
+            }}
+          />
+        </div>
+        {railChrome}
       </>
     );
   }
@@ -510,22 +597,22 @@ export default function App() {
   if (screen === 'landing') {
     return (
       <>
-        <LandingPage
-          {...landingCallbacks}
-          onOpenChecklist={() => openChecklistFrom('landing')}
-          onContact={() => setScreen('contact')}
-          onPitchMadness={() => {
-            setPitchScrollToDemos(false);
-            setScreen('pitch-madness');
-          }}
-          onWatchDemo={() => {
-            setPitchScrollToDemos(true);
-            setScreen('pitch-madness');
-          }}
-        />
-        {showDock ? (
-          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
-        ) : null}
+        <div className={showMarketingRail ? 'kit-app-rail-pad' : undefined}>
+          <LandingPage
+            {...landingCallbacks}
+            onOpenChecklist={() => openChecklistFrom('landing')}
+            onContact={() => setScreen('contact')}
+            onPitchMadness={() => {
+              setPitchScrollToDemos(false);
+              setScreen('pitch-madness');
+            }}
+            onWatchDemo={() => {
+              setPitchScrollToDemos(true);
+              setScreen('pitch-madness');
+            }}
+          />
+        </div>
+        {railChrome}
       </>
     );
   }
@@ -533,52 +620,21 @@ export default function App() {
   if (screen === 'pitch-madness') {
     return (
       <>
-        <PitchMadnessPage
-          {...landingCallbacks}
-          onGoHome={() => setScreen('landing')}
-          onContact={() => setScreen('contact')}
-          scrollToDemosOnMount={pitchScrollToDemos}
-          onDemosScrolled={() => setPitchScrollToDemos(false)}
-        />
-        {showDock ? (
-          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
-        ) : null}
+        <div className={showMarketingRail ? 'kit-app-rail-pad' : undefined}>
+          <PitchMadnessPage
+            {...landingCallbacks}
+            onGoHome={() => setScreen('landing')}
+            onContact={() => setScreen('contact')}
+            scrollToDemosOnMount={pitchScrollToDemos}
+            onDemosScrolled={() => setPitchScrollToDemos(false)}
+          />
+        </div>
+        {railChrome}
       </>
     );
   }
 
   if (loading && !user) return <AuthSplash />;
-
-  if (screen === 'admin' && isAdmin) {
-    return (
-      <>
-        <AdminConsole
-          stats={adminInventoryStats}
-          bundles={adminBundlePairs}
-          rooms={adminRoomRollups}
-          users={adminUserRollups}
-          loading={adminStatsLoading}
-          error={adminStatsError}
-          onExit={() => setScreen('dashboard')}
-          onRefresh={refetchAdminInventory}
-        />
-        {showDock ? (
-          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
-        ) : null}
-      </>
-    );
-  }
-
-  if (screen === 'ar' && user) {
-    return (
-      <>
-        <ARPage onBack={() => setScreen('dashboard')} />
-        {showDock ? (
-          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
-        ) : null}
-      </>
-    );
-  }
 
   if (screen === 'designer' && workspace && user) {
     return (
@@ -618,20 +674,17 @@ export default function App() {
 
   if (user) {
     return (
-      <>
-        <Dashboard
-          user={user}
-          profile={profile}
-          avatarUrl={avatarUrl}
-          loadingLayout={layoutLoading}
-          onPickExisting={handlePickExisting}
-          onStartFloorPlan={handleStartFloorPlan}
-          onGoLanding={() => { void logout(); setScreen('landing'); }}
-        />
-        {showDock ? (
-          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
-        ) : null}
-      </>
+      <Dashboard
+        user={user}
+        profile={profile}
+        avatarUrl={avatarUrl}
+        loadingLayout={layoutLoading}
+        showAdmin={isAdmin}
+        onPickExisting={handlePickExisting}
+        onStartFloorPlan={handleStartFloorPlan}
+        onNavigate={handleAppNav}
+        onLogout={handleLogout}
+      />
     );
   }
 
