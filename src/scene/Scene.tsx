@@ -604,10 +604,12 @@ function SceneInner({
         makeDefault
         autoRotate={autoRotate}
         autoRotateSpeed={0.55}
+        enableZoom={!readOnly}
+        enablePan={!readOnly}
         mouseButtons={{
           LEFT: THREE.MOUSE.ROTATE,
-          MIDDLE: THREE.MOUSE.DOLLY,
-          RIGHT: THREE.MOUSE.PAN,
+          MIDDLE: readOnly ? THREE.MOUSE.ROTATE : THREE.MOUSE.DOLLY,
+          RIGHT: readOnly ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN,
         }}
       />
     </Canvas>

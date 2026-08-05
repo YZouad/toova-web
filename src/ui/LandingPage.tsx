@@ -12,7 +12,6 @@ import {
   Footer,
   KeyValueRow,
   MarketingNav,
-  MonoMeta,
   NumberedStep,
   PlateCard,
   PriceColumn,
@@ -199,19 +198,6 @@ export function LandingPage({
           }}
         >
           <HeroTurntable />
-          <MonoMeta
-            size="sm"
-            tone="subtle"
-            style={{
-              position: 'absolute',
-              left: 16,
-              bottom: 16,
-              background: 'var(--bg-raised)',
-              padding: '4px 10px',
-            }}
-          >
-            live room · drag to spin
-          </MonoMeta>
         </div>
       </div>
 
