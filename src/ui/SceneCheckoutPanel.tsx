@@ -146,7 +146,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
   async function placeProduct(product: CuratedProduct) {
     await addToList(product.id);
     if (product.placeBuiltinKind && product.placeBuiltinKind in FURNITURE) {
-      addItem(product.placeBuiltinKind as Exclude<FurnitureKind, 'imported'>, {
+      addItem(product.placeBuiltinKind as Exclude<FurnitureKind, 'imported' | 'hanging'>, {
         label: product.name,
         curatedProductId: product.id,
       });

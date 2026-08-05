@@ -139,6 +139,7 @@ export function LookDrawer({
   const setAppearance = useStore((s) => s.setAppearance);
   const visual = useStore((s) => s.visual);
   const setVisualQuality = useStore((s) => s.setVisualQuality);
+  const setRelightImports = useStore((s) => s.setRelightImports);
   const setCutaway = useStore((s) => s.setCutaway);
   const setCameraPreset = useStore((s) => s.setCameraPreset);
   const roomGeometry = useStore((s) => s.roomGeometry);
@@ -260,6 +261,17 @@ export function LookDrawer({
             options={RENDER_QUALITY_TIERS.map((t) => ({ id: t, label: qualityLabel(t) }))}
             onChange={(id) => setVisualQuality(id as RenderQualityTier)}
           />
+          <div className="look-toggle-row">
+            <button
+              type="button"
+              className={`look-toggle${visual.relightImports ? ' active' : ''}`}
+              aria-pressed={visual.relightImports}
+              title="Soften baked lighting on imported / AI models so room lights affect them"
+              onClick={() => setRelightImports(!visual.relightImports)}
+            >
+              Relight imports
+            </button>
+          </div>
         </Section>
       </div>
     </GlassSurface>

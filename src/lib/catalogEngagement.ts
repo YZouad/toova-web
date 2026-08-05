@@ -2,6 +2,27 @@ import { supabase } from './supabase';
 
 export type CatalogVisibility = 'private' | 'unlisted' | 'public';
 
+const VIEWED_SESSION_KEY = 'toova-catalog-viewed';
+
+function readViewedSet(): Set<string> {
+  try {
+    const raw = sessionStorage.getItem(VIEWED_SESSION_KEY);
+    if (!raw) return new Set();
+    const arr = JSON.parse(raw) as unknown;
+    return Array.isArray(arr) ? new Set(arr.map(String)) : new Set();
+  } catch {
+    return new Set();
+  }
+}
+
+function writeViewedSet(set: Set<string>): void {
+  try {
+    sessionStorage.setItem(VIEWED_SESSION_KEY, JSON.stringify([...set]));
+  } catch {
+    /* ignore quota */
+  }
+}
+
 export async function setCatalogVisibility(
   kind: string,
   visibility: CatalogVisibility,
@@ -27,7 +48,58 @@ export async function toggleCatalogLike(
   };
 }
 
-export async function recordCatalogView(kind: string): Promise<number> {
+export type CatalogReportReason =
+  | 'inappropriate'
+  | 'spam'
+  | 'stolen'
+  | 'other';
+
+const REPORTED_SESSION_KEY = 'toova-catalog-reported';
+
+export function hasReportedCatalogKind(kind: string): boolean {
+  try {
+    const raw = sessionStorage.getItem(REPORTED_SESSION_KEY);
+    if (!raw) return false;
+    const arr = JSON.parse(raw) as unknown;
+    return Array.isArray(arr) && arr.map(String).includes(kind);
+  } catch {
+    return false;
+  }
+}
+
+function markReportedCatalogKind(kind: string): void {
+  try {
+    const raw = sessionStorage.getItem(REPORTED_SESSION_KEY);
+    const prev = raw ? (JSON.parse(raw) as unknown) : [];
+    const set = new Set(Array.isArray(prev) ? prev.map(String) : []);
+    set.add(kind);
+    sessionStorage.setItem(REPORTED_SESSION_KEY, JSON.stringify([...set]));
+  } catch {
+    /* ignore quota */
+  }
+}
+
+export async function reportCatalogModel(
+  kind: string,
+  reason: CatalogReportReason,
+  details?: string | null,
+): Promise<void> {
+  const { error } = await supabase.rpc('report_catalog_model', {
+    p_kind: kind,
+    p_reason: reason,
+    p_details: details?.trim() || null,
+  });
+  if (error) throw new Error(error.message);
+  markReportedCatalogKind(kind);
+}
+
+/** Records at most one view per kind per browser session. */
+export async function recordCatalogView(kind: string): Promise<number | null> {
+  const viewed = readViewedSet();
+  if (viewed.has(kind)) return null;
+  viewed.add(kind);
+  writeViewedSet(viewed);
+
   const { data, error } = await supabase.rpc('record_catalog_view', {
     p_kind: kind,
   });

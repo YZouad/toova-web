@@ -75,6 +75,7 @@ export default defineConfig(({ mode }) => {
         input: {
           main: path.resolve(rootDir, 'index.html'),
           visual: path.resolve(rootDir, 'visual.html'),
+          hangingVisual: path.resolve(rootDir, 'hanging-visual.html'),
         },
       },
     },

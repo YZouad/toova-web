@@ -42,7 +42,7 @@ export function DragController() {
       const { selectedId, items } = useStore.getState();
       if (!selectedId) return;
       const item = items[selectedId];
-      if (!item) return;
+      if (!item || item.kind === 'hanging') return;
 
       const canvasRect = canvas.getBoundingClientRect();
       ndc.x = ((e.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;

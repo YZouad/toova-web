@@ -2,6 +2,7 @@ import { Suspense, useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { Item, useStore } from '../store';
+import { normalizeImportedMaterials } from '../lib/normalizeImportedMaterials';
 import { SelectionOutline } from './SelectionOutline';
 
 interface Props {
@@ -45,28 +46,28 @@ function ImportedLoadingBox({ item, selected, invalid }: Props) {
 
 function Inner({ item, selected, invalid, url }: Props & { url: string }) {
   const { scene } = useGLTF(url) as { scene: THREE.Object3D };
-  const cloned = useMemo(() => scene.clone(true), [scene]);
-
+  const relightImports = useStore((s) => s.visual.relightImports);
   const registerNatural = useStore((s) => s.registerImportedNaturalSize);
 
   const { centeredScene, meshNaturalSize } = useMemo(() => {
+    const cloned = scene.clone(true);
+    normalizeImportedMaterials(cloned, {
+      relight: relightImports,
+      log: import.meta.env.DEV,
+    });
+
     const box = new THREE.Box3().setFromObject(cloned);
     const s = new THREE.Vector3();
     box.getSize(s);
     const c = new THREE.Vector3();
     box.getCenter(c);
     cloned.position.set(-c.x, -box.min.y, -c.z);
-    cloned.traverse((o: THREE.Object3D & { isMesh?: boolean }) => {
-      if (o.isMesh) {
-        o.castShadow = true;
-        o.receiveShadow = true;
-      }
-    });
+
     return {
       centeredScene: cloned,
       meshNaturalSize: [s.x, s.y, s.z] as [number, number, number],
     };
-  }, [cloned]);
+  }, [scene, relightImports]);
 
   useEffect(() => {
     registerNatural(item.id, meshNaturalSize);

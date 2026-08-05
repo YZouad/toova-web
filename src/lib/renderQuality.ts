@@ -160,12 +160,18 @@ export interface VisualSettings {
   quality: RenderQualityTier;
   cameraPreset: CameraPresetId;
   cutaway: CutawayMode;
+  /**
+   * Soften baked AO/emissive on imported GLBs so room lights + IBL dominate.
+   * Default on — AI generators often bake lighting into textures.
+   */
+  relightImports: boolean;
 }
 
 export const DEFAULT_VISUAL_SETTINGS: VisualSettings = {
   quality: 'balanced',
   cameraPreset: 'corner',
   cutaway: 'orbit',
+  relightImports: true,
 };
 
 export function parseVisualSettings(raw: unknown): VisualSettings {
@@ -184,6 +190,10 @@ export function parseVisualSettings(raw: unknown): VisualSettings {
       o.cutaway === 'orbit' || o.cutaway === 'openFront' || o.cutaway === 'topDown'
         ? o.cutaway
         : DEFAULT_VISUAL_SETTINGS.cutaway,
+    relightImports:
+      typeof o.relightImports === 'boolean'
+        ? o.relightImports
+        : DEFAULT_VISUAL_SETTINGS.relightImports,
   };
 }
 

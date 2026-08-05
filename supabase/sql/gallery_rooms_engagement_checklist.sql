@@ -1,0 +1,25 @@
+-- Gallery rooms engagement checklist (manual).
+--
+-- 1) Columns exist
+-- select column_name from information_schema.columns
+-- where table_name='rooms' and column_name in ('likes_count','views_count','published_at');
+--
+-- 2) Private rooms excluded from browse
+-- select * from get_gallery_rooms('hot', null, 50, 0);
+-- Expect: only visibility=public AND owner profiles.is_public
+--
+-- 3) Counter immutability
+-- update rooms set likes_count = 999 where id = '<id>'; -- should fail
+--
+-- 4) Unique views
+-- select record_room_view('<public_room_id>', 'test-token-aaaaaaaa');
+-- select record_room_view('<public_room_id>', 'test-token-aaaaaaaa'); -- same count
+--
+-- 5) Self-like rejected
+-- select toggle_room_like('<own_public_room_id>'); -- cannot like own room
+--
+-- 6) Clone count continuity
+-- fork_public_room still increments fork_count only
+--
+-- 7) Home shelves
+-- select jsonb_object_keys(get_gallery_home(8, 8));

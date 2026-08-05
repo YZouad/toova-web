@@ -1,34 +1,32 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { useRoomWorkspace } from '../context/RoomWorkspaceContext';
 import { useAuth } from '../hooks/useAuth';
-import { useBuiltinPreviews, getBuiltinPreviewUrl } from '../hooks/useBuiltinPreviews';
 import { useRoomSave } from '../hooks/useRoomLayout';
-import { useUserCatalog, type UserCatalogEntry } from '../hooks/useUserCatalog';
+import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import { recordCatalogDownload } from '../lib/catalogEngagement';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { supabase } from '../lib/supabase';
-import { FURNITURE, type FurnitureKind } from '../furniture/registry';
+import { type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
 import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item, type CameraPresetId } from '../store';
 import { planBounds } from '../lib/roomGeometry';
 import { useChecklistModal } from '../hooks/useChecklistModal';
 import { ChecklistModal } from './ChecklistModal';
 import { FeedbackModal } from './FeedbackModal';
-import { FurniturePreview } from './FurniturePreview';
 import { ImportModelModal } from './ImportModelModal';
+import { DesignerGalleryPanel, pushRecentKind } from './DesignerGalleryPanel';
 import { SceneCheckoutPanel } from './SceneCheckoutPanel';
 import { AtmosphereStrip } from './AtmosphereStrip';
 import { LookDrawer } from './LookDrawer';
 import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
+import { HangingDecorToolRail } from './HangingDecorToolRail';
+import { HangingDecorPanel } from './HangingDecorPanel';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
-
-const RECENT_KEY = 'toova-recent-kinds';
-const MAX_RECENT = 6;
 
 function roomDirtyFingerprint(name: string): string {
   const { items, order, environment, roomGeometry } = useStore.getState();
@@ -41,16 +39,6 @@ function roomDirtyFingerprint(name: string): string {
   });
 }
 
-const BUILTIN_CATS: Record<Exclude<FurnitureKind, 'imported'>, string> = {
-  bed: 'Bedroom',
-  dresser: 'Storage',
-  wardrobe: 'Storage',
-  desk: 'Office',
-  chair: 'Seating',
-  nightstand: 'Storage',
-  lamp: 'Lighting',
-};
-
 const KIND_COLORS: Record<string, string> = {
   bed: '#C9B391',
   dresser: '#B08C5F',
@@ -60,6 +48,7 @@ const KIND_COLORS: Record<string, string> = {
   nightstand: '#C0A47A',
   lamp: '#D4C4A0',
   imported: '#7E8A60',
+  hanging: '#6B9AC4',
 };
 
 function getBaseSize(
@@ -73,34 +62,10 @@ function getBaseSize(
   return ref.current.get(id)!;
 }
 
-type PaletteEntry = {
-  kind: string;
-  label: string;
-  cat: string;
-  tags: string[];
-  isBuiltin: boolean;
-  catalogEntry?: UserCatalogEntry;
-};
-
 interface DesignerProps {
   onBack: () => void;
   onEditFloorPlan?: () => void;
   onOpenChecklist: () => void;
-}
-
-function loadRecent(): string[] {
-  try {
-    const raw = localStorage.getItem(RECENT_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function pushRecent(kind: string) {
-  const prev = loadRecent().filter((k) => k !== kind);
-  const next = [kind, ...prev].slice(0, MAX_RECENT);
-  localStorage.setItem(RECENT_KEY, JSON.stringify(next));
 }
 
 export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerProps) {
@@ -139,10 +104,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importTab, setImportTab] = useState<'upload' | 'generate' | 'poster'>('generate');
-  const [paletteQuery, setPaletteQuery] = useState('');
-  const [paletteCat, setPaletteCat] = useState('All');
   const [sizeMode, setSizeMode] = useState<'uniform' | 'axis'>('uniform');
-  const [recentKinds, setRecentKinds] = useState<string[]>(loadRecent);
   const [lookOpen, setLookOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
@@ -153,9 +115,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const [beddingBusy, setBeddingBusy] = useState(false);
   const { open: checklistOpen, closeChecklist } = useChecklistModal();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
-
-  const { catalog, loading: catalogLoading, refresh: refreshCatalog } = useUserCatalog(Boolean(user?.id));
-  const builtinPreviews = useBuiltinPreviews();
+  const [galleryRefreshKey, setGalleryRefreshKey] = useState(0);
 
   useEffect(() => {
     setRoomName(workspace?.name ?? '');
@@ -201,79 +161,39 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
     baseSizeRef.current.set(item.id, [item.size[0], item.size[1], item.size[2]]);
   }, [item]);
 
-  const paletteItems = useMemo((): PaletteEntry[] => {
-    const builtins: PaletteEntry[] = (Object.keys(FURNITURE) as Array<keyof typeof FURNITURE>).map((k) => ({
-      kind: k,
-      label: FURNITURE[k].label,
-      cat: BUILTIN_CATS[k],
-      tags: [],
-      isBuiltin: true,
-    }));
-    const community: PaletteEntry[] = catalog.map((c) => ({
-      kind: c.kind,
-      label: c.label,
-      cat: 'Community',
-      tags: c.tags,
-      isBuiltin: false,
-      catalogEntry: c,
-    }));
-    return [...builtins, ...community];
-  }, [catalog]);
-
-  const categories = useMemo(() => {
-    const cats = new Set(paletteItems.map((p) => p.cat));
-    return ['All', ...Array.from(cats).sort()];
-  }, [paletteItems]);
-
-  const filteredPalette = useMemo(() => {
-    const q = paletteQuery.trim().toLowerCase();
-    return paletteItems.filter((p) => {
-      if (paletteCat !== 'All' && p.cat !== paletteCat) return false;
-      if (!q) return true;
-      return (
-        p.label.toLowerCase().includes(q) ||
-        p.kind.toLowerCase().includes(q) ||
-        p.tags.some((t) => t.toLowerCase().includes(q))
-      );
-    });
-  }, [paletteItems, paletteQuery, paletteCat]);
-
-  const recentItems = useMemo(
-    () => recentKinds.map((k) => paletteItems.find((p) => p.kind === k)).filter(Boolean) as PaletteEntry[],
-    [recentKinds, paletteItems],
-  );
-
-  const addFromPalette = useCallback(
-    (entry: PaletteEntry) => {
-      if (entry.isBuiltin) {
-        const id = addItem(entry.kind as FurnitureKind);
+  const addFromGallery = useCallback(
+    (model: GalleryModel) => {
+      if (model.isBuiltin) {
+        const id = addItem(model.kind as FurnitureKind);
         const placed = useStore.getState().items[id];
         if (placed) {
           baseSizeRef.current.set(id, [...placed.size] as [number, number, number]);
         }
-      } else if (entry.catalogEntry?.signedUrl) {
-        const c = entry.catalogEntry;
-        const dims: [number, number, number] = [c.width_in, c.height_in, c.depth_in];
+      } else if (model.signedUrl) {
+        const dims: [number, number, number] = [
+          model.width_in,
+          model.height_in,
+          model.depth_in,
+        ];
         const id = addItem('imported', {
-          url: c.signedUrl ?? undefined,
-          storagePath: c.storagePath || undefined,
-          label: c.label,
+          url: model.signedUrl ?? undefined,
+          storagePath: model.storagePath || undefined,
+          label: model.label,
           size: dims,
           catalogSizeIn: dims,
         });
         baseSizeRef.current.set(id, dims);
         if (
-          c.visibility === 'public' &&
-          c.userId &&
-          c.userId !== user?.id
+          model.visibility === 'public' &&
+          model.userId &&
+          model.userId !== user?.id
         ) {
-          void recordCatalogDownload(c.kind).catch(() => {
+          void recordCatalogDownload(model.kind).catch(() => {
             /* best-effort */
           });
         }
       }
-      pushRecent(entry.kind);
-      setRecentKinds(loadRecent());
+      pushRecentKind(model.kind);
       setPaletteOpen(false);
     },
     [addItem, user?.id],
@@ -477,6 +397,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         </div>
 
         <SceneCheckoutPanel onOpenChecklist={onOpenChecklist} />
+        <HangingDecorToolRail />
 
         <div className="designer-right-rail">
           <AtmosphereStrip
@@ -497,6 +418,19 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           <button type="button" className="designer-add-btn" onClick={() => setPaletteOpen(true)}>
             <span style={{ fontSize: 20, lineHeight: 0, marginTop: -2 }}>＋</span> Add furniture
           </button>
+        ) : item?.kind === 'hanging' ? (
+          <div className="designer-quick-bar">
+            <span style={{ fontSize: 13, fontWeight: 600, padding: '0 4px' }}>{item.label}</span>
+            <div style={{ width: 1, height: 32, background: 'var(--border)' }} />
+            <button
+              type="button"
+              className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
+              aria-pressed={advancedOpen}
+              onClick={() => setAdvancedOpen((v) => !v)}
+            >
+              Customize <span>⤢</span>
+            </button>
+          </div>
         ) : item ? (
           <div className="designer-quick-bar">
             <div className="designer-quick-size">
@@ -519,102 +453,23 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           </div>
         ) : null}
 
-        {paletteOpen ? (
-          <div className="designer-palette-backdrop" role="presentation" onClick={() => setPaletteOpen(false)}>
-            <div className="designer-palette tv-scroll" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-              <div className="palette-head">
-                <div className="palette-head-row">
-                  <div className="palette-title">Add furniture</div>
-                  <span className="palette-count">{filteredPalette.length} models</span>
-                  <button type="button" className="palette-close" onClick={() => setPaletteOpen(false)}>✕</button>
-                </div>
-                <div className="palette-search">
-                  <span style={{ color: 'var(--text-subtle)', fontSize: 16 }}>⌕</span>
-                  <input value={paletteQuery} onChange={(e) => setPaletteQuery(e.target.value)} placeholder="Search furniture, materials, tags…" />
-                </div>
-                <div className="palette-chips tv-scroll">
-                  {categories.map((ch) => (
-                    <button
-                      key={ch}
-                      type="button"
-                      className={`palette-chip${paletteCat === ch ? ' active' : ''}`}
-                      onClick={() => setPaletteCat(ch)}
-                    >
-                      {ch}
-                    </button>
-                  ))}
-                </div>
-              </div>
+        <DesignerGalleryPanel
+          key={galleryRefreshKey}
+          open={paletteOpen}
+          currentUserId={user?.id ?? null}
+          onClose={() => setPaletteOpen(false)}
+          onPlace={addFromGallery}
+          onOpenImport={(tab) => {
+            setImportTab(tab);
+            setImportOpen(true);
+          }}
+        />
 
-              <div className="palette-body tv-scroll">
-                <div className="palette-promo">
-                  <div className="palette-promo-icon">⤒</div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600 }}>Turn a photo into 3D</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>Upload any furniture photo — we build a real 3D model.</div>
-                  </div>
-                  <button
-                    type="button"
-                    className="tv-btn-primary"
-                    style={{ fontSize: 13, padding: '11px 17px', borderRadius: 9, flex: 'none' }}
-                    onClick={() => { setImportTab('generate'); setImportOpen(true); }}
-                  >
-                    Upload
-                  </button>
-                </div>
-
-                {recentItems.length > 0 ? (
-                  <>
-                    <div className="palette-section-label">Recently used</div>
-                    <div className="palette-recent tv-scroll">
-                      {recentItems.map((r) => (
-                        <button key={r.kind} type="button" className="palette-recent-chip" onClick={() => addFromPalette(r)}>
-                          <FurniturePreview
-                            kind={r.isBuiltin ? r.kind : 'imported'}
-                            size={r.catalogEntry ? [r.catalogEntry.width_in, r.catalogEntry.height_in, r.catalogEntry.depth_in] : undefined}
-                            previewUrl={
-                              r.isBuiltin
-                                ? getBuiltinPreviewUrl(r.kind, builtinPreviews)
-                                : r.catalogEntry?.previewUrl ?? undefined
-                            }
-                            className="palette-recent-preview"
-                          />
-                          <span className="palette-recent-label">{r.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </>
-                ) : null}
-
-                {catalogLoading ? <p style={{ color: 'var(--text-subtle)', fontSize: 14 }}>Loading community models…</p> : null}
-
-                <div className="palette-grid">
-                  {filteredPalette.map((c) => (
-                    <button key={`${c.kind}-${c.label}`} type="button" className="palette-tile" onClick={() => addFromPalette(c)}>
-                      <div className="palette-tile-preview">
-                        <FurniturePreview
-                          kind={c.isBuiltin ? c.kind : 'imported'}
-                          size={c.catalogEntry ? [c.catalogEntry.width_in, c.catalogEntry.height_in, c.catalogEntry.depth_in] : undefined}
-                          previewUrl={
-                            c.isBuiltin
-                              ? getBuiltinPreviewUrl(c.kind, builtinPreviews)
-                              : c.catalogEntry?.previewUrl ?? undefined
-                          }
-                          className="palette-preview-canvas"
-                        />
-                        <span className="palette-tile-cat">{c.cat}</span>
-                      </div>
-                      <div className="palette-tile-label">{c.label}</div>
-                      {c.tags.length > 0 ? <div className="palette-tile-tags">{c.tags.slice(0, 2).join(' · ')}</div> : <div className="palette-tile-tags" />}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
+        {advancedOpen && item?.kind === 'hanging' ? (
+          <HangingDecorPanel onClose={() => setAdvancedOpen(false)} />
         ) : null}
 
-        {advancedOpen && item ? (
+        {advancedOpen && item && item.kind !== 'hanging' ? (
           <aside className="designer-advanced tv-scroll">
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--accent)' }}>Advanced · selected piece</span>
@@ -813,7 +668,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           open={importOpen}
           initialTab={importTab}
           onClose={() => setImportOpen(false)}
-          onAdded={() => { void refreshCatalog(); setImportOpen(false); }}
+          onAdded={() => {
+            setGalleryRefreshKey((k) => k + 1);
+            setImportOpen(false);
+          }}
         />
       ) : null}
 

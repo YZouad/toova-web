@@ -17,3 +17,6 @@ graphify-out/
 test-results/
 playwright-report/
 blob-report/
+.playwright-browsers/
+
+front_page_redesign/
