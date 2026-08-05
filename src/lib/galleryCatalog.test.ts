@@ -14,8 +14,8 @@ import {
   buildGallerySearchParams,
   catalogHotScore,
   parseGallerySearchParams,
-} from './galleryCatalog';
-import { roomHotScore } from './roomGallery';
+} from './galleryCatalogHelpers';
+import { roomHotScore } from './roomGalleryHelpers';
 import { parsePathname, galleryPath } from '../hooks/useRoute';
 
 describe('bannedWords', () => {
