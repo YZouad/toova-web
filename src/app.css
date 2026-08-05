@@ -5481,6 +5481,8 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .admin-shopping-cats-head .kit-btn {
   flex: none;
+  width: auto;
+  white-space: nowrap;
 }
 
 .admin-shopping-cats-cols {
@@ -5508,7 +5510,7 @@ button.landing-nav-brand { cursor: pointer; }
   margin-bottom: 6px;
 }
 
-.admin-shopping-cats button {
+.admin-shopping-cat-row > button {
   width: 100%;
   display: flex;
   justify-content: space-between;
@@ -5529,7 +5531,7 @@ button.landing-nav-brand { cursor: pointer; }
   white-space: nowrap;
 }
 
-.admin-shopping-cats button.is-active {
+.admin-shopping-cat-row > button.is-active {
   background: var(--accent-bg);
   border-color: var(--accent-line);
 }
