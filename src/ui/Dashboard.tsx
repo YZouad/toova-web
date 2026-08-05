@@ -2,24 +2,37 @@ import {
   useCallback,
   useEffect,
   useState,
-  type FormEvent,
   type MouseEvent,
 } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import { parseFloorPlan, type FloorPlan } from '../lib/roomGeometry';
+import { parseFloorPlan, planBounds, type FloorPlan } from '../lib/roomGeometry';
 import {
   formatRelativeTime,
-  profileDisplayName,
-  profileFirstName,
+  profileInitials,
 } from '../lib/userDisplay';
 import { FeedbackModal } from './FeedbackModal';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
 import { listSharedWithMeRooms, type PublicAttribution, type ShareRole } from '../lib/roomShares';
 import { fetchRoomAttribution, setRoomVisibility } from '../lib/profiles';
 import { navigate, profilePath } from '../hooks/useRoute';
-import { UserAvatar } from './UserAvatar';
 import type { Profile } from '../lib/profiles';
+import {
+  AppShell,
+  type AppShellNavId,
+  Badge,
+  Banner,
+  Button,
+  EmptyState,
+  Field,
+  Input,
+  Modal,
+  MonoMeta,
+  Plate,
+  SectionOpener,
+  Select,
+  Tabs,
+} from './kit';
 
 const MAX_ROOMS = 5;
 
@@ -80,9 +93,30 @@ export interface ListedRoomRow {
 
 function nextRoomName(rooms: ListedRoomRow[]): string {
   const taken = new Set(rooms.map((r) => r.name));
-  let n = 1;
-  while (taken.has(`Room ${n}`)) n++;
-  return `Room ${n}`;
+  let i = 1;
+  while (taken.has(`Room ${i}`)) i++;
+  return `Room ${i}`;
+}
+
+function roomFilename(name: string): string {
+  return `${name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}.jpg`;
+}
+
+function formatSqft(geometry: FloorPlan | null): string {
+  if (!geometry) return '—';
+  const b = planBounds(geometry);
+  const sqft = Math.round((b.width * b.depth) / 144);
+  return sqft > 0 ? `${sqft} sq ft` : '—';
+}
+
+function visibilityLabel(v: 'private' | 'unlisted' | 'public'): string {
+  if (v === 'public') return 'Public';
+  if (v === 'unlisted') return 'Unlisted';
+  return 'Private';
+}
+
+function visibilityBadgeTone(v: 'private' | 'unlisted' | 'public'): 'accent' | 'neutral' {
+  return v === 'public' ? 'accent' : 'neutral';
 }
 
 interface DashboardProps {
@@ -90,19 +124,22 @@ interface DashboardProps {
   profile: Profile | null;
   avatarUrl: string | null;
   loadingLayout: boolean;
+  showAdmin?: boolean;
   onPickExisting: (room: { id: string; name: string; isOwner?: boolean }) => Promise<void>;
   onStartFloorPlan: (name: string) => void;
-  onGoLanding: () => void;
+  onNavigate: (nav: AppShellNavId) => void;
+  onLogout: () => void;
 }
 
 export function Dashboard({
   user,
   profile,
-  avatarUrl,
   loadingLayout,
+  showAdmin,
   onPickExisting,
   onStartFloorPlan,
-  onGoLanding,
+  onNavigate,
+  onLogout,
 }: DashboardProps) {
   const [rooms, setRooms] = useState<ListedRoomRow[]>([]);
   const [listError, setListError] = useState<string | null>(null);
@@ -119,6 +156,7 @@ export function Dashboard({
   const [sharedWithMe, setSharedWithMe] = useState<
     Array<{ id: string; name: string; updated_at: string; role: ShareRole }>
   >([]);
+  const [tab, setTab] = useState<'mine' | 'shared' | 'forks'>('mine');
 
   const fetchRooms = useCallback(async () => {
     const { data: roomRows, error } = await supabase
@@ -217,6 +255,9 @@ export function Dashboard({
 
   const totalPlacements = rooms.reduce((s, r) => s + r.item_count, 0);
   const atLimit = rooms.length >= MAX_ROOMS;
+  const forkRooms = rooms.filter((r) => r.forked_from);
+  const hasSharedTab = sharedWithMe.length > 0;
+  const hasForksTab = forkRooms.length > 0;
 
   async function openRoom(room: { id: string; name: string; isOwner?: boolean }) {
     setMenuRoomId(null);
@@ -340,8 +381,190 @@ export function Dashboard({
     setMenuRoomId((prev) => (prev === roomId ? null : roomId));
   }
 
+  function renderRoomRow(room: ListedRoomRow, first: boolean) {
+    const isRenaming = renamingId === room.id;
+    const menuOpen = menuRoomId === room.id;
+    const isBusy = busyId === room.id || loadingLayout;
+
+    return (
+      <div
+        key={room.id}
+        className={[
+          'app-ledger-row',
+          first ? 'app-ledger-row--first' : '',
+          !isRenaming ? 'app-ledger-row--interactive' : '',
+          menuOpen ? 'app-ledger-row--menu-open' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        onClick={!isRenaming ? () => void openRoom({ id: room.id, name: room.name }) : undefined}
+        onKeyDown={
+          !isRenaming
+            ? (e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  void openRoom({ id: room.id, name: room.name });
+                }
+              }
+            : undefined
+        }
+        role={!isRenaming ? 'button' : undefined}
+        tabIndex={!isRenaming ? 0 : undefined}
+      >
+        <Plate height={84} topCaption={roomFilename(room.name)}>
+          <div className="app-ledger-plate-preview">
+            <RoomPreview geometry={room.geometry} items={room.items} />
+          </div>
+        </Plate>
+
+        <div>
+          {isRenaming ? (
+            <>
+              <input
+                className="app-ledger-rename-input"
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter') void commitRename(room.id);
+                  if (e.key === 'Escape') setRenamingId(null);
+                }}
+                onClick={(e) => e.stopPropagation()}
+                autoFocus
+              />
+              <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+                <Button size="sm" onClick={(e) => { e.stopPropagation(); void commitRename(room.id); }}>
+                  Save
+                </Button>
+                <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); setRenamingId(null); }}>
+                  Cancel
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="app-ledger-name">{room.name}</div>
+              <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginTop: 5 }}>
+                edited {formatRelativeTime(room.updated_at)}
+                {room.fork_count > 0 ? ` · ${room.fork_count} copies` : ''}
+              </MonoMeta>
+              {room.attribution?.visible ? (
+                <div className="app-ledger-attribution">
+                  Forked from {room.attribution.room_name} by {room.attribution.owner_display}
+                </div>
+              ) : room.forked_from ? (
+                <div className="app-ledger-attribution">Copied room</div>
+              ) : null}
+            </>
+          )}
+        </div>
+
+        <MonoMeta size="md" tone="default">{room.item_count} pieces</MonoMeta>
+        <MonoMeta size="md" tone="default">{formatSqft(room.geometry)}</MonoMeta>
+        <MonoMeta size="md" tone="default">—</MonoMeta>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, position: 'relative' }}>
+          <Badge
+            tone={visibilityBadgeTone(room.visibility)}
+            dot={room.visibility === 'public'}
+          >
+            {visibilityLabel(room.visibility)}
+          </Badge>
+          <button
+            type="button"
+            className="app-ledger-menu-btn"
+            onClick={(e) => toggleMenu(e, room.id)}
+            aria-label="Room actions"
+            disabled={isBusy}
+          >
+            ⋯
+          </button>
+          {menuOpen ? (
+            <div className="app-ledger-menu" onClick={(e) => e.stopPropagation()}>
+              <button type="button" className="app-ledger-menu-item" onClick={() => void openRoom({ id: room.id, name: room.name })}>
+                Open &amp; design
+              </button>
+              <button
+                type="button"
+                className="app-ledger-menu-item"
+                onClick={() => {
+                  setRenamingId(room.id);
+                  setRenameValue(room.name);
+                  setMenuRoomId(null);
+                }}
+              >
+                Rename
+              </button>
+              <button
+                type="button"
+                className="app-ledger-menu-item"
+                onClick={() => void handleDuplicate(room.id, room.name)}
+                disabled={atLimit}
+              >
+                Duplicate
+              </button>
+              {room.visibility === 'public' ? (
+                <button type="button" className="app-ledger-menu-item" onClick={() => void handleSetVisibility(room.id, 'private')}>
+                  Remove from profile
+                </button>
+              ) : (
+                <button type="button" className="app-ledger-menu-item" onClick={() => void handleSetVisibility(room.id, 'public')}>
+                  Publish to profile
+                </button>
+              )}
+              <button
+                type="button"
+                className="app-ledger-menu-item app-ledger-menu-item--danger"
+                onClick={() => {
+                  setConfirmDeleteId(room.id);
+                  setMenuRoomId(null);
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
+
+  const deleteRoom = rooms.find((r) => r.id === confirmDeleteId);
+  const ledgerRooms =
+    tab === 'forks' ? forkRooms : tab === 'mine' ? rooms : [];
+
   return (
-    <div className="dashboard-page tv-scroll">
+    <AppShell
+      active="rooms"
+      title="Rooms"
+      meta={`${rooms.length} of ${MAX_ROOMS} used · free plan`}
+      showAdmin={showAdmin}
+      profileInitials={profileInitials(profile, user.email)}
+      onNavigate={onNavigate}
+      onLogout={onLogout}
+      onProfile={
+        profile?.handle
+          ? () => navigate(profilePath(profile.handle))
+          : undefined
+      }
+      actions={
+        <>
+          <Button variant="mono" onClick={() => setFeedbackOpen(true)}>
+            Feedback
+          </Button>
+          <Button
+            size="sm"
+            onClick={() => {
+              setShowNewRoom(true);
+              setNewRoomName('');
+            }}
+            disabled={atLimit}
+          >
+            New room
+          </Button>
+        </>
+      }
+    >
       <FeedbackModal
         open={feedbackOpen}
         onClose={() => setFeedbackOpen(false)}
@@ -349,242 +572,174 @@ export function Dashboard({
         defaultEmail={user.email ?? ''}
         userId={user.id}
       />
-      <div className="dashboard-topbar">
-        <div className="dashboard-topbar-inner">
-          <button type="button" onClick={onGoLanding} style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', background: 'none', border: 'none', padding: 0 }}>
-            <div className="tv-logo-mark" style={{ width: 25, height: 25, borderRadius: 7, fontSize: 17 }}>t</div>
-            <span className="tv-logo-text" style={{ fontSize: 22 }}>Toova</span>
-          </button>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 13 }}>
-            <button type="button" className="feedback-btn-ghost" onClick={() => setFeedbackOpen(true)}>
-              Feedback
-            </button>
-            <button
-              type="button"
-              className="dashboard-profile-chip"
-              onClick={() => {
-                if (profile?.handle) navigate(profilePath(profile.handle));
+
+      <SectionOpener
+        level={5}
+        title="Your rooms."
+        note={`Free plan · ${rooms.length} of ${MAX_ROOMS} rooms${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`}
+      />
+
+      <Tabs
+        style={{ marginTop: 28 }}
+        active={tab}
+        onChange={(id) => setTab(id as 'mine' | 'shared' | 'forks')}
+        tabs={[
+          { id: 'mine', label: 'Mine', count: rooms.length },
+          ...(hasSharedTab
+            ? [{ id: 'shared', label: 'Shared with me', count: sharedWithMe.length }]
+            : []),
+          ...(hasForksTab
+            ? [{ id: 'forks', label: 'Forks', count: forkRooms.length }]
+            : []),
+        ]}
+      />
+
+      {listError ? <Banner tone="error" style={{ marginTop: 20 }}>{listError}</Banner> : null}
+      {actionError ? <Banner tone="error" style={{ marginTop: 20 }}>{actionError}</Banner> : null}
+
+      {tab === 'shared' ? (
+        <div style={{ marginTop: 28 }}>
+          <div className="app-ledger-head app-ledger-head--shared">
+            <span>Plan</span>
+            <span>Room</span>
+            <span>Role</span>
+            <span>Updated</span>
+            <span aria-hidden />
+            <span aria-hidden />
+          </div>
+          {sharedWithMe.map((r, i) => (
+            <div
+              key={r.id}
+              className={[
+                'app-ledger-row',
+                'app-ledger-row--shared',
+                'app-ledger-row--interactive',
+                i === 0 ? 'app-ledger-row--first' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              onClick={() => void openRoom({ id: r.id, name: r.name, isOwner: false })}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  void openRoom({ id: r.id, name: r.name, isOwner: false });
+                }
               }}
-              disabled={!profile?.handle}
-              title={profile?.handle ? `Open @${profile.handle}` : 'Profile loading…'}
             >
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 13, fontWeight: 600 }}>{profileDisplayName(profile, user.email)}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-subtle)' }}>
-                  {profile?.handle ? `@${profile.handle}` : 'Free plan'}
-                </div>
+              <Plate height={84} topCaption={roomFilename(r.name)} />
+              <div>
+                <div className="app-ledger-name">{r.name}</div>
+                <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginTop: 5 }}>
+                  shared · {formatRelativeTime(r.updated_at)}
+                </MonoMeta>
               </div>
-              <UserAvatar name={profileDisplayName(profile, user.email)} src={avatarUrl} size={36} />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <div className="dashboard-main">
-        <div className="dashboard-header">
-          <div>
-            <div className="dashboard-kicker">Welcome back, {profileFirstName(profile, user.email)}</div>
-            <h1 className="dashboard-title">Your rooms</h1>
-          </div>
-          <button
-            type="button"
-            className="tv-btn-primary"
-            style={{ fontSize: 14, padding: '12px 20px', borderRadius: 11, display: 'flex', alignItems: 'center', gap: 8 }}
-            onClick={() => { setShowNewRoom(true); setNewRoomName(''); }}
-            disabled={atLimit}
-          >
-            <span style={{ fontSize: 17, lineHeight: 1 }}>+</span> New room
-          </button>
-        </div>
-
-        <div className="dashboard-meta">{rooms.length} saved · {totalPlacements} pieces placed</div>
-
-        {listError ? <div className="tv-banner-error" role="alert">{listError}</div> : null}
-        {actionError ? <div className="tv-banner-error" role="alert">{actionError}</div> : null}
-
-        {rooms.length === 0 && !listError ? (
-          <div className="dashboard-empty">
-            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 22, color: 'var(--text)', marginBottom: 8 }}>No rooms yet</div>
-            <div style={{ fontSize: 15, marginBottom: 20 }}>Create your first room and start placing furniture.</div>
-            <button type="button" className="tv-btn-primary" style={{ fontSize: 14, padding: '12px 22px', borderRadius: 10 }} onClick={() => setShowNewRoom(true)}>+ New room</button>
-          </div>
-        ) : (
-          <div className="dashboard-grid">
-            {rooms.map((r) => {
-              const isRenaming = renamingId === r.id;
-              const menuOpen = menuRoomId === r.id;
-              const isBusy = busyId === r.id || loadingLayout;
-
-              return (
-                <div key={r.id} className={`dashboard-room-card${menuOpen ? ' dashboard-room-card--menu-open' : ''}`}>
-                  <div className="dashboard-room-preview">
-                    <RoomPreview geometry={r.geometry} items={r.items} />
-                    <span className={`profile-vis-badge profile-vis-badge--${r.visibility}`}>
-                      {r.visibility}
-                    </span>
-                  </div>
-                  <div className="dashboard-room-body">
-                    {isRenaming ? (
-                      <>
-                        <input
-                          className="tv-input"
-                          value={renameValue}
-                          onChange={(e) => setRenameValue(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') void commitRename(r.id);
-                            if (e.key === 'Escape') setRenamingId(null);
-                          }}
-                          autoFocus
-                          style={{ fontFamily: 'var(--font-serif)', fontSize: 19, fontWeight: 500, marginBottom: 8 }}
-                        />
-                        <div style={{ display: 'flex', gap: 8 }}>
-                          <button type="button" className="tv-btn-primary" style={{ flex: 1, padding: 8, borderRadius: 8, fontSize: 13 }} onClick={() => void commitRename(r.id)}>Save</button>
-                          <button type="button" style={{ flex: 1, cursor: 'pointer', border: '1px solid var(--border-input)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 13, padding: 8, borderRadius: 8 }} onClick={() => setRenamingId(null)}>Cancel</button>
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-                          <div style={{ minWidth: 0 }}>
-                            <div style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 500, letterSpacing: '-.01em', lineHeight: 1.15 }}>{r.name}</div>
-                            <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginTop: 3 }}>
-                              {r.item_count} pieces · {formatRelativeTime(r.updated_at)}
-                              {r.fork_count > 0 ? ` · ${r.fork_count} copies` : ''}
-                            </div>
-                            {r.attribution?.visible ? (
-                              <div className="room-attribution">
-                                Forked from {r.attribution.room_name} by {r.attribution.owner_display}
-                              </div>
-                            ) : r.forked_from ? (
-                              <div className="room-attribution">Copied room</div>
-                            ) : null}
-                          </div>
-                          <div style={{ position: 'relative' }}>
-                            <button type="button" onClick={(e) => toggleMenu(e, r.id)} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', color: 'var(--text-muted)', width: 30, height: 30, borderRadius: 8, fontSize: 15, lineHeight: 1 }}>⋯</button>
-                            {menuOpen ? (
-                              <div style={{ position: 'absolute', right: 0, top: 36, zIndex: 20, background: '#fff', border: '1px solid var(--border)', borderRadius: 10, boxShadow: '0 14px 30px -12px rgba(43,38,32,.35)', padding: 5, width: 150 }}>
-                                <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => void openRoom({ id: r.id, name: r.name })}>Open &amp; design</button>
-                                <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => { setRenamingId(r.id); setRenameValue(r.name); setMenuRoomId(null); }}>Rename</button>
-                                <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => void handleDuplicate(r.id, r.name)} disabled={atLimit}>Duplicate</button>
-                                {r.visibility === 'public' ? (
-                                  <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => void handleSetVisibility(r.id, 'private')}>Remove from profile</button>
-                                ) : (
-                                  <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit' }} onClick={() => void handleSetVisibility(r.id, 'public')}>Publish to profile</button>
-                                )}
-                                <button type="button" style={{ display: 'block', width: '100%', textAlign: 'left', fontSize: 14, padding: '9px 11px', borderRadius: 7, cursor: 'pointer', border: 'none', background: 'none', fontFamily: 'inherit', color: 'var(--danger)' }} onClick={() => { setConfirmDeleteId(r.id); setMenuRoomId(null); }}>Delete</button>
-                              </div>
-                            ) : null}
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => void openRoom({ id: r.id, name: r.name })}
-                          style={{ width: '100%', marginTop: 13, cursor: 'pointer', border: '1px solid var(--accent-line)', background: 'var(--accent-bg)', color: 'var(--accent)', fontFamily: 'inherit', fontSize: 14, fontWeight: 600, padding: 11, borderRadius: 10 }}
-                        >
-                          Open &amp; design →
-                        </button>
-                      </>
-                    )}
-                  </div>
-
-                  {confirmDeleteId === r.id ? (
-                    <div style={{ position: 'absolute', inset: 0, borderRadius: 16, background: 'rgba(43,38,32,.8)', backdropFilter: 'blur(2px)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
-                      <div style={{ fontFamily: 'var(--font-serif)', fontSize: 20, color: '#F8F3EA', marginBottom: 6 }}>Delete this room?</div>
-                      <div style={{ fontSize: 13, color: 'rgba(244,238,228,.7)', marginBottom: 18 }}>&quot;{r.name}&quot; can&apos;t be recovered.</div>
-                      <div style={{ display: 'flex', gap: 10 }}>
-                        <button type="button" style={{ cursor: 'pointer', border: 'none', background: 'var(--danger)', color: '#fff', fontFamily: 'inherit', fontSize: 13, fontWeight: 600, padding: '10px 18px', borderRadius: 8 }} onClick={() => void handleDelete(r.id)}>Delete</button>
-                        <button type="button" style={{ cursor: 'pointer', border: '1px solid rgba(244,238,228,.3)', background: 'transparent', color: '#F8F3EA', fontFamily: 'inherit', fontSize: 13, padding: '10px 18px', borderRadius: 8 }} onClick={() => setConfirmDeleteId(null)}>Keep</button>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {sharedWithMe.length > 0 ? (
-          <div className="dashboard-shared-section">
-            <h2 className="dashboard-shared-title">Shared with me</h2>
-            <p className="dashboard-shared-lead">Rooms you can edit via a share link.</p>
-            <div className="dashboard-grid">
-              {sharedWithMe.map((r) => (
-                <div key={r.id} className="dashboard-room-card">
-                  <div className="dashboard-room-body" style={{ paddingTop: 18 }}>
-                    <div style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 500 }}>
-                      {r.name}
-                    </div>
-                    <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginTop: 3 }}>
-                      {r.role} · {formatRelativeTime(r.updated_at)}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={loadingLayout}
-                      onClick={() => void openRoom({ id: r.id, name: r.name, isOwner: false })}
-                      style={{
-                        width: '100%',
-                        marginTop: 13,
-                        cursor: 'pointer',
-                        border: '1px solid var(--accent-line)',
-                        background: 'var(--accent-bg)',
-                        color: 'var(--accent)',
-                        fontFamily: 'inherit',
-                        fontSize: 14,
-                        fontWeight: 600,
-                        padding: 11,
-                        borderRadius: 10,
-                      }}
-                    >
-                      Open &amp; edit →
-                    </button>
-                  </div>
-                </div>
-              ))}
+              <MonoMeta size="md" tone="default">{r.role}</MonoMeta>
+              <MonoMeta size="md" tone="default">{formatRelativeTime(r.updated_at)}</MonoMeta>
+              <span />
+              <span />
             </div>
-          </div>
-        ) : null}
-      </div>
-
-      {showNewRoom ? (
-        <div className="dashboard-modal-backdrop" role="presentation" onClick={() => setShowNewRoom(false)}>
-          <div className="dashboard-modal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <h2 style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 26, margin: '0 0 4px' }}>New room</h2>
-            <p style={{ fontSize: 14, color: 'var(--text-muted)', margin: '0 0 22px' }}>Name it and pick a room type to start.</p>
-            <label className="tv-label">Room name</label>
-            <input className="tv-input" value={newRoomName} onChange={(e) => setNewRoomName(e.target.value)} placeholder="e.g. Sunlit Living Room" style={{ marginBottom: 18 }} />
-            <label className="tv-label">Room type</label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 26 }}>
-              {ROOM_TYPES.map((t) => (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => setNewRoomType(t)}
-                  style={{
-                    cursor: 'pointer',
-                    padding: '7px 14px',
-                    borderRadius: 999,
-                    fontSize: 13,
-                    fontWeight: 600,
-                    fontFamily: 'inherit',
-                    border: newRoomType === t ? '1px solid var(--accent-line)' : '1px solid var(--border)',
-                    background: newRoomType === t ? 'var(--accent-bg)' : '#fff',
-                    color: newRoomType === t ? 'var(--accent)' : 'var(--text-muted)',
-                  }}
-                >
-                  {t}
-                </button>
-              ))}
-            </div>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" className="tv-btn-primary" style={{ flex: 1, padding: 13, borderRadius: 10, fontSize: 15 }} onClick={handleCreateRoom}>
-                Draw floor plan
-              </button>
-              <button type="button" style={{ cursor: 'pointer', border: '1px solid var(--border-input)', background: '#fff', color: 'var(--text-dark)', fontFamily: 'inherit', fontSize: 15, padding: '13px 20px', borderRadius: 10 }} onClick={() => setShowNewRoom(false)}>Cancel</button>
-            </div>
-          </div>
+          ))}
         </div>
+      ) : ledgerRooms.length === 0 && !listError ? (
+        <EmptyState
+          style={{ marginTop: 48 }}
+          label={tab === 'forks' ? 'No forks' : 'No rooms yet'}
+          title="Plan the room before the truck arrives."
+          body="Draw the floor plan once — every piece you place after that is measured against it."
+          action={
+            tab === 'mine' ? (
+              <Button size="md" onClick={() => setShowNewRoom(true)}>
+                New room
+              </Button>
+            ) : undefined
+          }
+        />
+      ) : (
+        <div style={{ marginTop: 28 }}>
+          <div className="app-ledger-head">
+            <span>Plan</span>
+            <span>Room</span>
+            <span>Pieces</span>
+            <span>Floor area</span>
+            <span>Total</span>
+            <span className="app-ledger-head__right">Visibility</span>
+          </div>
+          {ledgerRooms.map((r, i) => renderRoomRow(r, i === 0))}
+        </div>
+      )}
+
+      {!atLimit && rooms.length > 0 && tab === 'mine' ? (
+        <EmptyState
+          style={{ marginTop: 72 }}
+          label={`${MAX_ROOMS - rooms.length} room${MAX_ROOMS - rooms.length === 1 ? '' : 's'} left`}
+          title="Plan the room before the truck arrives."
+          body="Draw the floor plan once — every piece you place after that is measured against it."
+          action={
+            <Button size="md" onClick={() => setShowNewRoom(true)}>
+              New room
+            </Button>
+          }
+        />
       ) : null}
-    </div>
+
+      <Modal
+        open={showNewRoom}
+        meta="New room"
+        title="What are you planning?"
+        onClose={() => setShowNewRoom(false)}
+        footer={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setShowNewRoom(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" onClick={handleCreateRoom}>
+              Draw the floor plan
+            </Button>
+          </>
+        }
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+          <Field label="Room name">
+            <Input
+              value={newRoomName}
+              onChange={(e) => setNewRoomName(e.target.value)}
+              placeholder={nextRoomName(rooms)}
+            />
+          </Field>
+          <Field label="Room type" hint="Sets the starting catalog and default ceiling height.">
+            <Select options={ROOM_TYPES} value={newRoomType} onChange={setNewRoomType} />
+          </Field>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!deleteRoom}
+        meta="Delete room"
+        title="Delete this room?"
+        onClose={() => setConfirmDeleteId(null)}
+        footer={
+          <>
+            <Button size="sm" variant="outline" onClick={() => setConfirmDeleteId(null)}>
+              Keep
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => deleteRoom && void handleDelete(deleteRoom.id)}
+              style={{ background: 'var(--danger)' }}
+            >
+              Delete
+            </Button>
+          </>
+        }
+      >
+        {deleteRoom ? (
+          <p style={{ margin: 0, font: 'var(--type-body-sm)', color: 'var(--ink-4)' }}>
+            &quot;{deleteRoom.name}&quot; can&apos;t be recovered.
+          </p>
+        ) : null}
+      </Modal>
+    </AppShell>
   );
 }

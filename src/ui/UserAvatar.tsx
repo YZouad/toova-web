@@ -15,8 +15,10 @@ export function UserAvatar({ name, src, size = 36, className }: UserAvatarProps)
   const style = {
     width: size,
     height: size,
-    borderRadius: 99,
-    fontSize: Math.max(11, Math.round(size * 0.38)),
+    borderRadius: 'var(--radius-sm)',
+    fontSize: Math.max(10, Math.round(size * 0.36)),
+    fontFamily: 'var(--font-mono)',
+    letterSpacing: '0.04em',
   } as const;
 
   if (src) {
@@ -35,12 +37,12 @@ export function UserAvatar({ name, src, size = 36, className }: UserAvatarProps)
       className={className ? `user-avatar user-avatar--initials ${className}` : 'user-avatar user-avatar--initials'}
       style={{
         ...style,
-        background: 'var(--accent)',
+        background: 'var(--ink-1)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        color: '#fff',
-        fontWeight: 600,
+        color: 'var(--cream-1)',
+        fontWeight: 400,
         flexShrink: 0,
       }}
       aria-hidden

@@ -1,6 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { buildAndUploadCatalogThumbnail } from '../lib/buildCatalogThumbnail';
 import { createPosterGlb } from '../lib/createPosterGlb';
+import {
+  createConversionJob,
+  updateConversionJob,
+  type ConversionJobSource,
+} from '../lib/conversionJobs';
 import { decimateGlb, shouldSkipDecimation } from '../lib/decimateGlb';
 import { prepareImportedGlb } from '../lib/prepareImportedGlb';
 import { formatInchDim, readGlbAxisBounds } from '../lib/glbBounds';
@@ -18,6 +23,13 @@ import {
   type CatalogCategorySlug,
 } from '../lib/catalogCategories';
 import { PosterImageCrop } from './PosterImageCrop';
+import { Button } from './kit/Button';
+import { Checkbox } from './kit/Checkbox';
+import { Field } from './kit/Field';
+import { Input } from './kit/Input';
+import { Modal } from './kit/Modal';
+import { Spinner } from './kit/Spinner';
+import { Tabs } from './kit/Tabs';
 
 type ModalTab = 'upload' | 'generate' | 'poster';
 type GeneratePhase = 'idle' | 'generating' | 'downloading';
@@ -87,6 +99,7 @@ export function ImportModelModal({
   const [generating, setGenerating] = useState(false);
   const [generatePhase, setGeneratePhase] = useState<GeneratePhase>('idle');
   const generateAbortRef = useRef<AbortController | null>(null);
+  const activeJobIdRef = useRef<string | null>(null);
   const [elapsedSec, setElapsedSec] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
@@ -260,6 +273,7 @@ export function ImportModelModal({
     setGeneratePhase('idle');
     generateAbortRef.current?.abort();
     generateAbortRef.current = null;
+    activeJobIdRef.current = null;
     setDecimatedFile(null);
     setDecimating(false);
     setDecimationError(null);
@@ -304,6 +318,15 @@ export function ImportModelModal({
     setElapsedSec(0);
     setGeneratePhase('generating');
     setGenerating(true);
+
+    const jobId = await createConversionJob({
+      userId,
+      source: 'trellis',
+      status: 'processing',
+      label: imageFile.name || 'Image → 3D',
+    });
+    activeJobIdRef.current = jobId;
+
     try {
       const fd = new FormData();
       fd.append('file', imageFile);
@@ -342,10 +365,31 @@ export function ImportModelModal({
       });
       setFile(glbFile);
       setTab('upload');
+      if (jobId) {
+        await updateConversionJob(jobId, {
+          status: 'completed',
+          label: imageFile.name || 'Image → 3D',
+        });
+      }
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        if (jobId) {
+          await updateConversionJob(jobId, {
+            status: 'failed',
+            error: 'Cancelled',
+          });
+        }
+        return;
+      }
       console.error('Generation failed:', err);
-      setGenerateError(err instanceof Error ? err.message : 'Generation failed');
+      const message = err instanceof Error ? err.message : 'Generation failed';
+      setGenerateError(message);
+      if (jobId) {
+        await updateConversionJob(jobId, {
+          status: 'failed',
+          error: message,
+        });
+      }
     } finally {
       setGenerating(false);
       setGeneratePhase('idle');
@@ -453,8 +497,29 @@ export function ImportModelModal({
     const contentType =
       ext === 'glb' ? 'model/gltf-binary' : 'model/gltf+json';
 
+    const source: ConversionJobSource =
+      tags.includes('poster')
+        ? 'poster'
+        : file.name.toLowerCase() === 'generated.glb'
+          ? 'trellis'
+          : 'upload';
+
     setSubmitting(true);
+    let jobId = activeJobIdRef.current;
+    const hadPriorJob = Boolean(jobId);
     try {
+      if (!jobId) {
+        jobId = await createConversionJob({
+          userId,
+          source,
+          status: 'processing',
+          label,
+        });
+        activeJobIdRef.current = jobId;
+      } else {
+        await updateConversionJob(jobId, { label });
+      }
+
       const { error: upErr } = await supabase.storage
         .from(MODEL_FILES_BUCKET)
         .upload(objectPath, uploadFile, {
@@ -494,11 +559,30 @@ export function ImportModelModal({
 
       if (insErr) throw new Error(insErr.message);
 
+      if (jobId) {
+        await updateConversionJob(jobId, {
+          status: 'completed',
+          kind,
+          label,
+          error: null,
+        });
+      }
+      activeJobIdRef.current = null;
+
       await onAdded();
       resetForm();
       onClose();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Upload failed');
+      const message = err instanceof Error ? err.message : 'Upload failed';
+      setFormError(message);
+      // Don't overwrite a completed Trellis conversion if only catalog save failed.
+      if (jobId && !hadPriorJob) {
+        await updateConversionJob(jobId, {
+          status: 'failed',
+          error: message,
+          label,
+        });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -520,75 +604,46 @@ export function ImportModelModal({
 
   if (!open) return null;
 
-  return (
-    <div className="import-modal-backdrop" role="presentation" onClick={handleClose}>
-      <div
-        className="import-modal"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="import-modal-title"
-        onClick={(ev) => ev.stopPropagation()}
-      >
-        <h3 id="import-modal-title" className="import-modal-title">
-          Add model to library
-        </h3>
-        <p className="import-modal-hint">
-          Upload a GLB/GLTF, generate a mesh from an image with TRELLIS, or create a flat poster from a
-          photo (crop → textured plane), then add catalog details on the Upload tab.
-        </p>
+  const tabFooter = (primary: React.ReactNode) => (
+    <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+      <Button size="sm" variant="outline" onClick={handleClose} disabled={busy}>Cancel</Button>
+      {primary}
+    </div>
+  );
 
-        <div className="import-modal-tabs" role="tablist" aria-label="Import source">
-          <button
-            type="button"
-            role="tab"
-            className="import-modal-tab"
-            aria-selected={tab === 'upload'}
-            disabled={busy}
-            onClick={() => {
-              setTab('upload');
-              setGenerateError(null);
-              setPosterError(null);
-            }}
-          >
-            Upload file
-          </button>
-          <button
-            type="button"
-            role="tab"
-            className="import-modal-tab"
-            aria-selected={tab === 'generate'}
-            disabled={busy}
-            onClick={() => {
-              setTab('generate');
-              setFormError(null);
-              setPosterError(null);
-            }}
-          >
-            Generate from image
-          </button>
-          <button
-            type="button"
-            role="tab"
-            className="import-modal-tab"
-            aria-selected={tab === 'poster'}
-            disabled={busy}
-            onClick={() => {
-              setTab('poster');
-              setFormError(null);
-              setGenerateError(null);
-              setPosterError(null);
-              setPosterImageFile(null);
-              setPosterCroppedBlob(null);
-              if (widthIn === '24' && heightIn === '24' && depthIn === '24') {
-                setWidthIn('18');
-                setHeightIn('24');
-                setDepthIn('0.25');
-              }
-            }}
-          >
-            Poster
-          </button>
-        </div>
+  return (
+    <Modal
+      open={open}
+      meta="Import model"
+      title="Bring a piece in."
+      onClose={handleClose}
+      width={560}
+    >
+      <Tabs
+        active={tab}
+        onChange={(id) => {
+          const next = id as ModalTab;
+          setTab(next);
+          setFormError(null);
+          setGenerateError(null);
+          setPosterError(null);
+          if (next === 'poster') {
+            setPosterImageFile(null);
+            setPosterCroppedBlob(null);
+            if (widthIn === '24' && heightIn === '24' && depthIn === '24') {
+              setWidthIn('18');
+              setHeightIn('24');
+              setDepthIn('0.25');
+            }
+          }
+        }}
+        style={{ marginBottom: 22 }}
+        tabs={[
+          { id: 'upload', label: 'Upload GLB' },
+          { id: 'generate', label: 'From a photo' },
+          { id: 'poster', label: 'Poster' },
+        ]}
+      />
 
         {tab === 'generate' ? (
           <div className="import-modal-generate">
@@ -611,11 +666,13 @@ export function ImportModelModal({
             ) : null}
 
             {generating ? (
-              <p className="import-modal-generate-status" aria-live="polite">
-                {generatePhase === 'downloading'
-                  ? `Downloading model… ${elapsedSec}s elapsed`
-                  : `Generating 3D model… ${elapsedSec}s elapsed (this may take several minutes)`}
-              </p>
+              <Spinner
+                label={
+                  generatePhase === 'downloading'
+                    ? `Downloading model · ${elapsedSec}s`
+                    : `Generating 3D · ${elapsedSec}s`
+                }
+              />
             ) : (
               <p className="import-modal-generate-status">
                 {trellisUsesRemoteUrl ? (
@@ -644,26 +701,15 @@ export function ImportModelModal({
             ) : null}
 
             <div className="import-modal-actions">
-              <button
-                type="button"
-                className="import-modal-btn secondary"
-                onClick={handleClose}
-                disabled={busy}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="import-modal-btn primary"
-                onClick={() => void handleGenerate()}
-                disabled={busy}
-              >
-                {generating
-                  ? generatePhase === 'downloading'
-                    ? 'Downloading…'
-                    : 'Generating…'
-                  : 'Generate 3D model'}
-              </button>
+              {tabFooter(
+                <Button size="sm" disabled={busy} onClick={() => void handleGenerate()}>
+                  {generating
+                    ? generatePhase === 'downloading'
+                      ? 'Downloading…'
+                      : 'Generating…'
+                    : 'Generate 3D model'}
+                </Button>,
+              )}
             </div>
           </div>
         ) : tab === 'poster' ? (
@@ -733,22 +779,11 @@ export function ImportModelModal({
             ) : null}
 
             <div className="import-modal-actions">
-              <button
-                type="button"
-                className="import-modal-btn secondary"
-                onClick={handleClose}
-                disabled={busy}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="import-modal-btn primary"
-                onClick={() => void handleCreatePoster()}
-                disabled={busy || !posterCroppedBlob}
-              >
-                {creatingPoster ? 'Creating…' : 'Create poster'}
-              </button>
+              {tabFooter(
+                <Button size="sm" disabled={busy || !posterCroppedBlob} onClick={() => void handleCreatePoster()}>
+                  {creatingPoster ? 'Creating…' : 'Create poster'}
+                </Button>,
+              )}
             </div>
           </div>
         ) : (
@@ -825,10 +860,8 @@ export function ImportModelModal({
               </p>
             ) : null}
 
-            <label className="import-modal-field">
-              <span>Title</span>
-              <input
-                type="text"
+            <Field label="Title">
+              <Input
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 placeholder={
@@ -839,18 +872,19 @@ export function ImportModelModal({
                 disabled={submitting || decimating}
                 autoComplete="off"
               />
-            </label>
+            </Field>
 
-            <label className="import-modal-field">
-              <span>Description</span>
+            <Field label="Description">
               <textarea
+                className="kit-input"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Optional notes"
                 rows={3}
                 disabled={submitting || decimating}
+                style={{ width: '100%', resize: 'vertical', minHeight: 72 }}
               />
-            </label>
+            </Field>
 
             <div className="import-modal-field">
               <span>
@@ -881,15 +915,12 @@ export function ImportModelModal({
             </div>
 
             <label className="import-modal-field import-modal-check">
-              <span>
-                <input
-                  type="checkbox"
-                  checked={listInGallery}
-                  onChange={(e) => setListInGallery(e.target.checked)}
-                  disabled={submitting || decimating}
-                />{' '}
-                List in community gallery
-              </span>
+              <Checkbox
+                checked={listInGallery}
+                label="List in community gallery"
+                onChange={setListInGallery}
+                disabled={submitting || decimating}
+              />
               <small>
                 Public models can be browsed, liked, and placed in anyone&apos;s room.
               </small>
@@ -950,25 +981,14 @@ export function ImportModelModal({
             ) : null}
 
             <div className="import-modal-actions">
-              <button
-                type="button"
-                className="import-modal-btn secondary"
-                onClick={handleClose}
-                disabled={submitting || decimating}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="import-modal-btn primary"
-                disabled={submitting || decimating || !decimatedFile}
-              >
-                {submitting ? 'Saving…' : 'Add to library'}
-              </button>
+              {tabFooter(
+                <Button type="submit" size="sm" disabled={submitting || decimating || !decimatedFile}>
+                  {submitting ? 'Saving…' : 'Add to library'}
+                </Button>,
+              )}
             </div>
           </form>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

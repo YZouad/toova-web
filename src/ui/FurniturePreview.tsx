@@ -11,8 +11,6 @@ interface FurniturePreviewProps {
   style?: CSSProperties;
 }
 
-const PREVIEW_BG = '#E9DFCC';
-
 const SWATCH_COLORS: Record<string, string> = {
   bed: '#C9B391',
   dresser: '#B08C5F',
@@ -55,42 +53,17 @@ export function FurniturePreview({
   const color = SWATCH_COLORS[kind] ?? '#CBB28F';
   const glyph = KIND_GLYPH[kind] ?? '▢';
   const label = labelForKind(kind);
+  const classes = ['furniture-preview', className].filter(Boolean).join(' ');
 
   return (
-    <div
-      className={className}
-      style={{
-        overflow: 'hidden',
-        background: PREVIEW_BG,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        ...style,
-      }}
-      title={label}
-      aria-hidden
-    >
+    <div className={classes} style={style} title={label} aria-hidden>
       {previewUrl ? (
-        <img
-          className="furniture-preview-img"
-          src={previewUrl}
-          alt=""
-          draggable={false}
-        />
+        <img className="furniture-preview-img" src={previewUrl} alt="" draggable={false} />
       ) : (
         <div
           className="furniture-preview-swatch"
           style={{
-            width: '72%',
-            height: '72%',
-            borderRadius: 10,
             background: `linear-gradient(145deg, ${color} 0%, color-mix(in srgb, ${color} 68%, #2a2018) 100%)`,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 'clamp(18px, 28%, 32px)',
-            color: 'color-mix(in srgb, #fff 55%, #2a2018)',
-            boxShadow: 'inset 0 1px 0 color-mix(in srgb, #fff 25%, transparent)',
           }}
         >
           {glyph}

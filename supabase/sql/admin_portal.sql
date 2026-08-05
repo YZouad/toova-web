@@ -164,13 +164,18 @@ REVOKE ALL ON FUNCTION public.get_admin_bundle_suggestions(integer) FROM PUBLIC;
 
 GRANT EXECUTE ON FUNCTION public.get_admin_bundle_suggestions(integer) TO authenticated;
 
--- Per-room: how many placed items live in each room (+ owner).
+-- Per-room: how many placed items live in each room (+ owner profile).
+DROP FUNCTION IF EXISTS public.get_admin_room_item_counts();
+
 CREATE OR REPLACE FUNCTION public.get_admin_room_item_counts()
 RETURNS TABLE (
   room_id uuid,
   room_name text,
   item_count bigint,
-  owner_user_id uuid
+  owner_user_id uuid,
+  owner_handle text,
+  owner_display_name text,
+  updated_at timestamptz
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -191,10 +196,14 @@ BEGIN
     r.id AS room_id,
     r.name AS room_name,
     COUNT(ri.id)::bigint AS item_count,
-    r.user_id AS owner_user_id
+    r.user_id AS owner_user_id,
+    p.handle AS owner_handle,
+    p.display_name AS owner_display_name,
+    r.updated_at AS updated_at
   FROM public.rooms AS r
   LEFT JOIN public.room_items AS ri ON ri.room_id = r.id
-  GROUP BY r.id, r.name, r.user_id
+  LEFT JOIN public.profiles AS p ON p.id = r.user_id
+  GROUP BY r.id, r.name, r.user_id, p.handle, p.display_name, r.updated_at
   ORDER BY item_count DESC, r.name ASC;
 END;
 $$;
@@ -204,9 +213,13 @@ REVOKE ALL ON FUNCTION public.get_admin_room_item_counts() FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_admin_room_item_counts() TO authenticated;
 
 -- Per-account: distinct rooms owned and total placed items across all their rooms.
+DROP FUNCTION IF EXISTS public.get_admin_user_item_totals();
+
 CREATE OR REPLACE FUNCTION public.get_admin_user_item_totals()
 RETURNS TABLE (
   user_id uuid,
+  handle text,
+  display_name text,
   room_count bigint,
   total_item_placements bigint
 )
@@ -227,11 +240,14 @@ BEGIN
   RETURN QUERY
   SELECT
     r.user_id AS user_id,
+    p.handle AS handle,
+    p.display_name AS display_name,
     COUNT(DISTINCT r.id)::bigint AS room_count,
     COUNT(ri.id)::bigint AS total_item_placements
   FROM public.rooms AS r
   LEFT JOIN public.room_items AS ri ON ri.room_id = r.id
-  GROUP BY r.user_id
+  LEFT JOIN public.profiles AS p ON p.id = r.user_id
+  GROUP BY r.user_id, p.handle, p.display_name
   ORDER BY total_item_placements DESC, room_count DESC;
 END;
 $$;
@@ -247,8 +263,8 @@ COMMENT ON FUNCTION public.get_admin_inventory_stats() IS
 COMMENT ON FUNCTION public.get_admin_bundle_suggestions(integer) IS
   'Admin-only: pair kinds that co-occur in at least p_min_room_cooccurrences rooms (max 100 rows).';
 COMMENT ON FUNCTION public.get_admin_room_item_counts() IS
-  'Admin-only: rooms with placed item totals and owning user.';
+  'Admin-only: rooms with placed item totals, owner profile, and updated_at.';
 COMMENT ON FUNCTION public.get_admin_user_item_totals() IS
-  'Admin-only: per auth user — room count and total placements across rooms.';
+  'Admin-only: per auth user — room count, placements, profile handle and display name.';
 
 COMMIT;

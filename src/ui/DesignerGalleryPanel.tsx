@@ -4,6 +4,7 @@ import type { GallerySort, GallerySource } from '../lib/galleryCatalog';
 import { getBuiltinPreviewUrl, useBuiltinPreviews } from '../hooks/useBuiltinPreviews';
 import { FurniturePreview } from './FurniturePreview';
 import { ModelGallery } from './ModelGallery';
+import { Button } from './kit/Button';
 
 const RECENT_KEY = 'toova-recent-kinds';
 const MAX_RECENT = 6;
@@ -101,9 +102,9 @@ export function DesignerGalleryPanel({
             <span>Generate from a photo or upload a GLB</span>
           </div>
           <div className="palette-promo-actions">
-            <button type="button" className="tv-btn-primary" onClick={() => onOpenImport('generate')}>
+            <Button size="sm" onClick={() => onOpenImport('generate')}>
               Upload
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -114,12 +115,14 @@ export function DesignerGalleryPanel({
           query={query}
           showMine={!!currentUserId}
           dense
+          showSearch
+          hideSortAndCategory={false}
           currentUserId={currentUserId}
           placeLabel="Add to room"
           onSourceChange={(s) => {
             setSource(s);
-            if (s === 'mine') setSort('newest');
-            else if (sort === 'newest') setSort('hot');
+            if (s === 'mine' && sort === 'hot') setSort('newest');
+            else if (s !== 'mine' && sort === 'newest') setSort('hot');
           }}
           onSortChange={setSort}
           onCategoryChange={setCategory}
@@ -128,7 +131,7 @@ export function DesignerGalleryPanel({
           onModelsChange={mergeKnownModels}
           recentRail={
             recentModels.length > 0 ? (
-              <>
+              <div className="palette-recent-block">
                 <div className="palette-section-label">Recently used</div>
                 <div className="palette-recent tv-scroll">
                   {recentModels.map((r) => (
@@ -152,7 +155,7 @@ export function DesignerGalleryPanel({
                     </button>
                   ))}
                 </div>
-              </>
+              </div>
             ) : null
           }
         />

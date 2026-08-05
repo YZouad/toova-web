@@ -1,15 +1,34 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 import {
   SUMMARY_LIMIT,
   type AdminBundlePairRow,
+  type AdminConversionJobRow,
   type AdminInventoryStatRow,
   type AdminRoomRollupRow,
   type AdminUserRollupRow,
 } from '../hooks/useAdminStats';
-import { shortenId } from '../lib/userDisplay';
+import { formatRelativeTime, shortenId } from '../lib/userDisplay';
 import { AdminShoppingPanel } from './AdminShoppingPanel';
+import {
+  Badge,
+  Banner,
+  Button,
+  DisplayHeading,
+  EmptyState,
+  Logo,
+  MonoMeta,
+  RuledTable,
+  SectionOpener,
+  Spinner,
+} from './kit';
 
 type AdminTab = 'overview' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping';
+
+type SortDir = 'asc' | 'desc';
+
+type UserSortKey = 'account' | 'plan' | 'rooms' | 'placements' | 'active';
+type RoomSortKey = 'room' | 'owner' | 'type' | 'items' | 'updated';
+type JobSortKey = 'job' | 'owner' | 'source' | 'status' | 'created';
 
 const NAV: { id: AdminTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
@@ -25,9 +44,70 @@ const KIND_COLORS: Record<string, string> = {
   chair: '#CBB28F', nightstand: '#C0A47A', lamp: '#D4C4A0', imported: '#7E8A60',
 };
 
+const JOB_STATUS_ORDER: AdminConversionJobRow['status'][] = [
+  'queued',
+  'processing',
+  'completed',
+  'failed',
+];
+
 function swatch(kind: string) {
   const c = KIND_COLORS[kind] ?? '#CBB28F';
   return { width: 14, height: 14, borderRadius: 4, background: c, flex: 'none' as const };
+}
+
+function posterPanelStyle(): CSSProperties {
+  return {
+    background: 'var(--bg-raised)',
+    border: '1px solid var(--rule-soft)',
+    boxShadow: 'var(--shadow-panel)',
+    padding: '18px 20px',
+  };
+}
+
+function cmpText(a: string, b: string): number {
+  return a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+}
+
+function cmpNum(a: number, b: number): number {
+  return a - b;
+}
+
+function toggleSort<K extends string>(
+  prevKey: K,
+  prevDir: SortDir,
+  nextKey: K,
+): { key: K; dir: SortDir } {
+  if (prevKey === nextKey) {
+    return { key: nextKey, dir: prevDir === 'asc' ? 'desc' : 'asc' };
+  }
+  return { key: nextKey, dir: 'asc' };
+}
+
+function jobStatusBadgeTone(
+  status: AdminConversionJobRow['status'],
+): 'accent' | 'neutral' | 'success' | 'danger' {
+  switch (status) {
+    case 'queued':
+      return 'neutral';
+    case 'processing':
+      return 'accent';
+    case 'completed':
+      return 'success';
+    case 'failed':
+      return 'danger';
+  }
+}
+
+function sourceLabel(source: AdminConversionJobRow['source']): string {
+  switch (source) {
+    case 'trellis':
+      return 'Image → 3D';
+    case 'poster':
+      return 'Poster';
+    case 'upload':
+      return 'Upload';
+  }
 }
 
 export interface AdminConsoleProps {
@@ -35,9 +115,9 @@ export interface AdminConsoleProps {
   bundles: AdminBundlePairRow[];
   rooms: AdminRoomRollupRow[];
   users: AdminUserRollupRow[];
+  jobs: AdminConversionJobRow[];
   loading: boolean;
   error: string | null;
-  onExit: () => void;
   onRefresh: () => Promise<void>;
 }
 
@@ -46,13 +126,19 @@ export function AdminConsole({
   bundles,
   rooms,
   users,
+  jobs,
   loading,
   error,
-  onExit,
   onRefresh,
 }: AdminConsoleProps) {
   const [tab, setTab] = useState<AdminTab>('overview');
   const [refreshLabel, setRefreshLabel] = useState('refreshed just now');
+  const [userSortKey, setUserSortKey] = useState<UserSortKey>('placements');
+  const [userSortDir, setUserSortDir] = useState<SortDir>('desc');
+  const [roomSortKey, setRoomSortKey] = useState<RoomSortKey>('items');
+  const [roomSortDir, setRoomSortDir] = useState<SortDir>('desc');
+  const [jobSortKey, setJobSortKey] = useState<JobSortKey>('created');
+  const [jobSortDir, setJobSortDir] = useState<SortDir>('desc');
 
   const metrics = useMemo(() => {
     const totalPlacements = users.reduce((s, u) => s + u.total_item_placements, 0);
@@ -65,6 +151,57 @@ export function AdminConsole({
       { label: 'Total likes', value: String(totalLikes), delta: 'catalog engagement' },
     ];
   }, [rooms.length, users, stats]);
+
+  const jobsLast24h = useMemo(() => {
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    return jobs.filter((j) => {
+      const t = Date.parse(j.created_at);
+      return Number.isFinite(t) && t >= cutoff;
+    });
+  }, [jobs]);
+
+  const jobStatusCounts = useMemo(() => {
+    const counts: Record<AdminConversionJobRow['status'], number> = {
+      queued: 0,
+      processing: 0,
+      completed: 0,
+      failed: 0,
+    };
+    for (const j of jobs) {
+      counts[j.status] += 1;
+    }
+    return counts;
+  }, [jobs]);
+
+  const sortedJobs = useMemo(() => {
+    const next = [...jobs];
+    const dir = jobSortDir === 'asc' ? 1 : -1;
+    next.sort((a, b) => {
+      let cmp = 0;
+      switch (jobSortKey) {
+        case 'job':
+          cmp = cmpText(a.label ?? a.kind ?? a.id, b.label ?? b.kind ?? b.id);
+          break;
+        case 'owner':
+          cmp = cmpText(
+            a.display_name ?? a.handle ?? a.user_id,
+            b.display_name ?? b.handle ?? b.user_id,
+          );
+          break;
+        case 'source':
+          cmp = cmpText(a.source, b.source);
+          break;
+        case 'status':
+          cmp = cmpNum(JOB_STATUS_ORDER.indexOf(a.status), JOB_STATUS_ORDER.indexOf(b.status));
+          break;
+        case 'created':
+          cmp = cmpNum(Date.parse(a.created_at) || 0, Date.parse(b.created_at) || 0);
+          break;
+      }
+      return cmp * dir;
+    });
+    return next;
+  }, [jobSortDir, jobSortKey, jobs]);
 
   const topPlaced = useMemo(() => {
     const list = [...stats].sort((a, b) => b.in_room_count - a.in_room_count);
@@ -97,6 +234,71 @@ export function AdminConsole({
     }));
   }, [stats]);
 
+  const sortedUsers = useMemo(() => {
+    const list = [...users];
+    const dir = userSortDir === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      let c = 0;
+      switch (userSortKey) {
+        case 'account':
+          c = cmpText(
+            a.display_name ?? a.handle ?? a.user_id,
+            b.display_name ?? b.handle ?? b.user_id,
+          );
+          break;
+        case 'plan':
+          c = 0;
+          break;
+        case 'rooms':
+          c = cmpNum(a.room_count, b.room_count);
+          break;
+        case 'placements':
+          c = cmpNum(a.total_item_placements, b.total_item_placements);
+          break;
+        case 'active':
+          c = 0;
+          break;
+      }
+      if (c === 0) c = cmpText(a.user_id, b.user_id);
+      return c * dir;
+    });
+    return list;
+  }, [users, userSortKey, userSortDir]);
+
+  const sortedRooms = useMemo(() => {
+    const list = [...rooms];
+    const dir = roomSortDir === 'asc' ? 1 : -1;
+    list.sort((a, b) => {
+      let c = 0;
+      switch (roomSortKey) {
+        case 'room':
+          c = cmpText(a.room_name, b.room_name);
+          break;
+        case 'owner':
+          c = cmpText(
+            a.owner_display_name ?? a.owner_handle ?? a.owner_user_id,
+            b.owner_display_name ?? b.owner_handle ?? b.owner_user_id,
+          );
+          break;
+        case 'type':
+          c = 0;
+          break;
+        case 'items':
+          c = cmpNum(a.item_count, b.item_count);
+          break;
+        case 'updated': {
+          const at = a.updated_at ? Date.parse(a.updated_at) : 0;
+          const bt = b.updated_at ? Date.parse(b.updated_at) : 0;
+          c = cmpNum(at, bt);
+          break;
+        }
+      }
+      if (c === 0) c = cmpText(a.room_id, b.room_id);
+      return c * dir;
+    });
+    return list;
+  }, [rooms, roomSortKey, roomSortDir]);
+
   async function handleRefresh() {
     await onRefresh();
     setRefreshLabel('refreshed just now');
@@ -108,10 +310,11 @@ export function AdminConsole({
     <div className="admin-console">
       <aside className="admin-sidebar">
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px 8px' }}>
-          <div className="tv-logo-mark" style={{ width: 24, height: 24, borderRadius: 7, fontSize: 17 }}>t</div>
-          <span style={{ fontFamily: 'var(--font-serif)', fontSize: 20, fontWeight: 600, color: '#F8F3EA' }}>Toova</span>
+          <Logo size={20} inverse />
         </div>
-        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, letterSpacing: '.1em', color: 'rgba(244,238,228,.4)', padding: '6px 10px 14px' }}>ADMIN CONSOLE</div>
+        <MonoMeta size="xs" upper className="kit-mono-meta--inverse" style={{ padding: '6px 10px 14px', display: 'block' }}>
+          Admin console
+        </MonoMeta>
         {NAV.map((n) => (
           <button
             key={n.id}
@@ -123,55 +326,81 @@ export function AdminConsole({
             {n.label}
           </button>
         ))}
-        <div style={{ flex: 1 }} />
-        <button type="button" onClick={onExit} style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '11px 12px', borderRadius: 9, color: 'rgba(244,238,228,.55)', fontSize: 13, cursor: 'pointer', background: 'none', border: 'none', fontFamily: 'inherit', width: '100%' }}>
-          ← Back to app
-        </button>
       </aside>
 
       <div className="admin-main tv-scroll">
         <div className="admin-content">
           <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', marginBottom: 26, flexWrap: 'wrap', gap: 12 }}>
             <div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent)', letterSpacing: '.06em', textTransform: 'uppercase' }}>{tabTitle}</div>
-              <h1 style={{ fontFamily: 'var(--font-serif)', fontWeight: 500, fontSize: 32, letterSpacing: '-.01em', margin: '4px 0 0' }}>{tabTitle}</h1>
+              <MonoMeta size="xs" upper style={{ display: 'block', marginBottom: 8, color: 'var(--accent-text)' }}>
+                {tabTitle}
+              </MonoMeta>
+              <SectionOpener level={4} title={`${tabTitle}.`} />
             </div>
             <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <button type="button" onClick={() => void handleRefresh()} style={{ cursor: 'pointer', border: '1px solid var(--border)', background: '#fff', fontFamily: 'inherit', fontSize: 13, padding: '8px 14px', borderRadius: 8 }}>Refresh</button>
-              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-subtle)' }}>{refreshLabel}</span>
+              <Button size="sm" variant="outline" onClick={() => void handleRefresh()}>
+                Refresh
+              </Button>
+              <MonoMeta size="sm" tone="dense">{refreshLabel}</MonoMeta>
             </div>
           </div>
 
-          {error ? <div className="tv-banner-error" role="alert">{error}</div> : null}
-          {loading ? <p style={{ color: 'var(--text-subtle)' }}>Loading admin data…</p> : null}
+          {error ? <Banner tone="error">{error}</Banner> : null}
+          {loading ? <Spinner label="Loading admin data…" /> : null}
 
           {tab === 'overview' && !loading ? (
             <>
               <div className="admin-metrics">
                 {metrics.map((m) => (
-                  <div key={m.label} className="admin-metric-card">
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 8 }}>{m.label}</div>
-                    <div style={{ fontFamily: 'var(--font-serif)', fontSize: 32, fontWeight: 500, letterSpacing: '-.01em' }}>{m.value}</div>
-                    <div style={{ fontSize: 12, color: 'var(--accent)', marginTop: 6 }}>{m.delta}</div>
+                  <div key={m.label} style={posterPanelStyle()}>
+                    <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 8 }}>
+                      {m.label}
+                    </MonoMeta>
+                    <DisplayHeading level={5} as="div">{m.value}</DisplayHeading>
+                    <MonoMeta size="xs" style={{ display: 'block', marginTop: 6, color: 'var(--accent-text)' }}>
+                      {m.delta}
+                    </MonoMeta>
                   </div>
                 ))}
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 18 }}>
-                <div className="admin-card">
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 4 }}>Conversion jobs · last 24h</div>
-                  <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginBottom: 18 }}>Image → 3D pipeline throughput</div>
-                  <p style={{ fontSize: 14, color: 'var(--text-muted)', fontStyle: 'italic' }}>No conversion jobs tracked yet — pipeline status is not persisted in the database.</p>
+                <div style={posterPanelStyle()}>
+                  <SectionOpener level={5} title="Conversion jobs." note="Last 24h" style={{ marginBottom: 12 }} />
+                  <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 18 }}>
+                    Image → 3D / import pipeline throughput
+                  </MonoMeta>
+                  {jobsLast24h.length === 0 ? (
+                    <MonoMeta size="sm" tone="dense" style={{ fontStyle: 'italic' }}>
+                      No conversion jobs in the last 24 hours.
+                    </MonoMeta>
+                  ) : (
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+                      {JOB_STATUS_ORDER.map((status) => {
+                        const count = jobsLast24h.filter((j) => j.status === status).length;
+                        return (
+                          <div key={status}>
+                            <MonoMeta size="xs" tone="dense" style={{ display: 'block', marginBottom: 4, textTransform: 'capitalize' }}>
+                              {status}
+                            </MonoMeta>
+                            <DisplayHeading level={5} as="div">{count}</DisplayHeading>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <div className="admin-card">
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 16 }}>Most placed pieces</div>
+                <div style={posterPanelStyle()}>
+                  <SectionOpener level={5} title="Most placed pieces." style={{ marginBottom: 16 }} />
                   {topPlaced.map((t) => (
                     <div key={t.kind} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
                       <span style={swatch(t.kind)} />
-                      <span style={{ flex: 1, fontSize: 14 }}>{t.name}</span>
+                      <span style={{ flex: 1, font: 'var(--type-ui-sm)' }}>{t.name}</span>
                       <div style={{ width: 90, height: 7, borderRadius: 99, background: '#E8DECB', overflow: 'hidden' }}>
                         <div style={{ height: '100%', width: `${t.pct}%`, background: 'var(--accent)' }} />
                       </div>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', width: 26, textAlign: 'right' }}>{t.placements}</span>
+                      <MonoMeta size="sm" tone="dense" style={{ width: 26, textAlign: 'right' }}>
+                        {t.placements}
+                      </MonoMeta>
                     </div>
                   ))}
                 </div>
@@ -180,150 +409,264 @@ export function AdminConsole({
           ) : null}
 
           {tab === 'users' && !loading ? (
-            <div className="admin-table-wrap">
-              <div className="admin-table-row admin-table-head" style={{ gridTemplateColumns: '2fr 1fr .8fr .8fr 1fr' }}>
-                <div>Account</div><div>Plan</div><div>Rooms</div><div>Placements</div><div>Last active</div>
-              </div>
-              {users.map((u) => (
-                <div key={u.user_id} className="admin-table-row" style={{ gridTemplateColumns: '2fr 1fr .8fr .8fr 1fr' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
+            users.length === 0 ? (
+              <EmptyState title="No users with rooms yet." />
+            ) : (
+              <RuledTable
+                sortKey={userSortKey}
+                sortDir={userSortDir}
+                onSort={(key) => {
+                  const next = toggleSort(userSortKey, userSortDir, key as UserSortKey);
+                  setUserSortKey(next.key);
+                  setUserSortDir(next.dir);
+                }}
+                columns={[
+                  { label: 'Account', sortKey: 'account', align: 'left' },
+                  { label: 'Plan', sortKey: 'plan', align: 'left' },
+                  { label: 'Rooms', sortKey: 'rooms', align: 'right' },
+                  { label: 'Placements', sortKey: 'placements', align: 'right' },
+                  { label: 'Last active', sortKey: 'active', align: 'right' },
+                ]}
+                rows={sortedUsers.map((u) => {
+                  const initials = (u.display_name ?? u.handle ?? u.user_id)
+                    .trim()
+                    .split(/\s+/)
+                    .filter(Boolean)
+                    .slice(0, 2)
+                    .map((p) => p[0]?.toUpperCase() ?? '')
+                    .join('') || '?';
+                  return [
+                  <div key={`${u.user_id}-acct`} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
                     <div style={{ width: 32, height: 32, borderRadius: 99, background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
-                      {u.user_id.slice(0, 2).toUpperCase()}
+                      {initials}
                     </div>
                     <div>
-                      <div style={{ fontWeight: 600 }} title={u.user_id}>{shortenId(u.user_id)}</div>
-                      <div style={{ fontSize: 12, color: 'var(--text-subtle)' }}>—</div>
+                      <div style={{ font: 'var(--type-ui-sm)', fontWeight: 600 }}>
+                        {u.display_name ?? 'Unnamed'}
+                      </div>
+                      <MonoMeta size="xs" tone="dense" title={u.user_id}>
+                        {u.handle ? `@${u.handle}` : 'no handle'}
+                        {' · '}
+                        {shortenId(u.user_id)}
+                      </MonoMeta>
                     </div>
-                  </div>
-                  <div><span style={{ fontSize: 12, background: 'var(--accent-bg)', color: 'var(--accent)', padding: '3px 9px', borderRadius: 99, fontWeight: 600 }}>Free</span></div>
-                  <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-dark)' }}>{u.room_count}</div>
-                  <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-dark)' }}>{u.total_item_placements}</div>
-                  <div style={{ color: 'var(--text-muted)' }}>—</div>
-                </div>
-              ))}
-              {users.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-subtle)' }}>No users with rooms yet.</div> : null}
-            </div>
+                  </div>,
+                  <Badge key={`${u.user_id}-plan`} tone="accent">Free</Badge>,
+                  <MonoMeta key={`${u.user_id}-rooms`} size="sm">{String(u.room_count)}</MonoMeta>,
+                  <MonoMeta key={`${u.user_id}-placements`} size="sm">{String(u.total_item_placements)}</MonoMeta>,
+                  <MonoMeta key={`${u.user_id}-active`} size="sm" tone="dense">—</MonoMeta>,
+                ];
+                })}
+              />
+            )
           ) : null}
 
           {tab === 'rooms' && !loading ? (
-            <div className="admin-table-wrap">
-              <div className="admin-table-row admin-table-head" style={{ gridTemplateColumns: '1.6fr 1fr 1.2fr .8fr 1fr' }}>
-                <div>Room</div><div>Owner</div><div>Type</div><div>Items</div><div>Updated</div>
-              </div>
-              {rooms.map((r) => (
-                <div key={r.room_id} className="admin-table-row" style={{ gridTemplateColumns: '1.6fr 1fr 1.2fr .8fr 1fr' }}>
-                  <div style={{ fontWeight: 600 }}>{r.room_name}</div>
-                  <div style={{ color: 'var(--text-dark)' }} title={r.owner_user_id}>{shortenId(r.owner_user_id)}</div>
-                  <div><span style={{ fontSize: 12, background: 'var(--accent-bg)', color: 'var(--accent)', padding: '3px 9px', borderRadius: 99, fontWeight: 600 }}>Room</span></div>
-                  <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text-dark)' }}>{r.item_count}</div>
-                  <div style={{ color: 'var(--text-muted)' }}>—</div>
-                </div>
-              ))}
-              {rooms.length === 0 ? <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-subtle)' }}>No rooms yet.</div> : null}
-            </div>
+            rooms.length === 0 ? (
+              <EmptyState title="No rooms yet." />
+            ) : (
+              <RuledTable
+                sortKey={roomSortKey}
+                sortDir={roomSortDir}
+                onSort={(key) => {
+                  const next = toggleSort(roomSortKey, roomSortDir, key as RoomSortKey);
+                  setRoomSortKey(next.key);
+                  setRoomSortDir(next.dir);
+                }}
+                columns={[
+                  { label: 'Room', sortKey: 'room', align: 'left' },
+                  { label: 'Owner', sortKey: 'owner', align: 'left' },
+                  { label: 'Type', sortKey: 'type', align: 'left' },
+                  { label: 'Items', sortKey: 'items', align: 'right' },
+                  { label: 'Updated', sortKey: 'updated', align: 'right' },
+                ]}
+                rows={sortedRooms.map((r) => [
+                  <span key={`${r.room_id}-name`} style={{ font: 'var(--type-ui-sm)', fontWeight: 600 }}>{r.room_name}</span>,
+                  <div key={`${r.room_id}-owner`}>
+                    <div style={{ font: 'var(--type-ui-sm)' }}>
+                      {r.owner_display_name ?? 'Unnamed'}
+                    </div>
+                    <MonoMeta size="xs" tone="dense" title={r.owner_user_id}>
+                      {r.owner_handle ? `@${r.owner_handle}` : shortenId(r.owner_user_id)}
+                    </MonoMeta>
+                  </div>,
+                  <Badge key={`${r.room_id}-type`} tone="accent">Room</Badge>,
+                  <MonoMeta key={`${r.room_id}-items`} size="sm">{String(r.item_count)}</MonoMeta>,
+                  <MonoMeta key={`${r.room_id}-updated`} size="sm" tone="dense">
+                    {r.updated_at ? formatRelativeTime(r.updated_at) : '—'}
+                  </MonoMeta>,
+                ])}
+              />
+            )
           ) : null}
 
           {tab === 'jobs' && !loading ? (
             <>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14, marginBottom: 22 }}>
-                {['Queued', 'Processing', 'Completed', 'Failed'].map((label) => (
-                  <div key={label} className="admin-metric-card">
-                    <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6 }}>{label}</div>
-                    <div style={{ fontFamily: 'var(--font-serif)', fontSize: 28, fontWeight: 500 }}>0</div>
+                {JOB_STATUS_ORDER.map((status) => (
+                  <div key={status} style={posterPanelStyle()}>
+                    <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 6, textTransform: 'capitalize' }}>
+                      {status}
+                    </MonoMeta>
+                    <DisplayHeading level={5} as="div">{jobStatusCounts[status]}</DisplayHeading>
                   </div>
                 ))}
               </div>
-              <div className="admin-card" style={{ textAlign: 'center', padding: 48 }}>
-                <div style={{ fontFamily: 'var(--font-serif)', fontSize: 20, marginBottom: 8 }}>No conversion jobs tracked yet</div>
-                <p style={{ fontSize: 14, color: 'var(--text-muted)', maxWidth: 480, margin: '0 auto' }}>
-                  Image → 3D generation runs on demand but job status is not persisted. This section will populate when a jobs table is added.
-                </p>
-              </div>
+              {sortedJobs.length === 0 ? (
+                <EmptyState
+                  title="No conversion jobs yet."
+                  body="Imports and image → 3D generations will appear here once users run them."
+                />
+              ) : (
+                <RuledTable
+                  sortKey={jobSortKey}
+                  sortDir={jobSortDir}
+                  onSort={(key) => {
+                    const next = toggleSort(jobSortKey, jobSortDir, key as JobSortKey);
+                    setJobSortKey(next.key);
+                    setJobSortDir(next.dir);
+                  }}
+                  columns={[
+                    { label: 'Job', sortKey: 'job', align: 'left' },
+                    { label: 'Owner', sortKey: 'owner', align: 'left' },
+                    { label: 'Source', sortKey: 'source', align: 'left' },
+                    { label: 'Status', sortKey: 'status', align: 'left' },
+                    { label: 'Created', sortKey: 'created', align: 'right' },
+                  ]}
+                  rows={sortedJobs.map((j) => [
+                    <div key={`${j.id}-job`}>
+                      <div style={{ font: 'var(--type-ui-sm)', fontWeight: 600 }}>
+                        {j.label ?? j.kind ?? 'Untitled job'}
+                      </div>
+                      {j.error ? (
+                        <MonoMeta size="xs" tone="dense" title={j.error} style={{ color: 'var(--danger, #B33)' }}>
+                          {j.error.length > 72 ? `${j.error.slice(0, 71)}…` : j.error}
+                        </MonoMeta>
+                      ) : j.kind ? (
+                        <MonoMeta size="xs" tone="dense">{j.kind}</MonoMeta>
+                      ) : null}
+                    </div>,
+                    <div key={`${j.id}-owner`}>
+                      <div style={{ font: 'var(--type-ui-sm)' }}>
+                        {j.display_name ?? 'Unnamed'}
+                      </div>
+                      <MonoMeta size="xs" tone="dense" title={j.user_id}>
+                        {j.handle ? `@${j.handle}` : shortenId(j.user_id)}
+                      </MonoMeta>
+                    </div>,
+                    <MonoMeta key={`${j.id}-source`} size="sm">{sourceLabel(j.source)}</MonoMeta>,
+                    <Badge key={`${j.id}-status`} tone={jobStatusBadgeTone(j.status)}>
+                      {j.status}
+                    </Badge>,
+                    <MonoMeta key={`${j.id}-created`} size="sm" tone="dense">
+                      {j.created_at ? formatRelativeTime(j.created_at) : '—'}
+                    </MonoMeta>,
+                  ])}
+                />
+              )}
             </>
           ) : null}
 
           {tab === 'usage' && !loading ? (
             <>
-              <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginBottom: 16, maxWidth: 680 }}>
+              <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 16, maxWidth: 680 }}>
                 Every model stores its label, kind, tags and description alongside live usage.
-                <b> Distinct rooms</b> = unique saved rooms containing the kind.
-                <b> Placements</b> = every row in room_items.
-              </div>
+                Distinct rooms = unique saved rooms containing the kind.
+                Placements = every row in room_items.
+              </MonoMeta>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18, marginBottom: 18 }}>
-                <div className="admin-card">
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 2 }}>Suggested bundles <span style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500 }}>· review only</span></div>
-                  <div style={{ fontSize: 13, color: 'var(--text-subtle)', marginBottom: 14 }}>Kinds that often appear together (≥ 2 rooms).</div>
-                  {bundles.map((b) => (
-                    <div key={`${b.kind_a}-${b.kind_b}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0', borderBottom: '1px solid #EFE7D8' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14 }}>
-                        <span style={swatch(b.kind_a)} />{b.label_a} <span style={{ color: '#C9BBA0' }}>+</span> <span style={swatch(b.kind_b)} />{b.label_b}
-                      </div>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', background: 'var(--bg)', padding: '3px 9px', borderRadius: 99 }}>{b.room_cooccurrence_count} rooms</span>
-                    </div>
-                  ))}
-                  {bundles.length === 0 ? <p style={{ fontSize: 13, color: 'var(--text-subtle)' }}>No qualifying pairs yet.</p> : null}
+                <div style={posterPanelStyle()}>
+                  <SectionOpener level={5} title="Suggested bundles." note="Review only" style={{ marginBottom: 4 }} />
+                  <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 14 }}>
+                    Kinds that often appear together (≥ 2 rooms).
+                  </MonoMeta>
+                  {bundles.length === 0 ? (
+                    <MonoMeta size="sm" tone="dense">No qualifying pairs yet.</MonoMeta>
+                  ) : (
+                    <RuledTable
+                      columns={[{ label: 'Pair' }, { label: 'Rooms', align: 'right' }]}
+                      rows={bundles.map((b) => [
+                        <div key={`${b.kind_a}-${b.kind_b}`} style={{ display: 'flex', alignItems: 'center', gap: 8, font: 'var(--type-ui-sm)' }}>
+                          <span style={swatch(b.kind_a)} />{b.label_a}{' '}
+                          <span style={{ color: '#C9BBA0' }}>+</span>{' '}
+                          <span style={swatch(b.kind_b)} />{b.label_b}
+                        </div>,
+                        <Badge key={`${b.kind_a}-${b.kind_b}-count`} tone="neutral">{b.room_cooccurrence_count} rooms</Badge>,
+                      ])}
+                    />
+                  )}
                 </div>
 
-                <div className="admin-card">
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 14 }}>Items &amp; rooms</div>
+                <div style={posterPanelStyle()}>
+                  <SectionOpener level={5} title="Items and rooms." style={{ marginBottom: 14 }} />
                   {itemsRanked.map((i) => (
-                    <div key={i.kind} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid #EFE7D8' }}>
+                    <div key={i.kind} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 0', borderBottom: '1px solid var(--rule-soft)' }}>
                       <span style={swatch(i.kind)} />
-                      <span style={{ flex: 1, fontSize: 14 }}>{i.name}</span>
+                      <span style={{ flex: 1, font: 'var(--type-ui-sm)' }}>{i.name}</span>
                       <div style={{ width: 74, height: 7, borderRadius: 99, background: '#E8DECB', overflow: 'hidden' }}>
                         <div style={{ height: '100%', width: `${i.pct}%`, background: 'var(--accent)' }} />
                       </div>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--text-muted)', width: 62, textAlign: 'right' }}>{i.distinct}r · {i.placements}p</span>
+                      <MonoMeta size="sm" tone="dense" style={{ width: 62, textAlign: 'right' }}>
+                        {i.distinct}r · {i.placements}p
+                      </MonoMeta>
                     </div>
                   ))}
                 </div>
 
-                <div className="admin-card">
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 14 }}>Most liked</div>
+                <div style={posterPanelStyle()}>
+                  <SectionOpener level={5} title="Most liked." style={{ marginBottom: 14 }} />
                   {mostLiked.map((m) => (
-                    <div key={m.kind} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', fontSize: 14 }}>
+                    <div key={m.kind} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', font: 'var(--type-ui-sm)' }}>
                       <span style={swatch(m.kind)} /><span style={{ flex: 1 }}>{m.label}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', color: '#6E7A56', fontSize: 13 }}>♥ {m.likes_count}</span>
+                      <MonoMeta size="sm" style={{ color: 'var(--accent-text)' }}>♥ {m.likes_count}</MonoMeta>
                     </div>
                   ))}
                 </div>
 
-                <div className="admin-card">
-                  <div style={{ fontSize: 15, fontWeight: 600, marginBottom: 14 }}>Least liked</div>
+                <div style={posterPanelStyle()}>
+                  <SectionOpener level={5} title="Least liked." style={{ marginBottom: 14 }} />
                   {leastLiked.map((m) => (
-                    <div key={m.kind} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', fontSize: 14 }}>
+                    <div key={m.kind} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 0', font: 'var(--type-ui-sm)' }}>
                       <span style={swatch(m.kind)} /><span style={{ flex: 1 }}>{m.label}</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--danger)', fontSize: 13 }}>♥ {m.likes_count}</span>
+                      <Badge tone="danger">♥ {m.likes_count}</Badge>
                     </div>
                   ))}
                 </div>
               </div>
 
+              <SectionOpener level={5} title="Catalog inventory." style={{ marginBottom: 16 }} />
               <div className="admin-catalog-grid">
                 {stats.map((c) => (
-                  <div key={c.kind} className="admin-catalog-card">
+                  <div key={c.kind} style={{ ...posterPanelStyle(), display: 'flex', flexDirection: 'column' }}>
                     <div style={{ display: 'flex', gap: 12, marginBottom: 12 }}>
                       <div style={{ ...swatch(c.kind), width: 48, height: 48, borderRadius: 10 }} />
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, lineHeight: 1.2 }}>{c.label}</div>
-                        <span style={{ fontSize: 11, fontWeight: 600, background: 'var(--accent-bg)', color: 'var(--accent)', padding: '2px 9px', borderRadius: 99 }}>{c.kind}</span>
+                        <div style={{ font: 'var(--type-ui-sm)', fontWeight: 700, lineHeight: 1.2, marginBottom: 6 }}>{c.label}</div>
+                        <Badge tone="accent">{c.kind}</Badge>
                       </div>
                     </div>
                     {c.tags.length > 0 ? (
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
                         {c.tags.map((t) => (
-                          <span key={t} style={{ fontSize: 11, color: 'var(--text-muted)', background: '#EDE5D8', padding: '3px 8px', borderRadius: 6 }}>{t}</span>
+                          <Badge key={t} tone="neutral">{t}</Badge>
                         ))}
                       </div>
                     ) : null}
-                    <div style={{ fontSize: 13, lineHeight: 1.5, color: '#6B6357', marginBottom: 14, flex: 1 }}>{c.description || '—'}</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, borderTop: '1px solid #E8DECB', paddingTop: 12 }}>
-                      <div title="Distinct rooms"><div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500 }}>{c.distinct_room_count}</div><div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>rooms</div></div>
-                      <div title="Placements"><div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500 }}>{c.in_room_count}</div><div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>placed</div></div>
-                      <div title="Likes"><div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500, color: '#6E7A56' }}>{c.likes_count}</div><div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>likes</div></div>
-                      <div title="Downloads"><div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500 }}>{c.downloads_count}</div><div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>dl</div></div>
-                      <div title="Views"><div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 500 }}>{c.views_count}</div><div style={{ fontSize: 10, color: 'var(--text-subtle)' }}>views</div></div>
+                    <div style={{ font: 'var(--type-body-sm)', lineHeight: 1.5, color: 'var(--ink-4)', marginBottom: 14, flex: 1 }}>{c.description || '—'}</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6, borderTop: '1px solid var(--rule-soft)', paddingTop: 12 }}>
+                      {[
+                        { label: 'rooms', value: c.distinct_room_count },
+                        { label: 'placed', value: c.in_room_count },
+                        { label: 'likes', value: c.likes_count, accent: true },
+                        { label: 'dl', value: c.downloads_count },
+                        { label: 'views', value: c.views_count },
+                      ].map((stat) => (
+                        <div key={stat.label} title={stat.label}>
+                          <MonoMeta size="sm" style={stat.accent ? { color: 'var(--accent-text)' } : undefined}>{String(stat.value)}</MonoMeta>
+                          <MonoMeta size="xs" tone="dense" upper style={{ display: 'block' }}>{stat.label}</MonoMeta>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}

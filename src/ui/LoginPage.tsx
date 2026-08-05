@@ -1,6 +1,18 @@
 import { type FormEvent, useState } from 'react';
 import { supabase } from '../lib/supabase';
-import { IntroBackButton } from './IntroBackButton';
+import {
+  Banner,
+  Button,
+  DisplayEm,
+  DisplayHeading,
+  Eyebrow,
+  Field,
+  Input,
+  Logo,
+  MonoMeta,
+  StatRow,
+  Tabs,
+} from './kit';
 
 type Mode = 'signin' | 'signup';
 
@@ -125,68 +137,95 @@ export function LoginPage({ onBack }: LoginPageProps) {
   }
 
   return (
-    <div className="onboarding-page login-page">
-      <IntroBackButton onBack={onBack} />
-      <header className="onboarding-header">
-        <img src={`${import.meta.env.BASE_URL}toova-logo-cropped.png`} alt="Toova" className="onboarding-logo-img" />
-      </header>
-      <main className="onboarding-main">
-        <div className="onboarding-card onboarding-login-heading">
-          <div className="onboarding-tabs">
-            <button
-              type="button"
-              className={`onboarding-tab${mode === 'signin' ? ' active' : ''}`}
-              onClick={() => { setMode('signin'); setError(null); setInfo(null); }}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              className={`onboarding-tab${mode === 'signup' ? ' active' : ''}`}
-              onClick={() => { setMode('signup'); setError(null); setInfo(null); }}
-            >
-              Create account
-            </button>
+    <div className="auth-page">
+      <div className="toova-paper" aria-hidden />
+
+      <div className="auth-poster">
+        <Logo size={21} onClick={onBack} />
+        <div style={{ marginTop: 'auto' }}>
+          <Eyebrow level="page" style={{ marginBottom: 32 }}>
+            Toova — a room planner
+          </Eyebrow>
+          <DisplayHeading level={3}>
+            Own it
+            <br />
+            before you
+            <br />
+            <DisplayEm>buy</DisplayEm> it.
+          </DisplayHeading>
+          <div style={{ marginTop: 44, paddingTop: 22, borderTop: '1px solid var(--rule-heavy)' }}>
+            <StatRow items={['Photo → 3D in 32.4s', '18 categories', 'Free for five rooms']} />
           </div>
-
-          {info ? <div className="onboarding-info-banner" role="status">{info}</div> : null}
-          {error ? <div className="onboarding-error-banner" role="alert">{error}</div> : null}
-
-          <form onSubmit={(e) => void handleSubmit(e)} className="onboarding-form" noValidate>
-            <label className="onboarding-label" htmlFor="lp-email">Email</label>
-            <input
-              id="lp-email"
-              className="onboarding-input"
-              type="email"
-              autoComplete="email"
-              required
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-            />
-
-            <label className="onboarding-label" htmlFor="lp-password">Password</label>
-            <input
-              id="lp-password"
-              className="onboarding-input"
-              type="password"
-              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-              required
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
-            />
-
-            <button
-              type="submit"
-              className="onboarding-btn onboarding-btn-primary"
-              disabled={loading}
-            >
-              {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
-            </button>
-          </form>
         </div>
-      </main>
+      </div>
+
+      <div className="auth-form-side">
+        <div className="auth-form-wrap">
+          <Tabs
+            active={mode}
+            onChange={(id) => {
+              setMode(id as Mode);
+              setError(null);
+              setInfo(null);
+            }}
+            style={{ marginBottom: 32 }}
+            tabs={[
+              { id: 'signin', label: 'Sign in' },
+              { id: 'signup', label: 'Create account' },
+            ]}
+          />
+
+          {info ? <Banner tone="info" style={{ marginBottom: 22 }}>{info}</Banner> : null}
+          {error ? <Banner tone="error" style={{ marginBottom: 22 }}>{error}</Banner> : null}
+
+          <form onSubmit={(e) => void handleSubmit(e)} noValidate>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
+              <Field label="Email">
+                <Input
+                  id="lp-email"
+                  type="email"
+                  autoComplete="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@example.com"
+                />
+              </Field>
+              <Field
+                label="Password"
+                hint={mode === 'signup' ? 'At least 6 characters.' : undefined}
+              >
+                <Input
+                  id="lp-password"
+                  type="password"
+                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder={mode === 'signup' ? 'At least 6 characters' : '••••••••'}
+                />
+              </Field>
+              <Button size="md" full type="submit" disabled={loading}>
+                {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+              </Button>
+              <div className="auth-form-footer">
+                <Button variant="mono" type="button">
+                  Forgot password →
+                </Button>
+                <MonoMeta size="sm" tone="subtle" upper>
+                  No card to start
+                </MonoMeta>
+              </div>
+            </div>
+          </form>
+
+          {onBack ? (
+            <div className="auth-back-row">
+              <button type="button" onClick={onBack}>
+                ← Back to home
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
     </div>
   );
 }

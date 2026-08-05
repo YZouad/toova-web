@@ -1,3 +1,4 @@
+/** @deprecated unused by App routing — pending delete */
 import { IntroBackButton } from './IntroBackButton';
 
 export type AppMode = 'ar' | '3d';

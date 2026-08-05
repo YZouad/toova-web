@@ -1,2 +1,2 @@
-/** @deprecated Prefer importing LookDrawer directly. */
+/** @deprecated unused by App routing — pending delete */
 export { LookDrawer as RoomLookPanel, LookDrawer } from './LookDrawer';

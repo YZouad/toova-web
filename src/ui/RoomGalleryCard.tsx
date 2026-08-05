@@ -1,4 +1,5 @@
 import type { GalleryRoom } from '../hooks/useGalleryRooms';
+import { Plate, PlateCard } from './kit';
 import { RoomPreview } from './RoomPreview';
 
 interface RoomGalleryCardProps {
@@ -17,36 +18,54 @@ export function RoomGalleryCard({ room, isOwner, onOpen }: RoomGalleryCardProps)
   const creator = room.creatorHandle
     ? `@${room.creatorHandle}`
     : room.creatorDisplayName ?? 'Creator';
+  const pieces = room.previewItems?.length ?? 0;
+  const meta = `${pieces} piece${pieces === 1 ? '' : 's'} · ${formatCount(room.likesCount)} likes`;
+  const filename = `${room.name.split(' ')[0]?.toLowerCase() ?? 'room'}.jpg`;
+
+  if (room.thumbnailUrl) {
+    return (
+      <PlateCard
+        name={room.name}
+        author={creator}
+        meta={meta}
+        height={240}
+        filename={filename}
+        src={room.thumbnailUrl}
+        onClick={() => onOpen(room)}
+      />
+    );
+  }
 
   return (
-    <article className="room-gallery-card">
-      <button
-        type="button"
-        className="room-gallery-card-main"
-        onClick={() => onOpen(room)}
-      >
-        <div className="room-gallery-card-preview">
-          {room.thumbnailUrl ? (
-            <img src={room.thumbnailUrl} alt="" className="room-gallery-card-thumb" />
-          ) : (
-            <RoomPreview geometry={room.roomGeometry} items={room.previewItems} />
-          )}
-          {isOwner && room.visibility ? (
-            <span className={`model-card-vis model-card-vis--${room.visibility}`}>
-              {room.visibility}
-            </span>
-          ) : null}
+    <div
+      className="kit-plate-card kit-plate-card--interactive"
+      onClick={() => onOpen(room)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onOpen(room);
+        }
+      }}
+    >
+      <Plate height={240} topCaption={filename}>
+        <div className="app-ledger-plate-preview">
+          <RoomPreview geometry={room.roomGeometry} items={room.previewItems} />
         </div>
-        <div className="room-gallery-card-body">
-          <div className="room-gallery-card-title">{room.name}</div>
-          <div className="room-gallery-card-creator">{creator}</div>
-          <div className="room-gallery-card-stats" aria-label="Engagement">
-            <span title="Likes">♥ {formatCount(room.likesCount)}</span>
-            <span title="Views">👁 {formatCount(room.viewsCount)}</span>
-            <span title="Clones">⧉ {formatCount(room.forkCount)}</span>
-          </div>
+        {isOwner && room.visibility ? (
+          <span className={`gallery-vis-badge gallery-vis-badge--${room.visibility}`}>
+            {room.visibility}
+          </span>
+        ) : null}
+      </Plate>
+      <div className="kit-plate-card__caption">
+        <div>
+          <div className="kit-plate-card__name">{room.name}</div>
+          <div className="kit-plate-card__author">{creator}</div>
         </div>
-      </button>
-    </article>
+        <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense">{meta}</span>
+      </div>
+    </div>
   );
 }

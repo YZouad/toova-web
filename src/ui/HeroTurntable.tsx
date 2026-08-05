@@ -1,49 +1,78 @@
-import { Canvas } from '@react-three/fiber';
-import { OrbitControls } from '@react-three/drei';
-import { useRef } from 'react';
-import * as THREE from 'three';
+import { Suspense, useEffect, useState } from 'react';
+import { loadPublicRoomLayout } from '../hooks/useRoomLayout';
+import { MARKETING_SHOWCASE } from '../lib/marketingShowcase';
+import { useStore } from '../store';
+import { Scene } from '../scene/Scene';
+import { MonoMeta, Spinner } from './kit';
 
-function RotatingChair() {
-  const group = useRef<THREE.Group>(null);
-  return (
-    <group ref={group} position={[0, -16, 0]}>
-      <mesh position={[0, 14, 0]} castShadow>
-        <boxGeometry args={[28, 4, 24]} />
-        <meshStandardMaterial color="#CBB28F" />
-      </mesh>
-      <mesh position={[0, 28, -8]} castShadow>
-        <boxGeometry args={[28, 24, 4]} />
-        <meshStandardMaterial color="#B05A3C" />
-      </mesh>
-      <mesh position={[-10, 6, 0]} castShadow>
-        <boxGeometry args={[4, 12, 20]} />
-        <meshStandardMaterial color="#A98A60" />
-      </mesh>
-      <mesh position={[10, 6, 0]} castShadow>
-        <boxGeometry args={[4, 12, 20]} />
-        <meshStandardMaterial color="#A98A60" />
-      </mesh>
-      <mesh position={[0, 2, 0]} castShadow>
-        <boxGeometry args={[24, 4, 20]} />
-        <meshStandardMaterial color="#8a6b4a" />
-      </mesh>
-    </group>
-  );
-}
-
+/**
+ * Landing hero: live read-only render of a public room (Woodlawn).
+ * Hydrates the global store while mounted; resets on unmount.
+ */
 export function HeroTurntable() {
+  const hydrateLayout = useStore((s) => s.hydrateLayout);
+  const hydrateRoomSettings = useStore((s) => s.hydrateRoomSettings);
+  const resetLayout = useStore((s) => s.resetLayout);
+  const [ready, setReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReady(false);
+    setError(null);
+    resetLayout();
+
+    void (async () => {
+      try {
+        const data = await loadPublicRoomLayout(
+          MARKETING_SHOWCASE.room.handle,
+          MARKETING_SHOWCASE.room.roomId,
+        );
+        if (cancelled) return;
+        hydrateLayout(data.items, data.order);
+        hydrateRoomSettings(data.environment, data.roomGeometry);
+        setReady(true);
+      } catch (e) {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : 'Could not load room');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      resetLayout();
+    };
+  }, [hydrateLayout, hydrateRoomSettings, resetLayout]);
+
+  if (error) {
+    return (
+      <div className="landing-live-fallback">
+        <MonoMeta size="sm" tone="dense">
+          Live room unavailable
+        </MonoMeta>
+      </div>
+    );
+  }
+
+  if (!ready) {
+    return (
+      <div className="landing-live-fallback">
+        <Spinner label="Loading live room…" />
+      </div>
+    );
+  }
+
   return (
-    <Canvas
-      className="landing-hero-canvas"
-      camera={{ position: [60, 40, 80], fov: 35 }}
-      gl={{ antialias: true, alpha: true }}
-      style={{ background: 'transparent' }}
+    <Suspense
+      fallback={
+        <div className="landing-live-fallback">
+          <Spinner label="Loading live room…" />
+        </div>
+      }
     >
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[40, 60, 30]} intensity={1.2} />
-      <pointLight position={[-30, 20, -20]} intensity={0.4} color="#B05A3C" />
-      <RotatingChair />
-      <OrbitControls target={[0, 6, 0]} enablePan={false} enableZoom={false} autoRotate autoRotateSpeed={1.4} enableDamping />
-    </Canvas>
+      <div className="landing-hero-scene">
+        <Scene readOnly autoRotate />
+      </div>
+    </Suspense>
   );
 }

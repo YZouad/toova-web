@@ -1,3 +1,4 @@
+/** @deprecated unused by App routing — pending delete */
 interface WelcomePageProps {
   onGetStarted: () => void;
 }

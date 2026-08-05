@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
 import { GlassSurface } from './GlassSurface';
+import { Button } from './kit/Button';
+import { MonoMeta } from './kit/MonoMeta';
 
 interface UnsavedLeaveModalProps {
   open: boolean;
@@ -53,20 +55,17 @@ export function UnsavedLeaveModal({
           style={{ maxWidth: 400, width: '100%' }}
         >
           <div className="unsaved-leave-inner">
-            <p className="unsaved-leave-eyebrow">Unsaved changes</p>
+            <MonoMeta size="xs" tone="dense" upper className="unsaved-leave-eyebrow">
+              Unsaved changes
+            </MonoMeta>
             <h2 className="unsaved-leave-title">Leave without saving?</h2>
             <p className="unsaved-leave-hint">
               This room has edits that have not been saved. Leave and discard them, or save before you go.
             </p>
             <div className="unsaved-leave-actions">
-              <button
-                type="button"
-                className="tv-btn-primary"
-                disabled={saving}
-                onClick={onSaveAndLeave}
-              >
+              <Button size="sm" disabled={saving} onClick={onSaveAndLeave}>
                 {saving ? 'Saving…' : 'Save and leave'}
-              </button>
+              </Button>
               <button
                 type="button"
                 className="unsaved-leave-discard"

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useGalleryCatalog, type GalleryModel } from '../hooks/useGalleryCatalog';
 import { getBuiltinPreviewUrl, useBuiltinPreviews } from '../hooks/useBuiltinPreviews';
 import type { GallerySort, GallerySource } from '../lib/galleryCatalog';
+import { Banner, Button, EmptyState, MonoMeta, Spinner } from './kit';
 import { GalleryFilters } from './GalleryFilters';
 import { ModelCard } from './ModelCard';
 import { ModelDetailModal } from './ModelDetailModal';
@@ -13,6 +14,10 @@ interface ModelGalleryProps {
   query: string;
   showMine?: boolean;
   dense?: boolean;
+  /** Embed search in the filters row (designer panel). */
+  showSearch?: boolean;
+  /** When true, parent owns sort/category (gallery page header). */
+  hideSortAndCategory?: boolean;
   currentUserId?: string | null;
   placeLabel?: string;
   recentRail?: ReactNode;
@@ -32,6 +37,8 @@ export function ModelGallery({
   query,
   showMine,
   dense,
+  showSearch = false,
+  hideSortAndCategory = true,
   currentUserId,
   placeLabel,
   recentRail,
@@ -84,6 +91,8 @@ export function ModelGallery({
         query={query}
         showMine={showMine}
         dense={dense}
+        showSearch={showSearch}
+        hideSortAndCategory={hideSortAndCategory}
         onSourceChange={onSourceChange}
         onSortChange={(s) => onSortChange(s as GallerySort)}
         onCategoryChange={onCategoryChange}
@@ -91,27 +100,30 @@ export function ModelGallery({
       />
 
       {headerActions}
-
       {recentRail}
 
-      <div className="model-gallery-status">
+      <MonoMeta size="sm" tone="dense" style={{ display: 'block', margin: '12px 0' }}>
         {loading ? 'Loading…' : `${total} model${total === 1 ? '' : 's'}`}
-      </div>
+      </MonoMeta>
 
-      {error ? (
-        <div className="tv-banner-error" role="alert">
-          {error}
-        </div>
+      {error ? <Banner tone="error">{error}</Banner> : null}
+
+      {loading && models.length === 0 ? (
+        <Spinner label="Loading models…" style={{ padding: '32px 0' }} />
       ) : null}
 
       {!loading && models.length === 0 ? (
-        <div className="model-gallery-empty">
-          {source === 'mine'
-            ? 'You haven’t created any models yet. Upload one to get started.'
-            : 'No models match these filters.'}
-        </div>
+        <EmptyState
+          label="No models"
+          title={
+            source === 'mine'
+              ? 'You haven’t created any models yet.'
+              : 'No models match these filters.'
+          }
+          body={source === 'mine' ? 'Upload one to get started.' : undefined}
+        />
       ) : (
-        <div className={`model-gallery-grid${dense ? ' model-gallery-grid--dense' : ''}`}>
+        <div className={`gallery-plate-grid${dense ? ' gallery-plate-grid--models' : ''}`}>
           {models.map((m) => (
             <ModelCard
               key={m.kind}
@@ -135,15 +147,15 @@ export function ModelGallery({
       )}
 
       {hasMore ? (
-        <div className="model-gallery-more">
-          <button
-            type="button"
-            className="shared-btn-secondary"
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
+          <Button
+            size="sm"
+            variant="outline"
             disabled={loadingMore}
             onClick={() => void loadMore()}
           >
             {loadingMore ? 'Loading…' : 'Load more'}
-          </button>
+          </Button>
         </div>
       ) : null}
 

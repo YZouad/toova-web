@@ -3,10 +3,11 @@ import { useRoomWorkspace } from '../context/RoomWorkspaceContext';
 import { useAuth } from '../hooks/useAuth';
 import { useRoomSave } from '../hooks/useRoomLayout';
 import { useUserCatalog } from '../hooks/useUserCatalog';
-import { recordCatalogDownload } from '../lib/catalogEngagement';
+import { recordCatalogDownload, shouldRecordCatalogDownload } from '../lib/catalogEngagement';
 import { useStore } from '../store';
 import { FURNITURE } from '../furniture/registry';
 import { ImportModelModal } from './ImportModelModal';
+import { Button } from './kit/Button';
 
 export function Sidebar() {
   const { user, logout } = useAuth();
@@ -66,11 +67,7 @@ export function Sidebar() {
                   size: [entry.width_in, entry.height_in, entry.depth_in],
                   catalogSizeIn: [entry.width_in, entry.height_in, entry.depth_in],
                 });
-                if (
-                  entry.visibility === 'public' &&
-                  entry.userId &&
-                  entry.userId !== user?.id
-                ) {
+                if (shouldRecordCatalogDownload(entry, user?.id)) {
                   void recordCatalogDownload(entry.kind).catch(() => {
                     /* best-effort metric */
                   });
@@ -83,14 +80,9 @@ export function Sidebar() {
         </div>
       )}
 
-      <button
-        className="import-btn"
-        type="button"
-        onClick={() => setImportModalOpen(true)}
-        disabled={!user?.id}
-      >
-        Import Model
-      </button>
+      <Button size="sm" variant="outline" full type="button" onClick={() => setImportModalOpen(true)} disabled={!user?.id}>
+        Import model
+      </Button>
 
       {user?.id ? (
         <ImportModelModal
@@ -103,14 +95,9 @@ export function Sidebar() {
 
       <footer className="sidebar-footer">
         <div className="sidebar-room" title="Active room">{workspace?.name ?? ''}</div>
-        <button
-          type="button"
-          className="sidebar-save"
-          disabled={saving || !workspace}
-          onClick={() => void save()}
-        >
+        <Button size="sm" disabled={saving || !workspace} onClick={() => void save()}>
           {saving ? 'Saving…' : 'Save room'}
-        </button>
+        </Button>
         {saveError ? (
           <div className="sidebar-save-error" role="alert">
             {saveError}

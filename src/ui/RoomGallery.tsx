@@ -1,12 +1,14 @@
 import { useGalleryRooms, type GalleryRoom } from '../hooks/useGalleryRooms';
 import type { RoomGallerySortParam } from '../lib/galleryCatalog';
 import { navigate, publicRoomPath } from '../hooks/useRoute';
+import { Banner, Button, EmptyState, MonoMeta, Spinner } from './kit';
 import { GalleryFilters } from './GalleryFilters';
 import { RoomGalleryCard } from './RoomGalleryCard';
 
 interface RoomGalleryProps {
   sort: RoomGallerySortParam;
   query: string;
+  hideFilters?: boolean;
   onSortChange: (sort: RoomGallerySortParam) => void;
   onQueryChange: (query: string) => void;
 }
@@ -14,6 +16,7 @@ interface RoomGalleryProps {
 export function RoomGallery({
   sort,
   query,
+  hideFilters,
   onSortChange,
   onQueryChange,
 }: RoomGalleryProps) {
@@ -39,36 +42,41 @@ export function RoomGallery({
 
   return (
     <div className="room-gallery">
-      <GalleryFilters
-        entity="rooms"
-        source="community"
-        sort={sort}
-        category={null}
-        query={query}
-        onSourceChange={() => {
-          /* rooms are always community */
-        }}
-        onSortChange={(s) => onSortChange(s as RoomGallerySortParam)}
-        onCategoryChange={() => {
-          /* rooms have no categories */
-        }}
-        onQueryChange={onQueryChange}
-      />
+      {hideFilters ? null : (
+        <GalleryFilters
+          entity="rooms"
+          source="community"
+          sort={sort}
+          category={null}
+          query={query}
+          onSourceChange={() => {
+            /* rooms are always community */
+          }}
+          onSortChange={(s) => onSortChange(s as RoomGallerySortParam)}
+          onCategoryChange={() => {
+            /* rooms have no categories */
+          }}
+          onQueryChange={onQueryChange}
+        />
+      )}
 
-      <div className="model-gallery-status">
+      <MonoMeta size="sm" tone="dense" style={{ display: 'block', margin: '12px 0' }}>
         {loading ? 'Loading…' : `${total} room${total === 1 ? '' : 's'}`}
-      </div>
+      </MonoMeta>
 
-      {error ? (
-        <div className="tv-banner-error" role="alert">
-          {error}
-        </div>
+      {error ? <Banner tone="error">{error}</Banner> : null}
+
+      {loading && rooms.length === 0 ? (
+        <Spinner label="Loading rooms…" style={{ padding: '32px 0' }} />
       ) : null}
 
       {!loading && rooms.length === 0 ? (
-        <div className="model-gallery-empty">No public rooms match these filters.</div>
+        <EmptyState
+          label="No rooms"
+          title="No public rooms match these filters."
+        />
       ) : (
-        <div className="room-gallery-grid">
+        <div className="gallery-shelf-grid">
           {rooms.map((room) => (
             <RoomGalleryCard key={room.id} room={room} onOpen={openRoom} />
           ))}
@@ -76,15 +84,15 @@ export function RoomGallery({
       )}
 
       {hasMore ? (
-        <div className="model-gallery-more">
-          <button
-            type="button"
-            className="shared-btn-secondary"
+        <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
+          <Button
+            size="sm"
+            variant="outline"
             disabled={loadingMore}
             onClick={() => void loadMore()}
           >
             {loadingMore ? 'Loading…' : 'Load more'}
-          </button>
+          </Button>
         </div>
       ) : null}
     </div>

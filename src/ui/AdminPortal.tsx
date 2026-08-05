@@ -1,3 +1,4 @@
+/** @deprecated unused by App routing — pending delete */
 import { useMemo, useState } from 'react';
 import {
   SUMMARY_LIMIT,
