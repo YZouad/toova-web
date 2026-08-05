@@ -32,8 +32,10 @@ import { framingForPreset } from '../lib/presentationCameras';
 
 const SCENE_BG = '#E4DAC8';
 
+/** Fraction of ambient that IBL carries vs hemisphere. */
 const IBL_AMBIENT_FRACTION = 0.4;
-const IBL_INTENSITY_SCALE = 0.22;
+/** Scales scene.environmentIntensity — raised so PBR imports respond to IBL. */
+const IBL_INTENSITY_SCALE = 0.48;
 
 export interface CaptureOptions {
   width?: number;
@@ -220,8 +222,14 @@ function ImageBasedLighting() {
       scene.environmentIntensity = 0;
       return;
     }
-    scene.environmentIntensity = ambient * exposure * IBL_INTENSITY_SCALE * 0.55;
+    scene.environmentIntensity = ambient * exposure * IBL_INTENSITY_SCALE * 0.85;
   }, [scene, ambient, exposure, q.ibl]);
+
+  useEffect(() => {
+    if (!q.ibl) return;
+    // Rotate the static RoomEnvironment so reflections roughly track room orientation.
+    scene.environmentRotation?.set(0, THREE.MathUtils.degToRad(orientationDeg), 0);
+  }, [scene, orientationDeg, q.ibl]);
 
   return null;
 }
@@ -388,7 +396,7 @@ function CaptureBridge({
   apiRef: MutableRefObject<CaptureApi | null>;
   controlsRef: RefObject<OrbitControlsType | null>;
 }) {
-  const { gl, scene, camera, size } = useThree();
+  const { gl, scene, camera, size, invalidate } = useThree();
   const geom = useStore((s) => s.roomGeometry);
 
   const applyPreset = useCallback(
@@ -429,11 +437,14 @@ function CaptureBridge({
       if (opts.presentation !== false) useStore.getState().setCaptureMode(true);
       if (opts.cameraPreset) applyPreset(opts.cameraPreset);
 
-      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
-
       gl.setPixelRatio(1);
       gl.setSize(width, height, false);
-      gl.render(scene, camera);
+
+      // Let R3F + EffectComposer render (avoid raw gl.render which skips post FX).
+      for (let i = 0; i < 3; i += 1) {
+        invalidate();
+        await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      }
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         gl.domElement.toBlob(
@@ -446,6 +457,7 @@ function CaptureBridge({
       gl.setPixelRatio(prevPR);
       gl.setSize(prevSize.w, prevSize.h, false);
       useStore.getState().setCaptureMode(false);
+      invalidate();
 
       if (ctrl && prevCam) {
         ctrl.object.position.copy(prevCam.pos);
@@ -460,7 +472,7 @@ function CaptureBridge({
 
       return blob;
     },
-    [gl, scene, camera, size, controlsRef, applyPreset],
+    [gl, scene, camera, size, controlsRef, applyPreset, invalidate],
   );
 
   useEffect(() => {

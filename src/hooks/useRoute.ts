@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 
 export type AppRoute =
   | { name: 'home' }
+  | { name: 'gallery' }
   | { name: 'shared'; token: string }
   | { name: 'profile'; handle: string }
   | { name: 'publicRoom'; handle: string; roomId: string };
@@ -10,9 +11,14 @@ const SHARE_PATH_RE = /^\/r\/([A-Za-z0-9_-]{16,32})\/?$/;
 const PROFILE_PATH_RE = /^\/u\/([a-z0-9_]{3,30})\/?$/i;
 const PUBLIC_ROOM_PATH_RE =
   /^\/u\/([a-z0-9_]{3,30})\/r\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
+const GALLERY_PATH_RE = /^\/gallery\/?$/i;
 
 export function parsePathname(pathname: string): AppRoute {
   const path = pathname.replace(/\/+$/, '') || '/';
+
+  if (GALLERY_PATH_RE.test(path) || path === '/gallery') {
+    return { name: 'gallery' };
+  }
 
   const room = path.match(PUBLIC_ROOM_PATH_RE);
   if (room?.[1] && room[2]) {
@@ -44,6 +50,10 @@ export function profilePath(handle: string): string {
 
 export function publicRoomPath(handle: string, roomId: string): string {
   return `/u/${handle.toLowerCase()}/r/${roomId}`;
+}
+
+export function galleryPath(search = ''): string {
+  return `/gallery${search.startsWith('?') || search === '' ? search : `?${search}`}`;
 }
 
 export function navigate(path: string, replace = false): void {

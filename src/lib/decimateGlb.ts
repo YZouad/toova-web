@@ -16,6 +16,10 @@ export type DecimateGlbResult = {
 /** Skip browser decimation above this size (large AI models can OOM in Three.js). */
 export const SKIP_DECIMATION_BYTES = 10 * 1024 * 1024;
 
+/**
+ * Trellis output (`generated.glb`) and huge uploads skip SimplifyModifier.
+ * `generated.glb` still goes through `prepareImportedGlb` for normals + lit materials.
+ */
 export function shouldSkipDecimation(file: File): boolean {
   if (file.name.toLowerCase() === 'generated.glb') return true;
   return file.size > SKIP_DECIMATION_BYTES;

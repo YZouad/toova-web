@@ -143,6 +143,7 @@ interface StoreState {
   setAppearance: (patch: Partial<RoomAppearance>) => void;
   setAppearanceFull: (appearance: RoomAppearance) => void;
   setVisualQuality: (q: RenderQualityTier) => void;
+  setRelightImports: (on: boolean) => void;
   setCameraPreset: (p: CameraPresetId) => void;
   setCutaway: (m: CutawayMode) => void;
   setCaptureMode: (on: boolean) => void;
@@ -254,6 +255,12 @@ export const useStore = create<StoreState>((set) => ({
   setVisualQuality: (q) =>
     set((s) => {
       const visual = { ...s.visual, quality: q };
+      saveVisualSettings(visual);
+      return { visual };
+    }),
+  setRelightImports: (on) =>
+    set((s) => {
+      const visual = { ...s.visual, relightImports: on };
       saveVisualSettings(visual);
       return { visual };
     }),

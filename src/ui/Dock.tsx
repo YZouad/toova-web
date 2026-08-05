@@ -1,6 +1,6 @@
 import { useCallback, useRef, type MouseEvent } from 'react';
 
-export type DockNav = 'home' | 'rooms' | 'admin' | 'ar';
+export type DockNav = 'home' | 'rooms' | 'gallery' | 'admin' | 'ar';
 
 interface DockProps {
   active: DockNav | null;
@@ -12,6 +12,7 @@ interface DockProps {
 const ITEMS: { id: DockNav; label: string; glyph: string; bg: string; color: string }[] = [
   { id: 'home', label: 'Home', glyph: '⌂', bg: 'var(--accent-bg)', color: 'var(--accent)' },
   { id: 'rooms', label: 'Rooms', glyph: '▦', bg: '#EDE5D8', color: 'var(--text-dark)' },
+  { id: 'gallery', label: 'Gallery', glyph: '◫', bg: '#EDE5D8', color: 'var(--text-dark)' },
   { id: 'ar', label: 'AR', glyph: '◈', bg: '#EDE5D8', color: 'var(--text-dark)' },
 ];
 

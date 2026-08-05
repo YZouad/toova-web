@@ -5,17 +5,21 @@ import {
   uploadProfileAvatar,
 } from '../lib/profileStorage';
 import {
+  fetchProfileCatalogModels,
   fetchProfilePage,
   isValidHandle,
   profilePath,
   publicRoomPath,
   signAvatarPath,
   updateOwnProfile,
+  type ProfileCatalogModel,
   type ProfilePagePayload,
   type ProfileRoomCard,
 } from '../lib/profiles';
 import { formatRelativeTime } from '../lib/userDisplay';
-import { navigate } from '../hooks/useRoute';
+import { navigate, galleryPath } from '../hooks/useRoute';
+import { catalogCategoryLabel } from '../lib/catalogCategories';
+import { signBrowsableModelPath } from '../lib/modelStorage';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
 import { UserAvatar } from './UserAvatar';
 
@@ -56,6 +60,8 @@ export function ProfilePage({
   const [payload, setPayload] = useState<ProfilePagePayload | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [models, setModels] = useState<ProfileCatalogModel[]>([]);
+  const [modelThumbs, setModelThumbs] = useState<Record<string, string>>({});
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -89,6 +95,20 @@ export function ProfilePage({
         setEditPublic(data.profile.is_public);
         const signed = await signAvatarPath(data.profile.avatar_path);
         if (!cancelled) setAvatarUrl(signed);
+
+        const catalog = await fetchProfileCatalogModels(handle);
+        if (!cancelled && catalog) {
+          setModels(catalog.models);
+          const thumbs: Record<string, string> = {};
+          await Promise.all(
+            catalog.models.map(async (m) => {
+              if (!m.thumbnail_path) return;
+              const url = await signBrowsableModelPath(m.thumbnail_path);
+              if (url) thumbs[m.kind] = url;
+            }),
+          );
+          if (!cancelled) setModelThumbs(thumbs);
+        }
       } catch (e) {
         if (!cancelled) {
           setPayload(null);
@@ -349,7 +369,9 @@ export function ProfilePage({
                     <div className="dashboard-room-body">
                       <div className="profile-room-title">{room.name}</div>
                       <div className="profile-room-sub">
-                        {room.fork_count > 0 ? `${room.fork_count} copies · ` : null}
+                        ♥ {Number(room.likes_count ?? 0)} · 👁 {Number(room.views_count ?? 0)} · ⧉{' '}
+                        {room.fork_count} copies
+                        {' · '}
                         {formatRelativeTime(room.updated_at)}
                       </div>
                       {attr ? <div className="room-attribution">{attr}</div> : null}
@@ -372,6 +394,58 @@ export function ProfilePage({
                   </div>
                 );
               })}
+            </div>
+          )}
+        </section>
+
+        <section className="profile-rooms">
+          <h2 className="profile-rooms-title">
+            {isOwner ? 'Your models' : 'Published models'}
+          </h2>
+          {models.length === 0 ? (
+            <div className="profile-empty">
+              {isOwner
+                ? 'No models yet. Create one from the gallery or designer.'
+                : 'No published models yet.'}
+            </div>
+          ) : (
+            <div className="profile-models-grid">
+              {models.map((m) => (
+                <button
+                  key={m.kind}
+                  type="button"
+                  className="profile-model-card"
+                  onClick={() => navigate(galleryPath('?source=community'))}
+                >
+                  <div className="profile-model-thumb">
+                    {modelThumbs[m.kind] ? (
+                      <img src={modelThumbs[m.kind]} alt="" />
+                    ) : (
+                      <span>◆</span>
+                    )}
+                    {isOwner ? (
+                      <span className={`profile-vis-badge profile-vis-badge--${m.visibility}`}>
+                        {m.visibility}
+                      </span>
+                    ) : null}
+                  </div>
+                  <div className="profile-model-body">
+                    <div className="profile-room-title">{m.label}</div>
+                    <div className="profile-room-sub">
+                      ♥ {m.likes_count} · ↓ {m.downloads_count} · 👁 {m.views_count}
+                    </div>
+                    {m.categories?.length ? (
+                      <div className="model-card-cats">
+                        {m.categories.slice(0, 3).map((c) => (
+                          <span key={c} className="model-card-cat">
+                            {catalogCategoryLabel(c)}
+                          </span>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </button>
+              ))}
             </div>
           )}
         </section>

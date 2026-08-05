@@ -52,6 +52,10 @@ export interface PublicRoomLoadResult extends RoomLoadResult {
   roomName: string;
   allowCopy: boolean;
   forkCount: number;
+  likesCount: number;
+  viewsCount: number;
+  likedByMe: boolean;
+  ownerId: string | null;
   attribution: PublicAttribution | null;
   owner: {
     handle: string;
@@ -221,6 +225,10 @@ export async function loadPublicRoomLayout(
     roomName: payload.room.name,
     allowCopy: payload.allow_copy,
     forkCount: Number(payload.room.fork_count ?? 0),
+    likesCount: Number(payload.room.likes_count ?? 0),
+    viewsCount: Number(payload.room.views_count ?? 0),
+    likedByMe: Boolean(payload.room.liked_by_me),
+    ownerId: payload.owner.id ?? null,
     attribution: payload.attribution ?? null,
     owner: {
       handle: payload.owner.handle,

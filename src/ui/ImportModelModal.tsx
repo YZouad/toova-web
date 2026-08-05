@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { buildAndUploadCatalogThumbnail } from '../lib/buildCatalogThumbnail';
 import { createPosterGlb } from '../lib/createPosterGlb';
 import { decimateGlb, shouldSkipDecimation } from '../lib/decimateGlb';
+import { prepareImportedGlb } from '../lib/prepareImportedGlb';
 import { formatInchDim, readGlbAxisBounds } from '../lib/glbBounds';
 import type { InchSize } from '../lib/importedItemSize';
 import { DEFAULT_IMPORTED_MAX_SIDE, maxInchSide } from '../lib/importedItemSize';
@@ -9,6 +10,13 @@ import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { MODEL_FILES_BUCKET } from '../lib/modelStorage';
 import { supabase } from '../lib/supabase';
 import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../lib/trellisApi';
+import { validateCatalogText } from '../lib/bannedWords';
+import {
+  CATALOG_CATEGORY_DEFS,
+  MAX_CATALOG_CATEGORIES,
+  toggleCatalogCategory,
+  type CatalogCategorySlug,
+} from '../lib/catalogCategories';
 import { PosterImageCrop } from './PosterImageCrop';
 
 type ModalTab = 'upload' | 'generate' | 'poster';
@@ -69,7 +77,7 @@ export function ImportModelModal({
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [tagsRaw, setTagsRaw] = useState('');
+  const [categories, setCategories] = useState<CatalogCategorySlug[]>([]);
   const [widthIn, setWidthIn] = useState('24');
   const [heightIn, setHeightIn] = useState('24');
   const [depthIn, setDepthIn] = useState('24');
@@ -169,10 +177,32 @@ export function ImportModelModal({
     };
 
     if (shouldSkipDecimation(file)) {
-      const warning =
-        file.name.toLowerCase() === 'generated.glb'
-          ? null
-          : 'Optimization skipped for large model — using original file.';
+      const isGenerated = file.name.toLowerCase() === 'generated.glb';
+      if (isGenerated) {
+        void prepareImportedGlb(file)
+          .then(async (prepared) => {
+            await finishWithUploadFile(
+              prepared,
+              { originalTriangles: 0, finalTriangles: 0, skipped: true },
+              null,
+            );
+          })
+          .catch((err) => {
+            if (cancelled) return;
+            const message =
+              err instanceof Error ? err.message : 'Lighting prep failed.';
+            void finishWithUploadFile(
+              file,
+              { originalTriangles: 0, finalTriangles: 0, skipped: true },
+              `Lighting prep skipped — using original model. (${message})`,
+            );
+          });
+        return () => {
+          cancelled = true;
+        };
+      }
+
+      const warning = 'Optimization skipped for large model — using original file.';
       void finishWithUploadFile(
         file,
         { originalTriangles: 0, finalTriangles: 0, skipped: true },
@@ -217,7 +247,7 @@ export function ImportModelModal({
     setImageFile(null);
     setTitle('');
     setDescription('');
-    setTagsRaw('');
+    setCategories([]);
     setWidthIn('24');
     setHeightIn('24');
     setDepthIn('24');
@@ -382,6 +412,20 @@ export function ImportModelModal({
       return;
     }
 
+    if (categories.length < 1) {
+      setFormError('Pick at least one category (up to three).');
+      return;
+    }
+
+    const banned = validateCatalogText({
+      label,
+      description: description.trim() || null,
+    });
+    if (banned) {
+      setFormError(banned);
+      return;
+    }
+
     const w = Number(widthIn);
     const h = Number(heightIn);
     const d = Number(depthIn);
@@ -400,13 +444,8 @@ export function ImportModelModal({
       clearance = c;
     }
 
-    let tags = tagsRaw
-      .split(',')
-      .map((t) => t.trim())
-      .filter(Boolean);
-    if (file.name.toLowerCase() === 'poster.glb' && !tags.some((t) => t.toLowerCase() === 'poster')) {
-      tags = [...tags, 'poster'];
-    }
+    const tags =
+      file.name.toLowerCase() === 'poster.glb' ? ['poster'] : [];
 
     const ext = uploadFile.name.toLowerCase().endsWith('.gltf') ? 'gltf' : 'glb';
     const objectPath = `${userId}/${crypto.randomUUID()}.${ext}`;
@@ -448,6 +487,7 @@ export function ImportModelModal({
         model_url: objectPath,
         thumbnail_path: thumbnailPath,
         tags,
+        categories,
         user_id: userId,
         visibility: listInGallery ? 'public' : 'private',
       });
@@ -733,7 +773,8 @@ export function ImportModelModal({
 
             {decimationInfo?.skipped && file?.name.toLowerCase() === 'generated.glb' ? (
               <p className="import-modal-decimate-skip">
-                AI-generated models skip browser polygon reduction. You can add to the library as-is.
+                AI model prepared for room lighting (materials normalized, normals repaired). Polygon
+                reduction is skipped — you can add it to the library as-is.
               </p>
             ) : null}
 
@@ -811,17 +852,33 @@ export function ImportModelModal({
               />
             </label>
 
-            <label className="import-modal-field">
-              <span>Tags (comma-separated)</span>
-              <input
-                type="text"
-                value={tagsRaw}
-                onChange={(e) => setTagsRaw(e.target.value)}
-                placeholder="storage, bedroom, modern"
-                disabled={submitting || decimating}
-                autoComplete="off"
-              />
-            </label>
+            <div className="import-modal-field">
+              <span>
+                Categories ({categories.length}/{MAX_CATALOG_CATEGORIES})
+              </span>
+              <div className="import-category-chips" role="group" aria-label="Categories">
+                {CATALOG_CATEGORY_DEFS.map((c) => {
+                  const active = categories.includes(c.slug);
+                  const disabledChip =
+                    submitting ||
+                    decimating ||
+                    (!active && categories.length >= MAX_CATALOG_CATEGORIES);
+                  return (
+                    <button
+                      key={c.slug}
+                      type="button"
+                      className={`gallery-chip${active ? ' is-active' : ''}`}
+                      disabled={disabledChip}
+                      onClick={() =>
+                        setCategories((prev) => toggleCatalogCategory(prev, c.slug))
+                      }
+                    >
+                      {c.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
 
             <label className="import-modal-field import-modal-check">
               <span>

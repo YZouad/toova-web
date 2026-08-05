@@ -3,7 +3,7 @@ import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
 import { createRoomWithGeometry, useRoomLoad } from './hooks/useRoomLayout';
-import { navigate, publicRoomPath, sharePath, useRoute } from './hooks/useRoute';
+import { navigate, publicRoomPath, sharePath, galleryPath, useRoute } from './hooks/useRoute';
 import { supabase } from './lib/supabase';
 import { useStore, DEFAULT_ENVIRONMENT } from './store';
 import type { FloorPlan } from './lib/floorPlanGeometry';
@@ -20,9 +20,13 @@ import { ContactPage } from './ui/ContactPage';
 import { SharedRoomPage } from './ui/SharedRoomPage';
 import { ProfilePage } from './ui/ProfilePage';
 import { PublicRoomPage } from './ui/PublicRoomPage';
+import { GalleryPage } from './ui/GalleryPage';
 import { Dock, type DockNav } from './ui/Dock';
+import type { GalleryModel } from './hooks/useGalleryCatalog';
+import { recordCatalogDownload } from './lib/catalogEngagement';
+import type { FurnitureKind } from './furniture/registry';
 
-type Screen = 'landing' | 'pitch-madness' | 'contact' | 'auth' | 'dashboard' | 'floor-plan' | 'designer' | 'admin' | 'ar' | 'checklist';
+type Screen = 'landing' | 'pitch-madness' | 'contact' | 'auth' | 'dashboard' | 'floor-plan' | 'designer' | 'admin' | 'ar' | 'checklist' | 'gallery';
 
 interface FloorPlanDraft {
   name: string;
@@ -120,13 +124,18 @@ export default function App() {
   const [floorPlanBusy, setFloorPlanBusy] = useState(false);
   const [pendingShareToken, setPendingShareToken] = useState<string | null>(null);
   const [pendingPublicRoom, setPendingPublicRoom] = useState<{ handle: string; roomId: string } | null>(null);
+  const [pendingGalleryModel, setPendingGalleryModel] = useState<GalleryModel | null>(null);
+  const addItem = useStore((s) => s.addItem);
   const resetLayout = useStore((s) => s.resetLayout);
   const hydrateLayout = useStore((s) => s.hydrateLayout);
   const hydrateRoomSettings = useStore((s) => s.hydrateRoomSettings);
   const { load, loading: layoutLoading } = useRoomLoad();
 
   const routeIsPublic =
-    route.name === 'shared' || route.name === 'profile' || route.name === 'publicRoom';
+    route.name === 'shared' ||
+    route.name === 'profile' ||
+    route.name === 'publicRoom' ||
+    route.name === 'gallery';
 
   const {
     isAdmin,
@@ -166,12 +175,15 @@ export default function App() {
         setPendingPublicRoom(null);
         navigate(publicRoomPath(pending.handle, pending.roomId), true);
         setScreen('landing');
+      } else if (pendingGalleryModel) {
+        navigate('/');
+        setScreen('dashboard');
       } else {
         setScreen('dashboard');
         if (routeIsPublic) navigate('/', true);
       }
     }
-  }, [user, resetLayout, screen, routeIsPublic, pendingShareToken, pendingPublicRoom]);
+  }, [user, resetLayout, screen, routeIsPublic, pendingShareToken, pendingPublicRoom, pendingGalleryModel]);
 
   useEffect(() => {
     if (screen === 'admin' && !adminStatsLoading && !isAdmin) {
@@ -185,6 +197,36 @@ export default function App() {
     setScreen('dashboard');
   }, [resetLayout]);
 
+  const placePendingGalleryModel = useCallback(
+    (model: GalleryModel) => {
+      if (model.isBuiltin) {
+        addItem(model.kind as FurnitureKind);
+      } else if (model.signedUrl) {
+        const dims: [number, number, number] = [
+          model.width_in,
+          model.height_in,
+          model.depth_in,
+        ];
+        addItem('imported', {
+          url: model.signedUrl ?? undefined,
+          storagePath: model.storagePath || undefined,
+          label: model.label,
+          size: dims,
+          catalogSizeIn: dims,
+        });
+        if (
+          model.visibility === 'public' &&
+          model.userId &&
+          model.userId !== user?.id
+        ) {
+          void recordCatalogDownload(model.kind).catch(() => {});
+        }
+      }
+      setPendingGalleryModel(null);
+    },
+    [addItem, user?.id],
+  );
+
   const handlePickExisting = useCallback(
     async (room: { id: string; name: string; isOwner?: boolean }) => {
       resetLayout();
@@ -194,11 +236,21 @@ export default function App() {
       setWorkspace({ id: room.id, name: room.name, isOwner: room.isOwner !== false });
       setScreen('designer');
       const path = window.location.pathname;
-      if (path.startsWith('/r/') || path.startsWith('/u/')) {
+      if (path.startsWith('/r/') || path.startsWith('/u/') || path.startsWith('/gallery')) {
         navigate('/', true);
       }
+      if (pendingGalleryModel) {
+        placePendingGalleryModel(pendingGalleryModel);
+      }
     },
-    [hydrateLayout, hydrateRoomSettings, load, resetLayout],
+    [
+      hydrateLayout,
+      hydrateRoomSettings,
+      load,
+      resetLayout,
+      pendingGalleryModel,
+      placePendingGalleryModel,
+    ],
   );
 
   const handleStartFloorPlan = useCallback((name: string) => {
@@ -259,17 +311,26 @@ export default function App() {
     screen === 'dashboard' ? 'rooms'
     : screen === 'admin' ? 'admin'
     : screen === 'ar' ? 'ar'
+    : screen === 'gallery' || route.name === 'gallery' ? 'gallery'
     : screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' ? 'home'
     : null;
 
-  const showDock = user && (screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' || screen === 'dashboard' || screen === 'admin' || screen === 'ar');
+  const showDock = user && (screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' || screen === 'dashboard' || screen === 'admin' || screen === 'ar' || screen === 'gallery' || route.name === 'gallery');
 
   function handleDockNav(nav: DockNav) {
     if (nav === 'home') {
+      navigate('/');
       setScreen('landing');
       return;
     }
-    if (nav === 'rooms') setScreen('dashboard');
+    if (nav === 'rooms') {
+      navigate('/');
+      setScreen('dashboard');
+    }
+    if (nav === 'gallery') {
+      navigate(galleryPath());
+      setScreen('gallery');
+    }
     if (nav === 'admin' && isAdmin) setScreen('admin');
     if (nav === 'ar') setScreen('ar');
   }
@@ -372,6 +433,33 @@ export default function App() {
           setScreen(user ? 'dashboard' : 'landing');
         }}
       />
+    );
+  }
+
+  if (route.name === 'gallery' || screen === 'gallery') {
+    return (
+      <>
+        <GalleryPage
+          loggedIn={!!user}
+          onGoHome={() => {
+            navigate('/');
+            setScreen(user ? 'dashboard' : 'landing');
+          }}
+          onRequestAuth={(mode) => {
+            setAuthMode(mode);
+            setScreen('auth');
+          }}
+          onUseInRoom={(model) => {
+            setPendingGalleryModel(model);
+            if (!user) return;
+            navigate('/');
+            setScreen('dashboard');
+          }}
+        />
+        {showDock ? (
+          <Dock active={dockActive} showAdmin={isAdmin} onNavigate={handleDockNav} onLogout={() => { void logout(); setScreen('landing'); }} />
+        ) : null}
+      </>
     );
   }
 

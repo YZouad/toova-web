@@ -29,6 +29,10 @@ export interface ProfileRoomCard {
   visibility: 'private' | 'unlisted' | 'public';
   updated_at: string;
   fork_count: number;
+  likes_count?: number;
+  views_count?: number;
+  published_at?: string | null;
+  thumbnail_path?: string | null;
   forked_from: string | null;
   attribution: PublicAttribution | null;
   room_geometry: unknown;
@@ -52,6 +56,46 @@ export interface ProfilePagePayload {
   rooms: ProfileRoomCard[];
 }
 
+export interface ProfileCatalogModel {
+  kind: string;
+  label: string;
+  description: string | null;
+  categories: string[];
+  tags: string[];
+  width_in: number;
+  height_in: number;
+  depth_in: number;
+  thumbnail_path: string | null;
+  model_url: string | null;
+  visibility: 'private' | 'unlisted' | 'public';
+  likes_count: number;
+  downloads_count: number;
+  views_count: number;
+  created_at: string;
+}
+
+export async function fetchProfileCatalogModels(
+  handle: string,
+): Promise<{ is_owner: boolean; models: ProfileCatalogModel[] } | null> {
+  const { data, error } = await supabase.rpc('get_profile_catalog_models', {
+    p_handle: handle,
+  });
+  if (error) {
+    // Migration may not be applied yet.
+    console.warn(error.message);
+    return { is_owner: false, models: [] };
+  }
+  if (!data || typeof data !== 'object') return null;
+  const payload = data as {
+    is_owner?: boolean;
+    models?: ProfileCatalogModel[];
+  };
+  return {
+    is_owner: Boolean(payload.is_owner),
+    models: Array.isArray(payload.models) ? payload.models : [],
+  };
+}
+
 export interface PublicRoomPayload {
   room: {
     id: string;
@@ -61,6 +105,10 @@ export interface PublicRoomPayload {
     fork_count: number;
     forked_from: string | null;
     thumbnail_path?: string | null;
+    likes_count?: number;
+    views_count?: number;
+    published_at?: string | null;
+    liked_by_me?: boolean;
   };
   items: unknown[];
   catalog_dims: Record<string, [number, number, number] | number[]>;
@@ -69,6 +117,7 @@ export interface PublicRoomPayload {
     handle: string;
     display_name: string;
     avatar_path: string | null;
+    id?: string | null;
   };
   attribution: PublicAttribution | null;
   allow_copy: boolean;
@@ -99,6 +148,9 @@ function profileErrorMessage(err: unknown, fallback: string): string {
     if (msg.toLowerCase().includes('invalid handle')) return 'Handles must be 3–30 characters: a–z, 0–9, underscore.';
     if (msg.toLowerCase().includes('invalid display name')) return 'Display name must be 1–60 characters.';
     if (msg.toLowerCase().includes('bio too long')) return 'Bio must be 280 characters or fewer.';
+    if (msg.toLowerCase().includes('profile must be public')) {
+      return 'Make your profile public before publishing a room.';
+    }
     if (msg.toLowerCase().includes('room limit')) return msg;
     if (msg.toLowerCase().includes('room not found')) return 'This room is unavailable.';
     if (msg.toLowerCase().includes('not room owner')) return 'Only the room owner can do that.';
