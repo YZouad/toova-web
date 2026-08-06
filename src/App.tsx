@@ -421,12 +421,22 @@ export default function App() {
     onAdmin: isAdmin ? () => setScreen('admin') : undefined,
   };
 
+  const siteFooterNav = {
+    onContact: () => setScreen('contact'),
+    onPitchMadness: () => {
+      setPitchScrollToDemos(false);
+      setScreen('pitch-madness');
+    },
+  };
+
   // Auth overlay for share-link / public-room CTAs (URL may still be /r/… or /u/…)
   if (screen === 'auth' && !user) {
     if (loading) return <AuthSplash />;
     return (
       <AuthPage
         initialMode={authMode}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
         onBack={() => {
           if (pendingShareToken) {
             navigate(sharePath(pendingShareToken), true);
@@ -495,6 +505,9 @@ export default function App() {
             viewerUserId={user?.id ?? null}
             authLoading={loading}
             onRefreshAuthProfile={refreshProfile}
+            onContact={siteFooterNav.onContact}
+            onPitchMadness={siteFooterNav.onPitchMadness}
+            onAdmin={landingCallbacks.onAdmin}
             onGoHome={() => {
               navigate('/');
               setScreen(user ? 'dashboard' : 'landing');
@@ -557,6 +570,10 @@ export default function App() {
         profileInitials={profileInitials(profile, user.email)}
         onNavigate={handleAppNav}
         onLogout={handleLogout}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
+        feedbackEmail={user.email ?? ''}
+        feedbackUserId={user.id}
         onProfile={
           profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
         }
@@ -587,6 +604,7 @@ export default function App() {
         }}
         onNavigate={handleAppNav}
         onLogout={user ? handleLogout : undefined}
+        {...siteFooterNav}
       />
     );
   }
@@ -604,6 +622,9 @@ export default function App() {
     return (
       <ChecklistPage
         onBack={() => setScreen(backTarget)}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
+        onAdmin={landingCallbacks.onAdmin}
         onDesign={() => {
           if (user) {
             if (workspace) setScreen('designer');
@@ -727,6 +748,7 @@ export default function App() {
         showAdmin={isAdmin}
         onNavigate={handleAppNav}
         onLogout={handleLogout}
+        {...siteFooterNav}
         onUseInRoom={(model) => {
           setPendingGalleryModel(model);
           navigate('/');
@@ -751,6 +773,7 @@ export default function App() {
           onStartFloorPlan={handleStartFloorPlan}
           onNavigate={handleAppNav}
           onLogout={handleLogout}
+          {...siteFooterNav}
         />
         <RoomPresetPicker
           open={!!showPresetPicker}

@@ -10,6 +10,7 @@ import {
   Input,
   Logo,
   MonoMeta,
+  SiteFooter,
   StatRow,
   Tabs,
 } from './kit';
@@ -19,6 +20,8 @@ type Mode = 'signin' | 'signup';
 interface AuthPageProps {
   onBack: () => void;
   initialMode?: Mode;
+  onContact?: () => void;
+  onPitchMadness?: () => void;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -58,7 +61,12 @@ function describeAuthFailure(err: unknown, mode: Mode): string {
   return rawMsg || 'Something went wrong. Please try again.';
 }
 
-export function AuthPage({ onBack, initialMode = 'signin' }: AuthPageProps) {
+export function AuthPage({
+  onBack,
+  initialMode = 'signin',
+  onContact,
+  onPitchMadness,
+}: AuthPageProps) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -98,27 +106,28 @@ export function AuthPage({ onBack, initialMode = 'signin' }: AuthPageProps) {
   }
 
   return (
-    <div className="auth-page">
-      <div className="toova-paper" aria-hidden />
+    <div className="auth-page-wrap toova-page">
+      <div className="auth-page">
+        <div className="toova-paper" aria-hidden />
 
-      <div className="auth-poster">
-        <Logo size={21} onClick={onBack} />
-        <div style={{ marginTop: 'auto' }}>
-          <Eyebrow level="page" style={{ marginBottom: 32 }}>
-            Toova — a room planner
-          </Eyebrow>
-          <DisplayHeading level={3}>
-            Own it
-            <br />
-            before you
-            <br />
-            <DisplayEm>buy</DisplayEm> it.
-          </DisplayHeading>
-          <div style={{ marginTop: 44, paddingTop: 22, borderTop: '1px solid var(--rule-heavy)' }}>
-            <StatRow items={['Photo → 3D in 32.4s', '18 categories', 'Free for five rooms']} />
+        <div className="auth-poster">
+          <Logo size={21} onClick={onBack} />
+          <div style={{ marginTop: 'auto' }}>
+            <Eyebrow level="page" style={{ marginBottom: 32 }}>
+              Toova — a room planner
+            </Eyebrow>
+            <DisplayHeading level={3}>
+              Own it
+              <br />
+              before you
+              <br />
+              <DisplayEm>buy</DisplayEm> it.
+            </DisplayHeading>
+            <div style={{ marginTop: 44, paddingTop: 22, borderTop: '1px solid var(--rule-heavy)' }}>
+              <StatRow items={['Photo → 3D in 32.4s', '18 categories', 'Free for five rooms']} />
+            </div>
           </div>
         </div>
-      </div>
 
       <div className="auth-form-side">
         <div className="auth-form-wrap">
@@ -195,6 +204,9 @@ export function AuthPage({ onBack, initialMode = 'signin' }: AuthPageProps) {
           </div>
         </div>
       </div>
+      </div>
+
+      <SiteFooter onContact={onContact} onPitchMadness={onPitchMadness} />
     </div>
   );
 }

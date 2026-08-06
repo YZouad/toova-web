@@ -201,91 +201,44 @@ export function PublicRoomPage({
   return (
     <div className="shared-page toova-page" style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
       <div className="toova-paper" aria-hidden />
-      <header
-        className="shared-topbar"
-        style={{
-          display: 'grid',
-          gridTemplateColumns: 'auto 1fr auto',
-          gap: 24,
-          alignItems: 'center',
-          padding: '20px var(--page-gutter)',
-          borderBottom: '1px solid var(--rule-heavy)',
-          background: 'var(--bg-raised)',
-          position: 'relative',
-          zIndex: 2,
-        }}
-      >
-        <button
-          type="button"
-          className="shared-brand"
-          onClick={onGoHome}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-            background: 'none',
-            border: 'none',
-            cursor: 'pointer',
-            padding: 0,
-          }}
-        >
-          <Logo size={44} wordmark={false} />
+      <header className="shared-topbar">
+        <button type="button" className="shared-brand" onClick={onGoHome} aria-label="Toova home">
+          <Logo size={32} wordmark={false} />
         </button>
         <div className="shared-topbar-meta">
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
-            <DisplayHeading level={6} as="div">
-              {roomName}
-            </DisplayHeading>
-            <MonoMeta size="sm" tone="dense" upper>
+          <div className="shared-topbar-title-row">
+            <h1 className="shared-room-title">{roomName}</h1>
+            <MonoMeta size="sm" tone="dense" upper className="shared-topbar-badge">
               view only
             </MonoMeta>
           </div>
-          <button
-            type="button"
-            className="shared-room-sub shared-owner-link"
-            onClick={() => navigate(profilePath(ownerHandle))}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 14,
-              marginTop: 8,
-              background: 'none',
-              border: 'none',
-              cursor: 'pointer',
-              padding: 0,
-              font: 'var(--type-ui-sm)',
-              fontWeight: 400,
-              color: 'var(--ink-4)',
-            }}
-          >
-            <UserAvatar name={ownerName} src={avatarUrl} size={22} />
-            <span>by {ownerName}</span>
-          </button>
-          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div className="shared-topbar-subrow">
             <button
               type="button"
-              className={`model-detail-stat-like${likedByMe ? ' is-liked' : ''}`}
-              disabled={likeBusy}
-              onClick={() => void handleLike()}
-              aria-pressed={likedByMe}
-              title={userId ? (likedByMe ? 'Unlike' : 'Like') : 'Sign in to like'}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                cursor: likeBusy ? 'default' : 'pointer',
-                font: 'inherit',
-              }}
+              className="shared-room-sub shared-owner-link"
+              onClick={() => navigate(profilePath(ownerHandle))}
             >
-              {likedByMe ? '♥' : '♡'} {formatCount(likesCount)} likes
+              <UserAvatar name={ownerName} src={avatarUrl} size={20} />
+              <span>by {ownerName}</span>
             </button>
-            <MonoMeta size="sm" tone="dense">
+            <span className="shared-topbar-stats">
+              <button
+                type="button"
+                className={`shared-topbar-likes${likedByMe ? ' is-liked' : ''}`}
+                disabled={likeBusy}
+                onClick={() => void handleLike()}
+                aria-pressed={likedByMe}
+                title={userId ? (likedByMe ? 'Unlike' : 'Like') : 'Sign in to like'}
+              >
+                {likedByMe ? '♥' : '♡'} {formatCount(likesCount)} likes
+              </button>
+              {' · '}
               {formatCount(viewsCount)} views · {formatCount(forkCount)} copies
               {attr ? ` · ${attr}` : ''}
-            </MonoMeta>
+            </span>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        <div className="shared-topbar-actions">
           <Button
             size="sm"
             variant="outline"
@@ -322,7 +275,7 @@ export function PublicRoomPage({
           }}
         >
           <MonoMeta size="sm" style={{ color: 'var(--board-ink)' }}>
-            Drag to orbit · scroll to zoom
+            Drag to orbit · Pinch or scroll to zoom
           </MonoMeta>
         </div>
       </div>

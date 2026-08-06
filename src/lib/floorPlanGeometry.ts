@@ -17,7 +17,8 @@ export const MIN_WINDOW_WIDTH = GRID_SNAP_IN;
 export const EDITOR_CANVAS_WIDTH = ROOM.width;
 export const EDITOR_CANVAS_DEPTH = ROOM.depth;
 export const EDITOR_CANVAS_PAD = 24;
-export const EDITOR_VERTEX_RADIUS = 1.5;
+/** World-inch radius for vertex handles; kept large enough for finger targets after SVG scaling. */
+export const EDITOR_VERTEX_RADIUS = 3.5;
 
 export interface FloorPlanVertex {
   id: string;

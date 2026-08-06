@@ -23,6 +23,8 @@ interface CreationsPageProps {
   onNavigate: (nav: AppShellNavId) => void;
   onLogout: () => void;
   onUseInRoom: (model: GalleryModel) => void;
+  onContact?: () => void;
+  onPitchMadness?: () => void;
 }
 
 export function CreationsPage({
@@ -32,6 +34,8 @@ export function CreationsPage({
   onNavigate,
   onLogout,
   onUseInRoom,
+  onContact,
+  onPitchMadness,
 }: CreationsPageProps) {
   const [sort, setSort] = useState<GallerySort>('newest');
   const [categories, setCategories] = useState<string[]>([]);
@@ -54,6 +58,10 @@ export function CreationsPage({
       profileInitials={profileInitials(profile, user.email)}
       onNavigate={onNavigate}
       onLogout={onLogout}
+      onContact={onContact}
+      onPitchMadness={onPitchMadness}
+      feedbackEmail={user.email ?? ''}
+      feedbackUserId={user.id}
       onProfile={
         profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
       }

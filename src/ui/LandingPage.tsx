@@ -1,4 +1,4 @@
-import { useRef, useState, type RefObject } from 'react';
+import { useRef, useState } from 'react';
 import { useChecklistModal } from '../hooks/useChecklistModal';
 import { ChecklistModal } from './ChecklistModal';
 import { FeedbackModal } from './FeedbackModal';
@@ -96,10 +96,6 @@ export function LandingPage({
   const whyRef = useRef<HTMLDivElement>(null);
   const pricingRef = useRef<HTMLDivElement>(null);
 
-  const scrollTo = (ref: RefObject<HTMLDivElement | null>) => {
-    ref.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   const primaryAction = loggedIn && onGoDashboard ? onGoDashboard : onGetStarted;
   const secondaryAction = loggedIn && onGoDashboard ? onGoDashboard : onLogin;
 
@@ -110,26 +106,22 @@ export function LandingPage({
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} pageSource="landing" />
 
       <MarketingNav
-        brandOnClick={undefined}
-        links={[
-          { label: 'How it works', onClick: () => scrollTo(howRef) },
-          { label: 'Rooms', onClick: () => scrollTo(roomsRef) },
-          { label: 'Why Toova', onClick: () => scrollTo(whyRef) },
-          { label: 'Pricing', onClick: () => scrollTo(pricingRef) },
-          { label: 'Pitch Madness', onClick: onPitchMadness },
-          ...(!loggedIn
-            ? [{ label: 'Log in', onClick: secondaryAction }]
-            : []),
-        ]}
         cta={
-          <Button size="sm" onClick={primaryAction}>
-            {loggedIn ? 'Go to dashboard' : 'Start designing, free'}
-          </Button>
+          <>
+            {!loggedIn ? (
+              <Button size="sm" variant="mono" onClick={secondaryAction}>
+                Log in
+              </Button>
+            ) : null}
+            <Button size="sm" onClick={primaryAction}>
+              {loggedIn ? 'Go to dashboard' : 'Start designing, free'}
+            </Button>
+          </>
         }
       />
 
       {/* Hero */}
-      <div className="toova-frame" style={{ paddingTop: 104 }}>
+      <div className="toova-frame landing-hero-pad">
         <div className="landing-hero-slogan">
           <div className="landing-hero-slogan__copy">
             <Eyebrow level="page" style={{ marginBottom: 40 }}>
@@ -138,7 +130,7 @@ export function LandingPage({
             <DisplayHeading level={1}>
               Own it
               <br />
-              <span style={{ whiteSpace: 'nowrap' }}>before you</span>
+              <span className="landing-hero-nowrap">before you</span>
               <br />
               <DisplayEm>buy</DisplayEm> it.
             </DisplayHeading>
@@ -147,22 +139,11 @@ export function LandingPage({
             <MarketingObjectTurntable />
           </div>
         </div>
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'flex-end',
-            justifyContent: 'space-between',
-            gap: 64,
-            marginTop: 48,
-            paddingBottom: 44,
-            borderBottom: '1px solid var(--rule-heavy)',
-            flexWrap: 'wrap',
-          }}
-        >
+        <div className="landing-hero-lead">
           <p style={{ font: 'var(--type-lead)', color: 'var(--ink-2)', margin: 0, maxWidth: 'var(--measure-lead)' }}>
             Turn a product photo into a 3D model, place it in your real room at real scale, and buy only what fits.
           </p>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 28, flex: 'none', flexWrap: 'wrap' }}>
+          <div className="landing-hero-actions">
             <Button variant="primary" size="lg" onClick={primaryAction}>
               {loggedIn ? 'Go to dashboard' : 'Start designing, free'}
             </Button>
@@ -188,21 +169,13 @@ export function LandingPage({
 
       {/* Hero visual — live turntable kept as the product visual */}
       <div className="toova-frame" style={{ marginTop: 64 }}>
-        <div
-          style={{
-            position: 'relative',
-            height: 520,
-            background: 'var(--bg-plate)',
-            border: '1px solid var(--rule-soft)',
-            overflow: 'hidden',
-          }}
-        >
+        <div className="landing-hero-visual">
           <HeroTurntable />
         </div>
       </div>
 
       {/* What is Toova */}
-      <div className="toova-frame" style={{ paddingTop: 96 }}>
+      <div className="toova-frame landing-section-pad">
         <div className="toova-grid-label-prose">
           <div>
             <Eyebrow style={{ marginBottom: 16 }}>What is Toova</Eyebrow>
@@ -222,7 +195,7 @@ export function LandingPage({
       </div>
 
       {/* Four steps */}
-      <div className="toova-frame" style={{ paddingTop: 104 }} ref={howRef}>
+      <div className="toova-frame landing-section-pad" ref={howRef}>
         <SectionOpener id="how" title="Four steps." note="find  →  3D  →  design  →  buy" />
         <div className="toova-grid-four">
           {STEPS.map((step, i) => (
@@ -240,17 +213,7 @@ export function LandingPage({
       </div>
 
       {/* Dark band */}
-      <div
-        id="why"
-        ref={whyRef}
-        style={{
-          background: 'var(--bg-inverse)',
-          color: 'var(--text-on-inverse)',
-          position: 'relative',
-          overflow: 'hidden',
-          marginTop: 112,
-        }}
-      >
+      <div id="why" ref={whyRef} className="landing-dark-band">
         <div
           aria-hidden
           style={{
@@ -262,28 +225,14 @@ export function LandingPage({
             pointerEvents: 'none',
           }}
         />
-        <div
-          style={{
-            position: 'relative',
-            maxWidth: 'var(--page-max)',
-            margin: '0 auto',
-            padding: '104px var(--page-gutter) 96px',
-          }}
-        >
+        <div className="landing-dark-band__inner">
           <Eyebrow tone="inverse" style={{ marginBottom: 40 }}>
             Why we&apos;re building Toova
           </Eyebrow>
           <DisplayHeading level={3} inverse style={{ marginBottom: 56, maxWidth: 1000 }}>
             The best return is the one that never happens.
           </DisplayHeading>
-          <div
-            className="toova-grid-label-prose"
-            style={{
-              gridTemplateColumns: '1fr 1fr 1fr',
-              paddingTop: 44,
-              borderTop: '1px solid var(--rule-inverse)',
-            }}
-          >
+          <div className="landing-dark-band__grid">
             <p style={{ font: 'var(--type-body)', color: 'var(--cream-2)', margin: 0 }}>
               Hundreds of billions of dollars of goods come back every year, and a great deal of it is never resold.
               Most of those purchases were guesses made on a product page, and the cost of the guess is paid twice:
@@ -303,16 +252,16 @@ export function LandingPage({
       </div>
 
       {/* Rooms */}
-      <div className="toova-frame" style={{ paddingTop: 104 }} ref={roomsRef}>
+      <div className="toova-frame landing-section-pad" ref={roomsRef}>
         <SectionOpener id="rooms" title="Rooms, planned first." note="Browse all rooms" noteOnClick={primaryAction} />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--plate-gap)', paddingTop: 32 }}>
+        <div className="toova-grid-2-responsive" style={{ paddingTop: 32 }}>
           <PlateCard name="Sunlit Living Room" author="Maya Chen" meta="9 pieces · $1,240" filename="living-01.jpg" />
           <PlateCard name="Reading Nook" author="Devin Park" meta="6 pieces · $580" filename="nook-02.jpg" />
         </div>
       </div>
 
       {/* Future */}
-      <div className="toova-frame landing-future" style={{ paddingTop: 104 }}>
+      <div className="toova-frame landing-future landing-section-pad">
         <div className="landing-future__grid">
           <div className="landing-future__intro">
             <Eyebrow style={{ marginBottom: 16 }}>The future of shopping</Eyebrow>
@@ -330,7 +279,7 @@ export function LandingPage({
       </div>
 
       {/* Values */}
-      <div className="toova-frame" style={{ paddingTop: 104 }}>
+      <div className="toova-frame landing-section-pad">
         <Eyebrow style={{ marginBottom: 36 }}>What we stand for</Eyebrow>
         <div className="toova-grid-two landing-values" style={{ borderTop: '1px solid var(--rule-heavy)' }}>
           {VALUES.map(([title, body], i) => (
@@ -349,9 +298,9 @@ export function LandingPage({
       </div>
 
       {/* Pricing */}
-      <div className="toova-frame" style={{ paddingTop: 104 }} ref={pricingRef}>
+      <div className="toova-frame landing-section-pad" ref={pricingRef}>
         <SectionOpener id="pricing" title="Two prices." note="Cancel any time · no card to start" />
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--col-gap-wide)', paddingTop: 36 }}>
+        <div className="toova-grid-2-responsive" style={{ gap: 'var(--col-gap-wide)', paddingTop: 36 }}>
           <PriceColumn
             name="Free"
             price="$0"
@@ -382,20 +331,11 @@ export function LandingPage({
             <br />
             <DisplayEm>buy</DisplayEm> it.
           </DisplayHeading>
-          <div
-            style={{
-              display: 'flex',
-              alignItems: 'flex-end',
-              justifyContent: 'space-between',
-              gap: 56,
-              marginTop: 56,
-              flexWrap: 'wrap',
-            }}
-          >
+          <div className="landing-closing-cta">
             <p style={{ font: 'var(--type-body-lg)', color: 'var(--ink-2)', margin: 0, maxWidth: 420 }}>
               Free to start. Bring your own photos; we&apos;ll handle the 3D.
             </p>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 26, flex: 'none', flexWrap: 'wrap' }}>
+            <div className="landing-hero-actions">
               <Button variant="primary" size="lg" onClick={primaryAction}>
                 {loggedIn ? 'Go to dashboard' : 'Start designing, free'}
               </Button>
@@ -410,6 +350,7 @@ export function LandingPage({
       <Footer
         links={[
           { label: 'Contact', onClick: onContact },
+          { label: 'Pitch Madness', onClick: onPitchMadness },
           { label: 'Feedback', onClick: () => setFeedbackOpen(true) },
           { label: 'Privacy' },
           { label: 'Terms' },

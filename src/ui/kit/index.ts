@@ -19,6 +19,7 @@ export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { Eyebrow, type EyebrowLevel, type EyebrowProps, type EyebrowTone } from './Eyebrow';
 export { Field, type FieldProps } from './Field';
 export { Footer, type FooterLink, type FooterProps } from './Footer';
+export { SiteFooter, type SiteFooterProps } from './SiteFooter';
 export { Input, type InputProps } from './Input';
 export { KeyValueRow, type KeyValueRowProps } from './KeyValueRow';
 export {

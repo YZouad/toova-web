@@ -31,6 +31,8 @@ interface GalleryPageProps {
   onUseInRoom: (model: GalleryModel) => void;
   onNavigate: (nav: AppShellNavId) => void;
   onLogout?: () => void;
+  onContact?: () => void;
+  onPitchMadness?: () => void;
 }
 
 /** Kit-aligned primary tabs: Rooms | Models. Discover URL maps to Rooms shelves. */
@@ -53,6 +55,8 @@ export function GalleryPage({
   onUseInRoom,
   onNavigate,
   onLogout,
+  onContact,
+  onPitchMadness,
 }: GalleryPageProps) {
   const { user, profile } = useAuth();
   const initial = parseGallerySearchParams(window.location.search);
@@ -169,6 +173,10 @@ export function GalleryPage({
       profileInitials={profileInitials(profile, user?.email)}
       onNavigate={onNavigate}
       onLogout={onLogout}
+      onContact={onContact}
+      onPitchMadness={onPitchMadness}
+      feedbackEmail={user?.email ?? ''}
+      feedbackUserId={user?.id}
       onProfile={
         profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
       }

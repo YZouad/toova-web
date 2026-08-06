@@ -45,7 +45,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
     markReviewDone,
   } = useShoppingCatalogContext();
 
-  const [toBuyOpen, setToBuyOpen] = useState(true);
+  const [toBuyOpen, setToBuyOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
@@ -185,7 +185,13 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
         <button
           type="button"
           className="scene-checkout-toggle"
-          onClick={() => setChecklistOpen((v) => !v)}
+          onClick={() => {
+            setChecklistOpen((v) => {
+              const next = !v;
+              if (next) setToBuyOpen(false);
+              return next;
+            });
+          }}
           aria-expanded={checklistOpen}
         >
           <span className="scene-checkout-title">Checklist</span>
@@ -246,7 +252,13 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
         <button
           type="button"
           className="scene-checkout-toggle"
-          onClick={() => setToBuyOpen((v) => !v)}
+          onClick={() => {
+            setToBuyOpen((v) => {
+              const next = !v;
+              if (next) setChecklistOpen(false);
+              return next;
+            });
+          }}
           aria-expanded={toBuyOpen}
         >
           <span className="scene-checkout-title">To buy</span>

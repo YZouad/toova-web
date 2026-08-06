@@ -131,6 +131,8 @@ interface DashboardProps {
   onStartFloorPlan: (name: string) => void;
   onNavigate: (nav: AppShellNavId) => void;
   onLogout: () => void;
+  onContact?: () => void;
+  onPitchMadness?: () => void;
 }
 
 export function Dashboard({
@@ -142,6 +144,8 @@ export function Dashboard({
   onStartFloorPlan,
   onNavigate,
   onLogout,
+  onContact,
+  onPitchMadness,
 }: DashboardProps) {
   const [rooms, setRooms] = useState<ListedRoomRow[]>([]);
   const [listError, setListError] = useState<string | null>(null);
@@ -570,6 +574,10 @@ export function Dashboard({
       profileInitials={profileInitials(profile, user.email)}
       onNavigate={onNavigate}
       onLogout={onLogout}
+      onContact={onContact}
+      onPitchMadness={onPitchMadness}
+      feedbackEmail={user.email ?? ''}
+      feedbackUserId={user.id}
       onProfile={
         profile?.handle
           ? () => navigate(profilePath(profile.handle))

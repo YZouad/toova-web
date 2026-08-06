@@ -36,8 +36,10 @@ import {
   Plate,
   PlateCard,
   SectionOpener,
+  SiteFooter,
   Splash,
 } from './kit';
+import { FeedbackModal } from './FeedbackModal';
 
 interface ProfilePageProps {
   handle: string;
@@ -45,6 +47,9 @@ interface ProfilePageProps {
   authLoading: boolean;
   onGoHome: () => void;
   onRefreshAuthProfile?: () => Promise<void>;
+  onContact?: () => void;
+  onPitchMadness?: () => void;
+  onAdmin?: () => void;
 }
 
 function toPreviewItems(room: ProfileRoomCard): RoomPreviewItem[] {
@@ -87,6 +92,9 @@ export function ProfilePage({
   authLoading,
   onGoHome,
   onRefreshAuthProfile,
+  onContact,
+  onPitchMadness,
+  onAdmin,
 }: ProfilePageProps) {
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<ProfilePagePayload | null>(null);
@@ -98,6 +106,7 @@ export function ProfilePage({
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const [editHandle, setEditHandle] = useState('');
   const [editName, setEditName] = useState('');
@@ -470,7 +479,7 @@ export function ProfilePage({
               }
             />
           ) : (
-            <div style={{ marginTop: 28 }}>
+            <div className="profile-ledger-list">
               <div className="app-ledger-head">
                 <span>Plan</span>
                 <span>Room</span>
@@ -480,7 +489,7 @@ export function ProfilePage({
                 <span className="app-ledger-head__right">Visibility</span>
                 <span aria-hidden />
               </div>
-              {rooms.map((room, i) => {
+              {rooms.map((room) => {
                 const items = roomPreviews[room.id] ?? toPreviewItems(room);
                 const geometry = parseFloorPlan(room.room_geometry);
                 const attr = attributionLabel(room);
@@ -491,7 +500,6 @@ export function ProfilePage({
                     className={[
                       'app-ledger-row',
                       canOpenPublic ? 'app-ledger-row--interactive' : '',
-                      i === 0 ? 'app-ledger-row--first' : '',
                     ]
                       .filter(Boolean)
                       .join(' ')}
@@ -567,6 +575,18 @@ export function ProfilePage({
           )}
         </section>
       </main>
+
+      <SiteFooter
+        onContact={onContact}
+        onPitchMadness={onPitchMadness}
+        onFeedback={() => setFeedbackOpen(true)}
+        onAdmin={onAdmin}
+      />
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        pageSource="dashboard"
+      />
     </div>
   );
 }
