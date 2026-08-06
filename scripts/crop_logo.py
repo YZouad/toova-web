@@ -11,6 +11,9 @@ from PIL import Image
 def is_outer_margin_pixel(r: int, g: int, b: int, a: int) -> bool:
     if a < 40:
         return True
+    # Legacy white-margin logos and near-black transparent padding.
+    if r <= 8 and g <= 8 and b <= 8:
+        return True
     return r >= 247 and g >= 247 and b >= 247
 
 

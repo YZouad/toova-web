@@ -1,9 +1,14 @@
 import type { CSSProperties, MouseEventHandler } from 'react';
 
-const DEFAULT_LOGO_SRC = '/toova-logo-cropped.png';
+/** Tight-crop wordmark PNG in /public (see scripts/crop_logo.py). */
+export const TOOVA_LOGO_SRC = `${import.meta.env.BASE_URL}toova-logo-cropped.png`;
+
+/** Cropped logo aspect ratio — keep nav/wordmark sizing in sync with the asset. */
+const LOGO_ASPECT = 1903 / 541;
 
 export interface LogoProps {
   size?: number;
+  /** @deprecated Wordmark is baked into the logo image; kept for call-site compatibility. */
   wordmark?: boolean;
   inverse?: boolean;
   onClick?: MouseEventHandler<HTMLElement>;
@@ -14,10 +19,9 @@ export interface LogoProps {
 
 export function Logo({
   size = 21,
-  wordmark = true,
   inverse = false,
   onClick,
-  src = DEFAULT_LOGO_SRC,
+  src = TOOVA_LOGO_SRC,
   className,
   style,
 }: LogoProps) {
@@ -25,6 +29,8 @@ export function Logo({
   const interactiveProps = onClick
     ? { type: 'button' as const, onClick }
     : {};
+  const height = size;
+  const width = Math.round(height * LOGO_ASPECT);
 
   return (
     <Tag
@@ -34,29 +40,18 @@ export function Logo({
       style={{ ...style, '--kit-logo-size': `${size}px` } as CSSProperties}
       {...interactiveProps}
     >
-      {src ? (
-        <img
-          src={src}
-          alt="Toova"
-          className="kit-logo__mark"
-          width={size}
-          height={size}
-        />
-      ) : (
-        <div className="kit-logo__mark kit-logo__mark--fallback" />
-      )}
-      {wordmark ? (
-        <span
-          className={[
-            'kit-logo__wordmark',
-            inverse ? 'kit-logo__wordmark--inverse' : '',
-          ]
-            .filter(Boolean)
-            .join(' ')}
-        >
-          Toova
-        </span>
-      ) : null}
+      <img
+        src={src}
+        alt="Toova"
+        className={[
+          'kit-logo__wordmark-img',
+          inverse ? 'kit-logo__wordmark-img--inverse' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        width={width}
+        height={height}
+      />
     </Tag>
   );
 }

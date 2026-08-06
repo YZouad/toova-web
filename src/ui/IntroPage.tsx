@@ -1,5 +1,6 @@
 /** @deprecated unused by App routing — pending delete */
 import { IntroBackButton } from './IntroBackButton';
+import { Logo } from './kit';
 
 interface IntroPageProps {
   onStart: () => void;
@@ -13,7 +14,7 @@ export function IntroPage({ onStart, roomLabel, onSwitchRooms, onBack }: IntroPa
     <div className="onboarding-page">
       <IntroBackButton onBack={onBack} />
       <header className="onboarding-header">
-        <img src={`${import.meta.env.BASE_URL}toova-logo-cropped.png`} alt="Toova" className="onboarding-logo-img" />
+        <Logo size={28} />
       </header>
       <main className="onboarding-main">
         <div className="onboarding-card">
