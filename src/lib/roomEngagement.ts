@@ -43,8 +43,20 @@ export async function toggleRoomLike(
   const { data, error } = await supabase.rpc('toggle_room_like', {
     p_room_id: roomId,
   });
-  if (error) throw new Error(error.message);
-  const row = data as { liked?: boolean; likes_count?: number } | null;
+  if (error) {
+    const raw = error.message || '';
+    if (/not authenticated/i.test(raw)) {
+      throw new Error('Sign in to like rooms.');
+    }
+    if (/not found/i.test(raw)) {
+      throw new Error('This room can’t be liked.');
+    }
+    throw new Error(raw || 'Could not update like');
+  }
+  const row =
+    typeof data === 'string'
+      ? (JSON.parse(data) as { liked?: boolean; likes_count?: number })
+      : (data as { liked?: boolean; likes_count?: number } | null);
   return {
     liked: Boolean(row?.liked),
     likes_count: Number(row?.likes_count ?? 0),

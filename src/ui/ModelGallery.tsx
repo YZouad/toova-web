@@ -10,9 +10,10 @@ import { ModelDetailModal } from './ModelDetailModal';
 interface ModelGalleryProps {
   source: GallerySource;
   sort: GallerySort;
-  category: string | null;
+  categories: string[];
   query: string;
   showMine?: boolean;
+  hideSourceTabs?: boolean;
   dense?: boolean;
   /** Embed search in the filters row (designer panel). */
   showSearch?: boolean;
@@ -24,7 +25,7 @@ interface ModelGalleryProps {
   headerActions?: ReactNode;
   onSourceChange: (source: GallerySource) => void;
   onSortChange: (sort: GallerySort) => void;
-  onCategoryChange: (category: string | null) => void;
+  onCategoriesChange: (categories: string[]) => void;
   onQueryChange: (query: string) => void;
   onPlace: (model: GalleryModel) => void;
   onModelsChange?: (models: GalleryModel[]) => void;
@@ -33,9 +34,10 @@ interface ModelGalleryProps {
 export function ModelGallery({
   source,
   sort,
-  category,
+  categories,
   query,
   showMine,
+  hideSourceTabs = false,
   dense,
   showSearch = false,
   hideSortAndCategory = true,
@@ -45,7 +47,7 @@ export function ModelGallery({
   headerActions,
   onSourceChange,
   onSortChange,
-  onCategoryChange,
+  onCategoriesChange,
   onQueryChange,
   onPlace,
   onModelsChange,
@@ -65,7 +67,7 @@ export function ModelGallery({
     enabled: true,
     source,
     sort,
-    category,
+    categories,
     query,
   });
 
@@ -87,15 +89,16 @@ export function ModelGallery({
         entity="models"
         source={source}
         sort={sort}
-        category={category}
+        categories={categories}
         query={query}
         showMine={showMine}
+        hideSourceTabs={hideSourceTabs}
         dense={dense}
         showSearch={showSearch}
         hideSortAndCategory={hideSortAndCategory}
         onSourceChange={onSourceChange}
         onSortChange={(s) => onSortChange(s as GallerySort)}
-        onCategoryChange={onCategoryChange}
+        onCategoriesChange={onCategoriesChange}
         onQueryChange={onQueryChange}
       />
 
@@ -103,7 +106,11 @@ export function ModelGallery({
       {recentRail}
 
       <MonoMeta size="sm" tone="dense" style={{ display: 'block', margin: '12px 0' }}>
-        {loading ? 'Loading…' : `${total} model${total === 1 ? '' : 's'}`}
+        {loading
+          ? models.length > 0
+            ? 'Loading…'
+            : null
+          : `${total} model${total === 1 ? '' : 's'}`}
       </MonoMeta>
 
       {error ? <Banner tone="error">{error}</Banner> : null}

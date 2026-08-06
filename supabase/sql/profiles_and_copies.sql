@@ -489,15 +489,23 @@ AS $$
         'rotation_y', ri.rotation_y,
         'size_w', ri.size_w,
         'size_h', ri.size_h,
-        'size_d', ri.size_d
+        'size_d', ri.size_d,
+        'model_url', ri.model_url,
+        'silhouette_path', fc.silhouette_path
       )
       ORDER BY ri.sort_order
     ),
     '[]'::jsonb
   )
   FROM public.room_items ri
+  LEFT JOIN public.furniture_catalog fc
+    ON ri.kind = 'imported'
+   AND NULLIF(trim(ri.model_url), '') IS NOT NULL
+   AND NULLIF(trim(fc.model_url), '') = NULLIF(trim(ri.model_url), '')
   WHERE ri.room_id = p_room_id
-    AND ri.kind IN ('bed', 'dresser', 'wardrobe', 'desk', 'chair', 'nightstand', 'imported');
+    AND ri.kind IN (
+      'bed', 'dresser', 'wardrobe', 'desk', 'chair', 'nightstand', 'lamp', 'imported'
+    );
 $$;
 
 CREATE OR REPLACE FUNCTION private.public_attribution(p_forked_from uuid)

@@ -3,7 +3,7 @@ import { AppRail, type AppRailItem, type AppRailItemId } from './AppRail';
 import { Logo } from './Logo';
 import { MonoMeta } from './MonoMeta';
 
-export type AppShellNavId = 'home' | 'rooms' | 'gallery' | 'ar' | 'admin';
+export type AppShellNavId = 'home' | 'rooms' | 'models' | 'gallery' | 'ar' | 'admin';
 
 export interface AppShellProps {
   active: AppShellNavId;
@@ -23,10 +23,10 @@ export interface AppShellProps {
 const BASE_ITEMS: AppRailItem[] = [
   { id: 'home', label: 'Home', glyph: '⌂' },
   { id: 'rooms', label: 'Rooms', glyph: '▦' },
+  { id: 'models', label: 'Models', glyph: '◇' },
   { id: 'gallery', label: 'Gallery', glyph: '◫' },
   { id: 'ar', label: 'AR', glyph: '◈' },
 ];
-
 /** Authenticated product chrome: left AppRail + header strip + main. */
 export function AppShell({
   active,
@@ -69,7 +69,7 @@ export function AppShell({
                 {profileInitials}
               </button>
               <Logo
-                size={16}
+                size={22}
                 wordmark={false}
                 onClick={() => onNavigate('home')}
               />

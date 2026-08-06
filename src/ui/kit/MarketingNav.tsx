@@ -23,10 +23,31 @@ export function MarketingNav({
   className,
   style,
 }: MarketingNavProps) {
+  const BrandTag = brandOnClick ? 'button' : 'div';
+  const brandInteractive = Boolean(brandOnClick);
+
   return (
     <nav className={['kit-marketing-nav', className].filter(Boolean).join(' ')} style={style}>
       <div className="kit-marketing-nav__inner">
-        <Logo onClick={brandOnClick} />
+        <BrandTag
+          className={[
+            'kit-marketing-nav__brand',
+            brandInteractive ? 'kit-marketing-nav__brand--interactive' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+          aria-label={brandInteractive ? 'Toova' : undefined}
+          {...(brandOnClick
+            ? { type: 'button' as const, onClick: brandOnClick }
+            : {})}
+        >
+          <Logo size={34} wordmark={false} alt="" className="kit-marketing-nav__mark" />
+          <Logo
+            size={28}
+            alt={brandInteractive ? '' : 'Toova'}
+            className="kit-marketing-nav__wordmark"
+          />
+        </BrandTag>
         <div className="kit-marketing-nav__links">
           {links.map((link) => {
             const isActive = link.active;

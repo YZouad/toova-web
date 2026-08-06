@@ -13,7 +13,8 @@ export interface GalleryPageSearchState {
   sort: GallerySort;
   /** Room sort when mode=rooms. */
   roomSort: RoomGallerySortParam;
-  category: string | null;
+  /** Selected category slugs (AND match). Empty = all. */
+  categories: string[];
   query: string;
 }
 
@@ -34,6 +35,25 @@ export function catalogHotScore(input: {
   const raw =
     input.likes * 4 + input.downloads * 3 + input.views * 0.1;
   return raw / Math.pow(Math.max(1, ageDays), 1.2);
+}
+
+/** Parse `category=seating` or `category=seating,outdoor` into slug list. */
+export function parseCategoryParam(raw: string | null): string[] {
+  if (!raw?.trim()) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const part of raw.split(',')) {
+    const slug = part.trim().toLowerCase();
+    if (!slug || seen.has(slug)) continue;
+    seen.add(slug);
+    out.push(slug);
+  }
+  return out;
+}
+
+export function formatCategoryParam(categories: string[] | null | undefined): string | null {
+  if (!categories?.length) return null;
+  return categories.join(',');
 }
 
 export function parseGallerySearchParams(
@@ -84,7 +104,7 @@ export function parseGallerySearchParams(
     source,
     sort: source === 'mine' && sort === 'hot' ? 'newest' : sort,
     roomSort,
-    category: sp.get('category'),
+    categories: parseCategoryParam(sp.get('category')),
     query: sp.get('q') ?? '',
   };
 }
@@ -94,6 +114,8 @@ export function buildGallerySearchParams(state: {
   source?: GallerySource;
   sort?: GallerySort;
   roomSort?: RoomGallerySortParam;
+  categories?: string[] | null;
+  /** @deprecated Prefer `categories`. Single slug still accepted. */
   category?: string | null;
   query?: string;
 }): string {
@@ -106,7 +128,11 @@ export function buildGallerySearchParams(state: {
     const sort = state.sort ?? 'hot';
     if (source !== 'community') sp.set('source', source);
     if (source !== 'mine' && sort !== 'hot') sp.set('sort', sort);
-    if (state.category) sp.set('category', state.category);
+    const cats =
+      state.categories ??
+      (state.category ? parseCategoryParam(state.category) : []);
+    const catParam = formatCategoryParam(cats);
+    if (catParam) sp.set('category', catParam);
   } else if (mode === 'rooms') {
     const roomSort = state.roomSort ?? 'hot';
     if (roomSort !== 'hot') sp.set('roomSort', roomSort);

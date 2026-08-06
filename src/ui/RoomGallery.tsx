@@ -47,13 +47,13 @@ export function RoomGallery({
           entity="rooms"
           source="community"
           sort={sort}
-          category={null}
+          categories={[]}
           query={query}
           onSourceChange={() => {
             /* rooms are always community */
           }}
           onSortChange={(s) => onSortChange(s as RoomGallerySortParam)}
-          onCategoryChange={() => {
+          onCategoriesChange={() => {
             /* rooms have no categories */
           }}
           onQueryChange={onQueryChange}

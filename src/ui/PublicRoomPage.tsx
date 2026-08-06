@@ -6,7 +6,7 @@ import { recordRoomView, toggleRoomLike } from '../lib/roomEngagement';
 import { useStore } from '../store';
 import { Scene } from '../scene/Scene';
 import { UserAvatar } from './UserAvatar';
-import { Button, DisplayHeading, Logo, MonoMeta } from './kit';
+import { Button, DisplayHeading, Logo, MonoMeta, Splash } from './kit';
 
 interface PublicRoomPageProps {
   handle: string;
@@ -65,7 +65,6 @@ export function PublicRoomPage({
   const [roomName, setRoomName] = useState('Room');
   const [ownerName, setOwnerName] = useState('Toova designer');
   const [ownerHandle, setOwnerHandle] = useState(handle);
-  const [ownerId, setOwnerId] = useState<string | null>(null);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [forkCount, setForkCount] = useState(0);
   const [likesCount, setLikesCount] = useState(0);
@@ -77,8 +76,6 @@ export function PublicRoomPage({
   const [actionError, setActionError] = useState<string | null>(null);
   const [showAuthWall, setShowAuthWall] = useState(false);
   const [resumeCopy, setResumeCopy] = useState(false);
-
-  const isOwner = !!userId && !!ownerId && userId === ownerId;
 
   useEffect(() => {
     let cancelled = false;
@@ -95,7 +92,6 @@ export function PublicRoomPage({
         setRoomName(data.roomName);
         setOwnerName(data.owner.displayName);
         setOwnerHandle(data.owner.handle);
-        setOwnerId(data.ownerId);
         setForkCount(data.forkCount);
         setLikesCount(data.likesCount);
         setViewsCount(data.viewsCount);
@@ -159,12 +155,12 @@ export function PublicRoomPage({
   }
 
   async function handleLike() {
-    if (isOwner) return;
     if (!userId) {
       setShowAuthWall(true);
       return;
     }
     setLikeBusy(true);
+    setActionError(null);
     const prevLiked = likedByMe;
     const prevCount = likesCount;
     setLikedByMe(!prevLiked);
@@ -183,11 +179,7 @@ export function PublicRoomPage({
   }
 
   if (loading || authLoading) {
-    return (
-      <div className="splash-page">
-        <div className="splash-inner">Opening room…</div>
-      </div>
-    );
+    return <Splash label="Opening room…" />;
   }
 
   if (error) {
@@ -213,8 +205,8 @@ export function PublicRoomPage({
         className="shared-topbar"
         style={{
           display: 'grid',
-          gridTemplateColumns: '200px 1fr auto',
-          gap: 32,
+          gridTemplateColumns: 'auto 1fr auto',
+          gap: 24,
           alignItems: 'center',
           padding: '20px var(--page-gutter)',
           borderBottom: '1px solid var(--rule-heavy)',
@@ -237,7 +229,7 @@ export function PublicRoomPage({
             padding: 0,
           }}
         >
-          <Logo size={20} />
+          <Logo size={44} wordmark={false} />
         </button>
         <div className="shared-topbar-meta">
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
@@ -269,25 +261,41 @@ export function PublicRoomPage({
             <UserAvatar name={ownerName} src={avatarUrl} size={22} />
             <span>by {ownerName}</span>
           </button>
-          <div style={{ marginTop: 6 }}>
+          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`model-detail-stat-like${likedByMe ? ' is-liked' : ''}`}
+              disabled={likeBusy}
+              onClick={() => void handleLike()}
+              aria-pressed={likedByMe}
+              title={userId ? (likedByMe ? 'Unlike' : 'Like') : 'Sign in to like'}
+              style={{
+                background: 'none',
+                border: 'none',
+                padding: 0,
+                cursor: likeBusy ? 'default' : 'pointer',
+                font: 'inherit',
+              }}
+            >
+              {likedByMe ? '♥' : '♡'} {formatCount(likesCount)} likes
+            </button>
             <MonoMeta size="sm" tone="dense">
-              {formatCount(likesCount)} likes · {formatCount(viewsCount)} views · {formatCount(forkCount)} copies
+              {formatCount(viewsCount)} views · {formatCount(forkCount)} copies
               {attr ? ` · ${attr}` : ''}
             </MonoMeta>
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-          {!isOwner ? (
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={likeBusy}
-              onClick={() => void handleLike()}
-              aria-pressed={likedByMe}
-            >
-              {likedByMe ? '♥ Liked' : '♡ Like'}
-            </Button>
-          ) : null}
+          <Button
+            size="sm"
+            variant="outline"
+            className={likedByMe ? 'shared-btn-secondary is-liked' : undefined}
+            disabled={likeBusy}
+            onClick={() => void handleLike()}
+            aria-pressed={likedByMe}
+          >
+            {likedByMe ? '♥ Liked' : '♡ Like'}
+          </Button>
           <Button size="sm" disabled={busy} onClick={requireAuthThenCopy}>
             Make a copy
           </Button>

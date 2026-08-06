@@ -5,18 +5,10 @@ import {
   planBounds,
   type FloorPlan,
 } from '../lib/floorPlanGeometry';
+import { furnitureFill } from '../lib/floorPlanFurniture';
 import type { Item } from '../store';
 
-export const KIND_COLORS: Record<string, string> = {
-  bed: '#C9B391',
-  dresser: '#B08C5F',
-  wardrobe: '#A88457',
-  desk: '#B5946C',
-  chair: '#CBB28F',
-  nightstand: '#C0A47A',
-  lamp: '#D4C4A0',
-  imported: '#7E8A60',
-};
+export { KIND_COLORS } from '../lib/floorPlanFurniture';
 
 export interface RoomPreviewItem {
   id: string;
@@ -24,6 +16,10 @@ export interface RoomPreviewItem {
   position: [number, number, number];
   rotationY: number;
   size: [number, number, number];
+  /** Imported GLB storage path (for thumbnail tint lookup). */
+  modelUrl?: string | null;
+  /** Override fill for imported items (average thumbnail color). */
+  tint?: string | null;
 }
 
 function hasUsableGeometry(geometry: FloorPlan | null): geometry is FloorPlan {
@@ -65,11 +61,17 @@ interface RoomPreviewProps {
   items: RoomPreviewItem[];
 }
 
+/** Floor furniture only — hanging garlands/LEDs use large AABBs that wash out the plan. */
+export function floorPreviewItems(items: RoomPreviewItem[]): RoomPreviewItem[] {
+  return items.filter((item) => item.kind !== 'hanging');
+}
+
 export function RoomPreview({ geometry, items }: RoomPreviewProps) {
-  const viewBox = computeViewBox(geometry, items);
+  const floorItems = floorPreviewItems(items);
+  const viewBox = computeViewBox(geometry, floorItems);
   const showGeometry = hasUsableGeometry(geometry);
 
-  if (!viewBox || (!showGeometry && items.length === 0)) {
+  if (!viewBox || (!showGeometry && floorItems.length === 0)) {
     return null;
   }
 
@@ -100,11 +102,11 @@ export function RoomPreview({ geometry, items }: RoomPreviewProps) {
             );
           })
         : null}
-      {items.map((item) => {
+      {floorItems.map((item) => {
         const [w, , d] = item.size;
         const cx = item.position[0];
         const cz = item.position[2];
-        const fill = KIND_COLORS[item.kind] ?? '#CBB28F';
+        const fill = item.tint || furnitureFill(item.kind);
         const deg = (item.rotationY * 180) / Math.PI;
         return (
           <rect

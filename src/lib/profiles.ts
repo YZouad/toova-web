@@ -46,6 +46,7 @@ export interface ProfileRoomCard {
     size_w: number | string;
     size_h: number | string;
     size_d: number | string;
+    model_url?: string | null;
   }>;
 }
 

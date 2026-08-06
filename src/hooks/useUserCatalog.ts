@@ -52,6 +52,8 @@ export function useUserCatalog(enabled: boolean) {
   const refresh = useCallback(async () => {
     if (!enabled) {
       setCatalog([]);
+      setLoading(false);
+      setError(null);
       return;
     }
     setLoading(true);
@@ -78,7 +80,6 @@ export function useUserCatalog(enabled: boolean) {
 
           const isAbsolute =
             path.startsWith('http://') || path.startsWith('https://');
-          // RLS: own folder or public catalog asset only — private others fail to sign.
           const signedUrl = isAbsolute
             ? path
             : await signBrowsableModelPath(path);

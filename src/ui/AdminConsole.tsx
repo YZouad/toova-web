@@ -309,8 +309,8 @@ export function AdminConsole({
   return (
     <div className="admin-console">
       <aside className="admin-sidebar">
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '6px 8px 8px' }}>
-          <Logo size={20} inverse />
+        <div className="admin-sidebar-brand">
+          <Logo size={22} wordmark className="admin-sidebar-logo" inverse alt="Toova" />
         </div>
         <MonoMeta size="xs" upper className="kit-mono-meta--inverse" style={{ padding: '6px 10px 14px', display: 'block' }}>
           Admin console

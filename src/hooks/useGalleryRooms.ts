@@ -6,6 +6,7 @@ import {
 } from '../lib/roomGallery';
 import { signRoomThumbnailPath } from '../lib/roomThumbnailStorage';
 import { parseFloorPlan, type FloorPlan } from '../lib/floorPlanGeometry';
+import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
 import type { RoomPreviewItem } from '../ui/RoomPreview';
 
 export interface GalleryRoom {
@@ -41,22 +42,43 @@ function n(v: unknown): number {
   return Number.isFinite(x) ? x : 0;
 }
 
-function mapPreviewItems(raw: unknown[]): RoomPreviewItem[] {
+export function mapPreviewItems(raw: unknown[]): RoomPreviewItem[] {
   const out: RoomPreviewItem[] = [];
   for (const item of raw) {
     if (!item || typeof item !== 'object') continue;
     const row = item as Record<string, unknown>;
     const id = String(row.id ?? '');
     if (!id) continue;
+    const kind = String(row.kind ?? 'imported');
+    if (kind === 'hanging') continue;
+    const modelUrl = String(row.model_url ?? '').trim() || null;
     out.push({
       id,
-      kind: String(row.kind ?? 'imported'),
+      kind,
       position: [n(row.pos_x), n(row.pos_y), n(row.pos_z)],
       rotationY: n(row.rotation_y),
       size: [n(row.size_w) || 24, n(row.size_h) || 24, n(row.size_d) || 24],
+      ...(modelUrl ? { modelUrl } : {}),
     });
   }
   return out;
+}
+
+/** Attach average-thumbnail tints to imported preview items. */
+export async function withPreviewTints(
+  items: RoomPreviewItem[],
+): Promise<RoomPreviewItem[]> {
+  const modelUrls = items
+    .filter((it) => it.kind === 'imported')
+    .map((it) => it.modelUrl || '')
+    .filter(Boolean);
+  if (modelUrls.length === 0) return items;
+  const tints = await resolvePreviewTintsForModelUrls(modelUrls);
+  return items.map((it) => {
+    if (it.kind !== 'imported' || !it.modelUrl) return it;
+    const tint = tints.get(it.modelUrl);
+    return tint ? { ...it, tint } : it;
+  });
 }
 
 async function rowToRoom(row: GalleryRoomRow): Promise<GalleryRoom> {
@@ -67,6 +89,7 @@ async function rowToRoom(row: GalleryRoomRow): Promise<GalleryRoom> {
     visibilityRaw === 'private' || visibilityRaw === 'unlisted'
       ? visibilityRaw
       : 'public';
+  const previewItems = await withPreviewTints(mapPreviewItems(row.preview_items));
   return {
     id: row.room_id,
     name: row.name,
@@ -84,7 +107,7 @@ async function rowToRoom(row: GalleryRoomRow): Promise<GalleryRoom> {
     thumbnailPath: thumb,
     thumbnailUrl,
     roomGeometry: parseFloorPlan(row.room_geometry),
-    previewItems: mapPreviewItems(row.preview_items),
+    previewItems,
   };
 }
 
@@ -173,4 +196,4 @@ export function useGalleryRooms(params: UseGalleryRoomsParams) {
   };
 }
 
-export { rowToRoom, mapPreviewItems };
+export { rowToRoom };

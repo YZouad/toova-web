@@ -26,6 +26,7 @@ import { HangingDecorPanel } from './HangingDecorPanel';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
+import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
@@ -236,16 +237,33 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
     if (user?.id) {
       try {
         const { items, order, roomGeometry } = useStore.getState();
-        const previewItems = order
+        const floorItems = order
           .map((id) => items[id])
-          .filter((it): it is Item => Boolean(it))
-          .map((it) => ({
-            id: it.id,
-            kind: it.kind,
-            position: [...it.position] as [number, number, number],
-            rotationY: it.rotationY,
-            size: [...it.size] as [number, number, number],
-          }));
+          .filter((it): it is Item => Boolean(it) && it.kind !== 'hanging');
+
+        const modelUrls = [
+          ...new Set(
+            floorItems
+              .filter((it) => it.kind === 'imported' && it.importedStoragePath)
+              .map((it) => it.importedStoragePath!),
+          ),
+        ];
+        const tints =
+          modelUrls.length > 0
+            ? await resolvePreviewTintsForModelUrls(modelUrls)
+            : new Map<string, string>();
+
+        const previewItems = floorItems.map((it) => ({
+          id: it.id,
+          kind: it.kind,
+          position: [...it.position] as [number, number, number],
+          rotationY: it.rotationY,
+          size: [...it.size] as [number, number, number],
+          tint:
+            it.kind === 'imported' && it.importedStoragePath
+              ? tints.get(it.importedStoragePath) ?? null
+              : null,
+        }));
         const blob = await renderRoomPreviewJpeg(roomGeometry, previewItems);
         if (blob) {
           await uploadRoomThumbnail(blob, user.id, workspace.id);

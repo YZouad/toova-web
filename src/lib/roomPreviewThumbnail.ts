@@ -5,6 +5,7 @@ import {
   planBounds,
   type FloorPlan,
 } from './floorPlanGeometry';
+import { furniturePlanItemMarkup } from './floorPlanFurniture';
 import type { Item } from '../store';
 
 export const ROOM_THUMB_WIDTH = 1200;
@@ -13,22 +14,14 @@ export const ROOM_THUMB_HEIGHT = 630;
 const BG_TOP = '#EFE6D5';
 const BG_BOTTOM = '#E1D4BD';
 
-const KIND_COLORS: Record<string, string> = {
-  bed: '#C9B391',
-  dresser: '#B08C5F',
-  wardrobe: '#A88457',
-  desk: '#B5946C',
-  chair: '#CBB28F',
-  nightstand: '#C0A47A',
-  imported: '#7E8A60',
-};
-
 export interface RoomThumbItem {
   id: string;
   kind: string;
   position: [number, number, number];
   rotationY: number;
   size: [number, number, number];
+  /** Override fill for imported items (average thumbnail color). */
+  tint?: string | null;
 }
 
 function hasUsableGeometry(geometry: FloorPlan | null): geometry is FloorPlan {
@@ -71,9 +64,10 @@ function buildSvgMarkup(
   width: number,
   height: number,
 ): string | null {
-  const viewBox = computeViewBox(geometry, items);
+  const floorItems = items.filter((item) => item.kind !== 'hanging');
+  const viewBox = computeViewBox(geometry, floorItems);
   const showGeometry = hasUsableGeometry(geometry);
-  if (!viewBox || (!showGeometry && items.length === 0)) return null;
+  if (!viewBox || (!showGeometry && floorItems.length === 0)) return null;
 
   const parts = viewBox.split(/\s+/).map(Number);
   const vbW = parts[2] || 1;
@@ -94,14 +88,19 @@ function buildSvgMarkup(
         .join('')
     : '';
 
-  const itemsXml = items
+  const itemsXml = floorItems
     .map((item) => {
       const [w, , d] = item.size;
-      const cx = item.position[0];
-      const cz = item.position[2];
-      const fill = KIND_COLORS[item.kind] ?? '#CBB28F';
-      const deg = (item.rotationY * 180) / Math.PI;
-      return `<rect x="${cx - w / 2}" y="${cz - d / 2}" width="${w}" height="${d}" fill="${fill}" fill-opacity="0.82" stroke="rgba(43,38,32,0.18)" stroke-width="${stroke * 0.25}" transform="rotate(${deg} ${cx} ${cz})" />`;
+      return furniturePlanItemMarkup({
+        kind: item.kind,
+        cx: item.position[0],
+        cz: item.position[2],
+        width: w,
+        depth: d,
+        rotationDeg: (item.rotationY * 180) / Math.PI,
+        stroke,
+        tint: item.tint,
+      });
     })
     .join('');
 

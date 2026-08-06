@@ -556,13 +556,14 @@ DECLARE
   uid uuid := (SELECT auth.uid());
   row_model text;
   row_thumb text;
+  row_sil text;
 BEGIN
   IF uid IS NULL THEN
     RAISE EXCEPTION 'not authenticated' USING ERRCODE = '42501';
   END IF;
 
-  SELECT model_url, thumbnail_path
-  INTO row_model, row_thumb
+  SELECT model_url, thumbnail_path, silhouette_path
+  INTO row_model, row_thumb, row_sil
   FROM public.furniture_catalog
   WHERE kind = p_kind AND user_id = uid AND is_builtin = false;
 
@@ -575,7 +576,8 @@ BEGIN
 
   RETURN jsonb_build_object(
     'model_url', row_model,
-    'thumbnail_path', row_thumb
+    'thumbnail_path', row_thumb,
+    'silhouette_path', row_sil
   );
 END;
 $$;

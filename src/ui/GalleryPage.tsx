@@ -58,17 +58,18 @@ export function GalleryPage({
   const initial = parseGallerySearchParams(window.location.search);
   const [mode, setMode] = useState<GalleryBrowseMode>(initial.mode);
   const [source, setSource] = useState<GallerySource>(
-    initial.source === 'mine' && !user ? 'community' : initial.source,
+    initial.source === 'mine' ? 'community' : initial.source,
   );
   const [sort, setSort] = useState<GallerySort>(initial.sort);
   const [roomSort, setRoomSort] = useState<RoomGallerySortParam>(initial.roomSort);
-  const [category, setCategory] = useState<string | null>(initial.category);
+  const [categories, setCategories] = useState<string[]>(initial.categories);
   const [query, setQuery] = useState(initial.query);
   const [browse, setBrowse] = useState(
     () =>
       Boolean(initial.query.trim()) ||
       initial.mode === 'rooms' ||
-      initial.mode === 'models',
+      initial.mode === 'models' ||
+      initial.categories.length > 0,
   );
 
   const tab = modeToTab(mode);
@@ -79,7 +80,7 @@ export function GalleryPage({
       source: GallerySource;
       sort: GallerySort;
       roomSort: RoomGallerySortParam;
-      category: string | null;
+      categories: string[];
       query: string;
     }) => {
       if (!isGalleryPathname()) return;
@@ -93,23 +94,32 @@ export function GalleryPage({
   );
 
   useEffect(() => {
-    syncUrl({ mode, source, sort, roomSort, category, query });
-  }, [mode, source, sort, roomSort, category, query, syncUrl]);
+    if (initial.source === 'mine' && loggedIn) {
+      onNavigate('models');
+    }
+    // One-shot redirect for legacy ?source=mine gallery links.
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount only
+  }, []);
+
+  useEffect(() => {
+    syncUrl({ mode, source, sort, roomSort, categories, query });
+  }, [mode, source, sort, roomSort, categories, query, syncUrl]);
 
   useEffect(() => {
     const onPop = () => {
       if (!isGalleryPathname()) return;
       const next = parseGallerySearchParams(window.location.search);
       setMode(next.mode);
-      setSource(next.source === 'mine' && !user ? 'community' : next.source);
+      setSource(next.source === 'mine' ? 'community' : next.source);
       setSort(next.sort);
       setRoomSort(next.roomSort);
-      setCategory(next.category);
+      setCategories(next.categories);
       setQuery(next.query);
       setBrowse(
         Boolean(next.query.trim()) ||
           next.mode === 'rooms' ||
-          next.mode === 'models',
+          next.mode === 'models' ||
+          next.categories.length > 0,
       );
     };
     window.addEventListener('popstate', onPop);
@@ -125,16 +135,15 @@ export function GalleryPage({
 
   function setShellTab(next: ShellTab) {
     setQuery('');
-    setCategory(null);
+    setCategories([]);
     setBrowse(false);
     if (next === 'rooms') {
       setMode('discover');
       setRoomSort('hot');
     } else {
       setMode('models');
-      setSource(user ? source : 'community');
-      if (source === 'mine' && sort === 'hot') setSort('newest');
-      else if (source !== 'mine' && sort === 'newest') setSort('hot');
+      if (source !== 'community' && source !== 'toova') setSource('community');
+      if (sort === 'newest') setSort('hot');
     }
   }
 
@@ -148,7 +157,8 @@ export function GalleryPage({
   }
 
   const showRoomShelves = tab === 'rooms' && !browse;
-  const showModelShelves = tab === 'models' && !browse && !query.trim() && !category;
+  const showModelShelves =
+    tab === 'models' && !browse && !query.trim() && categories.length === 0;
 
   return (
     <AppShell
@@ -231,9 +241,9 @@ export function GalleryPage({
                 }}
               />
               <GalleryCategoryMenu
-                category={category}
-                onCategoryChange={(c) => {
-                  setCategory(c);
+                categories={categories}
+                onCategoriesChange={(c) => {
+                  setCategories(c);
                   openBrowse('models');
                 }}
               />
@@ -274,31 +284,33 @@ export function GalleryPage({
         />
       ) : null}
 
-      {tab === 'models' && (browse || query.trim() || category) ? (
+      {tab === 'models' && (browse || query.trim() || categories.length > 0) ? (
         <ModelGallery
-          source={source}
+          source={source === 'mine' ? 'community' : source}
           sort={sort}
-          category={category}
+          categories={categories}
           query={query}
-          showMine={!!user}
           currentUserId={user?.id ?? null}
           placeLabel="Use in a room"
           onSourceChange={(s) => {
-            if (s === 'mine' && !user) {
-              onRequestAuth('signin');
+            if (s === 'mine') {
+              if (!user) {
+                onRequestAuth('signin');
+                return;
+              }
+              onNavigate('models');
               return;
             }
             setSource(s);
-            if (s === 'mine' && sort === 'hot') setSort('newest');
-            else if (s !== 'mine' && sort === 'newest') setSort('hot');
+            if (sort === 'newest') setSort('hot');
             openBrowse('models');
           }}
           onSortChange={(s) => {
             setSort(s);
             openBrowse('models');
           }}
-          onCategoryChange={(c) => {
-            setCategory(c);
+          onCategoriesChange={(c) => {
+            setCategories(c);
             openBrowse('models');
           }}
           onQueryChange={(q) => {

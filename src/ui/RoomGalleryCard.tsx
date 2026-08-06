@@ -1,5 +1,5 @@
 import type { GalleryRoom } from '../hooks/useGalleryRooms';
-import { Plate, PlateCard } from './kit';
+import { Plate } from './kit';
 import { RoomPreview } from './RoomPreview';
 
 interface RoomGalleryCardProps {
@@ -22,20 +22,8 @@ export function RoomGalleryCard({ room, isOwner, onOpen }: RoomGalleryCardProps)
   const meta = `${pieces} piece${pieces === 1 ? '' : 's'} · ${formatCount(room.likesCount)} likes`;
   const filename = `${room.name.split(' ')[0]?.toLowerCase() ?? 'room'}.jpg`;
 
-  if (room.thumbnailUrl) {
-    return (
-      <PlateCard
-        name={room.name}
-        author={creator}
-        meta={meta}
-        height={240}
-        filename={filename}
-        src={room.thumbnailUrl}
-        onClick={() => onOpen(room)}
-      />
-    );
-  }
-
+  // Always use the live floor-plan SVG (same as profile / Your Rooms). Stored
+  // JPEG thumbnails baked hanging AABBs as beige overlays and stay for OG only.
   return (
     <div
       className="kit-plate-card kit-plate-card--interactive"

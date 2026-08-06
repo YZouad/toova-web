@@ -20,6 +20,7 @@ import { profilePath, navigate, galleryPath } from '../hooks/useRoute';
 import { signBrowsableModelPath } from '../lib/modelStorage';
 import { planBounds } from '../lib/roomGeometry';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
+import { withPreviewTints } from '../hooks/useGalleryRooms';
 import { UserAvatar } from './UserAvatar';
 import {
   Badge,
@@ -35,6 +36,7 @@ import {
   Plate,
   PlateCard,
   SectionOpener,
+  Splash,
 } from './kit';
 
 interface ProfilePageProps {
@@ -46,13 +48,16 @@ interface ProfilePageProps {
 }
 
 function toPreviewItems(room: ProfileRoomCard): RoomPreviewItem[] {
-  return (room.items ?? []).map((row) => ({
-    id: row.id,
-    kind: row.kind,
-    position: [Number(row.pos_x), Number(row.pos_y), Number(row.pos_z)],
-    rotationY: Number(row.rotation_y),
-    size: [Number(row.size_w), Number(row.size_h), Number(row.size_d)],
-  }));
+  return (room.items ?? [])
+    .filter((row) => row.kind !== 'hanging')
+    .map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      position: [Number(row.pos_x), Number(row.pos_y), Number(row.pos_z)],
+      rotationY: Number(row.rotation_y),
+      size: [Number(row.size_w), Number(row.size_h), Number(row.size_d)],
+      modelUrl: row.model_url?.trim() || null,
+    }));
 }
 
 function formatSqft(geometry: ReturnType<typeof parseFloorPlan>): string {
@@ -89,6 +94,7 @@ export function ProfilePage({
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<ProfileCatalogModel[]>([]);
   const [modelThumbs, setModelThumbs] = useState<Record<string, string>>({});
+  const [roomPreviews, setRoomPreviews] = useState<Record<string, RoomPreviewItem[]>>({});
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -152,6 +158,22 @@ export function ProfilePage({
 
   const rooms = useMemo(() => payload?.rooms ?? [], [payload]);
   const isOwner = !!payload?.is_owner;
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const next: Record<string, RoomPreviewItem[]> = {};
+      await Promise.all(
+        rooms.map(async (room) => {
+          next[room.id] = await withPreviewTints(toPreviewItems(room));
+        }),
+      );
+      if (!cancelled) setRoomPreviews(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rooms]);
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
@@ -222,11 +244,7 @@ export function ProfilePage({
   }
 
   if (loading || authLoading) {
-    return (
-      <div className="splash-page">
-        <div className="splash-inner">Loading profile…</div>
-      </div>
-    );
+    return <Splash label="Loading profile…" />;
   }
 
   if (error === 'not-found' || !payload) {
@@ -434,7 +452,7 @@ export function ProfilePage({
                 <span aria-hidden />
               </div>
               {rooms.map((room, i) => {
-                const items = toPreviewItems(room);
+                const items = roomPreviews[room.id] ?? toPreviewItems(room);
                 const geometry = parseFloorPlan(room.room_geometry);
                 const attr = attributionLabel(room);
                 const canOpenPublic = room.visibility === 'public' && profile.is_public;

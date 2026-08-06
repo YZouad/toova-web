@@ -3,10 +3,10 @@ import { AppRail, Logo, type AppShellNavId } from './kit';
 const BASE = [
   { id: 'home' as const, label: 'Home', glyph: '⌂' },
   { id: 'rooms' as const, label: 'Rooms', glyph: '▦' },
+  { id: 'models' as const, label: 'Models', glyph: '◇' },
   { id: 'gallery' as const, label: 'Gallery', glyph: '◫' },
   { id: 'ar' as const, label: 'AR', glyph: '◈' },
 ];
-
 interface AppRailChromeProps {
   active: AppShellNavId | null;
   showAdmin?: boolean;
@@ -46,7 +46,7 @@ export function AppRailChrome({
           >
             {profileInitials}
           </button>
-          <Logo size={16} wordmark={false} onClick={() => onNavigate('home')} />
+          <Logo size={22} wordmark={false} onClick={() => onNavigate('home')} />
           {onLogout ? (
             <button
               type="button"

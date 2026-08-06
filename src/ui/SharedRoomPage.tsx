@@ -4,7 +4,7 @@ import { navigate, profilePath } from '../hooks/useRoute';
 import { forkSharedRoom, redeemShareToken, type ShareRole } from '../lib/roomShares';
 import { useStore } from '../store';
 import { Scene } from '../scene/Scene';
-import { Button, DisplayHeading, Logo, MonoMeta } from './kit';
+import { Button, DisplayHeading, Logo, MonoMeta, Splash } from './kit';
 
 interface SharedRoomPageProps {
   token: string;
@@ -144,11 +144,7 @@ export function SharedRoomPage({
   }
 
   if (loading || authLoading) {
-    return (
-      <div className="splash-page">
-        <div className="splash-inner">Opening shared room…</div>
-      </div>
-    );
+    return <Splash label="Opening shared room…" />;
   }
 
   if (error) {
@@ -178,8 +174,8 @@ export function SharedRoomPage({
         className="shared-topbar"
         style={{
           display: 'grid',
-          gridTemplateColumns: '200px 1fr auto',
-          gap: 32,
+          gridTemplateColumns: 'auto 1fr auto',
+          gap: 24,
           alignItems: 'center',
           padding: '20px var(--page-gutter)',
           borderBottom: '1px solid var(--rule-heavy)',
@@ -202,7 +198,7 @@ export function SharedRoomPage({
             padding: 0,
           }}
         >
-          <Logo size={20} />
+          <Logo size={44} wordmark={false} />
         </button>
         <div className="shared-topbar-meta">
           <div style={{ display: 'flex', alignItems: 'baseline', gap: 20 }}>
