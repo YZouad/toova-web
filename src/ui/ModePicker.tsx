@@ -1,5 +1,6 @@
 /** @deprecated unused by App routing — pending delete */
 import { IntroBackButton } from './IntroBackButton';
+import { Logo } from './kit';
 
 export type AppMode = 'ar' | '3d';
 
@@ -13,7 +14,7 @@ export function ModePicker({ onSelectMode, onBack }: ModePickerProps) {
     <div className="onboarding-page mode-picker-page">
       <IntroBackButton onBack={onBack} />
       <header className="onboarding-header">
-        <img src={`${import.meta.env.BASE_URL}toova-logo-cropped.png`} alt="Toova" className="onboarding-logo-img" />
+        <Logo size={28} />
       </header>
       <main className="onboarding-main onboarding-main--wide">
         <div className="onboarding-mode-heading">

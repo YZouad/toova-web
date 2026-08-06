@@ -1,4 +1,5 @@
 /** @deprecated unused by App routing — pending delete */
+import { Logo } from './kit';
 interface WelcomePageProps {
   onGetStarted: () => void;
 }
@@ -7,12 +8,12 @@ export function WelcomePage({ onGetStarted }: WelcomePageProps) {
   return (
     <div className="onboarding-page welcome-page-root">
       <header className="onboarding-header">
-        <img src={`${import.meta.env.BASE_URL}toova-logo-cropped.png`} alt="Toova" className="onboarding-logo-img" />
+        <Logo size={28} />
       </header>
       <main className="onboarding-main onboarding-main--narrow welcome-page-main">
         <div className="welcome-hero-stage">
           <div className="onboarding-hero">
-            <img src={`${import.meta.env.BASE_URL}toova-logo-cropped.png`} alt="Toova" className="onboarding-hero-logo" />
+            <Logo size={48} className="onboarding-hero-logo" />
             <h1 className="onboarding-title">Welcome to Toova!</h1>
             <p className="onboarding-use-case onboarding-welcome-copy">
               Browse and place 3D objects into a virtual room.

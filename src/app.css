@@ -7376,31 +7376,25 @@ button.landing-nav-brand { cursor: pointer; }
 }
 
 .kit-logo {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: calc(var(--kit-logo-size, 21px) * 0.48);
   background: none;
   border: none;
   padding: 0;
   cursor: default;
+  line-height: 0;
 }
 .kit-logo--interactive { cursor: pointer; }
-.kit-logo__mark {
-  width: var(--kit-logo-size, 21px);
-  height: var(--kit-logo-size, 21px);
-  border-radius: var(--radius-sm);
+.kit-logo__wordmark-img {
   display: block;
+  height: var(--kit-logo-size, 21px);
+  width: auto;
   flex: none;
 }
-.kit-logo__mark--fallback { background: var(--accent); }
-.kit-logo__wordmark {
-  font-family: var(--font-serif);
-  font-size: calc(var(--kit-logo-size, 21px) + 1px);
-  font-weight: 600;
-  letter-spacing: -0.01em;
-  color: var(--text-heading);
+.kit-logo__wordmark-img--inverse {
+  filter: brightness(0) invert(1);
+  opacity: 0.92;
 }
-.kit-logo__wordmark--inverse { color: var(--text-on-inverse); }
 
 .kit-marketing-nav {
   position: sticky;

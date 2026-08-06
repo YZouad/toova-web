@@ -10,6 +10,7 @@ import {
 import type { User } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { IntroBackButton } from './IntroBackButton';
+import { Logo } from './kit';
 
 const MAX_ROOMS = 5;
 
@@ -167,7 +168,7 @@ export function RoomPicker({
     <div className="onboarding-page room-picker-page">
       <IntroBackButton onBack={onBack} />
       <header className="onboarding-header">
-        <img src={`${import.meta.env.BASE_URL}toova-logo-cropped.png`} alt="Toova" className="onboarding-logo-img" />
+        <Logo size={28} />
       </header>
       <main className="onboarding-main">
         <div className="onboarding-card">
