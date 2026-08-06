@@ -8455,12 +8455,124 @@ button.landing-nav-brand { cursor: pointer; }
 }
 
 .profile-hero-plate { margin-bottom: 8px; }
+.profile-hero-grid {
+  display: grid;
+  grid-template-columns: 160px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+.profile-hero-bio {
+  font: var(--type-body-sm);
+  color: var(--ink-4);
+  margin: 12px 0 0;
+  max-width: 540px;
+}
 .profile-stats-line {
   display: block;
   margin-top: 10px;
   letter-spacing: var(--tracking-meta);
 }
+.profile-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding-bottom: 40px;
+  border-bottom: 1px solid var(--rule-heavy);
+}
+.profile-edit-grid {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 40px;
+  align-items: start;
+  margin-top: 8px;
+}
+.profile-edit-avatar-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+.profile-edit-avatar-hit {
+  display: block;
+  cursor: pointer;
+  position: relative;
+}
+.profile-edit-avatar-hit--busy {
+  cursor: wait;
+  pointer-events: none;
+  opacity: 0.7;
+}
+.profile-edit-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: rgba(28, 24, 20, 0.58);
+  color: #f5efe6;
+  transition: background 160ms ease;
+}
+.profile-edit-avatar-hit:hover .profile-edit-avatar-overlay,
+.profile-edit-avatar-hit:focus-within .profile-edit-avatar-overlay {
+  background: rgba(28, 24, 20, 0.72);
+}
+.profile-edit-avatar-icon {
+  display: block;
+  flex: none;
+}
+.profile-edit-avatar-overlay-label {
+  font: var(--type-mono-sm);
+  letter-spacing: var(--tracking-meta);
+  text-transform: uppercase;
+}
+.profile-edit-avatar-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.profile-edit-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+.profile-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.profile-edit-footer {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-top: 4px;
+  padding-top: 18px;
+  border-top: 1px solid var(--rule-soft);
+}
+.profile-edit-visibility {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
 .profile-ledger { margin-top: 28px; }
+
+@media (max-width: 768px) {
+  .profile-hero-grid,
+  .profile-edit-grid,
+  .profile-edit-row {
+    grid-template-columns: 1fr;
+  }
+  .profile-edit-footer {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
 
 .checklist-page { min-height: 100vh; }
 .checklist-category-block { margin-top: 40px; }

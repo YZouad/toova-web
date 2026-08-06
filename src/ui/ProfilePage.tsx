@@ -303,121 +303,150 @@ export function ProfilePage({
       </header>
 
       <main className="app-main">
-        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 32, alignItems: 'start' }}>
-          <Plate height={160} src={avatarUrl ?? undefined}>
-            {!avatarUrl ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <UserAvatar name={profile.display_name} src={null} size={72} />
-              </div>
-            ) : null}
-          </Plate>
-          <div>
-            <DisplayHeading level={4}>{profile.display_name}</DisplayHeading>
-            <MonoMeta size="md" tone="dense" style={{ display: 'block', marginTop: 8 }}>
-              @{profile.handle}
-            </MonoMeta>
-            {profile.bio ? (
-              <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', margin: '12px 0 0', maxWidth: 540 }}>
-                {profile.bio}
-              </p>
-            ) : null}
-            <MonoMeta size="sm" tone="dense" className="profile-stats-line">
-              {[
-                `${rooms.length} room${rooms.length === 1 ? '' : 's'}`,
-                `${totalLikes} like${totalLikes === 1 ? '' : 's'}`,
-                `${totalViews} view${totalViews === 1 ? '' : 's'}`,
-                profile.is_public ? 'Public' : 'Private',
-              ].join(' · ')}
-            </MonoMeta>
-          </div>
-        </div>
-
         {editing && isOwner ? (
           <form
+            className="profile-edit-form"
             onSubmit={(e) => void handleSave(e)}
-            style={{
-              marginTop: 40,
-              padding: '28px 0',
-              borderTop: '1px solid var(--rule-heavy)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 18,
-              maxWidth: 480,
-            }}
           >
             <SectionOpener level={5} title="Edit profile." />
             {formError ? <Banner tone="error">{formError}</Banner> : null}
 
-            <Field label="Avatar">
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <label>
-                  <Button size="sm" variant="outline" as="span">
-                    Upload photo
-                  </Button>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    disabled={busy}
-                    onChange={(e) => void handleAvatarChange(e.target.files?.[0] ?? null)}
-                  />
-                </label>
-                {profile.avatar_path ? (
-                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void handleClearAvatar()}>
-                    Remove
-                  </Button>
-                ) : null}
+            <div className="profile-edit-grid">
+              <div className="profile-edit-avatar">
+                <Field label="Avatar">
+                  <label
+                    className={[
+                      'profile-edit-avatar-hit',
+                      busy ? 'profile-edit-avatar-hit--busy' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    <Plate height={200} src={avatarUrl ?? undefined}>
+                      {!avatarUrl ? (
+                        <div className="profile-edit-avatar-fallback">
+                          <UserAvatar name={editName || profile.display_name} src={null} size={72} />
+                        </div>
+                      ) : null}
+                      <span className="profile-edit-avatar-overlay" aria-hidden>
+                        <svg
+                          className="profile-edit-avatar-icon"
+                          width="22"
+                          height="22"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="square"
+                          strokeLinejoin="miter"
+                        >
+                          <path d="M12 16V5" />
+                          <path d="M8 9l4-4 4 4" />
+                          <path d="M4 16v3h16v-3" />
+                        </svg>
+                        <span className="profile-edit-avatar-overlay-label">Upload here</span>
+                      </span>
+                    </Plate>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      disabled={busy}
+                      onChange={(e) => void handleAvatarChange(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  {profile.avatar_path ? (
+                    <div className="profile-edit-avatar-actions">
+                      <Button size="sm" variant="outline" disabled={busy} onClick={() => void handleClearAvatar()}>
+                        Remove
+                      </Button>
+                    </div>
+                  ) : null}
+                </Field>
               </div>
-            </Field>
 
-            <Field label="Handle" htmlFor="profile-handle">
-              <Input
-                id="profile-handle"
-                value={editHandle}
-                onChange={(e) => setEditHandle(e.target.value.toLowerCase())}
-                maxLength={30}
-                disabled={busy}
-              />
-            </Field>
+              <div className="profile-edit-fields">
+                <div className="profile-edit-row">
+                  <Field label="Handle" htmlFor="profile-handle">
+                    <Input
+                      id="profile-handle"
+                      value={editHandle}
+                      onChange={(e) => setEditHandle(e.target.value.toLowerCase())}
+                      maxLength={30}
+                      disabled={busy}
+                    />
+                  </Field>
+                  <Field label="Display name" htmlFor="profile-name">
+                    <Input
+                      id="profile-name"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      maxLength={60}
+                      disabled={busy}
+                    />
+                  </Field>
+                </div>
 
-            <Field label="Display name" htmlFor="profile-name">
-              <Input
-                id="profile-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                maxLength={60}
-                disabled={busy}
-              />
-            </Field>
+                <Field label="Bio" htmlFor="profile-bio">
+                  <textarea
+                    id="profile-bio"
+                    className="kit-input"
+                    value={editBio}
+                    onChange={(e) => setEditBio(e.target.value)}
+                    maxLength={280}
+                    rows={4}
+                    disabled={busy}
+                    style={{ width: '100%', resize: 'vertical' }}
+                  />
+                </Field>
 
-            <Field label="Bio" htmlFor="profile-bio">
-              <textarea
-                id="profile-bio"
-                className="kit-input"
-                value={editBio}
-                onChange={(e) => setEditBio(e.target.value)}
-                maxLength={280}
-                rows={3}
-                disabled={busy}
-                style={{ width: '100%', resize: 'vertical' }}
-              />
-            </Field>
-
-            <Checkbox
-              checked={editPublic}
-              onChange={setEditPublic}
-              disabled={busy}
-              label="Make profile public"
-            />
-            <MonoMeta size="xs" tone="subtle">
-              Public profiles can list rooms you publish. Private rooms stay hidden.
-            </MonoMeta>
-
-            <Button type="submit" size="md" disabled={busy}>
-              Save profile
-            </Button>
+                <div className="profile-edit-footer">
+                  <div className="profile-edit-visibility">
+                    <Checkbox
+                      checked={editPublic}
+                      onChange={setEditPublic}
+                      disabled={busy}
+                      label="Make profile public"
+                    />
+                    <MonoMeta size="xs" tone="subtle">
+                      Public profiles can list rooms you publish. Private rooms stay hidden.
+                    </MonoMeta>
+                  </div>
+                  <Button type="submit" size="md" disabled={busy}>
+                    Save profile
+                  </Button>
+                </div>
+              </div>
+            </div>
           </form>
-        ) : null}
+        ) : (
+          <div className="profile-hero-grid">
+            <Plate height={160} src={avatarUrl ?? undefined}>
+              {!avatarUrl ? (
+                <div className="profile-edit-avatar-fallback">
+                  <UserAvatar name={profile.display_name} src={null} size={72} />
+                </div>
+              ) : null}
+            </Plate>
+            <div>
+              <DisplayHeading level={4}>{profile.display_name}</DisplayHeading>
+              <MonoMeta size="md" tone="dense" style={{ display: 'block', marginTop: 8 }}>
+                @{profile.handle}
+              </MonoMeta>
+              {profile.bio ? (
+                <p className="profile-hero-bio">{profile.bio}</p>
+              ) : null}
+              <MonoMeta size="sm" tone="dense" className="profile-stats-line">
+                {[
+                  `${rooms.length} room${rooms.length === 1 ? '' : 's'}`,
+                  `${totalLikes} like${totalLikes === 1 ? '' : 's'}`,
+                  `${totalViews} view${totalViews === 1 ? '' : 's'}`,
+                  profile.is_public ? 'Public' : 'Private',
+                ].join(' · ')}
+              </MonoMeta>
+            </div>
+          </div>
+        )}
 
         <section className="profile-ledger">
           <SectionOpener
