@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from 'react';
 export type AppRoute =
   | { name: 'home' }
   | { name: 'gallery' }
+  | { name: 'timeline' }
   | { name: 'shared'; token: string }
   | { name: 'profile'; handle: string }
   | { name: 'publicRoom'; handle: string; roomId: string };
@@ -12,12 +13,17 @@ const PROFILE_PATH_RE = /^\/u\/([a-z0-9_]{3,30})\/?$/i;
 const PUBLIC_ROOM_PATH_RE =
   /^\/u\/([a-z0-9_]{3,30})\/r\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
 const GALLERY_PATH_RE = /^\/gallery\/?$/i;
+const TIMELINE_PATH_RE = /^\/timeline\/?$/i;
 
 export function parsePathname(pathname: string): AppRoute {
   const path = pathname.replace(/\/+$/, '') || '/';
 
   if (GALLERY_PATH_RE.test(path) || path === '/gallery') {
     return { name: 'gallery' };
+  }
+
+  if (TIMELINE_PATH_RE.test(path) || path === '/timeline') {
+    return { name: 'timeline' };
   }
 
   const room = path.match(PUBLIC_ROOM_PATH_RE);
@@ -54,6 +60,10 @@ export function publicRoomPath(handle: string, roomId: string): string {
 
 export function galleryPath(search = ''): string {
   return `/gallery${search.startsWith('?') || search === '' ? search : `?${search}`}`;
+}
+
+export function timelinePath(): string {
+  return '/timeline';
 }
 
 export function navigate(path: string, replace = false): void {

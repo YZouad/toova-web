@@ -8,6 +8,7 @@ import {
   publicRoomPath,
   sharePath,
   galleryPath,
+  timelinePath,
   profilePath,
   useRoute,
 } from './hooks/useRoute';
@@ -26,6 +27,7 @@ import { RoomPresetPicker } from './ui/RoomPresetPicker';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
+import { TimelinePage } from './ui/TimelinePage';
 import { SharedRoomPage } from './ui/SharedRoomPage';
 import { ProfilePage } from './ui/ProfilePage';
 import { PublicRoomPage } from './ui/PublicRoomPage';
@@ -143,6 +145,7 @@ export default function App() {
   const [screen, setScreen] = useState<Screen>('landing');
   const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
+  const [timelineScrollToDemos, setTimelineScrollToDemos] = useState(false);
   const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
   const [workspace, setWorkspace] = useState<{ id: string; name: string; isOwner: boolean } | null>(null);
   const [floorPlanDraft, setFloorPlanDraft] = useState<FloorPlanDraft | null>(null);
@@ -160,7 +163,8 @@ export default function App() {
     route.name === 'shared' ||
     route.name === 'profile' ||
     route.name === 'publicRoom' ||
-    route.name === 'gallery';
+    route.name === 'gallery' ||
+    route.name === 'timeline';
 
   const {
     isAdmin,
@@ -342,12 +346,12 @@ export default function App() {
     : screen === 'admin' ? 'admin'
     : screen === 'ar' ? 'ar'
     : screen === 'gallery' || route.name === 'gallery' ? 'gallery'
-    : screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' ? 'home'
+    : screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' || route.name === 'timeline' ? 'home'
     : null;
 
   const showMarketingRail =
     !!user &&
-    (screen === 'landing' || screen === 'pitch-madness' || screen === 'contact');
+    (screen === 'landing' || screen === 'pitch-madness' || screen === 'contact' || route.name === 'timeline');
 
   function handleAppNav(nav: AppShellNavId) {
     if (nav === 'home') {
@@ -609,6 +613,23 @@ export default function App() {
     );
   }
 
+  if (route.name === 'timeline') {
+    return (
+      <>
+        <div className={showMarketingRail ? 'kit-app-rail-pad' : undefined}>
+          <TimelinePage
+            {...landingCallbacks}
+            onContact={siteFooterNav.onContact}
+            onPitchMadness={siteFooterNav.onPitchMadness}
+            scrollToDemosOnMount={timelineScrollToDemos}
+            onDemosScrolled={() => setTimelineScrollToDemos(false)}
+          />
+        </div>
+        {railChrome}
+      </>
+    );
+  }
+
   if (screen === 'checklist') {
     const backTarget =
       checklistReturn === 'designer' && workspace && user
@@ -669,8 +690,8 @@ export default function App() {
               setScreen('pitch-madness');
             }}
             onWatchDemo={() => {
-              setPitchScrollToDemos(true);
-              setScreen('pitch-madness');
+              setTimelineScrollToDemos(true);
+              navigate(timelinePath());
             }}
           />
         </div>
