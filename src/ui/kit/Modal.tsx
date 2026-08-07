@@ -34,7 +34,7 @@ export function Modal({
     >
       <div
         className={['kit-modal', className].filter(Boolean).join(' ')}
-        style={{ ...style, width, maxWidth: '100%' }}
+        style={{ ...style, width: `min(${width}px, 100%)`, maxWidth: '100%' }}
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"

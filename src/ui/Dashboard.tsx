@@ -17,6 +17,7 @@ import { listSharedWithMeRooms, type PublicAttribution, type ShareRole } from '.
 import { fetchRoomAttribution, setRoomVisibility } from '../lib/profiles';
 import { navigate, profilePath } from '../hooks/useRoute';
 import type { Profile } from '../lib/profiles';
+import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
 import {
   AppShell,
   type AppShellNavId,
@@ -30,13 +31,10 @@ import {
   MonoMeta,
   Plate,
   SectionOpener,
-  Select,
   Tabs,
 } from './kit';
 
 const MAX_ROOMS = 5;
-
-const ROOM_TYPES = ['Living Room', 'Bedroom', 'Office', 'Dining', 'Studio'];
 
 const KNOWN_KINDS = new Set([
   'bed',
@@ -64,16 +62,20 @@ interface RoomItemPreviewRow {
   size_w: string | number;
   size_h: string | number;
   size_d: string | number;
+  model_url?: string | null;
 }
 
 function rowToPreviewItem(row: RoomItemPreviewRow): RoomPreviewItem | null {
   if (!KNOWN_KINDS.has(row.kind)) return null;
+  const modelUrl =
+    row.kind === 'imported' ? String(row.model_url ?? '').trim() || null : null;
   return {
     id: row.id,
     kind: row.kind,
     position: [n(row.pos_x), n(row.pos_y), n(row.pos_z)],
     rotationY: n(row.rotation_y),
     size: [n(row.size_w), n(row.size_h), n(row.size_d)],
+    modelUrl,
   };
 }
 
@@ -129,6 +131,8 @@ interface DashboardProps {
   onStartFloorPlan: (name: string) => void;
   onNavigate: (nav: AppShellNavId) => void;
   onLogout: () => void;
+  onContact?: () => void;
+  onPitchMadness?: () => void;
 }
 
 export function Dashboard({
@@ -140,6 +144,8 @@ export function Dashboard({
   onStartFloorPlan,
   onNavigate,
   onLogout,
+  onContact,
+  onPitchMadness,
 }: DashboardProps) {
   const [rooms, setRooms] = useState<ListedRoomRow[]>([]);
   const [listError, setListError] = useState<string | null>(null);
@@ -150,7 +156,6 @@ export function Dashboard({
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showNewRoom, setShowNewRoom] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
-  const [newRoomType, setNewRoomType] = useState('Living Room');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [sharedWithMe, setSharedWithMe] = useState<
@@ -188,7 +193,7 @@ export function Dashboard({
     if (roomIds.length > 0) {
       const { data: itemRows, error: itemsErr } = await supabase
         .from('room_items')
-        .select('id, room_id, kind, pos_x, pos_y, pos_z, rotation_y, size_w, size_h, size_d')
+        .select('id, room_id, kind, pos_x, pos_y, pos_z, rotation_y, size_w, size_h, size_d, model_url')
         .in('room_id', roomIds);
 
       if (itemsErr) {
@@ -196,12 +201,39 @@ export function Dashboard({
         return;
       }
 
-      for (const row of (itemRows ?? []) as RoomItemPreviewRow[]) {
+      const previewRows = (itemRows ?? []) as RoomItemPreviewRow[];
+      for (const row of previewRows) {
         const item = rowToPreviewItem(row);
         if (!item) continue;
         const list = itemsByRoom.get(row.room_id) ?? [];
         list.push(item);
         itemsByRoom.set(row.room_id, list);
+      }
+
+      const modelUrls = [
+        ...new Set(
+          previewRows
+            .filter((r) => r.kind === 'imported')
+            .map((r) => String(r.model_url ?? '').trim())
+            .filter(Boolean),
+        ),
+      ];
+      if (modelUrls.length > 0) {
+        try {
+          const tints = await resolvePreviewTintsForModelUrls(modelUrls);
+          for (const [roomId, list] of itemsByRoom) {
+            itemsByRoom.set(
+              roomId,
+              list.map((it) => {
+                if (it.kind !== 'imported' || !it.modelUrl) return it;
+                const tint = tints.get(it.modelUrl);
+                return tint ? { ...it, tint } : it;
+              }),
+            );
+          }
+        } catch {
+          /* tints are best-effort */
+        }
       }
 
       await Promise.all(
@@ -542,6 +574,10 @@ export function Dashboard({
       profileInitials={profileInitials(profile, user.email)}
       onNavigate={onNavigate}
       onLogout={onLogout}
+      onContact={onContact}
+      onPitchMadness={onPitchMadness}
+      feedbackEmail={user.email ?? ''}
+      feedbackUserId={user.id}
       onProfile={
         profile?.handle
           ? () => navigate(profilePath(profile.handle))
@@ -695,23 +731,18 @@ export function Dashboard({
               Cancel
             </Button>
             <Button size="sm" onClick={handleCreateRoom}>
-              Draw the floor plan
+              Continue
             </Button>
           </>
         }
       >
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
-          <Field label="Room name">
-            <Input
-              value={newRoomName}
-              onChange={(e) => setNewRoomName(e.target.value)}
-              placeholder={nextRoomName(rooms)}
-            />
-          </Field>
-          <Field label="Room type" hint="Sets the starting catalog and default ceiling height.">
-            <Select options={ROOM_TYPES} value={newRoomType} onChange={setNewRoomType} />
-          </Field>
-        </div>
+        <Field label="Room name">
+          <Input
+            value={newRoomName}
+            onChange={(e) => setNewRoomName(e.target.value)}
+            placeholder={nextRoomName(rooms)}
+          />
+        </Field>
       </Modal>
 
       <Modal

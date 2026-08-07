@@ -7,7 +7,7 @@ import { signRoomThumbnailPath } from '../lib/roomThumbnailStorage';
 import { parseFloorPlan } from '../lib/floorPlanGeometry';
 import type { GalleryModel } from './useGalleryCatalog';
 import type { GalleryRoom } from './useGalleryRooms';
-import { mapPreviewItems } from './useGalleryRooms';
+import { mapPreviewItems, withPreviewTints } from './useGalleryRooms';
 import type { CatalogCategorySlug } from '../lib/catalogCategories';
 import type { CatalogVisibility } from '../lib/catalogEngagement';
 import { signBrowsableModelPath } from '../lib/modelStorage';
@@ -43,7 +43,7 @@ async function hydrateRoom(row: GalleryRoomRow): Promise<GalleryRoom> {
     thumbnailPath: thumb,
     thumbnailUrl,
     roomGeometry: parseFloorPlan(row.room_geometry),
-    previewItems: mapPreviewItems(row.preview_items),
+    previewItems: await withPreviewTints(mapPreviewItems(row.preview_items)),
   };
 }
 

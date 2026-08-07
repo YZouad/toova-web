@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import {
   CATALOG_CATEGORY_DEFS,
   catalogCategoryLabel,
+  toggleCatalogCategory,
   type CatalogCategorySlug,
 } from '../lib/catalogCategories';
 import type { GallerySort, GallerySource } from '../lib/galleryCatalog';
@@ -15,9 +16,11 @@ interface GalleryFiltersProps {
   source: GallerySource;
   /** Models use GallerySort; rooms use RoomGallerySort — both include 'hot'. */
   sort: GallerySort | RoomGallerySort;
-  category: string | null;
+  categories: string[];
   query: string;
   showMine?: boolean;
+  /** Hide Community / Toova / My creations source tabs (e.g. Models page). */
+  hideSourceTabs?: boolean;
   dense?: boolean;
   /** Show search field in this row (e.g. designer embed). */
   showSearch?: boolean;
@@ -25,7 +28,7 @@ interface GalleryFiltersProps {
   hideSortAndCategory?: boolean;
   onSourceChange: (source: GallerySource) => void;
   onSortChange: (sort: GallerySort | RoomGallerySort) => void;
-  onCategoryChange: (category: string | null) => void;
+  onCategoriesChange: (categories: string[]) => void;
   onQueryChange: (query: string) => void;
 }
 
@@ -127,16 +130,24 @@ export function GallerySortMenu({
 }
 
 export function GalleryCategoryMenu({
-  category,
-  onCategoryChange,
+  categories,
+  onCategoriesChange,
 }: {
-  category: string | null;
-  onCategoryChange: (category: string | null) => void;
+  categories: string[];
+  onCategoriesChange: (categories: string[]) => void;
 }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const menuId = useId();
-  const categoryLabel = category ? catalogCategoryLabel(category) : 'Category';
+  const selected = categories as CatalogCategorySlug[];
+  const buttonLabel =
+    selected.length === 0
+      ? 'Category'
+      : selected.length === 1
+        ? catalogCategoryLabel(selected[0]!)
+        : selected.length === 2
+          ? `${catalogCategoryLabel(selected[0]!)} · ${catalogCategoryLabel(selected[1]!)}`
+          : `${selected.length} categories`;
 
   useEffect(() => {
     if (!open) return;
@@ -160,41 +171,42 @@ export function GalleryCategoryMenu({
     <div className="gallery-chip-menu" ref={wrapRef}>
       <Button
         size="sm"
-        variant={category ? 'primary' : 'outline'}
+        variant={selected.length > 0 ? 'primary' : 'outline'}
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
         aria-controls={menuId}
       >
-        {category ? categoryLabel : 'Category'} ▾
+        {buttonLabel} ▾
       </Button>
       {open ? (
         <div id={menuId} className="gallery-cat-panel" role="dialog" aria-label="Filter by category">
           <button
             type="button"
-            className={`gallery-cat-option${category == null ? ' is-active' : ''}`}
-            onClick={() => {
-              onCategoryChange(null);
-              setOpen(false);
-            }}
+            className={`gallery-cat-option${selected.length === 0 ? ' is-active' : ''}`}
+            onClick={() => onCategoriesChange([])}
           >
             All categories
           </button>
+          <p className="gallery-cat-hint">Select multiple to match all</p>
           <div className="gallery-cat-grid">
-            {CATALOG_CATEGORY_DEFS.map((c) => (
-              <button
-                key={c.slug}
-                type="button"
-                className={`gallery-cat-option${category === c.slug ? ' is-active' : ''}`}
-                onClick={() => {
-                  onCategoryChange(
-                    category === c.slug ? null : (c.slug as CatalogCategorySlug),
-                  );
-                  setOpen(false);
-                }}
-              >
-                {c.label}
-              </button>
-            ))}
+            {CATALOG_CATEGORY_DEFS.map((c) => {
+              const on = selected.includes(c.slug);
+              return (
+                <button
+                  key={c.slug}
+                  type="button"
+                  className={`gallery-cat-option${on ? ' is-active' : ''}`}
+                  aria-pressed={on}
+                  onClick={() =>
+                    onCategoriesChange(
+                      toggleCatalogCategory(selected, c.slug as CatalogCategorySlug),
+                    )
+                  }
+                >
+                  {c.label}
+                </button>
+              );
+            })}
           </div>
         </div>
       ) : null}
@@ -206,19 +218,22 @@ export function GalleryFilters({
   entity,
   source,
   sort,
-  category,
+  categories,
   query,
   showMine,
+  hideSourceTabs = false,
   dense,
   showSearch = false,
   hideSortAndCategory = false,
   onSourceChange,
   onSortChange,
-  onCategoryChange,
+  onCategoriesChange,
   onQueryChange,
 }: GalleryFiltersProps) {
-  const showSourceTabs = entity === 'models';
+  const showSourceTabs = entity === 'models' && !hideSourceTabs;
   const showTools = showSearch || !hideSortAndCategory;
+  if (!showSourceTabs && !showTools) return null;
+
   const sourceTabs: { id: FilterSource; label: string }[] = [
     { id: 'community', label: 'Community' },
     { id: 'toova', label: 'Toova' },
@@ -262,8 +277,8 @@ export function GalleryFilters({
                 />
                 {entity === 'models' ? (
                   <GalleryCategoryMenu
-                    category={category}
-                    onCategoryChange={onCategoryChange}
+                    categories={categories}
+                    onCategoriesChange={onCategoriesChange}
                   />
                 ) : null}
               </>

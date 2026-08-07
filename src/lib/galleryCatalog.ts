@@ -46,6 +46,9 @@ export interface GalleryCatalogRow {
 export interface FetchGalleryParams {
   source: GallerySource;
   sort?: GallerySort;
+  /** Category slugs — model must include all (AND). */
+  categories?: string[] | null;
+  /** @deprecated Prefer `categories`. */
   category?: string | null;
   query?: string | null;
   limit?: number;
@@ -100,11 +103,16 @@ export async function fetchGalleryCatalog(
   params: FetchGalleryParams,
 ): Promise<{ rows: GalleryCatalogRow[]; total: number }> {
   const sort = params.sort ?? (params.source === 'mine' ? 'newest' : 'hot');
+  const categories =
+    params.categories ??
+    (params.category ? [params.category] : null);
+  const categoryParam =
+    categories && categories.length > 0 ? categories.join(',') : null;
 
   const { data, error } = await supabase.rpc('get_gallery_catalog', {
     p_source: params.source,
     p_sort: sort,
-    p_category: params.category ?? null,
+    p_category: categoryParam,
     p_query: params.query ?? null,
     p_limit: params.limit ?? 48,
     p_offset: params.offset ?? 0,
@@ -138,7 +146,10 @@ export async function updateCatalogModel(input: {
 
 export async function deleteCatalogModel(
   kind: string,
-): Promise<{ model_url: string | null; thumbnail_path: string | null }> {
+): Promise<{
+  model_url: string | null;
+  thumbnail_path: string | null;
+}> {
   const { data, error } = await supabase.rpc('delete_catalog_model', {
     p_kind: kind,
   });

@@ -19,9 +19,15 @@ export { EmptyState, type EmptyStateProps } from './EmptyState';
 export { Eyebrow, type EyebrowLevel, type EyebrowProps, type EyebrowTone } from './Eyebrow';
 export { Field, type FieldProps } from './Field';
 export { Footer, type FooterLink, type FooterProps } from './Footer';
+export { SiteFooter, type SiteFooterProps } from './SiteFooter';
 export { Input, type InputProps } from './Input';
 export { KeyValueRow, type KeyValueRowProps } from './KeyValueRow';
-export { Logo, TOOVA_LOGO_SRC, type LogoProps } from './Logo';
+export {
+  Logo,
+  TOOVA_LOGO_SRC,
+  TOOVA_LOGO_SQUARE_SRC,
+  type LogoProps,
+} from './Logo';
 export { MarketingNav, type MarketingNavLink, type MarketingNavProps } from './MarketingNav';
 export { Modal, type ModalProps } from './Modal';
 export { MonoMeta, type MonoMetaProps, type MonoMetaSize, type MonoMetaTone } from './MonoMeta';
@@ -29,6 +35,7 @@ export { NumberStepper, type NumberStepperProps } from './NumberStepper';
 export { NumberedStep, type NumberedStepEdge, type NumberedStepProps } from './NumberedStep';
 export { RangeControl, type RangeControlProps } from './RangeControl';
 export { Spinner, type SpinnerProps } from './Spinner';
+export { Splash, type SplashProps } from './Splash';
 export { Plate, type PlateProps } from './Plate';
 export { PlateCard, type PlateCardProps } from './PlateCard';
 export { PriceColumn, type PriceColumnProps } from './PriceColumn';

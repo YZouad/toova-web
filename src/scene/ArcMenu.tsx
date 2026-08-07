@@ -96,7 +96,7 @@ export function ArcMenu() {
         ];
 
   const angles = [-104, -62, -21, 21, 62, 104];
-  const radius = 88;
+  const radius = 96;
 
   return (
     <Html

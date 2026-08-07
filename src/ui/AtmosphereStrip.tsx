@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { formatTimeOfDay, isDaytime, WEATHER_OPTIONS } from '../lib/environment';
 import { useStore } from '../store';
 import { GlassSurface } from './GlassSurface';
@@ -7,13 +7,19 @@ interface AtmosphereStripProps {
   lookOpen: boolean;
   onToggleLook: () => void;
   onCloseLook: () => void;
+  lookPanel?: ReactNode;
 }
 
 /**
- * Slim always-on strip: time + orientation.
- * Weather / presets / light shafts live under Environment; Look opens surfaces.
+ * Collapsed Light chip (top-right). Expand for time, orientation, Environment, Look.
+ * Environment and Look open downward as popovers under the strip.
  */
-export function AtmosphereStrip({ lookOpen, onToggleLook, onCloseLook }: AtmosphereStripProps) {
+export function AtmosphereStrip({
+  lookOpen,
+  onToggleLook,
+  onCloseLook,
+  lookPanel,
+}: AtmosphereStripProps) {
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const weather = useStore((s) => s.environment.weather);
@@ -25,19 +31,31 @@ export function AtmosphereStrip({ lookOpen, onToggleLook, onCloseLook }: Atmosph
   const setGodRays = useStore((s) => s.setGodRays);
 
   const [envOpen, setEnvOpen] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const rootRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
-    if (lookOpen) setEnvOpen(false);
+    if (lookOpen) {
+      setEnvOpen(false);
+      setExpanded(true);
+    }
   }, [lookOpen]);
 
   useEffect(() => {
-    if (!envOpen) return;
+    if (!envOpen && !expanded && !lookOpen) return;
     const onPointer = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setEnvOpen(false);
+      if (!rootRef.current?.contains(e.target as Node)) {
+        setEnvOpen(false);
+        setExpanded(false);
+        onCloseLook();
+      }
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setEnvOpen(false);
+      if (e.key === 'Escape') {
+        setEnvOpen(false);
+        setExpanded(false);
+        onCloseLook();
+      }
     };
     window.addEventListener('pointerdown', onPointer);
     window.addEventListener('keydown', onKey);
@@ -45,168 +63,210 @@ export function AtmosphereStrip({ lookOpen, onToggleLook, onCloseLook }: Atmosph
       window.removeEventListener('pointerdown', onPointer);
       window.removeEventListener('keydown', onKey);
     };
-  }, [envOpen]);
+  }, [envOpen, expanded, lookOpen, onCloseLook]);
+
+  const collapse = () => {
+    setEnvOpen(false);
+    setExpanded(false);
+    onCloseLook();
+  };
 
   return (
-    <GlassSurface compact className="atmosphere-strip" as="aside">
+    <GlassSurface
+      compact
+      className={['atmosphere-strip', expanded ? 'atmosphere-strip--expanded' : ''].filter(Boolean).join(' ')}
+      as="aside"
+    >
       <div ref={rootRef as never} className="atmosphere-strip-inner">
-        <div className="atmosphere-strip-row">
+        <button
+          type="button"
+          className="atmosphere-strip-chip"
+          aria-expanded={expanded}
+          aria-controls="atmosphere-strip-panel"
+          onClick={() => {
+            if (expanded || lookOpen) {
+              collapse();
+            } else {
+              onCloseLook();
+              setEnvOpen(false);
+              setExpanded(true);
+            }
+          }}
+        >
           <span className="atmosphere-glyph" aria-hidden>
             {isDaytime(timeOfDay) ? '☀' : '☾'}
           </span>
           <span className="atmosphere-time">{formatTimeOfDay(timeOfDay)}</span>
-          <input
-            type="range"
-            className="atmosphere-slider"
-            min={0}
-            max={24}
-            step={0.25}
-            value={timeOfDay}
-            onChange={(e) => setTimeOfDay(Number(e.target.value))}
-            aria-label="Time of day"
-          />
-        </div>
+          <span className="atmosphere-strip-chip-label">Light</span>
+          <span className="atmosphere-strip-chip-chevron" aria-hidden>
+            {expanded ? '▾' : '▸'}
+          </span>
+        </button>
 
-        <div className="atmosphere-strip-row">
-          <span className="atmosphere-meta">N</span>
-          <input
-            type="range"
-            className="atmosphere-slider"
-            min={0}
-            max={360}
-            step={5}
-            value={orientationDeg}
-            onChange={(e) => setOrientation(Number(e.target.value))}
-            aria-label="Room orientation"
-          />
-          <span className="atmosphere-meta atmosphere-meta--wide">{Math.round(orientationDeg)}°</span>
-        </div>
+        <div id="atmosphere-strip-panel" className="atmosphere-strip-panel">
+          <div className="atmosphere-strip-row">
+            <span className="atmosphere-glyph" aria-hidden>
+              {isDaytime(timeOfDay) ? '☀' : '☾'}
+            </span>
+            <span className="atmosphere-time">{formatTimeOfDay(timeOfDay)}</span>
+            <input
+              type="range"
+              className="atmosphere-slider"
+              min={0}
+              max={24}
+              step={0.25}
+              value={timeOfDay}
+              onChange={(e) => setTimeOfDay(Number(e.target.value))}
+              aria-label="Time of day"
+            />
+          </div>
 
-        <div className="atmosphere-footer">
-          <button
-            type="button"
-            className={`atmosphere-secondary-btn${envOpen ? ' active' : ''}`}
-            aria-expanded={envOpen}
-            aria-controls="environment-popover"
-            onClick={() => {
-              onCloseLook();
-              setEnvOpen((v) => !v);
-            }}
-          >
-            Environment
-          </button>
-          <button
-            type="button"
-            className={`atmosphere-look-btn${lookOpen ? ' active' : ''}`}
-            aria-expanded={lookOpen}
-            aria-controls="look-drawer"
-            onClick={() => {
-              setEnvOpen(false);
-              onToggleLook();
-            }}
-          >
-            Look
-          </button>
-        </div>
+          <div className="atmosphere-strip-row">
+            <span className="atmosphere-meta">N</span>
+            <input
+              type="range"
+              className="atmosphere-slider"
+              min={0}
+              max={360}
+              step={5}
+              value={orientationDeg}
+              onChange={(e) => setOrientation(Number(e.target.value))}
+              aria-label="Room orientation"
+            />
+            <span className="atmosphere-meta atmosphere-meta--wide">{Math.round(orientationDeg)}°</span>
+          </div>
 
-        {envOpen ? (
-          <GlassSurface
-            id="environment-popover"
-            className="atmosphere-env-popover"
-            as="div"
-            role="dialog"
-            aria-label="Environment"
-          >
-            <div className="atmosphere-env-inner">
-              <header className="atmosphere-env-header">
-                <p className="atmosphere-env-title">Environment</p>
-                <button
-                  type="button"
-                  className="look-drawer-close"
-                  onClick={() => setEnvOpen(false)}
-                  aria-label="Close environment panel"
-                >
-                  ✕
-                </button>
-              </header>
+          <div className="atmosphere-footer">
+            <button
+              type="button"
+              className={`atmosphere-secondary-btn${envOpen ? ' active' : ''}`}
+              aria-expanded={envOpen}
+              aria-controls="environment-popover"
+              onClick={() => {
+                onCloseLook();
+                setEnvOpen((v) => !v);
+              }}
+            >
+              Environment
+            </button>
+            <button
+              type="button"
+              className={`atmosphere-look-btn${lookOpen ? ' active' : ''}`}
+              aria-expanded={lookOpen}
+              aria-controls="look-drawer"
+              onClick={() => {
+                setEnvOpen(false);
+                setExpanded(true);
+                onToggleLook();
+              }}
+            >
+              Look
+            </button>
+          </div>
 
-              <p className="atmosphere-env-label">Weather</p>
-              <div className="atmosphere-weather" role="group" aria-label="Weather">
-                {WEATHER_OPTIONS.map((opt) => (
+          {envOpen ? (
+            <GlassSurface
+              id="environment-popover"
+              className="atmosphere-env-popover"
+              as="div"
+              role="dialog"
+              aria-label="Environment"
+            >
+              <div className="atmosphere-env-inner">
+                <header className="atmosphere-env-header">
+                  <p className="atmosphere-env-title">Environment</p>
                   <button
-                    key={opt.id}
                     type="button"
-                    className={`atmosphere-chip${weather === opt.id ? ' active' : ''}`}
-                    title={opt.label}
-                    aria-label={opt.label}
-                    aria-pressed={weather === opt.id}
-                    onClick={() => setWeather(opt.id)}
+                    className="look-drawer-close"
+                    onClick={() => setEnvOpen(false)}
+                    aria-label="Close environment panel"
                   >
-                    {opt.glyph}
+                    ✕
                   </button>
-                ))}
-              </div>
+                </header>
 
-              <p className="atmosphere-env-label">Presets</p>
-              <div className="atmosphere-presets">
+                <p className="atmosphere-env-label">Weather</p>
+                <div className="atmosphere-weather" role="group" aria-label="Weather">
+                  {WEATHER_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      className={`atmosphere-chip${weather === opt.id ? ' active' : ''}`}
+                      title={opt.label}
+                      aria-label={opt.label}
+                      aria-pressed={weather === opt.id}
+                      onClick={() => setWeather(opt.id)}
+                    >
+                      {opt.glyph}
+                    </button>
+                  ))}
+                </div>
+
+                <p className="atmosphere-env-label">Presets</p>
+                <div className="atmosphere-presets">
+                  <button
+                    type="button"
+                    className="atmosphere-pill"
+                    onClick={() => {
+                      setTimeOfDay(0);
+                      setExposure(0.35);
+                      setGodRays(false);
+                      setWeather('clear');
+                    }}
+                  >
+                    Midnight
+                  </button>
+                  <button
+                    type="button"
+                    className="atmosphere-pill"
+                    onClick={() => {
+                      setTimeOfDay(7);
+                      setExposure(1);
+                      setGodRays(true);
+                      setWeather('partlyCloudy');
+                    }}
+                  >
+                    Golden hour
+                  </button>
+                  <button
+                    type="button"
+                    className="atmosphere-pill"
+                    onClick={() => {
+                      setTimeOfDay(13);
+                      setExposure(1);
+                      setWeather('partlyCloudy');
+                    }}
+                  >
+                    Noon
+                  </button>
+                  <button
+                    type="button"
+                    className="atmosphere-pill"
+                    onClick={() => {
+                      setTimeOfDay(11);
+                      setExposure(0.65);
+                      setWeather('overcast');
+                    }}
+                  >
+                    Overcast
+                  </button>
+                </div>
+
                 <button
                   type="button"
-                  className="atmosphere-pill"
-                  onClick={() => {
-                    setTimeOfDay(0);
-                    setExposure(0.35);
-                    setGodRays(false);
-                    setWeather('clear');
-                  }}
+                  className={`atmosphere-toggle atmosphere-toggle--block${godRays ? ' active' : ''}`}
+                  aria-pressed={godRays}
+                  onClick={() => setGodRays(!godRays)}
                 >
-                  Midnight
-                </button>
-                <button
-                  type="button"
-                  className="atmosphere-pill"
-                  onClick={() => {
-                    setTimeOfDay(7);
-                    setExposure(1);
-                    setGodRays(true);
-                    setWeather('partlyCloudy');
-                  }}
-                >
-                  Golden hour
-                </button>
-                <button
-                  type="button"
-                  className="atmosphere-pill"
-                  onClick={() => {
-                    setTimeOfDay(13);
-                    setExposure(1);
-                    setWeather('partlyCloudy');
-                  }}
-                >
-                  Noon
-                </button>
-                <button
-                  type="button"
-                  className="atmosphere-pill"
-                  onClick={() => {
-                    setTimeOfDay(11);
-                    setExposure(0.65);
-                    setWeather('overcast');
-                  }}
-                >
-                  Overcast
+                  Light shafts
                 </button>
               </div>
+            </GlassSurface>
+          ) : null}
+        </div>
 
-              <button
-                type="button"
-                className={`atmosphere-toggle atmosphere-toggle--block${godRays ? ' active' : ''}`}
-                aria-pressed={godRays}
-                onClick={() => setGodRays(!godRays)}
-              >
-                Light shafts
-              </button>
-            </div>
-          </GlassSurface>
+        {lookOpen && lookPanel ? (
+          <div className="atmosphere-look-popover">{lookPanel}</div>
         ) : null}
       </div>
     </GlassSurface>

@@ -26,6 +26,7 @@ import { HangingDecorPanel } from './HangingDecorPanel';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
+import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
@@ -117,6 +118,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const [leaveSaving, setLeaveSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const dirtyBaselineRef = useRef('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [beddingBusy, setBeddingBusy] = useState(false);
   const { open: checklistOpen, closeChecklist } = useChecklistModal();
@@ -236,16 +238,33 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
     if (user?.id) {
       try {
         const { items, order, roomGeometry } = useStore.getState();
-        const previewItems = order
+        const floorItems = order
           .map((id) => items[id])
-          .filter((it): it is Item => Boolean(it))
-          .map((it) => ({
-            id: it.id,
-            kind: it.kind,
-            position: [...it.position] as [number, number, number],
-            rotationY: it.rotationY,
-            size: [...it.size] as [number, number, number],
-          }));
+          .filter((it): it is Item => Boolean(it) && it.kind !== 'hanging');
+
+        const modelUrls = [
+          ...new Set(
+            floorItems
+              .filter((it) => it.kind === 'imported' && it.importedStoragePath)
+              .map((it) => it.importedStoragePath!),
+          ),
+        ];
+        const tints =
+          modelUrls.length > 0
+            ? await resolvePreviewTintsForModelUrls(modelUrls)
+            : new Map<string, string>();
+
+        const previewItems = floorItems.map((it) => ({
+          id: it.id,
+          kind: it.kind,
+          position: [...it.position] as [number, number, number],
+          rotationY: it.rotationY,
+          size: [...it.size] as [number, number, number],
+          tint:
+            it.kind === 'imported' && it.importedStoragePath
+              ? tints.get(it.importedStoragePath) ?? null
+              : null,
+        }));
         const blob = await renderRoomPreviewJpeg(roomGeometry, previewItems);
         if (blob) {
           await uploadRoomThumbnail(blob, user.id, workspace.id);
@@ -360,24 +379,101 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           </div>
         </div>
         <div className="designer-topbar-end">
-          <Button size="sm" variant="outline" onClick={() => setFeedbackOpen(true)}>
-            Feedback
-          </Button>
-          <Button size="sm" variant="outline" onClick={onOpenChecklist}>
-            Checklist
-          </Button>
-          {workspace?.isOwner ? (
-            <Button size="sm" variant="outline" onClick={() => setShareOpen(true)}>
-              Share
+          <div className="designer-topbar-end__desktop">
+            <Button size="sm" variant="outline" onClick={() => setFeedbackOpen(true)}>
+              Feedback
             </Button>
-          ) : null}
-          <Button size="sm" variant="outline" onClick={() => sceneRef.current?.resetCamera()}>
-            Reset view
-          </Button>
+            <Button size="sm" variant="outline" onClick={onOpenChecklist}>
+              Checklist
+            </Button>
+            {workspace?.isOwner ? (
+              <Button size="sm" variant="outline" onClick={() => setShareOpen(true)}>
+                Share
+              </Button>
+            ) : null}
+            <Button size="sm" variant="outline" onClick={() => sceneRef.current?.resetCamera()}>
+              Reset view
+            </Button>
+          </div>
           <MonoMeta size="sm" tone="dense" className="designer-save-status">
             {saving ? 'Saving…' : savedLabel}
           </MonoMeta>
           <Button size="sm" disabled={saving} onClick={() => void handleSave()}>Save</Button>
+          <div className="designer-topbar-more">
+            <button
+              type="button"
+              className="designer-topbar-btn designer-topbar-more__toggle"
+              aria-expanded={mobileMenuOpen}
+              aria-label={mobileMenuOpen ? 'Close actions' : 'More actions'}
+              onClick={() => setMobileMenuOpen((v) => !v)}
+            >
+              ···
+            </button>
+            {mobileMenuOpen ? (
+              <>
+                <button
+                  type="button"
+                  className="designer-topbar-more__backdrop"
+                  aria-label="Close actions"
+                  onClick={() => setMobileMenuOpen(false)}
+                />
+                <div className="designer-topbar-more__menu" role="menu">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setFeedbackOpen(true);
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Feedback
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      onOpenChecklist();
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Checklist
+                  </button>
+                  {workspace?.isOwner ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShareOpen(true);
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      Share
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      sceneRef.current?.resetCamera();
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Reset view
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setLookOpen(true);
+                      setMobileMenuOpen(false);
+                    }}
+                  >
+                    Room look
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
         </div>
       </header>
 
@@ -391,21 +487,26 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         </div>
 
         <SceneCheckoutPanel onOpenChecklist={onOpenChecklist} />
-        <HangingDecorToolRail />
 
         <div className="designer-right-rail">
           <AtmosphereStrip
             lookOpen={lookOpen}
-            onToggleLook={() => setLookOpen((v) => !v)}
+            onToggleLook={() => {
+              setLookOpen((v) => !v);
+              if (!lookOpen) setAdvancedOpen(false);
+            }}
             onCloseLook={() => setLookOpen(false)}
+            lookPanel={
+              <LookDrawer
+                open={lookOpen}
+                onClose={() => setLookOpen(false)}
+                onGoToPreset={(id: CameraPresetId) => sceneRef.current?.goToPreset(id)}
+                onOpenExport={() => setExportOpen(true)}
+                onEditFloorPlan={onEditFloorPlan}
+              />
+            }
           />
-          <LookDrawer
-            open={lookOpen}
-            onClose={() => setLookOpen(false)}
-            onGoToPreset={(id: CameraPresetId) => sceneRef.current?.goToPreset(id)}
-            onOpenExport={() => setExportOpen(true)}
-            onEditFloorPlan={onEditFloorPlan}
-          />
+          <HangingDecorToolRail />
         </div>
 
         {!selectedId ? (
@@ -424,7 +525,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
               type="button"
               className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
               aria-pressed={advancedOpen}
-              onClick={() => setAdvancedOpen((v) => !v)}
+              onClick={() => {
+                setAdvancedOpen((v) => !v);
+                if (!advancedOpen) setLookOpen(false);
+              }}
             >
               Customize
             </button>
@@ -447,7 +551,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
               type="button"
               className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
               aria-pressed={advancedOpen}
-              onClick={() => setAdvancedOpen((v) => !v)}
+              onClick={() => {
+                setAdvancedOpen((v) => !v);
+                if (!advancedOpen) setLookOpen(false);
+              }}
             >
               Advanced
             </button>

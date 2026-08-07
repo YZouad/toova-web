@@ -16,7 +16,7 @@
 -- select record_room_view('<public_room_id>', 'test-token-aaaaaaaa'); -- same count
 --
 -- 5) Self-like rejected
--- select toggle_room_like('<own_public_room_id>'); -- cannot like own room
+-- select toggle_room_like('<own_public_room_id>'); -- allowed (liked: true)
 --
 -- 6) Clone count continuity
 -- fork_public_room still increments fork_count only

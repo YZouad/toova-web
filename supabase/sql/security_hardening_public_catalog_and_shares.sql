@@ -24,6 +24,7 @@ AS $$
         NULLIF(trim(fc.model_url), '') = p_object_path
         OR NULLIF(trim(fc.usdz_path), '') = p_object_path
         OR NULLIF(trim(fc.thumbnail_path), '') = p_object_path
+        OR NULLIF(trim(fc.silhouette_path), '') = p_object_path
       )
   );
 $$;

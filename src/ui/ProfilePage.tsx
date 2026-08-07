@@ -20,6 +20,7 @@ import { profilePath, navigate, galleryPath } from '../hooks/useRoute';
 import { signBrowsableModelPath } from '../lib/modelStorage';
 import { planBounds } from '../lib/roomGeometry';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
+import { withPreviewTints } from '../hooks/useGalleryRooms';
 import { UserAvatar } from './UserAvatar';
 import {
   Badge,
@@ -35,7 +36,10 @@ import {
   Plate,
   PlateCard,
   SectionOpener,
+  SiteFooter,
+  Splash,
 } from './kit';
+import { FeedbackModal } from './FeedbackModal';
 
 interface ProfilePageProps {
   handle: string;
@@ -43,16 +47,22 @@ interface ProfilePageProps {
   authLoading: boolean;
   onGoHome: () => void;
   onRefreshAuthProfile?: () => Promise<void>;
+  onContact?: () => void;
+  onPitchMadness?: () => void;
+  onAdmin?: () => void;
 }
 
 function toPreviewItems(room: ProfileRoomCard): RoomPreviewItem[] {
-  return (room.items ?? []).map((row) => ({
-    id: row.id,
-    kind: row.kind,
-    position: [Number(row.pos_x), Number(row.pos_y), Number(row.pos_z)],
-    rotationY: Number(row.rotation_y),
-    size: [Number(row.size_w), Number(row.size_h), Number(row.size_d)],
-  }));
+  return (room.items ?? [])
+    .filter((row) => row.kind !== 'hanging')
+    .map((row) => ({
+      id: row.id,
+      kind: row.kind,
+      position: [Number(row.pos_x), Number(row.pos_y), Number(row.pos_z)],
+      rotationY: Number(row.rotation_y),
+      size: [Number(row.size_w), Number(row.size_h), Number(row.size_d)],
+      modelUrl: row.model_url?.trim() || null,
+    }));
 }
 
 function formatSqft(geometry: ReturnType<typeof parseFloorPlan>): string {
@@ -82,6 +92,9 @@ export function ProfilePage({
   authLoading,
   onGoHome,
   onRefreshAuthProfile,
+  onContact,
+  onPitchMadness,
+  onAdmin,
 }: ProfilePageProps) {
   const [loading, setLoading] = useState(true);
   const [payload, setPayload] = useState<ProfilePagePayload | null>(null);
@@ -89,9 +102,11 @@ export function ProfilePage({
   const [error, setError] = useState<string | null>(null);
   const [models, setModels] = useState<ProfileCatalogModel[]>([]);
   const [modelThumbs, setModelThumbs] = useState<Record<string, string>>({});
+  const [roomPreviews, setRoomPreviews] = useState<Record<string, RoomPreviewItem[]>>({});
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const [editHandle, setEditHandle] = useState('');
   const [editName, setEditName] = useState('');
@@ -152,6 +167,22 @@ export function ProfilePage({
 
   const rooms = useMemo(() => payload?.rooms ?? [], [payload]);
   const isOwner = !!payload?.is_owner;
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const next: Record<string, RoomPreviewItem[]> = {};
+      await Promise.all(
+        rooms.map(async (room) => {
+          next[room.id] = await withPreviewTints(toPreviewItems(room));
+        }),
+      );
+      if (!cancelled) setRoomPreviews(next);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rooms]);
 
   async function handleSave(e: FormEvent) {
     e.preventDefault();
@@ -222,11 +253,7 @@ export function ProfilePage({
   }
 
   if (loading || authLoading) {
-    return (
-      <div className="splash-page">
-        <div className="splash-inner">Loading profile…</div>
-      </div>
-    );
+    return <Splash label="Loading profile…" />;
   }
 
   if (error === 'not-found' || !payload) {
@@ -285,121 +312,150 @@ export function ProfilePage({
       </header>
 
       <main className="app-main">
-        <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: 32, alignItems: 'start' }}>
-          <Plate height={160} src={avatarUrl ?? undefined}>
-            {!avatarUrl ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%' }}>
-                <UserAvatar name={profile.display_name} src={null} size={72} />
-              </div>
-            ) : null}
-          </Plate>
-          <div>
-            <DisplayHeading level={4}>{profile.display_name}</DisplayHeading>
-            <MonoMeta size="md" tone="dense" style={{ display: 'block', marginTop: 8 }}>
-              @{profile.handle}
-            </MonoMeta>
-            {profile.bio ? (
-              <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', margin: '12px 0 0', maxWidth: 540 }}>
-                {profile.bio}
-              </p>
-            ) : null}
-            <MonoMeta size="sm" tone="dense" className="profile-stats-line">
-              {[
-                `${rooms.length} room${rooms.length === 1 ? '' : 's'}`,
-                `${totalLikes} like${totalLikes === 1 ? '' : 's'}`,
-                `${totalViews} view${totalViews === 1 ? '' : 's'}`,
-                profile.is_public ? 'Public' : 'Private',
-              ].join(' · ')}
-            </MonoMeta>
-          </div>
-        </div>
-
         {editing && isOwner ? (
           <form
+            className="profile-edit-form"
             onSubmit={(e) => void handleSave(e)}
-            style={{
-              marginTop: 40,
-              padding: '28px 0',
-              borderTop: '1px solid var(--rule-heavy)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 18,
-              maxWidth: 480,
-            }}
           >
             <SectionOpener level={5} title="Edit profile." />
             {formError ? <Banner tone="error">{formError}</Banner> : null}
 
-            <Field label="Avatar">
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <label>
-                  <Button size="sm" variant="outline" as="span">
-                    Upload photo
-                  </Button>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    hidden
-                    disabled={busy}
-                    onChange={(e) => void handleAvatarChange(e.target.files?.[0] ?? null)}
-                  />
-                </label>
-                {profile.avatar_path ? (
-                  <Button size="sm" variant="outline" disabled={busy} onClick={() => void handleClearAvatar()}>
-                    Remove
-                  </Button>
-                ) : null}
+            <div className="profile-edit-grid">
+              <div className="profile-edit-avatar">
+                <Field label="Avatar">
+                  <label
+                    className={[
+                      'profile-edit-avatar-hit',
+                      busy ? 'profile-edit-avatar-hit--busy' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                  >
+                    <Plate height={200} src={avatarUrl ?? undefined}>
+                      {!avatarUrl ? (
+                        <div className="profile-edit-avatar-fallback">
+                          <UserAvatar name={editName || profile.display_name} src={null} size={72} />
+                        </div>
+                      ) : null}
+                      <span className="profile-edit-avatar-overlay" aria-hidden>
+                        <svg
+                          className="profile-edit-avatar-icon"
+                          width="22"
+                          height="22"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="1.6"
+                          strokeLinecap="square"
+                          strokeLinejoin="miter"
+                        >
+                          <path d="M12 16V5" />
+                          <path d="M8 9l4-4 4 4" />
+                          <path d="M4 16v3h16v-3" />
+                        </svg>
+                        <span className="profile-edit-avatar-overlay-label">Upload here</span>
+                      </span>
+                    </Plate>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      disabled={busy}
+                      onChange={(e) => void handleAvatarChange(e.target.files?.[0] ?? null)}
+                    />
+                  </label>
+                  {profile.avatar_path ? (
+                    <div className="profile-edit-avatar-actions">
+                      <Button size="sm" variant="outline" disabled={busy} onClick={() => void handleClearAvatar()}>
+                        Remove
+                      </Button>
+                    </div>
+                  ) : null}
+                </Field>
               </div>
-            </Field>
 
-            <Field label="Handle" htmlFor="profile-handle">
-              <Input
-                id="profile-handle"
-                value={editHandle}
-                onChange={(e) => setEditHandle(e.target.value.toLowerCase())}
-                maxLength={30}
-                disabled={busy}
-              />
-            </Field>
+              <div className="profile-edit-fields">
+                <div className="profile-edit-row">
+                  <Field label="Handle" htmlFor="profile-handle">
+                    <Input
+                      id="profile-handle"
+                      value={editHandle}
+                      onChange={(e) => setEditHandle(e.target.value.toLowerCase())}
+                      maxLength={30}
+                      disabled={busy}
+                    />
+                  </Field>
+                  <Field label="Display name" htmlFor="profile-name">
+                    <Input
+                      id="profile-name"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      maxLength={60}
+                      disabled={busy}
+                    />
+                  </Field>
+                </div>
 
-            <Field label="Display name" htmlFor="profile-name">
-              <Input
-                id="profile-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                maxLength={60}
-                disabled={busy}
-              />
-            </Field>
+                <Field label="Bio" htmlFor="profile-bio">
+                  <textarea
+                    id="profile-bio"
+                    className="kit-input"
+                    value={editBio}
+                    onChange={(e) => setEditBio(e.target.value)}
+                    maxLength={280}
+                    rows={4}
+                    disabled={busy}
+                    style={{ width: '100%', resize: 'vertical' }}
+                  />
+                </Field>
 
-            <Field label="Bio" htmlFor="profile-bio">
-              <textarea
-                id="profile-bio"
-                className="kit-input"
-                value={editBio}
-                onChange={(e) => setEditBio(e.target.value)}
-                maxLength={280}
-                rows={3}
-                disabled={busy}
-                style={{ width: '100%', resize: 'vertical' }}
-              />
-            </Field>
-
-            <Checkbox
-              checked={editPublic}
-              onChange={setEditPublic}
-              disabled={busy}
-              label="Make profile public"
-            />
-            <MonoMeta size="xs" tone="subtle">
-              Public profiles can list rooms you publish. Private rooms stay hidden.
-            </MonoMeta>
-
-            <Button type="submit" size="md" disabled={busy}>
-              Save profile
-            </Button>
+                <div className="profile-edit-footer">
+                  <div className="profile-edit-visibility">
+                    <Checkbox
+                      checked={editPublic}
+                      onChange={setEditPublic}
+                      disabled={busy}
+                      label="Make profile public"
+                    />
+                    <MonoMeta size="xs" tone="subtle">
+                      Public profiles can list rooms you publish. Private rooms stay hidden.
+                    </MonoMeta>
+                  </div>
+                  <Button type="submit" size="md" disabled={busy}>
+                    Save profile
+                  </Button>
+                </div>
+              </div>
+            </div>
           </form>
-        ) : null}
+        ) : (
+          <div className="profile-hero-grid">
+            <Plate height={160} src={avatarUrl ?? undefined}>
+              {!avatarUrl ? (
+                <div className="profile-edit-avatar-fallback">
+                  <UserAvatar name={profile.display_name} src={null} size={72} />
+                </div>
+              ) : null}
+            </Plate>
+            <div>
+              <DisplayHeading level={4}>{profile.display_name}</DisplayHeading>
+              <MonoMeta size="md" tone="dense" style={{ display: 'block', marginTop: 8 }}>
+                @{profile.handle}
+              </MonoMeta>
+              {profile.bio ? (
+                <p className="profile-hero-bio">{profile.bio}</p>
+              ) : null}
+              <MonoMeta size="sm" tone="dense" className="profile-stats-line">
+                {[
+                  `${rooms.length} room${rooms.length === 1 ? '' : 's'}`,
+                  `${totalLikes} like${totalLikes === 1 ? '' : 's'}`,
+                  `${totalViews} view${totalViews === 1 ? '' : 's'}`,
+                  profile.is_public ? 'Public' : 'Private',
+                ].join(' · ')}
+              </MonoMeta>
+            </div>
+          </div>
+        )}
 
         <section className="profile-ledger">
           <SectionOpener
@@ -423,7 +479,7 @@ export function ProfilePage({
               }
             />
           ) : (
-            <div style={{ marginTop: 28 }}>
+            <div className="profile-ledger-list">
               <div className="app-ledger-head">
                 <span>Plan</span>
                 <span>Room</span>
@@ -433,8 +489,8 @@ export function ProfilePage({
                 <span className="app-ledger-head__right">Visibility</span>
                 <span aria-hidden />
               </div>
-              {rooms.map((room, i) => {
-                const items = toPreviewItems(room);
+              {rooms.map((room) => {
+                const items = roomPreviews[room.id] ?? toPreviewItems(room);
                 const geometry = parseFloorPlan(room.room_geometry);
                 const attr = attributionLabel(room);
                 const canOpenPublic = room.visibility === 'public' && profile.is_public;
@@ -444,7 +500,6 @@ export function ProfilePage({
                     className={[
                       'app-ledger-row',
                       canOpenPublic ? 'app-ledger-row--interactive' : '',
-                      i === 0 ? 'app-ledger-row--first' : '',
                     ]
                       .filter(Boolean)
                       .join(' ')}
@@ -520,6 +575,18 @@ export function ProfilePage({
           )}
         </section>
       </main>
+
+      <SiteFooter
+        onContact={onContact}
+        onPitchMadness={onPitchMadness}
+        onFeedback={() => setFeedbackOpen(true)}
+        onAdmin={onAdmin}
+      />
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        pageSource="dashboard"
+      />
     </div>
   );
 }

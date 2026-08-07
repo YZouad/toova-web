@@ -36,6 +36,17 @@ type GeneratePhase = 'idle' | 'generating' | 'downloading';
 
 const GLB_BOUNDS_TIMEOUT_MS = 30_000;
 
+function isLocalDevHost(): boolean {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return (
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host === '[::1]' ||
+    host.endsWith('.local')
+  );
+}
+
 function isInvalidGlbContentType(contentType: string): boolean {
   const ct = contentType.toLowerCase();
   if (!ct) return false;
@@ -533,8 +544,9 @@ export function ImportModelModal({
       try {
         thumbnailPath = await buildAndUploadCatalogThumbnail(userId, {
           glbFile: uploadFile,
-          imageFile,
-          posterBlob: posterCroppedBlob,
+          // Source photos from Trellis must not become the gallery preview —
+          // only posters should use their flat artwork as the thumbnail.
+          preferFlatImage: source === 'poster' ? posterCroppedBlob : null,
         });
       } catch {
         /* thumbnail is best-effort */
@@ -637,7 +649,7 @@ export function ImportModelModal({
             }
           }
         }}
-        style={{ marginBottom: 22 }}
+        style={{ marginTop: 16, marginBottom: 22 }}
         tabs={[
           { id: 'upload', label: 'Upload GLB' },
           { id: 'generate', label: 'From a photo' },
@@ -673,26 +685,22 @@ export function ImportModelModal({
                     : `Generating 3D · ${elapsedSec}s`
                 }
               />
-            ) : (
+            ) : trellisUsesRemoteUrl ? (
               <p className="import-modal-generate-status">
-                {trellisUsesRemoteUrl ? (
-                  <>
-                    Uses your configured TRELLIS endpoint (HTTPS). If this fails, confirm CORS on the API
-                    and that the URL is not blocked (mixed content).
-                  </>
-                ) : (
-                  <>
-                    Local: proxied to TRELLIS via Vite or{' '}
-                    <code className="import-modal-code">3DVisSim/server</code> at{' '}
-                    <code className="import-modal-code">/api/trellis/generate</code> (configure{' '}
-                    <code className="import-modal-code">TRELLIS_UPSTREAM_ORIGIN</code> in{' '}
-                    <code className="import-modal-code">.env.local</code>). Use{' '}
-                    <code className="import-modal-code">npm run dev</code>,{' '}
-                    <code className="import-modal-code">npm run preview</code>, or run the Express server.
-                  </>
-                )}
+                Uses your configured TRELLIS endpoint (HTTPS). If this fails, confirm CORS on the API
+                and that the URL is not blocked (mixed content).
               </p>
-            )}
+            ) : isLocalDevHost() ? (
+              <p className="import-modal-generate-status">
+                Local: proxied to TRELLIS via Vite or{' '}
+                <code className="import-modal-code">3DVisSim/server</code> at{' '}
+                <code className="import-modal-code">/api/trellis/generate</code> (configure{' '}
+                <code className="import-modal-code">TRELLIS_UPSTREAM_ORIGIN</code> in{' '}
+                <code className="import-modal-code">.env.local</code>). Use{' '}
+                <code className="import-modal-code">npm run dev</code>,{' '}
+                <code className="import-modal-code">npm run preview</code>, or run the Express server.
+              </p>
+            ) : null}
 
             {generateError ? (
               <div className="import-modal-error" role="alert">

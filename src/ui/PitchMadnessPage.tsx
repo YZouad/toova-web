@@ -147,17 +147,17 @@ export function PitchMadnessPage({
       <div className="toova-paper" aria-hidden />
       <MarketingNav
         brandOnClick={onGoHome}
-        links={[
-          { label: 'Home', onClick: onGoHome },
-          { label: 'See demo', onClick: scrollToDemos },
-          { label: 'Contact', onClick: onContact },
-          { label: 'Pitch Madness', active: true },
-          { label: loggedIn ? 'Dashboard' : 'Log in', onClick: secondaryAction },
-        ]}
         cta={
-          <Button size="sm" onClick={primaryAction}>
-            {primaryLabel}
-          </Button>
+          <>
+            {!loggedIn ? (
+              <Button size="sm" variant="mono" onClick={secondaryAction}>
+                Log in
+              </Button>
+            ) : null}
+            <Button size="sm" onClick={primaryAction}>
+              {primaryLabel}
+            </Button>
+          </>
         }
       />
 
@@ -297,7 +297,7 @@ export function PitchMadnessPage({
         <p style={{ font: 'var(--type-body)', color: 'var(--ink-2)', margin: '24px 0 40px', maxWidth: 540 }}>
           Turn photos into 3D models, design on the web, then see it in AR on your phone.
         </p>
-        <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 0.6fr', gap: 48, alignItems: 'start' }}>
+        <div className="pitch-demos-layout">
           <div>
             {landscapeDemos.map((demo) => (
               <DemoCard key={demo.id} demo={demo} onFullScreen={setModalVideo} />

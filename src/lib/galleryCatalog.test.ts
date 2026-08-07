@@ -67,15 +67,20 @@ describe('galleryCatalog helpers', () => {
       source: 'toova',
       sort: 'downloads',
       roomSort: 'clones',
-      category: 'lighting',
+      categories: ['lighting'],
       query: 'lamp',
+    });
+    expect(
+      parseGallerySearchParams('?mode=models&category=seating,outdoor'),
+    ).toMatchObject({
+      categories: ['seating', 'outdoor'],
     });
     expect(
       buildGallerySearchParams({
         mode: 'discover',
         source: 'community',
         sort: 'hot',
-        category: null,
+        categories: [],
         query: '',
       }),
     ).toBe('');
@@ -84,10 +89,17 @@ describe('galleryCatalog helpers', () => {
         mode: 'models',
         source: 'mine',
         sort: 'newest',
-        category: 'beds',
+        categories: ['beds'],
         query: 'twin',
       }),
     ).toBe('?mode=models&source=mine&category=beds&q=twin');
+    expect(
+      buildGallerySearchParams({
+        mode: 'models',
+        categories: ['seating', 'outdoor'],
+        query: '',
+      }),
+    ).toBe('?mode=models&category=seating%2Coutdoor');
     expect(
       buildGallerySearchParams({
         mode: 'rooms',
@@ -103,7 +115,7 @@ describe('galleryCatalog helpers', () => {
       source: 'community',
       sort: 'hot',
       roomSort: 'hot',
-      category: null,
+      categories: [],
       query: '',
     });
   });

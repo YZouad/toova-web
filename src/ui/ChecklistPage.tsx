@@ -17,17 +17,29 @@ import {
   Logo,
   MonoMeta,
   SectionOpener,
+  SiteFooter,
   Spinner,
 } from './kit';
+import { FeedbackModal } from './FeedbackModal';
 
 interface ChecklistPageProps {
   onBack: () => void;
   onDesign?: () => void;
   /** When true, Place actions are available (designer workspace active). */
   canPlace?: boolean;
+  onContact?: () => void;
+  onPitchMadness?: () => void;
+  onAdmin?: () => void;
 }
 
-export function ChecklistPage({ onBack, onDesign, canPlace = false }: ChecklistPageProps) {
+export function ChecklistPage({
+  onBack,
+  onDesign,
+  canPlace = false,
+  onContact,
+  onPitchMadness,
+  onAdmin,
+}: ChecklistPageProps) {
   const {
     categories,
     loading,
@@ -38,6 +50,7 @@ export function ChecklistPage({ onBack, onDesign, canPlace = false }: ChecklistP
   } = useShoppingCatalogContext();
   const addItem = useStore((s) => s.addItem);
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const openCategory = useMemo(
     () => categories.find((c) => c.id === openCategoryId) ?? null,
@@ -167,6 +180,18 @@ export function ChecklistPage({ onBack, onDesign, canPlace = false }: ChecklistP
           As an Amazon Associate, Toova may earn from qualifying purchases. Prices may change.
         </MonoMeta>
       </main>
+
+      <SiteFooter
+        onContact={onContact}
+        onPitchMadness={onPitchMadness}
+        onFeedback={() => setFeedbackOpen(true)}
+        onAdmin={onAdmin}
+      />
+      <FeedbackModal
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        pageSource="dashboard"
+      />
 
       {openCategory ? (
         <ProductDrawer

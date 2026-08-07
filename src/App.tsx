@@ -14,6 +14,7 @@ import {
 import { supabase } from './lib/supabase';
 import { useStore, DEFAULT_ENVIRONMENT } from './store';
 import type { FloorPlan } from './lib/floorPlanGeometry';
+import { emptyPlan } from './lib/floorPlanGeometry';
 import { serializeFloorPlan } from './lib/roomGeometry';
 import { LandingPage } from './ui/LandingPage';
 import { PitchMadnessPage } from './ui/PitchMadnessPage';
@@ -21,6 +22,7 @@ import { AuthPage } from './ui/AuthPage';
 import { Dashboard } from './ui/Dashboard';
 import { Designer } from './ui/Designer';
 import { FloorPlanSetup } from './ui/FloorPlanSetup';
+import { RoomPresetPicker } from './ui/RoomPresetPicker';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
@@ -28,6 +30,7 @@ import { SharedRoomPage } from './ui/SharedRoomPage';
 import { ProfilePage } from './ui/ProfilePage';
 import { PublicRoomPage } from './ui/PublicRoomPage';
 import { GalleryPage } from './ui/GalleryPage';
+import { CreationsPage } from './ui/CreationsPage';
 import { AppRailChrome } from './ui/AppRailChrome';
 import type { GalleryModel } from './hooks/useGalleryCatalog';
 import { recordCatalogDownload, shouldRecordCatalogDownload } from './lib/catalogEngagement';
@@ -39,9 +42,22 @@ import {
   DisplayHeading,
   MonoMeta,
   Plate,
+  Splash,
 } from './ui/kit';
 
-type Screen = 'landing' | 'pitch-madness' | 'contact' | 'auth' | 'dashboard' | 'floor-plan' | 'designer' | 'admin' | 'ar' | 'checklist' | 'gallery';
+type Screen =
+  | 'landing'
+  | 'pitch-madness'
+  | 'contact'
+  | 'auth'
+  | 'dashboard'
+  | 'models'
+  | 'floor-plan'
+  | 'designer'
+  | 'admin'
+  | 'ar'
+  | 'checklist'
+  | 'gallery';
 
 interface FloorPlanDraft {
   name: string;
@@ -93,11 +109,7 @@ function DecorativeQrGraphic() {
 }
 
 function AuthSplash() {
-  return (
-    <div className="splash-page">
-      <div className="splash-inner">Checking session…</div>
-    </div>
-  );
+  return <Splash label="Checking session…" />;
 }
 
 function ARPage() {
@@ -265,7 +277,7 @@ export default function App() {
 
   const handleStartFloorPlan = useCallback((name: string) => {
     setFloorPlanDraft({ name, mode: 'create' });
-    setScreen('floor-plan');
+    setScreen('dashboard');
   }, []);
 
   const handleCreateWithPlan = useCallback(
@@ -286,6 +298,13 @@ export default function App() {
     },
     [hydrateLayout, hydrateRoomSettings, resetLayout, user?.id],
   );
+
+  const handleCustomizeOwnPlan = useCallback(() => {
+    setFloorPlanDraft((prev) =>
+      prev ? { ...prev, mode: 'create', initialPlan: emptyPlan() } : prev,
+    );
+    setScreen('floor-plan');
+  }, []);
 
   const handleEditFloorPlan = useCallback(() => {
     const geom = useStore.getState().roomGeometry;
@@ -319,6 +338,7 @@ export default function App() {
 
   const railActive: AppShellNavId | null =
     screen === 'dashboard' ? 'rooms'
+    : screen === 'models' ? 'models'
     : screen === 'admin' ? 'admin'
     : screen === 'ar' ? 'ar'
     : screen === 'gallery' || route.name === 'gallery' ? 'gallery'
@@ -338,6 +358,11 @@ export default function App() {
     if (nav === 'rooms') {
       navigate('/');
       setScreen('dashboard');
+      return;
+    }
+    if (nav === 'models') {
+      navigate('/');
+      setScreen('models');
       return;
     }
     if (nav === 'gallery') {
@@ -396,12 +421,22 @@ export default function App() {
     onAdmin: isAdmin ? () => setScreen('admin') : undefined,
   };
 
+  const siteFooterNav = {
+    onContact: () => setScreen('contact'),
+    onPitchMadness: () => {
+      setPitchScrollToDemos(false);
+      setScreen('pitch-madness');
+    },
+  };
+
   // Auth overlay for share-link / public-room CTAs (URL may still be /r/… or /u/…)
   if (screen === 'auth' && !user) {
     if (loading) return <AuthSplash />;
     return (
       <AuthPage
         initialMode={authMode}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
         onBack={() => {
           if (pendingShareToken) {
             navigate(sharePath(pendingShareToken), true);
@@ -463,16 +498,35 @@ export default function App() {
 
   if (route.name === 'profile') {
     return (
-      <ProfilePage
-        handle={route.handle}
-        viewerUserId={user?.id ?? null}
-        authLoading={loading}
-        onRefreshAuthProfile={refreshProfile}
-        onGoHome={() => {
-          navigate('/');
-          setScreen(user ? 'dashboard' : 'landing');
-        }}
-      />
+      <>
+        <div className={user ? 'kit-app-rail-pad' : undefined}>
+          <ProfilePage
+            handle={route.handle}
+            viewerUserId={user?.id ?? null}
+            authLoading={loading}
+            onRefreshAuthProfile={refreshProfile}
+            onContact={siteFooterNav.onContact}
+            onPitchMadness={siteFooterNav.onPitchMadness}
+            onAdmin={landingCallbacks.onAdmin}
+            onGoHome={() => {
+              navigate('/');
+              setScreen(user ? 'dashboard' : 'landing');
+            }}
+          />
+        </div>
+        {user ? (
+          <AppRailChrome
+            active={null}
+            showAdmin={isAdmin}
+            profileInitials={profileInitials(profile, user.email)}
+            onNavigate={handleAppNav}
+            onLogout={handleLogout}
+            onProfile={
+              profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
+            }
+          />
+        ) : null}
+      </>
     );
   }
 
@@ -516,6 +570,10 @@ export default function App() {
         profileInitials={profileInitials(profile, user.email)}
         onNavigate={handleAppNav}
         onLogout={handleLogout}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
+        feedbackEmail={user.email ?? ''}
+        feedbackUserId={user.id}
         onProfile={
           profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
         }
@@ -546,6 +604,7 @@ export default function App() {
         }}
         onNavigate={handleAppNav}
         onLogout={user ? handleLogout : undefined}
+        {...siteFooterNav}
       />
     );
   }
@@ -563,6 +622,9 @@ export default function App() {
     return (
       <ChecklistPage
         onBack={() => setScreen(backTarget)}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
+        onAdmin={landingCallbacks.onAdmin}
         onDesign={() => {
           if (user) {
             if (workspace) setScreen('designer');
@@ -658,8 +720,14 @@ export default function App() {
         furnitureItems={floorPlanDraft.mode === 'edit' ? items : undefined}
         continuing={floorPlanBusy}
         onCancel={() => {
+          if (floorPlanDraft.mode === 'create') {
+            // Return to dashboard with draft so the preset modal reopens.
+            setFloorPlanDraft({ name: floorPlanDraft.name, mode: 'create' });
+            setScreen('dashboard');
+            return;
+          }
           setFloorPlanDraft(null);
-          setScreen(floorPlanDraft.mode === 'create' ? 'dashboard' : 'designer');
+          setScreen('designer');
         }}
         onContinue={async (plan) => {
           if (floorPlanDraft.mode === 'create') {
@@ -672,19 +740,52 @@ export default function App() {
     );
   }
 
-  if (user) {
+  if (screen === 'models' && user) {
     return (
-      <Dashboard
+      <CreationsPage
         user={user}
         profile={profile}
-        avatarUrl={avatarUrl}
-        loadingLayout={layoutLoading}
         showAdmin={isAdmin}
-        onPickExisting={handlePickExisting}
-        onStartFloorPlan={handleStartFloorPlan}
         onNavigate={handleAppNav}
         onLogout={handleLogout}
+        {...siteFooterNav}
+        onUseInRoom={(model) => {
+          setPendingGalleryModel(model);
+          navigate('/');
+          setScreen('dashboard');
+        }}
       />
+    );
+  }
+
+  if (user) {
+    const showPresetPicker =
+      screen === 'dashboard' && floorPlanDraft?.mode === 'create' && !floorPlanDraft.initialPlan;
+    return (
+      <>
+        <Dashboard
+          user={user}
+          profile={profile}
+          avatarUrl={avatarUrl}
+          loadingLayout={layoutLoading}
+          showAdmin={isAdmin}
+          onPickExisting={handlePickExisting}
+          onStartFloorPlan={handleStartFloorPlan}
+          onNavigate={handleAppNav}
+          onLogout={handleLogout}
+          {...siteFooterNav}
+        />
+        <RoomPresetPicker
+          open={!!showPresetPicker}
+          creating={floorPlanBusy}
+          onClose={() => setFloorPlanDraft(null)}
+          onSelectPreset={async (plan) => {
+            if (!floorPlanDraft) return;
+            await handleCreateWithPlan(floorPlanDraft.name, plan);
+          }}
+          onCustomize={handleCustomizeOwnPlan}
+        />
+      </>
     );
   }
 

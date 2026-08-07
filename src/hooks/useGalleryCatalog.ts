@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  catalogThumbNeedsGlbHeal,
   enqueueCatalogThumbnailBackfill,
   getSessionCatalogPreview,
 } from '../lib/catalogThumbnailBackfill';
@@ -46,7 +47,7 @@ export interface UseGalleryCatalogParams {
   enabled: boolean;
   source: GallerySource;
   sort?: GallerySort;
-  category?: string | null;
+  categories?: string[];
   query?: string;
   pageSize?: number;
 }
@@ -107,8 +108,9 @@ async function resolveUrls(row: GalleryCatalogRow): Promise<{
 }
 
 /** Fallback builtins when RPC has no Toova rows yet (e.g. migration pending). */
-function localBuiltinModels(category: string | null, query: string): GalleryModel[] {
+function localBuiltinModels(categories: string[], query: string): GalleryModel[] {
   const q = query.trim().toLowerCase();
+  const required = categories.map((c) => c.toLowerCase());
   return (Object.keys(FURNITURE) as Array<Exclude<FurnitureKind, 'imported' | 'hanging'>>)
     .map((k) => {
       const def = FURNITURE[k];
@@ -140,7 +142,9 @@ function localBuiltinModels(category: string | null, query: string): GalleryMode
       } satisfies GalleryModel;
     })
     .filter((m) => {
-      if (category && !m.categories.includes(category as CatalogCategorySlug)) return false;
+      if (required.length > 0 && !required.every((c) => m.categories.includes(c as CatalogCategorySlug))) {
+        return false;
+      }
       if (!q) return true;
       return (
         m.label.toLowerCase().includes(q) ||
@@ -150,12 +154,14 @@ function localBuiltinModels(category: string | null, query: string): GalleryMode
     });
 }
 
+const EMPTY_CATEGORIES: string[] = [];
+
 export function useGalleryCatalog(params: UseGalleryCatalogParams) {
   const {
     enabled,
     source,
     sort = 'hot',
-    category = null,
+    categories = EMPTY_CATEGORIES,
     query = '',
     pageSize = 48,
   } = params;
@@ -210,7 +216,7 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
           const result = await fetchGalleryCatalog({
             source,
             sort,
-            category,
+            categories,
             query,
             limit: pageSize,
             offset,
@@ -220,7 +226,7 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
         } catch (rpcErr) {
           // Fallback for Toova when RPC missing / migration not applied.
           if (source === 'toova') {
-            const local = localBuiltinModels(category, query);
+            const local = localBuiltinModels(categories, query);
             rows = local.map((m) => ({
               kind: m.kind,
               label: m.label,
@@ -253,7 +259,7 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
         }
 
         if (source === 'toova' && rows.length === 0 && offset === 0) {
-          const local = localBuiltinModels(category, query);
+          const local = localBuiltinModels(categories, query);
           const mapped = local.map((m) => m);
           setModels(mapped);
           setTotal(mapped.length);
@@ -275,11 +281,20 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
         offsetRef.current = offset + rows.length;
 
         const backfillJobs = out
-          .filter((e) => !e.isBuiltin && !e.previewUrl && e.signedUrl)
+          .filter((e) => !e.isBuiltin && e.signedUrl)
+          .filter((e) => {
+            if (!e.previewUrl) return true;
+            // One-time heal: Trellis imports used to store the source photo as the
+            // thumbnail — regenerate a GLB snapshot for the owner's own models.
+            if (source !== 'mine') return false;
+            if (e.tags.includes('poster')) return false;
+            return catalogThumbNeedsGlbHeal(e.kind);
+          })
           .map((e) => ({
             kind: e.kind,
             signedUrl: e.signedUrl!,
             ownerUserId: e.userId,
+            replace: Boolean(e.previewUrl),
           }));
 
         if (backfillJobs.length > 0) {
@@ -305,7 +320,7 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
         setLoadingMore(false);
       }
     },
-    [enabled, source, sort, category, query, pageSize, patchPreview],
+    [enabled, source, sort, categories, query, pageSize, patchPreview],
   );
 
   const refresh = useCallback(async () => {

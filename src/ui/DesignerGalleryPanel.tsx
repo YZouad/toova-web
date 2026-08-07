@@ -41,7 +41,7 @@ export function DesignerGalleryPanel({
 }: DesignerGalleryPanelProps) {
   const [source, setSource] = useState<GallerySource>('community');
   const [sort, setSort] = useState<GallerySort>('hot');
-  const [category, setCategory] = useState<string | null>(null);
+  const [categories, setCategories] = useState<string[]>([]);
   const [query, setQuery] = useState('');
   const [recentKinds, setRecentKinds] = useState<string[]>(loadRecent);
   const [knownModels, setKnownModels] = useState<GalleryModel[]>([]);
@@ -111,7 +111,7 @@ export function DesignerGalleryPanel({
         <ModelGallery
           source={source}
           sort={sort}
-          category={category}
+          categories={categories}
           query={query}
           showMine={!!currentUserId}
           dense
@@ -125,7 +125,7 @@ export function DesignerGalleryPanel({
             else if (s !== 'mine' && sort === 'newest') setSort('hot');
           }}
           onSortChange={setSort}
-          onCategoryChange={setCategory}
+          onCategoriesChange={setCategories}
           onQueryChange={setQuery}
           onPlace={handlePlace}
           onModelsChange={mergeKnownModels}

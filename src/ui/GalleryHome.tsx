@@ -32,7 +32,7 @@ function seeAllModels(sort: GallerySort): string {
       mode: 'models',
       source: 'community',
       sort,
-      category: null,
+      categories: [],
       query: '',
     }),
   );

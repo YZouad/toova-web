@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 
 const sessionPreviewCache = new Map<string, string>();
 const skippedKinds = new Set<string>();
+const HEAL_KEY = 'toova-catalog-thumb-glb-v1';
 
 let queueRunning = false;
 const pendingJobs: BackfillJob[] = [];
@@ -12,6 +13,8 @@ export interface BackfillJobInput {
   kind: string;
   signedUrl: string;
   ownerUserId: string | null;
+  /** Replace an existing (possibly wrong) thumbnail with a fresh GLB snapshot. */
+  replace?: boolean;
 }
 
 type PreviewCallback = (kind: string, previewUrl: string) => void;
@@ -35,6 +38,26 @@ function idleWait() {
   });
 }
 
+/** True until this browser has replaced a photo thumbnail with a GLB snapshot. */
+export function catalogThumbNeedsGlbHeal(kind: string): boolean {
+  try {
+    const done = JSON.parse(localStorage.getItem(HEAL_KEY) || '[]') as string[];
+    return !done.includes(kind);
+  } catch {
+    return true;
+  }
+}
+
+function markCatalogThumbHealed(kind: string) {
+  try {
+    const done = new Set(JSON.parse(localStorage.getItem(HEAL_KEY) || '[]') as string[]);
+    done.add(kind);
+    localStorage.setItem(HEAL_KEY, JSON.stringify([...done]));
+  } catch {
+    /* ignore */
+  }
+}
+
 async function drainQueue() {
   if (queueRunning) return;
   queueRunning = true;
@@ -46,12 +69,14 @@ async function drainQueue() {
       const blob = await generateGlbThumbnail(job.signedUrl);
       if (!blob) {
         skippedKinds.add(job.kind);
+        if (job.replace) markCatalogThumbHealed(job.kind);
         continue;
       }
 
       let previewUrl = URL.createObjectURL(blob);
       sessionPreviewCache.set(job.kind, previewUrl);
       job.onPreview(job.kind, previewUrl);
+      if (job.replace) markCatalogThumbHealed(job.kind);
 
       const canPersist =
         job.ownerUserId &&
@@ -77,6 +102,7 @@ async function drainQueue() {
       }
     } catch {
       skippedKinds.add(job.kind);
+      if (job.replace) markCatalogThumbHealed(job.kind);
     }
     await delay(120);
   }
@@ -89,14 +115,16 @@ export function getSessionCatalogPreview(kind: string): string | undefined {
   return sessionPreviewCache.get(kind);
 }
 
-/** Queue serial GLB snapshot backfill for catalog rows missing stored thumbnails. */
+/** Queue serial GLB snapshot backfill for catalog rows missing (or replacing) thumbnails. */
 export function enqueueCatalogThumbnailBackfill(
   jobs: BackfillJobInput[],
   currentUserId: string | null,
   onPreview: PreviewCallback,
 ) {
   for (const job of jobs) {
-    if (sessionPreviewCache.has(job.kind) || skippedKinds.has(job.kind)) continue;
+    if (skippedKinds.has(job.kind)) continue;
+    if (!job.replace && sessionPreviewCache.has(job.kind)) continue;
+    if (pendingJobs.some((p) => p.kind === job.kind)) continue;
     pendingJobs.push({ ...job, currentUserId, onPreview });
   }
   void drainQueue();
