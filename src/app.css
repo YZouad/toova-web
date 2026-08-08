@@ -5643,6 +5643,67 @@ button.landing-nav-brand { cursor: pointer; }
   gap: 16px;
   align-items: flex-start;
   margin-bottom: 16px;
+  padding: 24px 24px 0;
+}
+.product-drawer-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.product-drawer-head > div:first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.product-drawer .kit-section-opener {
+  padding-bottom: 12px;
+  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.product-drawer .kit-section-opener > .kit-display-heading {
+  overflow-wrap: anywhere;
+}
+.product-drawer-head--admin {
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px;
+}
+.product-drawer-head--admin > div:first-child {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.product-drawer-head--admin .product-drawer-head-actions {
+  flex: 1 1 100%;
+  justify-content: flex-start;
+}
+.product-drawer--admin {
+  width: min(520px, 100%);
+}
+.product-drawer-empty-wrap {
+  padding: 0 24px 24px;
+}
+.checklist-category-cover-preview {
+  width: 96px;
+  height: 96px;
+  border: 1px solid var(--rule-soft);
+  overflow: hidden;
+  margin-bottom: 8px;
+  background: color-mix(in srgb, var(--cream-2, #ebe2d2) 80%, transparent);
+}
+.checklist-category-cover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.product-drawer .product-drawer-grid {
+  padding: 0 24px;
+}
+.product-drawer .product-drawer-disclaimer {
+  display: block;
+  padding: 20px 24px 28px;
 }
 .product-drawer-eyebrow,
 .purchase-review-eyebrow {
@@ -5679,67 +5740,86 @@ button.landing-nav-brand { cursor: pointer; }
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
-}
-.product-drawer-card {
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  overflow: hidden;
-  background: #fff;
   display: flex;
   flex-direction: column;
+  gap: 16px;
+}
+.product-drawer-card {
+  border: 1px solid var(--rule-soft);
+  background: var(--bg-raised, #fff);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-width: 0;
 }
 .product-drawer-media {
-  height: 140px;
-  background: #ebe2d2;
-  display: grid;
-  place-items: center;
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  max-height: 220px;
+  flex: none;
+  background: var(--paper-3, #ebe2d2);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 .product-drawer-media img {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
+  object-position: center;
+  background: #fff;
 }
 .product-drawer-media-fallback {
-  font-family: var(--font-serif);
+  font: var(--type-strong);
   font-size: 42px;
-  color: #8a7a64;
+  color: var(--ink-4, #8a7a64);
 }
-.product-drawer-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
-.product-drawer-meta { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
-.product-drawer-name { margin: 0; font-size: 16px; font-weight: 650; }
-.product-drawer-price { font-family: var(--font-mono); font-size: 13px; color: var(--accent); }
-.product-drawer-price--na { color: var(--text-subtle); }
-.product-drawer-desc { margin: 0; font-size: 13px; color: #6b6357; line-height: 1.45; flex: 1; }
-.product-drawer-retailer { margin: 0; font-size: 12px; color: var(--text-subtle); }
-.product-drawer-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; }
-.product-drawer-btn {
-  color: var(--text-dark) !important;
-  background: #fff !important;
-  border: 1px solid var(--border) !important;
-  padding: 10px 14px !important;
-  border-radius: 10px !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  line-height: 1.2;
+.product-drawer-body {
+  position: relative;
+  z-index: 1;
+  padding: 14px 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--bg-raised, #fff);
+  border-top: 1px solid var(--rule-soft);
 }
-.product-drawer-shop {
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 10px 16px;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.2;
+.product-drawer-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: baseline;
+}
+.product-drawer-name {
+  margin: 0;
+  font: var(--type-strong);
+  font-size: 17px;
+  color: var(--text-heading);
   min-width: 0;
+}
+.product-drawer-price {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--accent);
+}
+.product-drawer-price--na { color: var(--text-subtle); }
+.product-drawer-desc {
+  margin: 0;
+  font: var(--type-body-sm);
+  color: var(--ink-4, #6b6357);
+  line-height: 1.45;
+}
+.product-drawer-retailer { margin: 0; font-size: 12px; color: var(--text-subtle); }
+.product-drawer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 2px;
 }
 .product-drawer-hint { margin: 0; font-size: 12px; color: var(--text-subtle); }
 .product-drawer-empty { color: var(--text-muted); }
@@ -8222,6 +8302,9 @@ button.landing-nav-brand { cursor: pointer; }
   justify-content: center;
   padding: max(24px, var(--safe-top)) max(24px, var(--safe-right)) max(24px, var(--safe-bottom)) max(24px, var(--safe-left));
 }
+.kit-modal__scrim--above-drawer {
+  z-index: 2100;
+}
 .kit-modal {
   max-height: min(86vh, calc(var(--vh-full) - 48px));
   overflow: auto;
@@ -9160,22 +9243,182 @@ button.landing-nav-brand { cursor: pointer; }
 .checklist-row-name { font: var(--type-body); color: var(--text-heading); transition: var(--transition-color); }
 .checklist-row-name--done { color: var(--text-meta-dense); text-decoration: line-through; }
 
+.checklist-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(168px, 1fr));
+  gap: 16px;
+}
+.checklist-gallery-card {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--rule-soft);
+  background: var(--bg-raised, #fff);
+  transition: border-color 160ms ease, transform 160ms ease;
+}
+.checklist-gallery-card:hover {
+  border-color: var(--accent);
+  transform: translateY(-2px);
+}
+.checklist-gallery-card--selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.checklist-page-manage-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 24px;
+  align-items: start;
+}
+.checklist-admin-panel {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--rule-soft);
+  background: var(--bg-raised, #fff);
+  box-shadow: var(--shadow-panel);
+}
+.checklist-admin-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.checklist-admin-block {
+  padding-top: 12px;
+  margin-top: 12px;
+  border-top: 1px solid var(--rule-soft);
+}
+.checklist-admin-block:first-of-type {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+.checklist-admin-product-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.checklist-admin-product-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.checklist-admin-product-name {
+  all: unset;
+  cursor: pointer;
+  font: var(--type-ui-sm);
+  font-weight: 600;
+  color: var(--text-heading);
+}
+.checklist-admin-product-name:hover {
+  color: var(--accent);
+}
+@media (max-width: 900px) {
+  .checklist-page-manage-layout {
+    grid-template-columns: 1fr;
+  }
+  .checklist-admin-panel {
+    position: static;
+    max-height: none;
+  }
+}
+.checklist-gallery-card--done .checklist-gallery-name {
+  color: var(--text-meta-dense);
+  text-decoration: line-through;
+}
+.checklist-gallery-media {
+  aspect-ratio: 1;
+  background: color-mix(in srgb, var(--cream-2, #ebe2d2) 80%, transparent);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.checklist-gallery-media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.checklist-gallery-fallback {
+  font: var(--type-strong);
+  font-size: 42px;
+  color: var(--ink-4);
+}
+.checklist-gallery-body {
+  padding: 12px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.checklist-gallery-name {
+  font: var(--type-strong);
+  font-size: 16px;
+  color: var(--text-heading);
+}
+@media (max-width: 640px) {
+  .checklist-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+  }
+}
+
+/* Side-panel product picker (wins over earlier centered-modal drawer styles). */
 .product-drawer-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 200;
+  z-index: 2000;
   background: rgba(36, 31, 25, 0.45);
   display: flex;
   justify-content: flex-end;
+  align-items: stretch;
+  padding: 0;
 }
 .product-drawer {
-  width: min(520px, 100%);
+  width: min(420px, 100%);
   height: 100%;
-  background: var(--bg-raised);
+  max-height: none;
+  border-radius: 0;
+  border: none;
   border-left: 1px solid var(--rule-heavy);
+  box-shadow: -12px 0 40px rgba(40, 30, 18, 0.18);
+  background: var(--bg-raised);
   display: flex;
   flex-direction: column;
   overflow: auto;
+  overflow-x: hidden;
+  padding: 0;
+  box-sizing: border-box;
+}
+.product-drawer-head,
+.product-drawer .product-drawer-grid,
+.product-drawer-empty-wrap,
+.product-drawer .product-drawer-disclaimer {
+  padding-left: 20px;
+  padding-right: 20px;
+}
+.product-drawer-head {
+  padding-top: 20px;
+  margin-bottom: 0;
+}
+.product-drawer .product-drawer-grid {
+  padding-top: 8px;
+  padding-bottom: 24px;
+  flex: 1;
+}
+.product-drawer-empty-wrap {
+  padding-bottom: 24px;
 }
 .product-drawer-list {
   list-style: none;

@@ -1,6 +1,11 @@
 import { useMemo, useState } from 'react';
 import { useShoppingCatalogContext } from '../context/ShoppingCatalogContext';
-import { formatPriceCents } from '../lib/dormChecklist';
+import {
+  childCategories,
+  formatPriceCents,
+  leafCategories,
+  topLevelCategories,
+} from '../lib/dormChecklist';
 import { ProductDrawer } from './ProductDrawer';
 import { PurchaseReviewPanel } from './PurchaseReviewPanel';
 import { useStore, type Item } from '../store';
@@ -48,6 +53,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
   const [toBuyOpen, setToBuyOpen] = useState(false);
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [groupId, setGroupId] = useState<string | null>(null);
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
   const [activeRoomKey, setActiveRoomKey] = useState<string | null>(null);
 
@@ -55,6 +61,18 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
     () => categories.find((c) => c.id === openCategoryId) ?? null,
     [categories, openCategoryId],
   );
+  const activeGroup = useMemo(
+    () => categories.find((c) => c.id === groupId) ?? null,
+    [categories, groupId],
+  );
+  const miniItems = useMemo(
+    () =>
+      activeGroup
+        ? childCategories(categories, activeGroup.id)
+        : topLevelCategories(categories),
+    [categories, activeGroup],
+  );
+  const leaves = useMemo(() => leafCategories(categories), [categories]);
 
   const roomLines = useMemo((): RoomLine[] => {
     const map = new Map<string, RoomLine>();
@@ -135,7 +153,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
     return { sum, known };
   }, [roomLines, listOnlyLines]);
 
-  const checklistDone = categories.filter((c) => isCategoryDone(c.id)).length;
+  const checklistDone = leaves.filter((c) => isCategoryDone(c.id)).length;
   const toBuyCount = roomLines.reduce((n, l) => n + l.count, 0)
     + listOnlyLines.reduce((n, l) => n + l.entry.quantity, 0);
 
@@ -196,7 +214,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
         >
           <span className="scene-checkout-title">Checklist</span>
           <span className="scene-checkout-badge">
-            {checklistDone}/{categories.length}
+            {checklistDone}/{leaves.length}
           </span>
           <span className="scene-checkout-chevron" aria-hidden>
             {checklistOpen ? '▾' : '▸'}
@@ -205,32 +223,52 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
 
         {checklistOpen ? (
           <div className="scene-checkout-body">
+            {activeGroup ? (
+              <button
+                type="button"
+                className="scene-checkout-mini-link"
+                onClick={() => setGroupId(null)}
+                style={{ marginBottom: 8 }}
+              >
+                ← {activeGroup.name}
+              </button>
+            ) : null}
             <ul className="scene-checkout-mini-list">
-              {categories.map((item) => {
-                const isChecked = isCategoryDone(item.id);
+              {miniItems.map((item) => {
+                const children = childCategories(categories, item.id);
+                const isLeaf = children.length === 0;
+                const isChecked = isLeaf && isCategoryDone(item.id);
                 return (
                   <li key={item.id}>
                     <div
                       className={`scene-checkout-mini-item${isChecked ? ' scene-checkout-mini-item--done' : ''}`}
                     >
-                      <label
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => void toggleChecked(item.id)}
-                        />
-                        <span className="scene-checkout-mini-box" aria-hidden />
-                      </label>
+                      {isLeaf ? (
+                        <label
+                          onMouseDown={(e) => {
+                            e.preventDefault();
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => void toggleChecked(item.id)}
+                          />
+                          <span className="scene-checkout-mini-box" aria-hidden />
+                        </label>
+                      ) : (
+                        <span className="scene-checkout-mini-box" aria-hidden style={{ opacity: 0.35 }} />
+                      )}
                       <button
                         type="button"
                         className="scene-checkout-mini-name-btn"
-                        onClick={() => setOpenCategoryId(item.id)}
+                        onClick={() => {
+                          if (!isLeaf) setGroupId(item.id);
+                          else setOpenCategoryId(item.id);
+                        }}
                       >
                         {item.name}
+                        {!isLeaf ? ' →' : ''}
                       </button>
                     </div>
                   </li>
@@ -289,7 +327,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
                       >
                         <div className="scene-checkout-thumb" aria-hidden>
                           {line.product?.imageUrl ? (
-                            <img src={line.product.imageUrl} alt="" />
+                            <img src={line.product.imageUrl} alt="" referrerPolicy="no-referrer" />
                           ) : (
                             <span>{line.label.slice(0, 1)}</span>
                           )}
@@ -312,7 +350,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
                     <li key={`list-${product.id}`} className="scene-checkout-row scene-checkout-row--rich">
                       <div className="scene-checkout-thumb" aria-hidden>
                         {product.imageUrl ? (
-                          <img src={product.imageUrl} alt="" />
+                          <img src={product.imageUrl} alt="" referrerPolicy="no-referrer" />
                         ) : (
                           <span>{product.name.slice(0, 1)}</span>
                         )}

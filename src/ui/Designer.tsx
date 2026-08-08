@@ -10,8 +10,6 @@ import { type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
 import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item, type CameraPresetId } from '../store';
 import { planBounds } from '../lib/roomGeometry';
-import { useChecklistModal } from '../hooks/useChecklistModal';
-import { ChecklistModal } from './ChecklistModal';
 import { FeedbackModal } from './FeedbackModal';
 import { ImportModelModal } from './ImportModelModal';
 import { DesignerGalleryPanel, pushRecentKind } from './DesignerGalleryPanel';
@@ -73,9 +71,10 @@ interface DesignerProps {
   onBack: () => void;
   onEditFloorPlan?: () => void;
   onOpenChecklist: () => void;
+  isAdmin?: boolean;
 }
 
-export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerProps) {
+export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = false }: DesignerProps) {
   const { user } = useAuth();
   const { workspace } = useRoomWorkspace();
   const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
@@ -121,7 +120,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [beddingBusy, setBeddingBusy] = useState(false);
-  const { open: checklistOpen, closeChecklist } = useChecklistModal();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [galleryRefreshKey, setGalleryRefreshKey] = useState(0);
 
@@ -777,6 +775,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           userId={user.id}
           open={importOpen}
           initialTab={importTab}
+          isAdmin={isAdmin}
           onClose={() => setImportOpen(false)}
           onAdded={() => {
             setGalleryRefreshKey((k) => k + 1);
@@ -785,11 +784,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         />
       ) : null}
 
-      <ChecklistModal
-        open={checklistOpen}
-        onClose={closeChecklist}
-        onViewChecklist={onOpenChecklist}
-      />
       <FeedbackModal
         open={feedbackOpen}
         onClose={() => setFeedbackOpen(false)}

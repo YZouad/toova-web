@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Rule } from './Rule';
 
 export interface ModalProps {
@@ -11,6 +12,8 @@ export interface ModalProps {
   children?: ReactNode;
   className?: string;
   style?: CSSProperties;
+  /** Extra class on the scrim (e.g. stack above product drawer). */
+  scrimClassName?: string;
 }
 
 export function Modal({
@@ -23,12 +26,13 @@ export function Modal({
   width = 560,
   className,
   style,
+  scrimClassName,
 }: ModalProps) {
   if (!open) return null;
 
-  return (
+  return createPortal(
     <div
-      className="kit-modal__scrim"
+      className={['kit-modal__scrim', scrimClassName].filter(Boolean).join(' ')}
       onClick={onClose}
       role="presentation"
     >
@@ -60,6 +64,7 @@ export function Modal({
         <div className="kit-modal__body">{children}</div>
         {footer ? <div className="kit-modal__footer">{footer}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

@@ -6,6 +6,11 @@ export interface ChecklistCategory {
   name: string;
   sortOrder: number;
   published: boolean;
+  /** Null for top-level gallery groups; set for leaf subcategories. */
+  parentId: string | null;
+  imagePath: string | null;
+  /** Public URL when image_path is set. */
+  imageUrl: string | null;
 }
 
 export interface CuratedProduct {
@@ -60,6 +65,10 @@ export function productImagePublicUrl(imagePath: string | null | undefined): str
   const path = imagePath?.trim();
   if (!path) return null;
   if (path.startsWith('http://') || path.startsWith('https://')) return path;
+  // Local public/ assets — respect Vite BASE_URL (GitHub Pages / nested deploys).
+  const viteBase = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
+  if (path.startsWith('/')) return `${viteBase}${path.replace(/^\//, '')}`;
+  if (path.startsWith('checklist-refs/')) return `${viteBase}${path}`;
   const base = 'https://xfifgtedssabneqlxbhf.supabase.co/storage/v1/object/public';
   return `${base}/${PRODUCT_IMAGES_BUCKET}/${path}`;
 }
@@ -222,4 +231,51 @@ export function categoryHasPurchasableProducts(
   category: ChecklistCategoryWithProducts,
 ): boolean {
   return category.products.length > 0;
+}
+
+/** Top-level gallery groups (no parent). */
+export function topLevelCategories<T extends ChecklistCategory>(categories: T[]): T[] {
+  return categories.filter((c) => !c.parentId).sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/** Leaf / child categories under a parent group. */
+export function childCategories<T extends ChecklistCategory>(
+  categories: T[],
+  parentId: string,
+): T[] {
+  return categories
+    .filter((c) => c.parentId === parentId)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
+/** Leaf categories only (used for packed progress). */
+export function leafCategories<T extends ChecklistCategory>(categories: T[]): T[] {
+  const parentsWithChildren = new Set(
+    categories.filter((c) => c.parentId).map((c) => c.parentId as string),
+  );
+  return categories.filter((c) => !parentsWithChildren.has(c.id));
+}
+
+/** Cover image for a group: category image, else first child product image, else first own product image. */
+export function categoryCoverImageUrl(
+  category: ChecklistCategoryWithProducts,
+  all: ChecklistCategoryWithProducts[],
+): string | null {
+  if (category.imageUrl) return category.imageUrl;
+  const own = category.products.find((p) => p.imageUrl)?.imageUrl;
+  if (own) return own;
+  for (const child of childCategories(all, category.id)) {
+    if (child.imageUrl) return child.imageUrl;
+    const url = child.products.find((p) => p.imageUrl)?.imageUrl;
+    if (url) return url;
+  }
+  return null;
+}
+
+export function categoryProductCount(
+  category: ChecklistCategoryWithProducts,
+  all: ChecklistCategoryWithProducts[],
+): number {
+  if (category.products.length > 0) return category.products.length;
+  return childCategories(all, category.id).reduce((n, c) => n + c.products.length, 0);
 }

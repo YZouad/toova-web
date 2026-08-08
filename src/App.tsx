@@ -643,6 +643,8 @@ export default function App() {
     return (
       <ChecklistPage
         onBack={() => setScreen(backTarget)}
+        isAdmin={isAdmin}
+        canPlace={checklistReturn === 'designer' && Boolean(workspace && user)}
         onContact={siteFooterNav.onContact}
         onPitchMadness={siteFooterNav.onPitchMadness}
         onAdmin={landingCallbacks.onAdmin}
@@ -726,6 +728,7 @@ export default function App() {
           onBack={exitWorkspace}
           onEditFloorPlan={handleEditFloorPlan}
           onOpenChecklist={() => openChecklistFrom('designer')}
+          isAdmin={isAdmin}
         />
       </RoomWorkspaceProvider>
     );

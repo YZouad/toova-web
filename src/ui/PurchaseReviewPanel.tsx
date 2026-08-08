@@ -71,7 +71,7 @@ export function PurchaseReviewPanel({
         <div className="purchase-review-current" style={{ marginBottom: 24 }}>
           <div className="purchase-review-media" aria-hidden>
             {current.product.imageUrl ? (
-              <img src={current.product.imageUrl} alt="" />
+              <img src={current.product.imageUrl} alt="" referrerPolicy="no-referrer" />
             ) : (
               <span>{current.product.name.slice(0, 1)}</span>
             )}
@@ -84,14 +84,16 @@ export function PurchaseReviewPanel({
               · ×{current.entry.quantity} · {current.product.retailer}
             </MonoMeta>
             <div className="purchase-review-actions" style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-              <a
-                className="kit-btn kit-btn--primary kit-btn--sm"
-                href={current.product.affiliateUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                Open shop
-              </a>
+              {current.product.affiliateUrl?.trim() ? (
+                <a
+                  className="kit-btn kit-btn--primary kit-btn--sm"
+                  href={current.product.affiliateUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open shop
+                </a>
+              ) : null}
               <Button
                 size="sm"
                 variant="outline"

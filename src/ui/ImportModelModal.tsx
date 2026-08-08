@@ -1,19 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import { buildAndUploadCatalogThumbnail } from '../lib/buildCatalogThumbnail';
+import { detectCatalogModelSource, uploadCatalogModel } from '../lib/catalogModelUpload';
 import { createPosterGlb } from '../lib/createPosterGlb';
 import {
   createConversionJob,
   updateConversionJob,
-  type ConversionJobSource,
 } from '../lib/conversionJobs';
-import { decimateGlb, shouldSkipDecimation } from '../lib/decimateGlb';
-import { prepareImportedGlb } from '../lib/prepareImportedGlb';
-import { formatInchDim, readGlbAxisBounds } from '../lib/glbBounds';
-import type { InchSize } from '../lib/importedItemSize';
-import { DEFAULT_IMPORTED_MAX_SIDE, maxInchSide } from '../lib/importedItemSize';
-import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
-import { MODEL_FILES_BUCKET } from '../lib/modelStorage';
-import { supabase } from '../lib/supabase';
+import {
+  formatInchDimensions,
+  prepareGlbForCatalogUpload,
+  readGlbAxisBoundsWithTimeout,
+} from '../lib/glbImportPipeline';
+import { formatInchDim } from '../lib/glbBounds';
+import { generateGlbFromPhoto } from '../lib/trellisGenerate';
 import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { validateCatalogText } from '../lib/bannedWords';
 import {
@@ -28,13 +26,19 @@ import { Checkbox } from './kit/Checkbox';
 import { Field } from './kit/Field';
 import { Input } from './kit/Input';
 import { Modal } from './kit/Modal';
+import { Select } from './kit/Select';
 import { Spinner } from './kit/Spinner';
 import { Tabs } from './kit/Tabs';
+import { fetchAdminShoppingCatalog } from '../lib/shoppingCatalog';
+import {
+  adminLeafCategories,
+  createChecklistProductFromCatalog,
+  parsePriceDollarsToCents,
+} from '../lib/shoppingCatalogAdmin';
+import type { ChecklistCategoryWithProducts } from '../lib/dormChecklist';
 
 type ModalTab = 'upload' | 'generate' | 'poster';
 type GeneratePhase = 'idle' | 'generating' | 'downloading';
-
-const GLB_BOUNDS_TIMEOUT_MS = 30_000;
 
 function isLocalDevHost(): boolean {
   if (typeof window === 'undefined') return false;
@@ -47,42 +51,11 @@ function isLocalDevHost(): boolean {
   );
 }
 
-function isInvalidGlbContentType(contentType: string): boolean {
-  const ct = contentType.toLowerCase();
-  if (!ct) return false;
-  return ct.includes('text/html') || ct.includes('application/json');
-}
-
-async function readGlbAxisBoundsWithTimeout(
-  file: File,
-  timeoutMs: number,
-): Promise<InchSize | null> {
-  return Promise.race([
-    readGlbAxisBounds(file),
-    new Promise<null>((resolve) => {
-      window.setTimeout(() => resolve(null), timeoutMs);
-    }),
-  ]);
-}
-
-function applyBoundsToDimensions(bounds: InchSize, setters: {
-  setWidthIn: (v: string) => void;
-  setHeightIn: (v: string) => void;
-  setDepthIn: (v: string) => void;
-}): void {
-  const dims =
-    maxInchSide(bounds) > 3
-      ? bounds
-      : proportionalSizesFromMaxSide(bounds, DEFAULT_IMPORTED_MAX_SIDE);
-  setters.setWidthIn(formatInchDim(dims[0]));
-  setters.setHeightIn(formatInchDim(dims[1]));
-  setters.setDepthIn(formatInchDim(Math.max(0.25, dims[2])));
-}
-
 interface ImportModelModalProps {
   userId: string;
   open: boolean;
   initialTab?: ModalTab;
+  isAdmin?: boolean;
   onClose: () => void;
   onAdded: () => void | Promise<void>;
 }
@@ -91,6 +64,7 @@ export function ImportModelModal({
   userId,
   open,
   initialTab = 'upload',
+  isAdmin = false,
   onClose,
   onAdded,
 }: ImportModelModalProps) {
@@ -129,11 +103,35 @@ export function ImportModelModal({
   const [creatingPoster, setCreatingPoster] = useState(false);
   const [posterError, setPosterError] = useState<string | null>(null);
 
+  const [addToChecklist, setAddToChecklist] = useState(false);
+  const [checklistCategories, setChecklistCategories] = useState<ChecklistCategoryWithProducts[]>([]);
+  const [checklistCategoryId, setChecklistCategoryId] = useState('');
+  const [checklistAffiliateUrl, setChecklistAffiliateUrl] = useState('');
+  const [checklistPriceDollars, setChecklistPriceDollars] = useState('');
+  const [checklistCoverFile, setChecklistCoverFile] = useState<File | null>(null);
+
   const busy = submitting || generating || decimating || creatingPoster;
 
   useEffect(() => {
     if (open) setTab(initialTab);
   }, [open, initialTab]);
+
+  useEffect(() => {
+    if (!open || !isAdmin) return;
+    let cancelled = false;
+    void fetchAdminShoppingCatalog()
+      .then((cats) => {
+        if (!cancelled) setChecklistCategories(cats);
+      })
+      .catch(() => {
+        if (!cancelled) setChecklistCategories([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, isAdmin]);
+
+  const checklistLeafOptions = adminLeafCategories(checklistCategories);
 
   useEffect(() => {
     if (!imageFile) {
@@ -179,85 +177,27 @@ export function ImportModelModal({
 
     const dimensionSetters = { setWidthIn, setHeightIn, setDepthIn };
 
-    const finishWithUploadFile = async (
-      uploadReady: File,
-      info: {
-        originalTriangles: number;
-        finalTriangles: number;
-        skipped?: boolean;
-      },
-      warning: string | null = null,
-    ) => {
-      if (cancelled) return;
-      setDecimatedFile(uploadReady);
-      setDecimationInfo(info);
-      setDecimationError(warning);
+    void prepareGlbForCatalogUpload(file)
+      .then(async ({ uploadFile, warning }) => {
+        if (cancelled) return;
+        setDecimatedFile(uploadFile);
+        setDecimationError(warning);
+        setDecimationInfo({ originalTriangles: 0, finalTriangles: 0, skipped: true });
 
-      const bounds = await readGlbAxisBoundsWithTimeout(uploadReady, GLB_BOUNDS_TIMEOUT_MS);
-      if (!cancelled && bounds) {
-        applyBoundsToDimensions(bounds, dimensionSetters);
-      }
-      if (!cancelled) setDecimating(false);
-    };
-
-    if (shouldSkipDecimation(file)) {
-      const isGenerated = file.name.toLowerCase() === 'generated.glb';
-      if (isGenerated) {
-        void prepareImportedGlb(file)
-          .then(async (prepared) => {
-            await finishWithUploadFile(
-              prepared,
-              { originalTriangles: 0, finalTriangles: 0, skipped: true },
-              null,
-            );
-          })
-          .catch((err) => {
-            if (cancelled) return;
-            const message =
-              err instanceof Error ? err.message : 'Lighting prep failed.';
-            void finishWithUploadFile(
-              file,
-              { originalTriangles: 0, finalTriangles: 0, skipped: true },
-              `Lighting prep skipped — using original model. (${message})`,
-            );
-          });
-        return () => {
-          cancelled = true;
-        };
-      }
-
-      const warning = 'Optimization skipped for large model — using original file.';
-      void finishWithUploadFile(
-        file,
-        { originalTriangles: 0, finalTriangles: 0, skipped: true },
-        warning,
-      );
-      return () => {
-        cancelled = true;
-      };
-    }
-
-    void decimateGlb(file)
-      .then(async (result) => {
-        await finishWithUploadFile(
-          result.file,
-          {
-            originalTriangles: result.originalTriangles,
-            finalTriangles: result.finalTriangles,
-            skipped: result.skipped,
-          },
-          null,
-        );
+        const bounds = await readGlbAxisBoundsWithTimeout(uploadFile);
+        if (!cancelled && bounds) {
+          const formatted = formatInchDimensions(bounds);
+          dimensionSetters.setWidthIn(formatted.widthIn);
+          dimensionSetters.setHeightIn(formatted.heightIn);
+          dimensionSetters.setDepthIn(formatted.depthIn);
+        }
+        if (!cancelled) setDecimating(false);
       })
       .catch((err) => {
         if (cancelled) return;
-        const message =
-          err instanceof Error ? err.message : 'Mesh optimization failed.';
-        void finishWithUploadFile(
-          file,
-          { originalTriangles: 0, finalTriangles: 0, skipped: true },
-          `Optimization skipped — using original model. (${message})`,
-        );
+        const message = err instanceof Error ? err.message : 'Mesh optimization failed.';
+        setDecimationError(message);
+        setDecimating(false);
       });
 
     return () => {
@@ -294,6 +234,11 @@ export function ImportModelModal({
     setPosterPreviewUrl(null);
     setPosterError(null);
     setCreatingPoster(false);
+    setAddToChecklist(false);
+    setChecklistCategoryId('');
+    setChecklistAffiliateUrl('');
+    setChecklistPriceDollars('');
+    setChecklistCoverFile(null);
   };
 
   const handleDownloadDecimated = () => {
@@ -339,41 +284,8 @@ export function ImportModelModal({
     activeJobIdRef.current = jobId;
 
     try {
-      const fd = new FormData();
-      fd.append('file', imageFile);
-
-      const res = await fetch(TRELLIS_GENERATE_URL, {
-        method: 'POST',
-        body: fd,
-        signal: abortController.signal,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || `Generation failed (${res.status})`);
-      }
-
-      const contentType = res.headers.get('content-type') ?? '';
-      if (isInvalidGlbContentType(contentType)) {
-        throw new Error(
-          contentType.includes('text/html')
-            ? 'The server returned HTML instead of a 3D model. Check that VITE_TRELLIS_GENERATE_URL points at your HTTPS mesh API (or HTTPS BFF), not GitHub Pages.'
-            : 'The server returned JSON instead of a 3D model.',
-        );
-      }
-
       setGeneratePhase('downloading');
-      const blob = await res.blob();
-
-      if (blob.size === 0) {
-        throw new Error('The server returned an empty model file.');
-      }
-
-      console.log('Received GLB:', { size: blob.size, type: blob.type });
-
-      const glbFile = new File([blob], 'generated.glb', {
-        type: blob.type || 'model/gltf-binary',
-      });
+      const glbFile = await generateGlbFromPhoto(imageFile, abortController.signal);
       setFile(glbFile);
       setTab('upload');
       if (jobId) {
@@ -472,6 +384,11 @@ export function ImportModelModal({
       return;
     }
 
+    if (addToChecklist && isAdmin && !checklistCategoryId) {
+      setFormError('Pick a checklist subcategory.');
+      return;
+    }
+
     const banned = validateCatalogText({
       label,
       description: description.trim() || null,
@@ -502,18 +419,7 @@ export function ImportModelModal({
     const tags =
       file.name.toLowerCase() === 'poster.glb' ? ['poster'] : [];
 
-    const ext = uploadFile.name.toLowerCase().endsWith('.gltf') ? 'gltf' : 'glb';
-    const objectPath = `${userId}/${crypto.randomUUID()}.${ext}`;
-    const kind = `custom-${crypto.randomUUID()}`;
-    const contentType =
-      ext === 'glb' ? 'model/gltf-binary' : 'model/gltf+json';
-
-    const source: ConversionJobSource =
-      tags.includes('poster')
-        ? 'poster'
-        : file.name.toLowerCase() === 'generated.glb'
-          ? 'trellis'
-          : 'upload';
+    const source = detectCatalogModelSource(file.name, tags);
 
     setSubmitting(true);
     let jobId = activeJobIdRef.current;
@@ -531,45 +437,38 @@ export function ImportModelModal({
         await updateConversionJob(jobId, { label });
       }
 
-      const { error: upErr } = await supabase.storage
-        .from(MODEL_FILES_BUCKET)
-        .upload(objectPath, uploadFile, {
-          contentType: uploadFile.type || contentType,
-          upsert: false,
-        });
-
-      if (upErr) throw new Error(upErr.message);
-
-      let thumbnailPath: string | null = null;
-      try {
-        thumbnailPath = await buildAndUploadCatalogThumbnail(userId, {
-          glbFile: uploadFile,
-          // Source photos from Trellis must not become the gallery preview —
-          // only posters should use their flat artwork as the thumbnail.
-          preferFlatImage: source === 'poster' ? posterCroppedBlob : null,
-        });
-      } catch {
-        /* thumbnail is best-effort */
-      }
-
-      const { error: insErr } = await supabase.from('furniture_catalog').insert({
-        kind,
+      const { kind } = await uploadCatalogModel({
+        userId,
+        glbFile: uploadFile,
         label,
+        widthIn: w,
+        heightIn: h,
+        depthIn: d,
+        clearanceIn: clearance,
         description: description.trim() || null,
-        width_in: w,
-        height_in: h,
-        depth_in: d,
-        clearance_in: clearance,
-        is_builtin: false,
-        model_url: objectPath,
-        thumbnail_path: thumbnailPath,
-        tags,
-        categories,
-        user_id: userId,
         visibility: listInGallery ? 'public' : 'private',
+        categories,
+        tags,
+        preferFlatImage: source === 'poster' ? posterCroppedBlob : null,
+        originalFileName: file.name,
       });
 
-      if (insErr) throw new Error(insErr.message);
+      if (addToChecklist && isAdmin && checklistCategoryId) {
+        const cover =
+          checklistCoverFile ??
+          imageFile ??
+          posterImageFile ??
+          null;
+        await createChecklistProductFromCatalog({
+          categoryId: checklistCategoryId,
+          name: label,
+          catalogKind: kind,
+          affiliateUrl: checklistAffiliateUrl,
+          priceCents: parsePriceDollarsToCents(checklistPriceDollars),
+          coverFile: cover,
+          description: description.trim() || undefined,
+        });
+      }
 
       if (jobId) {
         await updateConversionJob(jobId, {
@@ -933,6 +832,68 @@ export function ImportModelModal({
                 Public models can be browsed, liked, and placed in anyone&apos;s room.
               </small>
             </label>
+
+            {isAdmin ? (
+              <div className="import-modal-field" style={{ borderTop: '1px solid var(--rule-soft)', paddingTop: 16 }}>
+                <Checkbox
+                  checked={addToChecklist}
+                  label="Also add to checklist"
+                  onChange={setAddToChecklist}
+                  disabled={submitting || decimating}
+                />
+                {addToChecklist ? (
+                  <div style={{ display: 'grid', gap: 12, marginTop: 12 }}>
+                    <Field label="Checklist subcategory">
+                      <Select
+                        value={checklistCategoryId}
+                        onChange={setChecklistCategoryId}
+                        disabled={submitting || decimating}
+                        options={[
+                          { value: '', label: 'Select subcategory…' },
+                          ...checklistLeafOptions.map((c) => ({
+                            value: c.id,
+                            label: c.name,
+                          })),
+                        ]}
+                      />
+                    </Field>
+                    <Field label="Affiliate URL">
+                      <Input
+                        value={checklistAffiliateUrl}
+                        onChange={(e) => setChecklistAffiliateUrl(e.target.value)}
+                        placeholder="https://amzn.to/… (optional)"
+                        disabled={submitting || decimating}
+                      />
+                    </Field>
+                    <Field label="Price (USD)">
+                      <Input
+                        value={checklistPriceDollars}
+                        onChange={(e) => setChecklistPriceDollars(e.target.value)}
+                        placeholder="29.99"
+                        disabled={submitting || decimating}
+                      />
+                    </Field>
+                    <Field label="Cover image">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={submitting || decimating}
+                        onChange={(e) => setChecklistCoverFile(e.target.files?.[0] ?? null)}
+                      />
+                      <small style={{ display: 'block', marginTop: 6, color: 'var(--ink-4)' }}>
+                        {checklistCoverFile
+                          ? checklistCoverFile.name
+                          : imageFile
+                            ? `Using generate photo: ${imageFile.name}`
+                            : posterImageFile
+                              ? `Using poster image: ${posterImageFile.name}`
+                              : 'Optional — uses source photo when available'}
+                      </small>
+                    </Field>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div className="import-modal-dims">
               <label className="import-modal-field">
