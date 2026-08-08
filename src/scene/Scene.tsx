@@ -604,12 +604,13 @@ function SceneInner({
         makeDefault
         autoRotate={autoRotate}
         autoRotateSpeed={0.55}
-        enableZoom={!readOnly}
-        enablePan={!readOnly}
+        // View-only rooms still need orbit navigation (pinch/scroll zoom + pan).
+        enableZoom
+        enablePan
         mouseButtons={{
           LEFT: THREE.MOUSE.ROTATE,
-          MIDDLE: readOnly ? THREE.MOUSE.ROTATE : THREE.MOUSE.DOLLY,
-          RIGHT: readOnly ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN,
         }}
       />
     </Canvas>
