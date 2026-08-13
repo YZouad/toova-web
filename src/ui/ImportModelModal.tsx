@@ -15,6 +15,7 @@ import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { MODEL_FILES_BUCKET } from '../lib/modelStorage';
 import { supabase } from '../lib/supabase';
 import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../lib/trellisApi';
+import { generateGlbFromPhoto } from '../lib/trellisGenerate';
 import { validateCatalogText } from '../lib/bannedWords';
 import {
   CATALOG_CATEGORY_DEFS,
@@ -45,12 +46,6 @@ function isLocalDevHost(): boolean {
     host === '[::1]' ||
     host.endsWith('.local')
   );
-}
-
-function isInvalidGlbContentType(contentType: string): boolean {
-  const ct = contentType.toLowerCase();
-  if (!ct) return false;
-  return ct.includes('text/html') || ct.includes('application/json');
 }
 
 async function readGlbAxisBoundsWithTimeout(
@@ -339,41 +334,8 @@ export function ImportModelModal({
     activeJobIdRef.current = jobId;
 
     try {
-      const fd = new FormData();
-      fd.append('file', imageFile);
-
-      const res = await fetch(TRELLIS_GENERATE_URL, {
-        method: 'POST',
-        body: fd,
-        signal: abortController.signal,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        throw new Error(errText || `Generation failed (${res.status})`);
-      }
-
-      const contentType = res.headers.get('content-type') ?? '';
-      if (isInvalidGlbContentType(contentType)) {
-        throw new Error(
-          contentType.includes('text/html')
-            ? 'The server returned HTML instead of a 3D model. Check that VITE_TRELLIS_GENERATE_URL points at your HTTPS mesh API (or HTTPS BFF), not GitHub Pages.'
-            : 'The server returned JSON instead of a 3D model.',
-        );
-      }
-
-      setGeneratePhase('downloading');
-      const blob = await res.blob();
-
-      if (blob.size === 0) {
-        throw new Error('The server returned an empty model file.');
-      }
-
-      console.log('Received GLB:', { size: blob.size, type: blob.type });
-
-      const glbFile = new File([blob], 'generated.glb', {
-        type: blob.type || 'model/gltf-binary',
-      });
+      setGeneratePhase('generating');
+      const glbFile = await generateGlbFromPhoto(imageFile, abortController.signal);
       setFile(glbFile);
       setTab('upload');
       if (jobId) {
