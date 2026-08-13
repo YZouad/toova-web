@@ -13,6 +13,7 @@ export async function generateGlbFromPhoto(
 ): Promise<File> {
   await ensureTrellisReady(signal, onProgress);
 
+  console.log('[trellis] ready, calling generate');
   const fd = new FormData();
   fd.append('file', imageFile);
 
