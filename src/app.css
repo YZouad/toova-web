@@ -230,7 +230,8 @@ body {
   color: var(--text-heading);
   font: var(--type-body-sm);
   -webkit-font-smoothing: antialiased;
-  overflow-x: clip;
+  /* Avoid overflow-x: clip — it makes position:sticky headers jitter on iOS Safari. */
+  overflow-x: hidden;
 }
 
 body.nav-drawer-open {
@@ -247,7 +248,6 @@ body.nav-drawer-open {
   background: var(--bg-page);
   min-height: 100%;
   isolation: isolate;
-  overflow-x: clip;
 }
 .toova-paper {
   position: absolute;
@@ -8083,9 +8083,18 @@ button.landing-nav-brand { cursor: pointer; }
   position: sticky;
   top: 0;
   z-index: 50;
-  background: var(--glass-nav);
-  backdrop-filter: var(--glass-blur);
+  background: var(--bg-raised);
   padding-top: var(--safe-top);
+  transform: translateZ(0);
+}
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  @media (hover: hover) and (pointer: fine) {
+    .kit-marketing-nav {
+      background: var(--glass-nav);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+    }
+  }
 }
 .kit-marketing-nav__inner {
   max-width: var(--page-max);
@@ -8798,6 +8807,8 @@ button.landing-nav-brand { cursor: pointer; }
   position: sticky;
   top: 0;
   z-index: 30;
+  /* Own layer without backdrop-filter — reduces sticky scroll jitter on phones. */
+  transform: translateZ(0);
 }
 .kit-app-shell__title-row {
   display: flex;
@@ -8838,14 +8849,22 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .kit-app-rail-pad { padding-left: var(--app-rail); }
 
-.app-page { min-height: 100vh; overflow: auto; }
+.app-page { min-height: 100vh; }
 .app-topbar {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: var(--glass-nav);
-  backdrop-filter: var(--glass-blur);
+  background: var(--bg-raised);
   border-bottom: 1px solid var(--rule-soft);
+}
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  @media (hover: hover) and (pointer: fine) {
+    .app-topbar {
+      background: var(--glass-nav);
+      backdrop-filter: var(--glass-blur);
+      -webkit-backdrop-filter: var(--glass-blur);
+    }
+  }
 }
 .app-topbar-inner {
   max-width: var(--page-max);

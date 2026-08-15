@@ -179,11 +179,11 @@ export function HangingDecoration({ item, selected, invalid }: Props) {
 
   return (
     <group userData={{ itemId: item.id, hanging: true }}>
-      {/* Invisible selection volume — boxGeometry is centered; shift up by half height. */}
-      <mesh visible={false} position={[0, item.size[1] / 2, 0]}>
-        <boxGeometry args={[item.size[0], item.size[1], item.size[2]]} />
-        <meshBasicMaterial />
-      </mesh>
+      {/*
+        Pick only the strand geometry (tube / leaves / LEDs) — never an AABB.
+        A bounding-box pick volume fills the whole loop and blocks furniture
+        underneath when looking from above.
+      */}
       <HangingVisual
         config={config}
         path={path}
@@ -255,12 +255,23 @@ function HangingVisual({
     return new THREE.TubeGeometry(curve, tubular, radius, radial, false);
   }, [curve, localPath.length, config.kind, qualityTier]);
 
+  /** Slightly thicker invisible tube so thin strands stay clickable without an AABB hull. */
+  const pickGeo = useMemo(() => {
+    const tubular = Math.max(8, localPath.length * 2);
+    const radius = config.kind === 'leaves' ? 0.9 : 0.55;
+    return new THREE.TubeGeometry(curve, tubular, radius, 5, false);
+  }, [curve, localPath.length, config.kind]);
+
   useEffect(() => () => tubeGeo.dispose(), [tubeGeo]);
+  useEffect(() => () => pickGeo.dispose(), [pickGeo]);
 
   const cableColor = config.kind === 'leaves' ? '#3a5c32' : '#1a1a1a';
 
   return (
     <group>
+      <mesh geometry={pickGeo} visible={false}>
+        <meshBasicMaterial />
+      </mesh>
       <mesh geometry={tubeGeo} castShadow={false} receiveShadow={false}>
         <meshStandardMaterial
           color={cableColor}

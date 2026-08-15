@@ -37,9 +37,7 @@ export function AtmosphereStrip({
   const [isPhone, setIsPhone] = useState(
     () => typeof window !== 'undefined' && window.matchMedia(PHONE_MQ).matches,
   );
-  const [expanded, setExpanded] = useState(
-    () => !(typeof window !== 'undefined' && window.matchMedia(PHONE_MQ).matches),
-  );
+  const [expanded, setExpanded] = useState(() => !isPhone);
   const rootRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
