@@ -682,8 +682,8 @@ export function Dashboard({
         <EmptyState
           style={{ marginTop: 48 }}
           label={tab === 'forks' ? 'No forks' : 'No rooms yet'}
-          title="Plan the room before the truck arrives."
-          body="Draw the floor plan once — every piece you place after that is measured against it."
+          title="Start with a room that fits your space."
+          body="Choose a furnished template or draw your floor plan — every piece you place is measured against it."
           action={
             tab === 'mine' ? (
               <Button size="md" onClick={() => setShowNewRoom(true)}>
@@ -710,8 +710,8 @@ export function Dashboard({
         <EmptyState
           style={{ marginTop: 72 }}
           label={`${MAX_ROOMS - rooms.length} room${MAX_ROOMS - rooms.length === 1 ? '' : 's'} left`}
-          title="Plan the room before the truck arrives."
-          body="Draw the floor plan once — every piece you place after that is measured against it."
+          title="Start with a room that fits your space."
+          body="Choose a furnished template or draw your floor plan — every piece you place is measured against it."
           action={
             <Button size="md" onClick={() => setShowNewRoom(true)}>
               New room

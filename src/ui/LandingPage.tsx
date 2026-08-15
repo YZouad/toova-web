@@ -1,6 +1,4 @@
 import { useRef, useState } from 'react';
-import { useChecklistModal } from '../hooks/useChecklistModal';
-import { ChecklistModal } from './ChecklistModal';
 import { FeedbackModal } from './FeedbackModal';
 import { HeroTurntable } from './HeroTurntable';
 import { MarketingObjectTurntable } from './MarketingObjectTurntable';
@@ -88,7 +86,6 @@ export function LandingPage({
   loggedIn,
   onGoDashboard,
 }: LandingPageProps) {
-  const { open: checklistOpen, closeChecklist } = useChecklistModal();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
 
   const howRef = useRef<HTMLDivElement>(null);
@@ -102,7 +99,6 @@ export function LandingPage({
   return (
     <div className="toova-page">
       <div className="toova-paper" aria-hidden />
-      <ChecklistModal open={checklistOpen} onClose={closeChecklist} onViewChecklist={onOpenChecklist} />
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} pageSource="landing" />
 
       <MarketingNav
@@ -152,10 +148,7 @@ export function LandingPage({
             </Button>
             <Button
               variant="mono"
-              onClick={() => {
-                closeChecklist();
-                onOpenChecklist();
-              }}
+              onClick={onOpenChecklist}
             >
               Checklist →
             </Button>

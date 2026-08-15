@@ -35,6 +35,7 @@ jobs:
           # to https://<service>.onrender.com/api/trellis/generate (Settings → Secrets and variables → Actions → Variables).
           # Optional: override with secret VITE_TRELLIS_GENERATE_URL instead.
           VITE_TRELLIS_GENERATE_URL: ${{ vars.VITE_TRELLIS_GENERATE_URL || secrets.VITE_TRELLIS_GENERATE_URL }}
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || 'G-WS2JEV7YRE' }}
       - name: Generate static unfurl pages
         run: npm run generate:unfurls
         env:

@@ -26,6 +26,18 @@ export interface CuratedProduct {
   lastVerifiedAt: string | null;
   placeBuiltinKind: string | null;
   placeCatalogKind: string | null;
+  /** Optional brand shown above the product title. */
+  brand: string | null;
+  /** Short highlight bullets for the product drawer. */
+  featureBullets: string[];
+  /** Human-readable size / pack details. */
+  dimensionsText: string | null;
+  /** Optional 0–5 rating when known. */
+  rating: number | null;
+  /** Optional review count paired with rating. */
+  reviewCount: number | null;
+  /** Optional availability note (e.g. In stock). */
+  availability: string | null;
 }
 
 export interface ChecklistCategoryWithProducts extends ChecklistCategory {
