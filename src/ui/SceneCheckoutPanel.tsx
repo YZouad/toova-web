@@ -12,6 +12,7 @@ import { parseInchDims } from '../lib/importedItemSize';
 import { supabase } from '../lib/supabase';
 import { recordCatalogDownload } from '../lib/catalogEngagement';
 import { resolveAffiliateForItem } from '../lib/affiliateLinks';
+import { trackAffiliateClick } from '../lib/analytics';
 import { GlassSurface } from './GlassSurface';
 import { Button } from './kit/Button';
 
@@ -371,6 +372,14 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
                       href={offer.url}
                       target="_blank"
                       rel="noopener noreferrer"
+                      onClick={() =>
+                        trackAffiliateClick({
+                          retailer: offer.retailer,
+                          product_id: offer.productId,
+                          approximate: offer.approximate,
+                          source: 'scene_checkout',
+                        })
+                      }
                     >
                       {offer.label}
                     </a>

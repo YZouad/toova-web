@@ -10,8 +10,6 @@ import { type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
 import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item, type CameraPresetId } from '../store';
 import { planBounds } from '../lib/roomGeometry';
-import { useChecklistModal } from '../hooks/useChecklistModal';
-import { ChecklistModal } from './ChecklistModal';
 import { FeedbackModal } from './FeedbackModal';
 import { ImportModelModal } from './ImportModelModal';
 import { DesignerGalleryPanel, pushRecentKind } from './DesignerGalleryPanel';
@@ -73,9 +71,11 @@ interface DesignerProps {
   onBack: () => void;
   onEditFloorPlan?: () => void;
   onOpenChecklist: () => void;
+  /** Guest rooms call this instead of persisting to Supabase. */
+  onRequestSaveAuth?: () => void;
 }
 
-export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerProps) {
+export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSaveAuth }: DesignerProps) {
   const { user } = useAuth();
   const { workspace } = useRoomWorkspace();
   const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
@@ -121,7 +121,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [beddingBusy, setBeddingBusy] = useState(false);
-  const { open: checklistOpen, closeChecklist } = useChecklistModal();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [galleryRefreshKey, setGalleryRefreshKey] = useState(0);
 
@@ -225,6 +224,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
 
   const handleSave = useCallback(async () => {
     if (!workspace?.id) return;
+    if (onRequestSaveAuth) {
+      onRequestSaveAuth();
+      return;
+    }
     const trimmed = roomName.trim();
     if (trimmed && trimmed !== workspace.name) {
       await supabase.from('rooms').update({ name: trimmed }).eq('id', workspace.id);
@@ -273,7 +276,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         console.warn('[toova] room thumbnail capture failed', err);
       }
     }
-  }, [workspace?.id, workspace?.name, roomName, save, user?.id]);
+  }, [workspace?.id, workspace?.name, roomName, save, user?.id, onRequestSaveAuth]);
 
   const requestLeave = useCallback(() => {
     if (!dirty) {
@@ -398,7 +401,9 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
           <MonoMeta size="sm" tone="dense" className="designer-save-status">
             {saving ? 'Saving…' : savedLabel}
           </MonoMeta>
-          <Button size="sm" disabled={saving} onClick={() => void handleSave()}>Save</Button>
+          <Button size="sm" disabled={saving} onClick={() => void handleSave()}>
+            {onRequestSaveAuth ? 'Save design' : 'Save'}
+          </Button>
           <div className="designer-topbar-more">
             <button
               type="button"
@@ -785,11 +790,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist }: DesignerP
         />
       ) : null}
 
-      <ChecklistModal
-        open={checklistOpen}
-        onClose={closeChecklist}
-        onViewChecklist={onOpenChecklist}
-      />
       <FeedbackModal
         open={feedbackOpen}
         onClose={() => setFeedbackOpen(false)}

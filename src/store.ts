@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { FURNITURE, FurnitureKind } from './furniture/registry';
 import { findValidElevation, settleGravity, validatePlacement } from './interaction/collision';
+import { trackAddToDesign } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
 import {
   clampPlan,
@@ -477,6 +478,7 @@ export const useStore = create<StoreState>((set, get) => ({
       designerTool: 'select',
       hangingDraft: null,
     }));
+    trackAddToDesign({ kind: 'hanging' });
     return id;
   },
 
@@ -562,6 +564,10 @@ export const useStore = create<StoreState>((set, get) => ({
       order: [...s.order, id],
       selectedId: id,
     }));
+    trackAddToDesign({
+      kind,
+      ...(opts?.curatedProductId ? { curated_product_id: opts.curatedProductId } : {}),
+    });
     return id;
   },
 

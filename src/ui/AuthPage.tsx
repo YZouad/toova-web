@@ -1,4 +1,5 @@
 import { type FormEvent, useState } from 'react';
+import { trackLogin, trackSignUp } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import {
   Banner,
@@ -22,6 +23,8 @@ interface AuthPageProps {
   initialMode?: Mode;
   onContact?: () => void;
   onPitchMadness?: () => void;
+  /** Optional copy when auth is required to persist a guest design. */
+  authReason?: string | null;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -61,11 +64,16 @@ function describeAuthFailure(err: unknown, mode: Mode): string {
   return rawMsg || 'Something went wrong. Please try again.';
 }
 
+function oauthRedirectTo(): string {
+  return `${window.location.origin}/`;
+}
+
 export function AuthPage({
   onBack,
   initialMode = 'signin',
   onContact,
   onPitchMadness,
+  authReason = null,
 }: AuthPageProps) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState('');
@@ -74,6 +82,25 @@ export function AuthPage({
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState<'google' | 'facebook' | null>(null);
+
+  async function handleOAuth(provider: 'google' | 'facebook') {
+    setError(null);
+    setInfo(null);
+    setOauthBusy(provider);
+    try {
+      const { error: err } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo: oauthRedirectTo(),
+        },
+      });
+      if (err) throw err;
+    } catch (err: unknown) {
+      setError(describeAuthFailure(err, mode));
+      setOauthBusy(null);
+    }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -88,6 +115,7 @@ export function AuthPage({
       if (mode === 'signin') {
         const { error: err } = await supabase.auth.signInWithPassword({ email: emailTrimmed, password });
         if (err) throw err;
+        trackLogin('email');
       } else {
         const { error: err } = await supabase.auth.signUp({
           email: emailTrimmed,
@@ -95,6 +123,7 @@ export function AuthPage({
           options: name.trim() ? { data: { full_name: name.trim() } } : undefined,
         });
         if (err) throw err;
+        trackSignUp('email');
         setInfo('Check your email for a confirmation link, then sign in.');
         setMode('signin');
       }
@@ -104,6 +133,8 @@ export function AuthPage({
       setLoading(false);
     }
   }
+
+  const busy = loading || oauthBusy !== null;
 
   return (
     <div className="auth-page-wrap toova-page">
@@ -138,15 +169,47 @@ export function AuthPage({
               setError(null);
               setInfo(null);
             }}
-            style={{ marginBottom: 32 }}
+            style={{ marginBottom: 24 }}
             tabs={[
               { id: 'signin', label: 'Sign in' },
               { id: 'signup', label: 'Create account' },
             ]}
           />
 
-          {info ? <Banner tone="info" style={{ marginBottom: 22 }}>{info}</Banner> : null}
-          {error ? <Banner tone="error" style={{ marginBottom: 22 }}>{error}</Banner> : null}
+          {authReason ? (
+            <Banner tone="info" style={{ marginBottom: 18 }}>
+              {authReason}
+            </Banner>
+          ) : null}
+          {info ? <Banner tone="info" style={{ marginBottom: 18 }}>{info}</Banner> : null}
+          {error ? <Banner tone="error" style={{ marginBottom: 18 }}>{error}</Banner> : null}
+
+          <div className="auth-oauth-stack">
+            <Button
+              size="md"
+              full
+              variant="outline"
+              type="button"
+              disabled={busy}
+              onClick={() => void handleOAuth('google')}
+            >
+              {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
+            </Button>
+            <Button
+              size="md"
+              full
+              variant="outline"
+              type="button"
+              disabled={busy}
+              onClick={() => void handleOAuth('facebook')}
+            >
+              {oauthBusy === 'facebook' ? 'Redirecting…' : 'Continue with Facebook'}
+            </Button>
+          </div>
+
+          <div className="auth-oauth-divider" role="separator">
+            <span>or use email</span>
+          </div>
 
           <form onSubmit={(e) => void handleSubmit(e)} noValidate>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -183,15 +246,15 @@ export function AuthPage({
                   placeholder="••••••••"
                 />
               </Field>
-              <Button size="md" full type="submit" disabled={loading}>
-                {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Create account'}
+              <Button size="md" full type="submit" disabled={busy}>
+                {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in with email' : 'Create account'}
               </Button>
               <div className="auth-form-footer">
                 <Button variant="mono" type="button">
                   Forgot password →
                 </Button>
                 <MonoMeta size="sm" tone="subtle" upper>
-                  No card to start
+                  No card until you buy
                 </MonoMeta>
               </div>
             </div>

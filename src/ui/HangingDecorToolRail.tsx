@@ -3,6 +3,8 @@ import type { DesignerTool } from '../store';
 import { useStore } from '../store';
 import { GlassSurface } from './GlassSurface';
 
+const PHONE_MQ = '(max-width: 768px)';
+
 const TOOLS: {
   id: DesignerTool;
   label: string;
@@ -23,15 +25,32 @@ export function HangingDecorToolRail() {
 
   const placing = tool === 'hanging-leaves' || tool === 'hanging-lights';
   const canFinish = (draft?.anchors.length ?? 0) >= 2;
-  const [expanded, setExpanded] = useState(false);
+  const [isPhone, setIsPhone] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(PHONE_MQ).matches,
+  );
+  const [expanded, setExpanded] = useState(
+    () => !(typeof window !== 'undefined' && window.matchMedia(PHONE_MQ).matches),
+  );
   const rootRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia(PHONE_MQ);
+    const sync = () => {
+      const phone = mq.matches;
+      setIsPhone(phone);
+      if (!phone) setExpanded(true);
+    };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     if (placing) setExpanded(true);
   }, [placing]);
 
   useEffect(() => {
-    if (!expanded || placing) return;
+    if (!isPhone || !expanded || placing) return;
     const onPointer = (e: PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) setExpanded(false);
     };
@@ -44,30 +63,31 @@ export function HangingDecorToolRail() {
       window.removeEventListener('pointerdown', onPointer);
       window.removeEventListener('keydown', onKey);
     };
-  }, [expanded, placing]);
+  }, [expanded, placing, isPhone]);
 
   const activeLabel =
     TOOLS.find((t) => t.id === tool)?.label ?? 'Decor';
+  const showExpanded = !isPhone || expanded;
 
   return (
     <GlassSurface
       compact
       as="aside"
-      className={['hang-rail', expanded ? 'hang-rail--expanded' : ''].filter(Boolean).join(' ')}
+      className={['hang-rail', showExpanded ? 'hang-rail--expanded' : ''].filter(Boolean).join(' ')}
       aria-label="Hanging decoration tools"
     >
       <div ref={rootRef as never} className="hang-rail-inner">
         <button
           type="button"
           className="hang-rail-chip"
-          aria-expanded={expanded}
+          aria-expanded={showExpanded}
           aria-controls="hang-rail-panel"
           onClick={() => setExpanded((v) => !v)}
         >
           <span className="hang-rail-chip-label">Decor</span>
           <span className="hang-rail-chip-value">{activeLabel}</span>
           <span className="hang-rail-chip-chevron" aria-hidden>
-            {expanded ? '▾' : '▸'}
+            {showExpanded ? '▾' : '▸'}
           </span>
         </button>
 

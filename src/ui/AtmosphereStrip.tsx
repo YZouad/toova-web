@@ -3,6 +3,8 @@ import { formatTimeOfDay, isDaytime, WEATHER_OPTIONS } from '../lib/environment'
 import { useStore } from '../store';
 import { GlassSurface } from './GlassSurface';
 
+const PHONE_MQ = '(max-width: 768px)';
+
 interface AtmosphereStripProps {
   lookOpen: boolean;
   onToggleLook: () => void;
@@ -11,7 +13,8 @@ interface AtmosphereStripProps {
 }
 
 /**
- * Collapsed Light chip (top-right). Expand for time, orientation, Environment, Look.
+ * Desktop: Light panel always expanded.
+ * Phone: collapsed chip; expand for time, orientation, Environment, Look.
  * Environment and Look open downward as popovers under the strip.
  */
 export function AtmosphereStrip({
@@ -31,8 +34,25 @@ export function AtmosphereStrip({
   const setGodRays = useStore((s) => s.setGodRays);
 
   const [envOpen, setEnvOpen] = useState(false);
-  const [expanded, setExpanded] = useState(false);
+  const [isPhone, setIsPhone] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(PHONE_MQ).matches,
+  );
+  const [expanded, setExpanded] = useState(
+    () => !(typeof window !== 'undefined' && window.matchMedia(PHONE_MQ).matches),
+  );
   const rootRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia(PHONE_MQ);
+    const sync = () => {
+      const phone = mq.matches;
+      setIsPhone(phone);
+      if (!phone) setExpanded(true);
+    };
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
 
   useEffect(() => {
     if (lookOpen) {
@@ -42,18 +62,18 @@ export function AtmosphereStrip({
   }, [lookOpen]);
 
   useEffect(() => {
-    if (!envOpen && !expanded && !lookOpen) return;
+    if (!envOpen && !(isPhone && expanded) && !lookOpen) return;
     const onPointer = (e: PointerEvent) => {
       if (!rootRef.current?.contains(e.target as Node)) {
         setEnvOpen(false);
-        setExpanded(false);
+        if (isPhone) setExpanded(false);
         onCloseLook();
       }
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         setEnvOpen(false);
-        setExpanded(false);
+        if (isPhone) setExpanded(false);
         onCloseLook();
       }
     };
@@ -63,25 +83,29 @@ export function AtmosphereStrip({
       window.removeEventListener('pointerdown', onPointer);
       window.removeEventListener('keydown', onKey);
     };
-  }, [envOpen, expanded, lookOpen, onCloseLook]);
+  }, [envOpen, expanded, lookOpen, onCloseLook, isPhone]);
 
   const collapse = () => {
     setEnvOpen(false);
-    setExpanded(false);
+    if (isPhone) setExpanded(false);
     onCloseLook();
   };
+
+  const showExpanded = !isPhone || expanded;
 
   return (
     <GlassSurface
       compact
-      className={['atmosphere-strip', expanded ? 'atmosphere-strip--expanded' : ''].filter(Boolean).join(' ')}
+      className={['atmosphere-strip', showExpanded ? 'atmosphere-strip--expanded' : '']
+        .filter(Boolean)
+        .join(' ')}
       as="aside"
     >
       <div ref={rootRef as never} className="atmosphere-strip-inner">
         <button
           type="button"
           className="atmosphere-strip-chip"
-          aria-expanded={expanded}
+          aria-expanded={showExpanded}
           aria-controls="atmosphere-strip-panel"
           onClick={() => {
             if (expanded || lookOpen) {
@@ -99,7 +123,7 @@ export function AtmosphereStrip({
           <span className="atmosphere-time">{formatTimeOfDay(timeOfDay)}</span>
           <span className="atmosphere-strip-chip-label">Light</span>
           <span className="atmosphere-strip-chip-chevron" aria-hidden>
-            {expanded ? '▾' : '▸'}
+            {showExpanded ? '▾' : '▸'}
           </span>
         </button>
 
