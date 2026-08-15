@@ -1,74 +1,82 @@
-import { useTexture } from '@react-three/drei';
-import { Suspense } from 'react';
-import type { Texture } from 'three';
-import { DEFAULT_BLANKET_COLOR, type Item } from '../store';
-
-const PILLOW_COLOR = '#f5f2eb';
-
-function BlanketTextured({
-  blanketColor,
-  textureUrl,
-}: {
-  blanketColor: string;
-  textureUrl: string;
-}) {
-  const map = useTexture(textureUrl) as Texture;
-  return (
-    <meshStandardMaterial map={map} color={blanketColor} roughness={0.92} />
-  );
-}
+import { useMemo } from 'react';
+import {
+  COMFORTER_COLORS,
+  COMFORTER_PATTERNS,
+  DEFAULT_COMFORTER_COLOR_ID,
+  DEFAULT_COMFORTER_PATTERN_ID,
+  DEFAULT_SHEET_COLOR_ID,
+  DEFAULT_SHEET_PATTERN_ID,
+  SHEET_COLORS,
+  SHEET_PATTERNS,
+} from '../lib/bedding/catalog';
+import { resolveBeddingConfig } from '../lib/bedding/config';
+import { computeBeddingLayout } from '../lib/bedding/layout';
+import type { Item } from '../store';
+import { BeddingComforter } from './bedding/BeddingComforter';
+import { BeddingPillows } from './bedding/BeddingPillows';
+import { BeddingSheets } from './bedding/BeddingSheets';
+import { BeddingTopper } from './bedding/BeddingTopper';
 
 interface BedBeddingProps {
   item: Item;
   w: number;
   d: number;
-  yMattressMid: number;
-  mattressH: number;
+  totalH: number;
+  legH: number;
 }
 
-/** Procedural blanket + twin pillows when bedding is enabled on a bed. */
-export function BedBedding({ item, w, d, yMattressMid, mattressH }: BedBeddingProps) {
-  if (!item.beddingEnabled) return null;
+export function BedBedding({ item, w, d, totalH, legH }: BedBeddingProps) {
+  const config = useMemo(
+    () => resolveBeddingConfig(item),
+    [item.beddingConfig, item.beddingEnabled, item.blanketColor],
+  );
+  const layout = useMemo(
+    () => computeBeddingLayout(w, totalH, d, legH, config),
+    [w, totalH, d, legH, config],
+  );
 
-  const blanketColor = item.blanketColor ?? DEFAULT_BLANKET_COLOR;
-  const blanketW = Math.max(4, w - 6);
-  const blanketH = 3;
-  const blanketD = Math.max(4, d - 10);
-  const zBlanket = 4;
-  const yBlanketCenter = yMattressMid + mattressH / 2 + blanketH / 2;
+  const hasAnyLayer =
+    config.topper.enabled ||
+    config.sheets.enabled ||
+    config.comforter.enabled ||
+    (config.pillows.enabled && config.pillows.items.length > 0);
 
-  const pillowW = Math.min(16, (w - 10) / 2);
-  const pillowH = 5;
-  const pillowD = 12;
-  const yPillowCenter = yMattressMid + mattressH / 2 + pillowH / 2;
-  const zPillow = -d / 2 + pillowD / 2 + 2;
-  const pillowGap = 2;
-  const xOff = pillowW / 2 + pillowGap / 2;
+  if (!hasAnyLayer) return null;
 
   return (
     <group>
-      <mesh position={[0, yBlanketCenter, zBlanket]} castShadow receiveShadow>
-        <boxGeometry args={[blanketW, blanketH, blanketD]} />
-        {item.blanketTextureUrl ? (
-          <Suspense fallback={<meshStandardMaterial color={blanketColor} roughness={0.92} />}>
-            <BlanketTextured
-              blanketColor={blanketColor}
-              textureUrl={item.blanketTextureUrl}
-            />
-          </Suspense>
-        ) : (
-          <meshStandardMaterial color={blanketColor} roughness={0.92} />
-        )}
-      </mesh>
-
-      <mesh position={[-xOff, yPillowCenter, zPillow]} castShadow receiveShadow>
-        <boxGeometry args={[pillowW, pillowH, pillowD]} />
-        <meshStandardMaterial color={PILLOW_COLOR} roughness={0.94} />
-      </mesh>
-      <mesh position={[xOff, yPillowCenter, zPillow]} castShadow receiveShadow>
-        <boxGeometry args={[pillowW, pillowH, pillowD]} />
-        <meshStandardMaterial color={PILLOW_COLOR} roughness={0.94} />
-      </mesh>
+      {config.topper.enabled ? (
+        <BeddingTopper layout={layout} sheetsEnabled={config.sheets.enabled} />
+      ) : null}
+      {config.sheets.enabled ? (
+        <BeddingSheets
+          layout={layout}
+          colors={SHEET_COLORS}
+          patterns={SHEET_PATTERNS}
+          colorId={config.sheets.colorId}
+          patternId={config.sheets.patternId}
+          fallbackColorId={DEFAULT_SHEET_COLOR_ID}
+          fallbackPatternId={DEFAULT_SHEET_PATTERN_ID}
+        />
+      ) : null}
+      {config.comforter.enabled ? (
+        <BeddingComforter
+          layout={layout}
+          colors={COMFORTER_COLORS}
+          patterns={COMFORTER_PATTERNS}
+          colorId={config.comforter.colorId}
+          patternId={config.comforter.patternId}
+          fallbackColorId={DEFAULT_COMFORTER_COLOR_ID}
+          fallbackPatternId={DEFAULT_COMFORTER_PATTERN_ID}
+        />
+      ) : null}
+      {config.pillows.enabled ? <BeddingPillows layout={layout} /> : null}
     </group>
   );
+}
+
+export function beddingSelectionExtraHeight(item: Item, w: number, d: number, totalH: number, legH: number): number {
+  const config = resolveBeddingConfig(item);
+  const layout = computeBeddingLayout(w, totalH, d, legH, config);
+  return layout.selectionExtraH;
 }

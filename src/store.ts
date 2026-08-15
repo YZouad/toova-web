@@ -37,6 +37,13 @@ import {
   DEFAULT_LIGHT_CONFIG,
   hangingReferencesAttachmentKey,
 } from './lib/hangingDecorGeometry';
+import {
+  comforterHexFromConfig,
+  isAnyBeddingLayerEnabled,
+  mergeBeddingConfig,
+  resolveBeddingConfig,
+} from './lib/bedding/config';
+import type { BeddingConfig, BeddingConfigPatch } from './lib/bedding/types';
 
 export type {
   HangingAnchor,
@@ -142,6 +149,8 @@ export interface Item {
   blanketTexturePath?: string;
   /** Signed URL for blanket texture (runtime only; not persisted). */
   blanketTextureUrl?: string;
+  /** Modular bedding layers (topper, sheets, comforter, pillows). */
+  beddingConfig?: BeddingConfig;
   emitter?: EmitterConfig;
   /** Verified curated shopping product linked to this placement. */
   curatedProductId?: string;
@@ -227,6 +236,7 @@ interface StoreState {
   setWallMounted: (id: string, mounted: boolean) => void;
   setBedHeight: (id: string, h: number) => void;
   setBeddingEnabled: (id: string, enabled: boolean) => void;
+  setBeddingConfig: (id: string, patch: BeddingConfigPatch) => void;
   setBlanketColor: (id: string, hex: string) => void;
   setBlanketTexture: (
     id: string,
@@ -744,6 +754,27 @@ export const useStore = create<StoreState>((set, get) => ({
         next = { ...next, blanketTextureUrl: undefined };
       }
       return { items: { ...s.items, [id]: next } };
+    }),
+
+  setBeddingConfig: (id, patch) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'bed') return s;
+      const base = resolveBeddingConfig(it);
+      const beddingConfig = mergeBeddingConfig(base, patch);
+      const beddingEnabled = isAnyBeddingLayerEnabled(beddingConfig);
+      const blanketColor = comforterHexFromConfig(beddingConfig);
+      return {
+        items: {
+          ...s.items,
+          [id]: {
+            ...it,
+            beddingConfig,
+            beddingEnabled: beddingEnabled || undefined,
+            blanketColor,
+          },
+        },
+      };
     }),
 
   setBlanketColor: (id, hex) =>
