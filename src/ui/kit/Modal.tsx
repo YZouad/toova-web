@@ -1,4 +1,4 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useRef, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { Rule } from './Rule';
 
@@ -28,12 +28,24 @@ export function Modal({
   style,
   scrimClassName,
 }: ModalProps) {
+  const pressedOnScrim = useRef(false);
+
   if (!open) return null;
+
+  function handleScrimMouseDown(e: MouseEvent<HTMLDivElement>) {
+    pressedOnScrim.current = e.target === e.currentTarget;
+  }
+
+  function handleScrimClick(e: MouseEvent<HTMLDivElement>) {
+    if (pressedOnScrim.current && e.target === e.currentTarget) onClose();
+    pressedOnScrim.current = false;
+  }
 
   return createPortal(
     <div
       className={['kit-modal__scrim', scrimClassName].filter(Boolean).join(' ')}
-      onClick={onClose}
+      onMouseDown={handleScrimMouseDown}
+      onClick={handleScrimClick}
       role="presentation"
     >
       <div

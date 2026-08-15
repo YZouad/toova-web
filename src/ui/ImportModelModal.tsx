@@ -88,6 +88,7 @@ export function ImportModelModal({
   const [elapsedSec, setElapsedSec] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
+  const [generateStatus, setGenerateStatus] = useState<string | null>(null);
   const [decimatedFile, setDecimatedFile] = useState<File | null>(null);
   const [decimating, setDecimating] = useState(false);
   const [decimationError, setDecimationError] = useState<string | null>(null);
@@ -219,6 +220,7 @@ export function ImportModelModal({
     setListInGallery(false);
     setFormError(null);
     setGenerateError(null);
+    setGenerateStatus(null);
     setElapsedSec(0);
     setGenerating(false);
     setGeneratePhase('idle');
@@ -272,6 +274,7 @@ export function ImportModelModal({
     generateAbortRef.current = abortController;
 
     setElapsedSec(0);
+    setGenerateStatus('Waking Trellis…');
     setGeneratePhase('generating');
     setGenerating(true);
 
@@ -284,8 +287,16 @@ export function ImportModelModal({
     activeJobIdRef.current = jobId;
 
     try {
-      setGeneratePhase('downloading');
-      const glbFile = await generateGlbFromPhoto(imageFile, abortController.signal);
+      const glbFile = await generateGlbFromPhoto(
+        imageFile,
+        abortController.signal,
+        (message) => {
+          setGenerateStatus(message);
+          if (message.toLowerCase().includes('download')) {
+            setGeneratePhase('downloading');
+          }
+        },
+      );
       setFile(glbFile);
       setTab('upload');
       if (jobId) {
@@ -316,6 +327,7 @@ export function ImportModelModal({
     } finally {
       setGenerating(false);
       setGeneratePhase('idle');
+      setGenerateStatus(null);
       if (generateAbortRef.current === abortController) {
         generateAbortRef.current = null;
       }
@@ -446,7 +458,7 @@ export function ImportModelModal({
         depthIn: d,
         clearanceIn: clearance,
         description: description.trim() || null,
-        visibility: listInGallery ? 'public' : 'private',
+        visibility: listInGallery || addToChecklist ? 'public' : 'private',
         categories,
         tags,
         preferFlatImage: source === 'poster' ? posterCroppedBlob : null,
@@ -579,9 +591,11 @@ export function ImportModelModal({
             {generating ? (
               <Spinner
                 label={
-                  generatePhase === 'downloading'
-                    ? `Downloading model · ${elapsedSec}s`
-                    : `Generating 3D · ${elapsedSec}s`
+                  generateStatus
+                    ? `${generateStatus} · ${elapsedSec}s`
+                    : generatePhase === 'downloading'
+                      ? `Downloading model · ${elapsedSec}s`
+                      : `Generating 3D · ${elapsedSec}s`
                 }
               />
             ) : trellisUsesRemoteUrl ? (
@@ -591,13 +605,12 @@ export function ImportModelModal({
               </p>
             ) : isLocalDevHost() ? (
               <p className="import-modal-generate-status">
-                Local: proxied to TRELLIS via Vite or{' '}
-                <code className="import-modal-code">3DVisSim/server</code> at{' '}
-                <code className="import-modal-code">/api/trellis/generate</code> (configure{' '}
-                <code className="import-modal-code">TRELLIS_UPSTREAM_ORIGIN</code> in{' '}
+                Local: Vite proxies <code className="import-modal-code">/api/trellis</code> to
+                the Render BFF (configure{' '}
+                <code className="import-modal-code">TRELLIS_BFF_ORIGIN</code> in{' '}
                 <code className="import-modal-code">.env.local</code>). Use{' '}
-                <code className="import-modal-code">npm run dev</code>,{' '}
-                <code className="import-modal-code">npm run preview</code>, or run the Express server.
+                <code className="import-modal-code">npm run dev</code> or{' '}
+                <code className="import-modal-code">npm run preview</code>.
               </p>
             ) : null}
 
@@ -611,9 +624,8 @@ export function ImportModelModal({
               {tabFooter(
                 <Button size="sm" disabled={busy} onClick={() => void handleGenerate()}>
                   {generating
-                    ? generatePhase === 'downloading'
-                      ? 'Downloading…'
-                      : 'Generating…'
+                    ? generateStatus ??
+                      (generatePhase === 'downloading' ? 'Downloading…' : 'Generating…')
                     : 'Generate 3D model'}
                 </Button>,
               )}

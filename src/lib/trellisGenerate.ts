@@ -1,4 +1,4 @@
-import { TRELLIS_GENERATE_URL } from './trellisApi';
+import { ensureTrellisReady, TRELLIS_GENERATE_URL } from './trellisApi';
 
 function isInvalidGlbContentType(contentType: string): boolean {
   const ct = contentType.toLowerCase();
@@ -9,7 +9,11 @@ function isInvalidGlbContentType(contentType: string): boolean {
 export async function generateGlbFromPhoto(
   imageFile: File,
   signal?: AbortSignal,
+  onProgress?: (message: string) => void,
 ): Promise<File> {
+  await ensureTrellisReady(signal, onProgress);
+
+  onProgress?.('Generating 3D model…');
   const fd = new FormData();
   fd.append('file', imageFile);
 
@@ -21,6 +25,17 @@ export async function generateGlbFromPhoto(
 
   if (!res.ok) {
     const errText = await res.text();
+    if (res.status === 503) {
+      try {
+        const parsed = JSON.parse(errText) as { message?: string; error?: string };
+        throw new Error(parsed.message || parsed.error || 'Trellis is not ready yet.');
+      } catch (err) {
+        if (err instanceof SyntaxError) {
+          throw new Error(errText || 'Trellis is not ready yet.');
+        }
+        throw err;
+      }
+    }
     throw new Error(errText || `Generation failed (${res.status})`);
   }
 
@@ -33,6 +48,7 @@ export async function generateGlbFromPhoto(
     );
   }
 
+  onProgress?.('Downloading model…');
   const blob = await res.blob();
   if (blob.size === 0) {
     throw new Error('The server returned an empty model file.');

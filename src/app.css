@@ -5821,6 +5821,16 @@ button.landing-nav-brand { cursor: pointer; }
   align-items: center;
   margin-top: 2px;
 }
+.checklist-product-linked-model {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+.checklist-product-linked-model small {
+  color: var(--ink-4);
+}
 .product-drawer-hint { margin: 0; font-size: 12px; color: var(--text-subtle); }
 .product-drawer-empty { color: var(--text-muted); }
 

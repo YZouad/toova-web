@@ -10,7 +10,7 @@ Built with React, Three.js (`@react-three/fiber`), Vite, and Supabase.
 
 ```bash
 npm install
-cp .env.example .env.local   # then edit TRELLIS_UPSTREAM_ORIGIN if your EC2 host differs
+cp .env.example .env.local   # then edit TRELLIS_BFF_ORIGIN if your BFF host differs
 npm run dev
 ```
 
@@ -18,17 +18,15 @@ Open http://localhost:5173
 
 ### Trellis (3D model import)
 
-Trellis runs on EC2 and is reached via the Vite dev proxy (`POST /generate`, multipart field `file`, GLB response). Configure per environment:
+Trellis runs on EC2 and is reached through the Render BFF (`POST /api/trellis/wake`, `GET /api/trellis/status`, then `POST /api/trellis/generate`). Do not call the EC2 IP from the browser or the Vite proxy — the instance is idle-stopped and port 8000 is not open to laptops.
 
 | Environment | How it works |
 |-------------|--------------|
-| **Local dev** | Set `TRELLIS_UPSTREAM_ORIGIN=http://YOUR_EC2_HOST:8000` in `.env.local`. Vite proxies `/api/trellis/generate` → `/generate`. |
-| **Local dev (alt)** | Set `VITE_TRELLIS_GENERATE_URL` to a direct HTTPS BFF URL instead of using the Vite proxy. |
-| **Production (GitHub Pages / toova.net)** | Set repo variable `VITE_TRELLIS_GENERATE_URL` to `https://<render-bff>/api/trellis/generate`. The HTTPS BFF proxies to Trellis on EC2. |
+| **Local dev** | Vite proxies `/api/trellis/*` → `TRELLIS_BFF_ORIGIN` (defaults to `https://toova-bff.onrender.com`). The client wakes Trellis and polls status before generate. |
+| **Local dev (alt)** | Set `VITE_TRELLIS_GENERATE_URL` to a direct HTTPS BFF URL instead of using the Vite proxy (BFF must allow localhost CORS). |
+| **Production (GitHub Pages / toova.net)** | Set repo variable `VITE_TRELLIS_GENERATE_URL` to `https://toova-bff.onrender.com/api/trellis/generate`. |
 
-**Mixed content:** Production (`https://toova.net`) cannot call `http://EC2_IP:8000` directly. Always use the Render BFF in production.
-
-If neither `TRELLIS_UPSTREAM_ORIGIN` nor `VITE_TRELLIS_GENERATE_URL` is set, the app runs but photo → 3D import will fail until configured.
+**Mixed content:** Production (`https://toova.net`) cannot call `http://EC2_IP:8000` directly. Always use the Render BFF.
 
 ## Scripts
 
@@ -46,7 +44,7 @@ See [`.env.example`](.env.example). Copy it to `.env.local` for local dev (gitig
 
 | Variable | Description |
 |----------|-------------|
-| `TRELLIS_UPSTREAM_ORIGIN` | Trellis server origin for the Vite dev proxy (local only, not committed). |
+| `TRELLIS_BFF_ORIGIN` | Render BFF origin for the Vite dev proxy (local only, not committed). Defaults to `https://toova-bff.onrender.com`. |
 | `VITE_TRELLIS_GENERATE_URL` | HTTPS endpoint baked into production builds; optional override in dev. |
 | `VITE_BASE_PATH` | Base URL path for assets. Use `/` for the custom domain (`toova.net`). |
 

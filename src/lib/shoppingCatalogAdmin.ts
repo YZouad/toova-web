@@ -281,7 +281,7 @@ export async function createChecklistProductWithModel(input: {
     heightIn: input.heightIn,
     depthIn: input.depthIn,
     description: input.description ?? '',
-    visibility: 'private',
+    visibility: 'public',
     originalFileName: input.originalFileName,
   });
 
@@ -339,10 +339,11 @@ export async function updateChecklistProductWithModel(input: {
       heightIn: input.heightIn,
       depthIn: input.depthIn,
       description: input.description ?? '',
-      visibility: 'private',
+      visibility: 'public',
       originalFileName: input.originalFileName,
     });
     patch.placeCatalogKind = kind;
+    patch.placeBuiltinKind = null;
   }
 
   if (Object.keys(patch).length > 0) {

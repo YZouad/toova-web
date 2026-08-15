@@ -1,8 +1,9 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { CuratedProduct } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
 import { productHasPlaceableModel } from '../lib/checklistPublicGlbs';
+import { downloadCatalogModelByKind } from '../lib/modelStorage';
 import { Button, Eyebrow, MonoMeta, SectionOpener } from './kit';
 
 interface ProductDrawerProps {
@@ -37,6 +38,21 @@ export function ProductDrawer({
 }: ProductDrawerProps) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [downloadKind, setDownloadKind] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  async function handleDownloadGlb(product: CuratedProduct) {
+    if (!product.placeCatalogKind || downloadKind) return;
+    setDownloadError(null);
+    setDownloadKind(product.placeCatalogKind);
+    try {
+      await downloadCatalogModelByKind(product.placeCatalogKind, product.name);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Could not download model');
+    } finally {
+      setDownloadKind(null);
+    }
+  }
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -88,6 +104,12 @@ export function ProductDrawer({
             </button>
           </div>
         </header>
+
+        {downloadError ? (
+          <p className="product-drawer-hint" role="alert" style={{ margin: '0 0 8px' }}>
+            {downloadError}
+          </p>
+        ) : null}
 
         {products.length === 0 ? (
           <div className="product-drawer-empty-wrap">
@@ -149,6 +171,18 @@ export function ProductDrawer({
                               Edit
                             </Button>
                           ) : null}
+                          {product.placeCatalogKind ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={downloadKind === product.placeCatalogKind}
+                              onClick={() => void handleDownloadGlb(product)}
+                            >
+                              {downloadKind === product.placeCatalogKind
+                                ? 'Downloading…'
+                                : 'Download GLB'}
+                            </Button>
+                          ) : null}
                           {onDeleteProduct ? (
                             <Button
                               size="sm"
@@ -174,6 +208,18 @@ export function ProductDrawer({
                             >
                               Shop
                             </a>
+                          ) : null}
+                          {product.placeCatalogKind ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={downloadKind === product.placeCatalogKind}
+                              onClick={() => void handleDownloadGlb(product)}
+                            >
+                              {downloadKind === product.placeCatalogKind
+                                ? 'Downloading…'
+                                : 'Download GLB'}
+                            </Button>
                           ) : null}
                           {placeable && onPlace ? (
                             <Button size="sm" variant="mono" onClick={() => onPlace(product)}>

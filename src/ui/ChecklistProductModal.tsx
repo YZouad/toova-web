@@ -12,6 +12,7 @@ import {
 } from '../lib/shoppingCatalogAdmin';
 import { generateGlbFromPhoto } from '../lib/trellisGenerate';
 import { trellisUsesRemoteUrl } from '../lib/trellisApi';
+import { downloadCatalogModelByKind } from '../lib/modelStorage';
 import { Banner, Button, Checkbox, Field, Input, Modal, Spinner, Tabs } from './kit';
 
 type ModelTab = 'upload' | 'generate';
@@ -61,10 +62,12 @@ export function ChecklistProductModal({
 
   const [generating, setGenerating] = useState(false);
   const [generatePhase, setGeneratePhase] = useState<GeneratePhase>('idle');
+  const [generateStatus, setGenerateStatus] = useState<string | null>(null);
   const [generateError, setGenerateError] = useState<string | null>(null);
 
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [downloadBusy, setDownloadBusy] = useState(false);
 
   const busy = submitting || decimating || generating;
 
@@ -72,6 +75,7 @@ export function ChecklistProductModal({
     if (!open) return;
     setFormError(null);
     setGenerateError(null);
+    setDownloadBusy(false);
     if (product) {
       setName(product.name);
       setDescription(product.description);
@@ -140,6 +144,19 @@ export function ChecklistProductModal({
     };
   }, [glbFile]);
 
+  const handleDownloadExisting = async () => {
+    if (!product?.placeCatalogKind || downloadBusy) return;
+    setFormError(null);
+    setDownloadBusy(true);
+    try {
+      await downloadCatalogModelByKind(product.placeCatalogKind, name.trim() || product.name);
+    } catch (err) {
+      setFormError(err instanceof Error ? err.message : 'Could not download model');
+    } finally {
+      setDownloadBusy(false);
+    }
+  };
+
   const handleClose = () => {
     if (busy) return;
     generateAbortRef.current?.abort();
@@ -156,12 +173,21 @@ export function ChecklistProductModal({
     const abortController = new AbortController();
     generateAbortRef.current = abortController;
     setGenerateError(null);
+    setGenerateStatus('Waking Trellis…');
     setGeneratePhase('generating');
     setGenerating(true);
 
     try {
-      setGeneratePhase('downloading');
-      const generated = await generateGlbFromPhoto(imageFile, abortController.signal);
+      const generated = await generateGlbFromPhoto(
+        imageFile,
+        abortController.signal,
+        (message) => {
+          setGenerateStatus(message);
+          if (message.toLowerCase().includes('download')) {
+            setGeneratePhase('downloading');
+          }
+        },
+      );
       setGlbFile(generated);
       setModelTab('upload');
     } catch (err) {
@@ -170,6 +196,7 @@ export function ChecklistProductModal({
     } finally {
       setGenerating(false);
       setGeneratePhase('idle');
+      setGenerateStatus(null);
       if (generateAbortRef.current === abortController) {
         generateAbortRef.current = null;
       }
@@ -372,9 +399,20 @@ export function ChecklistProductModal({
                   {decimating ? ' · optimizing…' : decimatedFile ? ' · ready' : ''}
                 </small>
               ) : isEdit && product?.placeCatalogKind ? (
-                <small style={{ display: 'block', marginTop: 6, color: 'var(--ink-4)' }}>
-                  Model linked — upload a new GLB to replace it.
-                </small>
+                <div className="checklist-product-linked-model">
+                  <small>
+                    Model linked — upload a new GLB to replace it.
+                  </small>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    disabled={busy || downloadBusy}
+                    onClick={() => void handleDownloadExisting()}
+                  >
+                    {downloadBusy ? 'Downloading…' : 'Download GLB'}
+                  </Button>
+                </div>
               ) : null}
               {decimationWarning ? (
                 <Banner tone="info" style={{ marginTop: 8 }}>
@@ -396,7 +434,8 @@ export function ChecklistProductModal({
                 </p>
               ) : (
                 <p className="import-modal-generate-status" style={{ marginTop: 8 }}>
-                  Uses <code className="import-modal-code">/api/trellis/generate</code> in local dev.
+                  Uses the Render BFF via <code className="import-modal-code">/api/trellis</code> in
+                  local dev.
                 </p>
               )}
               {generateError ? <Banner tone="error">{generateError}</Banner> : null}
@@ -408,9 +447,8 @@ export function ChecklistProductModal({
                 style={{ marginTop: 8 }}
               >
                 {generating
-                  ? generatePhase === 'downloading'
-                    ? 'Downloading model…'
-                    : 'Generating…'
+                  ? generateStatus ??
+                    (generatePhase === 'downloading' ? 'Downloading model…' : 'Generating…')
                   : 'Generate 3D model'}
               </Button>
             </div>
