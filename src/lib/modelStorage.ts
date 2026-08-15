@@ -28,6 +28,25 @@ export async function signBrowsableModelPath(
   return signModelObjectPath(objectPath, expiresSec);
 }
 
+/** Same-origin URL for repo `public/` models (e.g. checklist-refs/glb/…). */
+export function publicModelAssetUrl(objectPath: string): string | null {
+  const trimmed = objectPath.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  const viteBase = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
+  if (trimmed.startsWith('checklist-refs/')) return `${viteBase}${trimmed}`;
+  if (trimmed.startsWith('/')) return `${viteBase}${trimmed.replace(/^\//, '')}`;
+  return null;
+}
+
+/** Public asset URL, or a signed storage URL for bucket object keys. */
+export async function resolveBrowsableModelUrl(
+  objectPath: string,
+  expiresSec = 60 * 60 * 24,
+): Promise<string | null> {
+  return publicModelAssetUrl(objectPath) ?? signBrowsableModelPath(objectPath, expiresSec);
+}
+
 /** Safe filename for a catalog GLB/GLTF download. */
 export function catalogModelDownloadFilename(
   label: string,
@@ -77,8 +96,7 @@ export async function downloadCatalogModelByKind(
     throw new Error('Could not download model');
   }
   const path = String(data.model_url).trim();
-  const isAbsolute = path.startsWith('http://') || path.startsWith('https://');
-  const url = isAbsolute ? path : await signBrowsableModelPath(path);
+  const url = await resolveBrowsableModelUrl(path);
   if (!url) {
     throw new Error('Could not download model');
   }
@@ -86,7 +104,7 @@ export async function downloadCatalogModelByKind(
     url,
     catalogModelDownloadFilename(
       filenameLabel || String(data.label ?? ''),
-      isAbsolute ? '' : path,
+      path,
       url,
     ),
   );

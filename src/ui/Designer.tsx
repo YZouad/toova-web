@@ -15,7 +15,7 @@ import { ImportModelModal } from './ImportModelModal';
 import { DesignerGalleryPanel, pushRecentKind } from './DesignerGalleryPanel';
 import { SceneCheckoutPanel } from './SceneCheckoutPanel';
 import { AtmosphereStrip } from './AtmosphereStrip';
-import { LookDrawer } from './LookDrawer';
+import { LookDrawer, PaintColorPicker } from './LookDrawer';
 import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
@@ -25,6 +25,7 @@ import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profil
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
+import { DEFAULT_RUG_COLOR, isChecklistRug } from '../lib/checklistPublicGlbs';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
@@ -94,6 +95,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
   const setBedHeight = useStore((s) => s.setBedHeight);
   const setBeddingEnabled = useStore((s) => s.setBeddingEnabled);
   const setBlanketColor = useStore((s) => s.setBlanketColor);
+  const setTintColor = useStore((s) => s.setTintColor);
   const setBlanketTexture = useStore((s) => s.setBlanketTexture);
   const updatePosition = useStore((s) => s.updatePosition);
   const setEmitterEnabled = useStore((s) => s.setEmitterEnabled);
@@ -316,6 +318,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
         catalogSizeIn: item.catalogSizeIn
           ? ([...item.catalogSizeIn] as [number, number, number])
           : ([...item.size] as [number, number, number]),
+        tintColor: item.tintColor,
       });
     } else {
       newId = addItem(item.kind);
@@ -650,6 +653,16 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
                   unit="″"
                   onChange={(v) => setItemElevation(item.id, v)}
                 />
+              ) : null}
+
+              {isChecklistRug(item) ? (
+                <div style={{ margin: '12px 0 8px' }}>
+                  <PaintColorPicker
+                    label="Rug color"
+                    value={item.tintColor ?? DEFAULT_RUG_COLOR}
+                    onChange={(color) => setTintColor(item.id, color)}
+                  />
+                </div>
               ) : null}
 
               {item.kind === 'bed' ? (

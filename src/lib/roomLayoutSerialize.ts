@@ -3,6 +3,7 @@
  */
 
 import type { FurnitureKind } from '../furniture/registry';
+import { DEFAULT_RUG_COLOR, isChecklistRug } from './checklistPublicGlbs';
 import { DEFAULT_BLANKET_COLOR, newAttachmentKey, type EmitterConfig, type Item } from '../store';
 import {
   parseHangingConfig,
@@ -129,6 +130,16 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     if (row.bedding_enabled === true) return DEFAULT_BLANKET_COLOR;
     return undefined;
   })();
+  const tintColor = (() => {
+    if (row.kind !== 'imported') return undefined;
+    if (row.blanket_color != null && String(row.blanket_color).trim()) {
+      return String(row.blanket_color).trim();
+    }
+    if (isChecklistRug({ importedStoragePath, label: row.label })) {
+      return DEFAULT_RUG_COLOR;
+    }
+    return undefined;
+  })();
   const blanketTexturePath =
     row.kind === 'bed' &&
     row.blanket_texture_path != null &&
@@ -162,6 +173,7 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
       row.kind === 'bed' && bedLeg !== undefined ? bedLeg : undefined,
     beddingEnabled,
     blanketColor,
+    tintColor,
     blanketTexturePath,
     importedNaturalSize,
     importedUrl,
@@ -231,7 +243,11 @@ export function serializeLayoutForRoom(
           : null,
       bedding_enabled: it.kind === 'bed' ? !!it.beddingEnabled : false,
       blanket_color:
-        it.kind === 'bed' && it.blanketColor ? it.blanketColor : null,
+        it.kind === 'bed' && it.blanketColor
+          ? it.blanketColor
+          : it.kind === 'imported' && it.tintColor
+            ? it.tintColor
+            : null,
       blanket_texture_path:
         it.kind === 'bed' && it.blanketTexturePath
           ? it.blanketTexturePath

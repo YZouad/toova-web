@@ -12,7 +12,7 @@ import { useStore, type Item } from '../store';
 import type { CuratedProduct } from '../lib/dormChecklist';
 import type { FurnitureKind } from '../furniture/registry';
 import { FURNITURE } from '../furniture/registry';
-import { signBrowsableModelPath } from '../lib/modelStorage';
+import { resolveBrowsableModelUrl } from '../lib/modelStorage';
 import { parseInchDims } from '../lib/importedItemSize';
 import { supabase } from '../lib/supabase';
 import { recordCatalogDownload } from '../lib/catalogEngagement';
@@ -179,7 +179,7 @@ export function SceneCheckoutPanel({ onOpenChecklist }: SceneCheckoutPanelProps)
         .maybeSingle();
       if (!data?.model_url) return;
       const path = String(data.model_url).trim();
-      const signed = await signBrowsableModelPath(path);
+      const signed = await resolveBrowsableModelUrl(path);
       if (!signed) return;
       const catalogSizeIn = parseInchDims(
         Number(data.width_in),

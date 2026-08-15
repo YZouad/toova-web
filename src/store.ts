@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { FURNITURE, FurnitureKind } from './furniture/registry';
 import { findValidElevation, settleGravity, validatePlacement } from './interaction/collision';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
+import { DEFAULT_RUG_COLOR, isChecklistRug } from './lib/checklistPublicGlbs';
 import {
   clampPlan,
   clampPlanHeight,
@@ -138,6 +139,8 @@ export interface Item {
   beddingEnabled?: boolean;
   /** Hex color for blanket when bedding is enabled. */
   blanketColor?: string;
+  /** Hex tint for recolorable imports (checklist rug). */
+  tintColor?: string;
   /** Supabase Storage path for blanket pattern image (`model-files` bucket). */
   blanketTexturePath?: string;
   /** Signed URL for blanket texture (runtime only; not persisted). */
@@ -213,6 +216,7 @@ interface StoreState {
       size?: [number, number, number];
       catalogSizeIn?: [number, number, number];
       curatedProductId?: string;
+      tintColor?: string;
     },
   ) => string;
   /** Clone an item with a new id, slight position offset; appends and selects it. */
@@ -228,6 +232,7 @@ interface StoreState {
   setBedHeight: (id: string, h: number) => void;
   setBeddingEnabled: (id: string, enabled: boolean) => void;
   setBlanketColor: (id: string, hex: string) => void;
+  setTintColor: (id: string, hex: string) => void;
   setBlanketTexture: (
     id: string,
     tex: { path: string; url: string } | null,
@@ -555,6 +560,12 @@ export const useStore = create<StoreState>((set, get) => ({
       catalogSizeIn,
       label: opts?.label ?? (def ? def.label : 'Model'),
       curatedProductId: opts?.curatedProductId,
+      tintColor:
+        opts?.tintColor ??
+        (kind === 'imported' &&
+        isChecklistRug({ importedStoragePath: opts?.storagePath, label: opts?.label })
+          ? DEFAULT_RUG_COLOR
+          : undefined),
       attachmentKey: newAttachmentKey(),
     };
     set((s) => ({
@@ -751,6 +762,13 @@ export const useStore = create<StoreState>((set, get) => ({
       const it = s.items[id];
       if (!it || it.kind !== 'bed') return s;
       return { items: { ...s.items, [id]: { ...it, blanketColor: hex } } };
+    }),
+
+  setTintColor: (id, hex) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'imported') return s;
+      return { items: { ...s.items, [id]: { ...it, tintColor: hex } } };
     }),
 
   setBlanketTexture: (id, tex) =>
