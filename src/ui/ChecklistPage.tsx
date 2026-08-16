@@ -47,6 +47,7 @@ export function ChecklistPage({
     isCategoryDone,
     toggleChecked,
     addToList,
+    list,
   } = useShoppingCatalogContext();
   const addItem = useStore((s) => s.addItem);
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
@@ -69,7 +70,7 @@ export function ChecklistPage({
     async (product: CuratedProduct) => {
       await addToList(product.id);
       if (product.placeBuiltinKind && product.placeBuiltinKind in FURNITURE) {
-        addItem(product.placeBuiltinKind as Exclude<FurnitureKind, 'imported' | 'hanging'>, {
+        addItem(product.placeBuiltinKind as Exclude<FurnitureKind, 'imported' | 'hanging' | 'light'>, {
           label: product.name,
           curatedProductId: product.id,
         });
@@ -123,7 +124,7 @@ export function ChecklistPage({
         </div>
       </header>
 
-      <main className="app-main">
+      <main className="app-main checklist-page-main">
         <Eyebrow level="page">Dorm essentials</Eyebrow>
         <SectionOpener
           level={4}
@@ -180,6 +181,26 @@ export function ChecklistPage({
           As an Amazon Associate, Toova may earn from qualifying purchases. Prices may change.
         </MonoMeta>
       </main>
+
+      {onDesign ? (
+        <div className="checklist-continue-bar" role="region" aria-label="Continue">
+          <div className="checklist-continue-bar__inner">
+            <div className="checklist-continue-bar__copy">
+              <MonoMeta size="sm" tone="dense" upper>
+                {done} of {total} packed
+                {list.length > 0 ? ` · ${list.length} on To Buy` : ''}
+              </MonoMeta>
+              <p className="checklist-continue-bar__hint">
+                Saved automatically on this device
+                {done > 0 ? ' — your checks stay when you design.' : '.'}
+              </p>
+            </div>
+            <Button size="md" onClick={onDesign}>
+              Continue to design
+            </Button>
+          </div>
+        </div>
+      ) : null}
 
       <SiteFooter
         onContact={onContact}

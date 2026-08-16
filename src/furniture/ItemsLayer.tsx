@@ -7,6 +7,7 @@ import { Desk } from './Desk';
 import { Chair } from './Chair';
 import { Nightstand } from './Nightstand';
 import { Lamp } from './Lamp';
+import { LightSource } from './LightSource';
 import { ImportedModel } from './ImportedModel';
 import { HangingDecoration } from './HangingDecoration';
 import { ItemEmitter } from './ItemEmitter';
@@ -15,7 +16,7 @@ import { EmitterGlow } from './EmitterGlow';
 export function ItemsLayer() {
   const items = useStore((s) => s.items);
   const order = useStore((s) => s.order);
-  const selectedId = useStore((s) => s.selectedId);
+  const selectedIds = useStore((s) => s.selectedIds);
   const invalid = useStore((s) => s.invalid);
   const designerTool = useStore((s) => s.designerTool);
   const placing = designerTool === 'hanging-leaves' || designerTool === 'hanging-lights';
@@ -25,7 +26,7 @@ export function ItemsLayer() {
       {order.map((id) => {
         const item = items[id];
         if (!item) return null;
-        const isSelected = id === selectedId;
+        const isSelected = selectedIds.includes(id);
         // Hanging visuals are authored in world-relative local space around item.position.
         return (
           <group
@@ -54,6 +55,16 @@ function ItemVisual({ item, selected, invalid }: { item: Item; selected: boolean
     return <HangingDecoration item={item} selected={selected} invalid={invalid} />;
   }
 
+  if (item.kind === 'light') {
+    const emitter = item.emitter?.enabled !== false ? (item.emitter ?? null) : null;
+    return (
+      <>
+        <LightSource item={item} selected={selected} invalid={invalid} />
+        {emitter ? <ItemEmitter emitter={emitter} lightY={item.size[1] / 2} /> : null}
+      </>
+    );
+  }
+
   const emitter = item.emitter?.enabled ? item.emitter : null;
   const body = <FurnitureBody item={item} selected={selected} invalid={invalid} />;
 
@@ -66,7 +77,7 @@ function ItemVisual({ item, selected, invalid }: { item: Item; selected: boolean
       ) : (
         body
       )}
-      {emitter ? <ItemEmitter emitter={emitter} itemHeight={item.size[1]} /> : null}
+      {emitter ? <ItemEmitter emitter={emitter} lightY={item.size[1]} /> : null}
     </>
   );
 }
@@ -81,6 +92,8 @@ function FurnitureBody({ item, selected, invalid }: { item: Item; selected: bool
     case 'nightstand': return <Nightstand item={item} selected={selected} invalid={invalid} />;
     case 'lamp': return <Lamp item={item} selected={selected} invalid={invalid} />;
     case 'imported': return <ImportedModel item={item} selected={selected} invalid={invalid} />;
-    case 'hanging': return null;
+    case 'hanging':
+    case 'light':
+      return null;
   }
 }

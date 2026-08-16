@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { trackLogin, trackSignUp } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import {
   fetchOwnProfile,
@@ -61,10 +62,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       void loadProfile(next?.id);
     });
 
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const next = session?.user ?? null;
       setUser(next);
       void loadProfile(next?.id);
+
+      // Email auth is tracked in AuthPage; OAuth completes after redirect.
+      if (event === 'SIGNED_IN' && next) {
+        const provider = String(next.app_metadata?.provider ?? '');
+        if (provider && provider !== 'email') {
+          const createdAt = new Date(next.created_at).getTime();
+          const isNew = Number.isFinite(createdAt) && Date.now() - createdAt < 60_000;
+          if (isNew) trackSignUp(provider);
+          else trackLogin(provider);
+        }
+      }
     });
 
     return () => {

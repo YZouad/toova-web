@@ -165,6 +165,8 @@ export interface VisualSettings {
    * Default on — AI generators often bake lighting into textures.
    */
   relightImports: boolean;
+  /** Classic 3D move / scale / yaw gizmo on the selected object. */
+  advancedControls: boolean;
 }
 
 export const DEFAULT_VISUAL_SETTINGS: VisualSettings = {
@@ -172,6 +174,7 @@ export const DEFAULT_VISUAL_SETTINGS: VisualSettings = {
   cameraPreset: 'corner',
   cutaway: 'orbit',
   relightImports: true,
+  advancedControls: false,
 };
 
 export function parseVisualSettings(raw: unknown): VisualSettings {
@@ -194,6 +197,10 @@ export function parseVisualSettings(raw: unknown): VisualSettings {
       typeof o.relightImports === 'boolean'
         ? o.relightImports
         : DEFAULT_VISUAL_SETTINGS.relightImports,
+    advancedControls:
+      typeof o.advancedControls === 'boolean'
+        ? o.advancedControls
+        : DEFAULT_VISUAL_SETTINGS.advancedControls,
   };
 }
 

@@ -29,3 +29,4 @@ jobs:
         env:
           VITE_BASE_PATH: /
           VITE_TRELLIS_GENERATE_URL: ${{ vars.VITE_TRELLIS_GENERATE_URL || secrets.VITE_TRELLIS_GENERATE_URL }}
+          VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || 'G-WS2JEV7YRE' }}

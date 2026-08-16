@@ -48,6 +48,10 @@ export function AdminShoppingPanel() {
     affiliateUrl: '',
     priceDollars: '',
     retailer: 'Amazon',
+    brand: '',
+    featureBullets: '',
+    dimensionsText: '',
+    availability: '',
     placeBuiltinKind: '',
     published: true,
   });
@@ -122,6 +126,10 @@ export function AdminShoppingPanel() {
       const priceCents = productForm.priceDollars.trim()
         ? Math.round(Number(productForm.priceDollars) * 100)
         : null;
+      const featureBullets = productForm.featureBullets
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
       const { error: err } = await supabase.from('curated_products').insert({
         category_id: selected.id,
         slug: slugify(productForm.name),
@@ -129,6 +137,10 @@ export function AdminShoppingPanel() {
         description: productForm.description.trim(),
         affiliate_url: productForm.affiliateUrl.trim(),
         retailer: productForm.retailer.trim() || 'Amazon',
+        brand: productForm.brand.trim() || null,
+        feature_bullets: featureBullets,
+        dimensions_text: productForm.dimensionsText.trim() || null,
+        availability: productForm.availability.trim() || null,
         price_cents: Number.isFinite(priceCents as number) ? priceCents : null,
         published: productForm.published,
         last_verified_at: new Date().toISOString(),
@@ -142,6 +154,10 @@ export function AdminShoppingPanel() {
         affiliateUrl: '',
         priceDollars: '',
         retailer: 'Amazon',
+        brand: '',
+        featureBullets: '',
+        dimensionsText: '',
+        availability: '',
         placeBuiltinKind: '',
         published: true,
       });
@@ -275,7 +291,9 @@ export function AdminShoppingPanel() {
                         <div style={{ minWidth: 0 }}>
                           <div style={{ font: 'var(--type-ui-sm)', fontWeight: 600 }}>{p.name}</div>
                           <MonoMeta size="xs" tone="dense" style={{ display: 'block', marginTop: 4 }}>
+                            {p.brand ? `${p.brand} · ` : null}
                             {p.retailer}
+                            {p.featureBullets.length > 0 ? ` · ${p.featureBullets.length} bullets` : null}
                             {p.affiliateUrl ? ' · ' : null}
                             {p.affiliateUrl ? (
                               <a
@@ -342,6 +360,39 @@ export function AdminShoppingPanel() {
                     style={{ width: '100%', resize: 'vertical' }}
                   />
                 </Field>
+                <Field label="Brand">
+                  <Input
+                    placeholder="Brand"
+                    value={productForm.brand}
+                    onChange={(e) => setProductForm((f) => ({ ...f, brand: e.target.value }))}
+                  />
+                </Field>
+                <Field label="Feature bullets" hint="One bullet per line.">
+                  <textarea
+                    className="kit-input"
+                    placeholder={'Warm LED light\nCompact footprint'}
+                    value={productForm.featureBullets}
+                    onChange={(e) => setProductForm((f) => ({ ...f, featureBullets: e.target.value }))}
+                    rows={4}
+                    style={{ width: '100%', resize: 'vertical' }}
+                  />
+                </Field>
+                <div className="admin-shopping-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                  <Field label="Dimensions / details">
+                    <Input
+                      placeholder="About 14″ tall"
+                      value={productForm.dimensionsText}
+                      onChange={(e) => setProductForm((f) => ({ ...f, dimensionsText: e.target.value }))}
+                    />
+                  </Field>
+                  <Field label="Availability">
+                    <Input
+                      placeholder="In stock (optional)"
+                      value={productForm.availability}
+                      onChange={(e) => setProductForm((f) => ({ ...f, availability: e.target.value }))}
+                    />
+                  </Field>
+                </div>
                 <Field label="Affiliate URL">
                   <Input
                     placeholder="Affiliate URL"

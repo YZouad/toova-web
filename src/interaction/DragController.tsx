@@ -5,7 +5,9 @@ import { useStore } from '../store';
 import { validatePlacement, clampToRoom, settleGravity, isTouchingWall } from './collision';
 
 /**
- * Left-drag moves the selected item in XZ while keeping its current height.
+ * Left-drag moves the selected item(s) in XZ while keeping each item's height.
+ * When multiple items are selected, dragging any one moves the whole set by the
+ * same delta (all-or-nothing collision).
  *
  * Wall mount (+ touching wall): release keeps height; only invalid XZ snaps back.
  * Otherwise: gravity on release — settles on floor or top of nearest support below.
@@ -15,10 +17,11 @@ export function DragController() {
   const controls = useThree((s) => s.controls) as any;
 
   const draggingRef = useRef<{
-    id: string;
+    ids: string[];
+    primaryId: string;
     grabOffset: THREE.Vector3;
     baseY: number;
-    startPosition: [number, number, number];
+    startPositions: Record<string, [number, number, number]>;
   } | null>(null);
 
   useEffect(() => {
@@ -39,10 +42,10 @@ export function DragController() {
 
     const handlePointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      const { selectedId, items } = useStore.getState();
-      if (!selectedId) return;
-      const item = items[selectedId];
-      if (!item || item.kind === 'hanging') return;
+      // Shift is reserved for multi-select toggles in Selectable.
+      if (e.shiftKey) return;
+      const { selectedIds, items } = useStore.getState();
+      if (selectedIds.length === 0) return;
 
       const canvasRect = canvas.getBoundingClientRect();
       ndc.x = ((e.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
@@ -59,16 +62,32 @@ export function DragController() {
         }
         if (hitItemId) break;
       }
-      if (hitItemId !== selectedId) return;
+      if (!hitItemId || !selectedIds.includes(hitItemId)) return;
 
-      const start = screenToPlane(e.clientX, e.clientY, item.position[1]);
+      const primary = items[hitItemId];
+      if (!primary || primary.kind === 'hanging') return;
+
+      const movableIds = selectedIds.filter((id) => {
+        const it = items[id];
+        return !!it && it.kind !== 'hanging';
+      });
+      if (!movableIds.includes(hitItemId)) return;
+
+      const start = screenToPlane(e.clientX, e.clientY, primary.position[1]);
       if (!start) return;
 
+      const startPositions: Record<string, [number, number, number]> = {};
+      for (const id of movableIds) {
+        const it = items[id];
+        if (it) startPositions[id] = [...it.position];
+      }
+
       draggingRef.current = {
-        id: selectedId,
-        grabOffset: new THREE.Vector3(item.position[0] - start.x, 0, item.position[2] - start.z),
-        baseY: item.position[1],
-        startPosition: [...item.position],
+        ids: movableIds,
+        primaryId: hitItemId,
+        grabOffset: new THREE.Vector3(primary.position[0] - start.x, 0, primary.position[2] - start.z),
+        baseY: primary.position[1],
+        startPositions,
       };
 
       if (controls) controls.enabled = false;
@@ -84,16 +103,41 @@ export function DragController() {
       if (!planeHit) return;
 
       const state = useStore.getState();
-      const item = state.items[drag.id];
-      if (!item) return;
+      const primary = state.items[drag.primaryId];
+      const primaryStart = drag.startPositions[drag.primaryId];
+      if (!primary || !primaryStart) return;
 
-      const [cx, cz] = clampToRoom(item, planeHit.x + drag.grabOffset.x, planeHit.z + drag.grabOffset.z);
-      const proposed: [number, number, number] = [cx, drag.baseY, cz];
-      const candidate = { ...item, position: proposed };
-      const others = Object.values(state.items).filter((it) => it.id !== drag.id);
+      const [pcx, pcz] = clampToRoom(
+        primary,
+        planeHit.x + drag.grabOffset.x,
+        planeHit.z + drag.grabOffset.z,
+      );
+      const dx = pcx - primaryStart[0];
+      const dz = pcz - primaryStart[2];
 
-      if (validatePlacement(candidate, others).ok) {
-        useStore.getState().updatePosition(drag.id, proposed);
+      const moving = new Set(drag.ids);
+      const others = Object.values(state.items).filter((it) => !moving.has(it.id));
+      const proposed: Record<string, [number, number, number]> = {};
+      let allOk = true;
+
+      for (const id of drag.ids) {
+        const it = state.items[id];
+        const start = drag.startPositions[id];
+        if (!it || !start) {
+          allOk = false;
+          break;
+        }
+        const [cx, cz] = clampToRoom(it, start[0] + dx, start[2] + dz);
+        const pos: [number, number, number] = [cx, start[1], cz];
+        if (!validatePlacement({ ...it, position: pos }, others).ok) {
+          allOk = false;
+          break;
+        }
+        proposed[id] = pos;
+      }
+
+      if (allOk) {
+        useStore.getState().updatePositions(proposed);
         useStore.getState().setInvalid(false);
       } else {
         useStore.getState().setInvalid(true);
@@ -105,26 +149,44 @@ export function DragController() {
       if (!drag) return;
 
       const state = useStore.getState();
-      const item = state.items[drag.id];
-      if (item) {
-        const others = Object.values(state.items).filter((it) => it.id !== drag.id);
+      const moving = new Set(drag.ids);
+      const settled: Record<string, [number, number, number]> = {};
 
-        const pinToWall = !!(item.wallMounted && isTouchingWall(item));
-        if (pinToWall) {
+      for (const id of drag.ids) {
+        const item = state.items[id];
+        const startPos = drag.startPositions[id];
+        if (!item || !startPos) continue;
+
+        const others = [
+          ...Object.values(state.items).filter((it) => !moving.has(it.id)),
+          ...Object.entries(settled).map(([sid, position]) => ({
+            ...state.items[sid]!,
+            position,
+          })),
+        ];
+
+        const pinHeight = item.kind === 'light' || !!(item.wallMounted && isTouchingWall(item));
+        if (pinHeight) {
           if (!validatePlacement(item, others).ok) {
-            useStore.getState().updatePosition(drag.id, drag.startPosition);
+            settled[id] = startPos;
+          } else {
+            settled[id] = [...item.position];
           }
         } else {
           const settledY = settleGravity(item, others, item.position[1]);
           let pos: [number, number, number] = [item.position[0], settledY, item.position[2]];
           if (!validatePlacement({ ...item, position: pos }, others).ok) {
-            pos = [drag.startPosition[0], settledY, drag.startPosition[2]];
+            pos = [startPos[0], settledY, startPos[2]];
             if (!validatePlacement({ ...item, position: pos }, others).ok) {
-              pos = drag.startPosition;
+              pos = startPos;
             }
           }
-          useStore.getState().updatePosition(drag.id, pos);
+          settled[id] = pos;
         }
+      }
+
+      if (Object.keys(settled).length > 0) {
+        useStore.getState().updatePositions(settled);
       }
 
       draggingRef.current = null;
