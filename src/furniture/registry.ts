@@ -8,7 +8,11 @@ export type FurnitureKind =
   | 'lamp'
   | 'imported'
   /** Procedural hanging garland / LED string — not in the furniture gallery. */
-  | 'hanging';
+  | 'hanging'
+  /** Free-floating light source — not in the furniture gallery. */
+  | 'light';
+
+export type GalleryFurnitureKind = Exclude<FurnitureKind, 'imported' | 'hanging' | 'light'>;
 
 export interface FurnitureDef {
   kind: FurnitureKind;
@@ -22,7 +26,10 @@ export interface FurnitureDef {
   categories?: string[];
 }
 
-export const FURNITURE: Record<Exclude<FurnitureKind, 'imported' | 'hanging'>, FurnitureDef> = {
+/** Default gizmo size for free-floating light sources (inches). */
+export const LIGHT_SOURCE_SIZE: [number, number, number] = [1.6, 1.6, 1.6];
+
+export const FURNITURE: Record<GalleryFurnitureKind, FurnitureDef> = {
   bed: {
     kind: 'bed',
     label: 'Twin Bed',

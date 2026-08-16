@@ -24,6 +24,22 @@ function mapProduct(row: Record<string, unknown>): CuratedProduct {
     row.image_path != null && String(row.image_path).trim()
       ? String(row.image_path).trim()
       : null;
+  const bulletsRaw = row.feature_bullets;
+  const featureBullets = Array.isArray(bulletsRaw)
+    ? bulletsRaw
+        .filter((b): b is string => typeof b === 'string' && b.trim().length > 0)
+        .map((b) => b.trim())
+    : [];
+  const ratingRaw = row.rating;
+  const rating =
+    ratingRaw == null || ratingRaw === ''
+      ? null
+      : Number(ratingRaw);
+  const reviewRaw = row.review_count;
+  const reviewCount =
+    reviewRaw == null || reviewRaw === ''
+      ? null
+      : Math.max(0, Math.floor(Number(reviewRaw)));
   return {
     id: String(row.id),
     categoryId: String(row.category_id),
@@ -51,28 +67,69 @@ function mapProduct(row: Record<string, unknown>): CuratedProduct {
       row.place_catalog_kind != null && String(row.place_catalog_kind).trim()
         ? String(row.place_catalog_kind)
         : null,
+    brand:
+      row.brand != null && String(row.brand).trim()
+        ? String(row.brand).trim()
+        : null,
+    featureBullets,
+    dimensionsText:
+      row.dimensions_text != null && String(row.dimensions_text).trim()
+        ? String(row.dimensions_text).trim()
+        : null,
+    rating: rating != null && Number.isFinite(rating) ? rating : null,
+    reviewCount:
+      reviewCount != null && Number.isFinite(reviewCount) ? reviewCount : null,
+    availability:
+      row.availability != null && String(row.availability).trim()
+        ? String(row.availability).trim()
+        : null,
   };
 }
 
+const CURATED_PRODUCT_SELECT =
+  'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind,brand,feature_bullets,dimensions_text,rating,review_count,availability';
+
+const CURATED_PRODUCT_SELECT_LEGACY =
+  'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind';
+
+async function fetchCuratedProductRows(publishedOnly: boolean) {
+  let query = supabase.from('curated_products').select(CURATED_PRODUCT_SELECT);
+  if (publishedOnly) query = query.eq('published', true);
+  const first = await query.order('sort_order', { ascending: true });
+  if (!first.error) return first;
+
+  // Older DBs may not have detail columns yet — fall back gracefully.
+  const msg = first.error.message.toLowerCase();
+  if (
+    msg.includes('brand') ||
+    msg.includes('feature_bullets') ||
+    msg.includes('dimensions_text') ||
+    msg.includes('rating') ||
+    msg.includes('review_count') ||
+    msg.includes('availability') ||
+    msg.includes('schema cache') ||
+    msg.includes('column')
+  ) {
+    let legacy = supabase.from('curated_products').select(CURATED_PRODUCT_SELECT_LEGACY);
+    if (publishedOnly) legacy = legacy.eq('published', true);
+    return legacy.order('sort_order', { ascending: true });
+  }
+  return first;
+}
+
 export async function fetchPublishedShoppingCatalog(): Promise<ChecklistCategoryWithProducts[]> {
-  const [{ data: catRows, error: catErr }, { data: prodRows, error: prodErr }] =
-    await Promise.all([
-      supabase
-        .from('checklist_categories')
-        .select('id,slug,name,sort_order,published')
-        .eq('published', true)
-        .order('sort_order', { ascending: true }),
-      supabase
-        .from('curated_products')
-        .select(
-          'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind',
-        )
-        .eq('published', true)
-        .order('sort_order', { ascending: true }),
-    ]);
+  const [{ data: catRows, error: catErr }, prodResult] = await Promise.all([
+    supabase
+      .from('checklist_categories')
+      .select('id,slug,name,sort_order,published')
+      .eq('published', true)
+      .order('sort_order', { ascending: true }),
+    fetchCuratedProductRows(true),
+  ]);
 
   if (catErr) throw new Error(catErr.message);
-  if (prodErr) throw new Error(prodErr.message);
+  if (prodResult.error) throw new Error(prodResult.error.message);
+  const prodRows = prodResult.data;
 
   const productsByCat = new Map<string, CuratedProduct[]>();
   for (const raw of prodRows ?? []) {
@@ -93,22 +150,17 @@ export async function fetchPublishedShoppingCatalog(): Promise<ChecklistCategory
 
 /** Admin: all categories/products including unpublished. */
 export async function fetchAdminShoppingCatalog(): Promise<ChecklistCategoryWithProducts[]> {
-  const [{ data: catRows, error: catErr }, { data: prodRows, error: prodErr }] =
-    await Promise.all([
-      supabase
-        .from('checklist_categories')
-        .select('id,slug,name,sort_order,published')
-        .order('sort_order', { ascending: true }),
-      supabase
-        .from('curated_products')
-        .select(
-          'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind',
-        )
-        .order('sort_order', { ascending: true }),
-    ]);
+  const [{ data: catRows, error: catErr }, prodResult] = await Promise.all([
+    supabase
+      .from('checklist_categories')
+      .select('id,slug,name,sort_order,published')
+      .order('sort_order', { ascending: true }),
+    fetchCuratedProductRows(false),
+  ]);
 
   if (catErr) throw new Error(catErr.message);
-  if (prodErr) throw new Error(prodErr.message);
+  if (prodResult.error) throw new Error(prodResult.error.message);
+  const prodRows = prodResult.data;
 
   const productsByCat = new Map<string, CuratedProduct[]>();
   for (const raw of prodRows ?? []) {

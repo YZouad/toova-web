@@ -1,4 +1,5 @@
 import { useCallback, useState } from 'react';
+import { trackCreateRoom } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { parseEnvironment } from '../lib/environmentPersist';
 import { parseFloorPlan, serializeFloorPlan, DEFAULT_ROOM_GEOMETRY, type RoomGeometry } from '../lib/roomGeometry';
@@ -303,6 +304,7 @@ export async function createRoomWithGeometry(
     .select('id,name')
     .single();
   if (error) throw new Error(formatRoomDbError(error.message));
+  trackCreateRoom();
   return { id: data.id, name: data.name ?? name };
 }
 

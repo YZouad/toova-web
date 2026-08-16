@@ -63,7 +63,7 @@ interface RoomPreviewProps {
 
 /** Floor furniture only — hanging garlands/LEDs use large AABBs that wash out the plan. */
 export function floorPreviewItems(items: RoomPreviewItem[]): RoomPreviewItem[] {
-  return items.filter((item) => item.kind !== 'hanging');
+  return items.filter((item) => item.kind !== 'hanging' && item.kind !== 'light');
 }
 
 export function RoomPreview({ geometry, items }: RoomPreviewProps) {

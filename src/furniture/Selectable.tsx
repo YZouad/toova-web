@@ -9,13 +9,21 @@ interface SelectableProps {
 
 /**
  * Wraps a furniture group so clicking it selects the item in the store.
- * Selection outline is rendered by the item component itself based on selectedId.
+ * Shift-click toggles membership for multi-select. Plain click on an already
+ * selected item keeps the current set so group drag still works.
+ * Selection outline is rendered by the item component itself based on selectedIds.
  */
 export function Selectable({ id, children }: SelectableProps) {
   const select = useStore((s) => s.select);
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     e.stopPropagation();
+    if (e.shiftKey) {
+      select(id, { additive: true });
+      return;
+    }
+    const { selectedIds } = useStore.getState();
+    if (selectedIds.includes(id)) return;
     select(id);
   };
 

@@ -113,8 +113,24 @@ export function AppShell({
             closeMenu();
           }}
           title="Log out"
+          aria-label="Log out"
         >
-          ⎋
+          <svg
+            className="kit-app-shell__logout-icon"
+            width="18"
+            height="18"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.75"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden
+          >
+            <path d="M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4" />
+            <path d="M15 16l4-4-4-4" />
+            <path d="M19 12H10" />
+          </svg>
         </button>
       ) : null}
     </div>

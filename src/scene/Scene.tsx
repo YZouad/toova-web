@@ -20,6 +20,7 @@ import { DragController } from '../interaction/DragController';
 import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
 import { HangingPlacementController } from '../interaction/HangingPlacementController';
 import { ArcMenu } from './ArcMenu';
+import { ObjectGizmo } from './ObjectGizmo';
 import { HangingDraftPreview } from '../furniture/HangingDecoration';
 import { useStore, type CameraPresetId } from '../store';
 import { applyWeather, isDaytime, sampleSun } from '../lib/environment';
@@ -583,6 +584,7 @@ function SceneInner({
       ) : null}
       {showChrome && !hangingTool ? (
         <>
+          <ObjectGizmo />
           <ArcMenu />
           <DragController />
           <KeyboardShortcuts />

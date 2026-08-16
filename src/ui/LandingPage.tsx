@@ -1,9 +1,11 @@
-import { useRef, useState } from 'react';
-import { useChecklistModal } from '../hooks/useChecklistModal';
-import { ChecklistModal } from './ChecklistModal';
+import { useRef, useState, type RefObject } from 'react';
+import { useGalleryRooms, type GalleryRoom } from '../hooks/useGalleryRooms';
+import { galleryPath, navigate, publicRoomPath } from '../hooks/useRoute';
+import { buildGallerySearchParams } from '../lib/galleryCatalog';
 import { FeedbackModal } from './FeedbackModal';
 import { HeroTurntable } from './HeroTurntable';
 import { MarketingObjectTurntable } from './MarketingObjectTurntable';
+import { RoomGalleryCard } from './RoomGalleryCard';
 import {
   Button,
   DisplayEm,
@@ -13,10 +15,10 @@ import {
   KeyValueRow,
   MarketingNav,
   NumberedStep,
-  PlateCard,
   PriceColumn,
   RuledList,
   SectionOpener,
+  Spinner,
   StatRow,
 } from './kit';
 
@@ -27,6 +29,7 @@ interface LandingPageProps {
   onWatchDemo: () => void;
   onOpenChecklist: () => void;
   onContact: () => void;
+  onBrowseGallery?: () => void;
   onAdmin?: () => void;
   loggedIn?: boolean;
   onGoDashboard?: () => void;
@@ -84,12 +87,18 @@ export function LandingPage({
   onWatchDemo,
   onOpenChecklist,
   onContact,
+  onBrowseGallery,
   onAdmin,
   loggedIn,
   onGoDashboard,
 }: LandingPageProps) {
-  const { open: checklistOpen, closeChecklist } = useChecklistModal();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const { rooms: featuredRooms, loading: roomsLoading } = useGalleryRooms({
+    enabled: true,
+    source: 'community',
+    sort: 'hot',
+    pageSize: 2,
+  });
 
   const howRef = useRef<HTMLDivElement>(null);
   const roomsRef = useRef<HTMLDivElement>(null);
@@ -99,13 +108,47 @@ export function LandingPage({
   const primaryAction = loggedIn && onGoDashboard ? onGoDashboard : onGetStarted;
   const secondaryAction = loggedIn && onGoDashboard ? onGoDashboard : onLogin;
 
+  const openGallery = () => {
+    if (onBrowseGallery) {
+      onBrowseGallery();
+      return;
+    }
+    navigate(
+      galleryPath(
+        buildGallerySearchParams({
+          mode: 'rooms',
+          roomSort: 'hot',
+          query: '',
+        }),
+      ),
+    );
+  };
+
+  function openFeaturedRoom(room: GalleryRoom) {
+    if (!room.creatorHandle) {
+      openGallery();
+      return;
+    }
+    navigate(publicRoomPath(room.creatorHandle, room.id));
+  }
+
+  const scrollTo = (ref: RefObject<HTMLDivElement | null>) => {
+    ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+
   return (
     <div className="toova-page">
       <div className="toova-paper" aria-hidden />
-      <ChecklistModal open={checklistOpen} onClose={closeChecklist} onViewChecklist={onOpenChecklist} />
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} pageSource="landing" />
 
       <MarketingNav
+        links={[
+          { label: 'How it works', onClick: () => scrollTo(howRef) },
+          { label: 'Gallery', onClick: openGallery },
+          { label: 'Pricing', onClick: () => scrollTo(pricingRef) },
+          { label: 'Pitch Madness', onClick: onPitchMadness },
+          { label: 'Contact', onClick: onContact },
+        ]}
         cta={
           <>
             {!loggedIn ? (
@@ -141,7 +184,7 @@ export function LandingPage({
         </div>
         <div className="landing-hero-lead">
           <p style={{ font: 'var(--type-lead)', color: 'var(--ink-2)', margin: 0, maxWidth: 'var(--measure-lead)' }}>
-            Turn a product photo into a 3D model, place it in your real room at real scale, and buy only what fits.
+            Create a room today using Toova.
           </p>
           <div className="landing-hero-actions">
             <Button variant="primary" size="lg" onClick={primaryAction}>
@@ -152,10 +195,7 @@ export function LandingPage({
             </Button>
             <Button
               variant="mono"
-              onClick={() => {
-                closeChecklist();
-                onOpenChecklist();
-              }}
+              onClick={onOpenChecklist}
             >
               Checklist →
             </Button>
@@ -253,10 +293,34 @@ export function LandingPage({
 
       {/* Rooms */}
       <div className="toova-frame landing-section-pad" ref={roomsRef}>
-        <SectionOpener id="rooms" title="Rooms, planned first." note="Browse all rooms" noteOnClick={primaryAction} />
+        <SectionOpener
+          id="rooms"
+          title="Rooms, planned first."
+          note="Browse all rooms"
+          noteOnClick={openGallery}
+        />
         <div className="toova-grid-2-responsive" style={{ paddingTop: 32 }}>
-          <PlateCard name="Sunlit Living Room" author="Maya Chen" meta="9 pieces · $1,240" filename="living-01.jpg" />
-          <PlateCard name="Reading Nook" author="Devin Park" meta="6 pieces · $580" filename="nook-02.jpg" />
+          {roomsLoading && featuredRooms.length === 0 ? (
+            <Spinner label="Loading rooms…" style={{ gridColumn: '1 / -1', padding: '48px 0' }} />
+          ) : featuredRooms.length > 0 ? (
+            featuredRooms.slice(0, 2).map((room) => (
+              <RoomGalleryCard
+                key={room.id}
+                room={room}
+                plateHeight={420}
+                onOpen={openFeaturedRoom}
+              />
+            ))
+          ) : (
+            <button
+              type="button"
+              className="kit-section-opener__note kit-section-opener__note--interactive"
+              style={{ gridColumn: '1 / -1', justifySelf: 'start', padding: '24px 0' }}
+              onClick={openGallery}
+            >
+              Browse the public gallery →
+            </button>
+          )}
         </div>
       </div>
 

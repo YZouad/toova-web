@@ -10,6 +10,7 @@ interface AtmosphereStripProps {
   onToggleLook: () => void;
   onCloseLook: () => void;
   lookPanel?: ReactNode;
+  onEnvironmentOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -22,6 +23,7 @@ export function AtmosphereStrip({
   onToggleLook,
   onCloseLook,
   lookPanel,
+  onEnvironmentOpenChange,
 }: AtmosphereStripProps) {
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
@@ -58,6 +60,10 @@ export function AtmosphereStrip({
       setExpanded(true);
     }
   }, [lookOpen]);
+
+  useEffect(() => {
+    onEnvironmentOpenChange?.(envOpen);
+  }, [envOpen, onEnvironmentOpenChange]);
 
   useEffect(() => {
     if (!envOpen && !(isPhone && expanded) && !lookOpen) return;
