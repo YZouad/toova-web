@@ -52,10 +52,12 @@ export async function ensureTrellisReady(
   onProgress?: (message: string) => void,
 ): Promise<void> {
   if (!trellisUsesRemoteUrl) {
+    console.log('[trellis] skipping wake/status (same-origin dev URL):', TRELLIS_GENERATE_URL);
     return;
   }
 
   onProgress?.('Waking Trellis…');
+  console.log('[trellis] calling wake');
   const wakeRes = await fetch(trellisSiblingUrl('wake'), { method: 'POST', signal });
   if (!wakeRes.ok) {
     const text = await wakeRes.text();
@@ -66,6 +68,7 @@ export async function ensureTrellisReady(
   while (Date.now() < deadline) {
     throwIfAborted(signal);
 
+    console.log('[trellis] polling status');
     const statusRes = await fetch(trellisSiblingUrl('status'), { signal });
     if (!statusRes.ok) {
       const text = await statusRes.text();
