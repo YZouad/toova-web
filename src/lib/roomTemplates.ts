@@ -13,7 +13,7 @@ import { ROOM } from '../units';
 export type RoomTemplateId = 'balanced-dorm' | 'study-first' | 'storage-first';
 
 export interface RoomTemplateFurnitureSeed {
-  kind: Exclude<FurnitureKind, 'imported' | 'hanging'>;
+  kind: Exclude<FurnitureKind, 'imported' | 'hanging' | 'light'>;
   /** World XZ center of the footprint; Y is floor. */
   position: [number, number, number];
   rotationY?: number;
@@ -46,7 +46,7 @@ function bedSize(): [number, number, number] {
   return [def.size[0], leg + def.size[1], def.size[2]];
 }
 
-function sizeFor(kind: Exclude<FurnitureKind, 'imported' | 'hanging'>): [number, number, number] {
+function sizeFor(kind: Exclude<FurnitureKind, 'imported' | 'hanging' | 'light'>): [number, number, number] {
   if (kind === 'bed') return bedSize();
   return [...FURNITURE[kind].size] as [number, number, number];
 }

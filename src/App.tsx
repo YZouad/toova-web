@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
+import { ShoppingCatalogProvider } from './context/ShoppingCatalogContext';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
 import { createRoomWithGeometry, saveRoomLayout, useRoomLoad } from './hooks/useRoomLayout';
@@ -17,10 +18,10 @@ import type { FloorPlan } from './lib/floorPlanGeometry';
 import { emptyPlan } from './lib/floorPlanGeometry';
 import { serializeFloorPlan } from './lib/roomGeometry';
 import {
-  buildTemplateItems,
-  getRoomTemplate,
-  type RoomTemplateId,
-} from './lib/roomTemplates';
+  getRoomStarterTemplate,
+  materializeStarterItems,
+  type RoomStarterTemplate,
+} from './lib/roomStarterTemplates';
 import {
   buildGuestSnapshot,
   clearGuestDesignSnapshot,
@@ -29,6 +30,7 @@ import {
   loadGuestDesignSnapshot,
   saveGuestDesignSnapshot,
   setGuestAuthIntent,
+  type GuestDesignSnapshot,
 } from './lib/guestDesignSnapshot';
 import { LandingPage } from './ui/LandingPage';
 import { PitchMadnessPage } from './ui/PitchMadnessPage';
@@ -36,7 +38,10 @@ import { AuthPage } from './ui/AuthPage';
 import { Dashboard } from './ui/Dashboard';
 import { Designer } from './ui/Designer';
 import { FloorPlanSetup } from './ui/FloorPlanSetup';
-import { RoomPresetPicker, type RoomCreateSelection } from './ui/RoomPresetPicker';
+import {
+  RoomPresetPicker,
+  type RoomPresetPickerSelection,
+} from './ui/RoomPresetPicker';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
@@ -49,6 +54,7 @@ import { AppRailChrome } from './ui/AppRailChrome';
 import type { GalleryModel } from './hooks/useGalleryCatalog';
 import { recordCatalogDownload, shouldRecordCatalogDownload } from './lib/catalogEngagement';
 import { trackPageView } from './lib/analytics';
+import { buildGallerySearchParams } from './lib/galleryCatalog';
 import type { FurnitureKind } from './furniture/registry';
 import { profileInitials } from './lib/userDisplay';
 import {
@@ -78,6 +84,8 @@ interface FloorPlanDraft {
   name: string;
   mode: 'create' | 'edit';
   initialPlan?: FloorPlan;
+  /** When set, create continues by seeding this starter’s furniture into the edited plan. */
+  starterTemplateId?: string;
 }
 
 /** Decorative only — does not encode a real URL. */
@@ -153,6 +161,14 @@ function ARPage() {
 }
 
 export default function App() {
+  return (
+    <ShoppingCatalogProvider>
+      <AppContent />
+    </ShoppingCatalogProvider>
+  );
+}
+
+function AppContent() {
   const { loading, user, logout, refreshProfile, profile, avatarUrl } = useAuth();
   const route = useRoute();
   const [screen, setScreen] = useState<Screen>('landing');
@@ -166,7 +182,7 @@ export default function App() {
   const [pendingPublicRoom, setPendingPublicRoom] = useState<{ handle: string; roomId: string } | null>(null);
   const [pendingGalleryModel, setPendingGalleryModel] = useState<GalleryModel | null>(null);
   const [authReason, setAuthReason] = useState<string | null>(null);
-  const [guestTemplateId, setGuestTemplateId] = useState<RoomTemplateId | undefined>(undefined);
+  const [guestTemplateId, setGuestTemplateId] = useState<string | undefined>(undefined);
   const guestRestoreAttempted = useRef(false);
   const addItem = useStore((s) => s.addItem);
   const resetLayout = useStore((s) => s.resetLayout);
@@ -373,7 +389,9 @@ export default function App() {
       plan: FloorPlan,
       options?: {
         environment?: RoomEnvironment;
-        templateId?: RoomTemplateId;
+        seedItems?: Item[];
+        seedOrder?: string[];
+        starterId?: string;
       },
     ) => {
       const environment = {
@@ -382,23 +400,15 @@ export default function App() {
           ...(options?.environment?.appearance ?? DEFAULT_ENVIRONMENT.appearance),
         },
       };
-      let seedItems: Item[] = [];
-      let seedOrder: string[] = [];
-      if (options?.templateId) {
-        const template = getRoomTemplate(options.templateId);
-        if (template) {
-          const built = buildTemplateItems(template);
-          seedItems = built.items;
-          seedOrder = built.order;
-        }
-      }
+      const seedItems = options?.seedItems ?? [];
+      const seedOrder = options?.seedOrder ?? [];
 
       // Guest path: design locally until save requires auth.
       if (!user?.id) {
         resetLayout();
         hydrateLayout(seedItems, seedOrder);
         hydrateRoomSettings(environment, plan);
-        setGuestTemplateId(options?.templateId);
+        setGuestTemplateId(options?.starterId);
         setWorkspace({ id: `guest-${Date.now()}`, name, isOwner: true });
         setFloorPlanDraft(null);
         setScreen('designer');
@@ -425,27 +435,62 @@ export default function App() {
     [hydrateLayout, hydrateRoomSettings, resetLayout, user?.id],
   );
 
-  const handleRoomCreateSelection = useCallback(
-    async (selection: RoomCreateSelection) => {
-      if (!floorPlanDraft) return;
-      if (selection.kind === 'template') {
-        await handleCreateWithPlan(floorPlanDraft.name, selection.plan, {
-          environment: selection.environment,
-          templateId: selection.templateId,
-        });
-        return;
-      }
-      await handleCreateWithPlan(floorPlanDraft.name, selection.plan);
+  const handleCreateFromStarter = useCallback(
+    async (name: string, template: RoomStarterTemplate, planOverride?: FloorPlan) => {
+      const plan = planOverride ?? template.buildPlan();
+      const environment = template.buildEnvironment();
+      const { items, order } = materializeStarterItems(template, plan);
+      await handleCreateWithPlan(name, plan, {
+        environment,
+        seedItems: items,
+        seedOrder: order,
+        starterId: template.id,
+      });
     },
-    [floorPlanDraft, handleCreateWithPlan],
+    [handleCreateWithPlan],
   );
 
-  const handleCustomizeOwnPlan = useCallback(() => {
-    setFloorPlanDraft((prev) =>
-      prev ? { ...prev, mode: 'create', initialPlan: emptyPlan() } : prev,
-    );
+  const handleCustomizeOwnPlan = useCallback((name: string) => {
+    setFloorPlanDraft({ name, mode: 'create', initialPlan: emptyPlan() });
     setScreen('floor-plan');
   }, []);
+
+  const handleCustomizePresetPlan = useCallback(
+    (name: string, plan: FloorPlan, template?: RoomStarterTemplate) => {
+      setFloorPlanDraft({
+        name,
+        mode: 'create',
+        initialPlan: structuredClone(plan),
+        starterTemplateId: template?.id,
+      });
+      setScreen('floor-plan');
+    },
+    [],
+  );
+
+  const handlePresetPickerSelect = useCallback(
+    async (selection: RoomPresetPickerSelection, name: string) => {
+      if (selection.kind === 'starter') {
+        await handleCreateFromStarter(name, selection.template);
+        return;
+      }
+      if (selection.kind === 'blank') {
+        await handleCreateWithPlan(name, selection.plan);
+        return;
+      }
+      if (selection.kind === 'customize') {
+        handleCustomizePresetPlan(name, selection.plan, selection.template);
+        return;
+      }
+      handleCustomizeOwnPlan(name);
+    },
+    [
+      handleCreateFromStarter,
+      handleCreateWithPlan,
+      handleCustomizeOwnPlan,
+      handleCustomizePresetPlan,
+    ],
+  );
 
   const handleEditFloorPlan = useCallback(() => {
     const geom = useStore.getState().roomGeometry;
@@ -551,7 +596,7 @@ export default function App() {
     const state = useStore.getState();
     const snapshot = buildGuestSnapshot({
       name: workspace.name,
-      templateId: guestTemplateId,
+      templateId: guestTemplateId as GuestDesignSnapshot["templateId"],
       items: state.items,
       order: state.order,
       environment: state.environment,
@@ -612,6 +657,10 @@ export default function App() {
           }
           if (workspace && isGuestWorkspaceId(workspace.id)) {
             setScreen('designer');
+            return;
+          }
+          if (route.name === 'gallery') {
+            setScreen('gallery');
             return;
           }
           setScreen('landing');
@@ -835,6 +884,18 @@ export default function App() {
             {...landingCallbacks}
             onOpenChecklist={() => openChecklistFrom('landing')}
             onContact={() => setScreen('contact')}
+            onBrowseGallery={() => {
+              navigate(
+                galleryPath(
+                  buildGallerySearchParams({
+                    mode: 'rooms',
+                    roomSort: 'hot',
+                    query: '',
+                  }),
+                ),
+              );
+              setScreen('gallery');
+            }}
             onPitchMadness={() => {
               setPitchScrollToDemos(false);
               setScreen('pitch-madness');
@@ -905,6 +966,14 @@ export default function App() {
         }}
         onContinue={async (plan) => {
           if (floorPlanDraft.mode === 'create') {
+            const starterId = floorPlanDraft.starterTemplateId;
+            if (starterId) {
+              const template = getRoomStarterTemplate(starterId);
+              if (template) {
+                await handleCreateFromStarter(floorPlanDraft.name, template, plan);
+                return;
+              }
+            }
             await handleCreateWithPlan(floorPlanDraft.name, plan);
           } else {
             await handleSaveEditedPlan(plan);
@@ -952,9 +1021,9 @@ export default function App() {
         <RoomPresetPicker
           open={!!showPresetPicker}
           creating={floorPlanBusy}
+          defaultName={floorPlanDraft?.name || 'Room 1'}
           onClose={() => setFloorPlanDraft(null)}
-          onSelect={handleRoomCreateSelection}
-          onCustomize={handleCustomizeOwnPlan}
+          onSelect={handlePresetPickerSelect}
         />
       </>
     );
@@ -1001,9 +1070,9 @@ export default function App() {
         <RoomPresetPicker
           open={!!showPresetPicker}
           creating={floorPlanBusy}
+          defaultName={floorPlanDraft?.name || 'Room 1'}
           onClose={() => setFloorPlanDraft(null)}
-          onSelect={handleRoomCreateSelection}
-          onCustomize={handleCustomizeOwnPlan}
+          onSelect={handlePresetPickerSelect}
         />
       </div>
     );

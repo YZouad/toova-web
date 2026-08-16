@@ -5,6 +5,7 @@ import { RoomPreview } from './RoomPreview';
 interface RoomGalleryCardProps {
   room: GalleryRoom;
   isOwner?: boolean;
+  plateHeight?: number;
   onOpen: (room: GalleryRoom) => void;
 }
 
@@ -14,7 +15,7 @@ function formatCount(n: number): string {
   return String(n);
 }
 
-export function RoomGalleryCard({ room, isOwner, onOpen }: RoomGalleryCardProps) {
+export function RoomGalleryCard({ room, isOwner, plateHeight = 240, onOpen }: RoomGalleryCardProps) {
   const creator = room.creatorHandle
     ? `@${room.creatorHandle}`
     : room.creatorDisplayName ?? 'Creator';
@@ -37,23 +38,23 @@ export function RoomGalleryCard({ room, isOwner, onOpen }: RoomGalleryCardProps)
         }
       }}
     >
-      <Plate height={240} topCaption={filename}>
-        <div className="app-ledger-plate-preview">
-          <RoomPreview geometry={room.roomGeometry} items={room.previewItems} />
-        </div>
-        {isOwner && room.visibility ? (
-          <span className={`gallery-vis-badge gallery-vis-badge--${room.visibility}`}>
-            {room.visibility}
-          </span>
-        ) : null}
-      </Plate>
-      <div className="kit-plate-card__caption">
-        <div>
-          <div className="kit-plate-card__name">{room.name}</div>
-          <div className="kit-plate-card__author">{creator}</div>
-        </div>
-        <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense">{meta}</span>
+    <Plate height={plateHeight} topCaption={filename}>
+      <div className="app-ledger-plate-preview">
+        <RoomPreview geometry={room.roomGeometry} items={room.previewItems} />
       </div>
+      {isOwner && room.visibility ? (
+        <span className={`gallery-vis-badge gallery-vis-badge--${room.visibility}`}>
+          {room.visibility}
+        </span>
+      ) : null}
+    </Plate>
+    <div className="kit-plate-card__caption">
+      <div>
+        <div className="kit-plate-card__name">{room.name}</div>
+        <div className="kit-plate-card__author">{creator}</div>
+      </div>
+      <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense">{meta}</span>
+    </div>
     </div>
   );
 }

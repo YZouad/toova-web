@@ -5,20 +5,24 @@ import { GlassSurface } from './GlassSurface';
 
 const PHONE_MQ = '(max-width: 768px)';
 
-const TOOLS: {
-  id: DesignerTool;
-  label: string;
-  hint: string;
-}[] = [
-  { id: 'select', label: 'Select', hint: 'Move furniture' },
-  { id: 'hanging-leaves', label: 'Leaves', hint: 'Hang leafy garlands' },
-  { id: 'hanging-lights', label: 'Lights', hint: 'Hang LED strings' },
+type RailAction =
+  | { id: DesignerTool; label: string; hint: string; kind: 'tool' }
+  | { id: 'place-light'; label: string; hint: string; kind: 'spawn' };
+
+const TOOLS: RailAction[] = [
+  { id: 'select', label: 'Select', hint: 'Move furniture', kind: 'tool' },
+  { id: 'hanging-leaves', label: 'Leaves', hint: 'Hang leafy garlands', kind: 'tool' },
+  { id: 'hanging-lights', label: 'Strings', hint: 'Hang LED strings', kind: 'tool' },
+  { id: 'place-light', label: 'Light', hint: 'Place a free light', kind: 'spawn' },
 ];
 
 export function HangingDecorToolRail() {
   const tool = useStore((s) => s.designerTool);
   const draft = useStore((s) => s.hangingDraft);
+  const selectedId = useStore((s) => s.selectedId);
+  const selectedKind = useStore((s) => (selectedId ? s.items[selectedId]?.kind : null));
   const setDesignerTool = useStore((s) => s.setDesignerTool);
+  const addLightSource = useStore((s) => s.addLightSource);
   const finishHangingDraft = useStore((s) => s.finishHangingDraft);
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
   const popHangingAnchor = useStore((s) => s.popHangingAnchor);
@@ -64,7 +68,8 @@ export function HangingDecorToolRail() {
   }, [expanded, placing, isPhone]);
 
   const activeLabel =
-    TOOLS.find((t) => t.id === tool)?.label ?? 'Decor';
+    TOOLS.find((t) => t.kind === 'tool' && t.id === tool)?.label
+    ?? (selectedKind === 'light' ? 'Light' : 'Decor');
   const showExpanded = !isPhone || expanded;
 
   return (
@@ -92,18 +97,30 @@ export function HangingDecorToolRail() {
         <div id="hang-rail-panel" className="hang-rail-panel">
           <div className="hang-rail-section">
             <div className="hang-rail-tools">
-              {TOOLS.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  className={`hang-rail-tool${tool === t.id ? ' active' : ''}`}
-                  title={t.hint}
-                  aria-pressed={tool === t.id}
-                  onClick={() => setDesignerTool(t.id)}
-                >
-                  <span className="hang-rail-tool-label">{t.label}</span>
-                </button>
-              ))}
+              {TOOLS.map((t) => {
+                const active =
+                  t.kind === 'spawn'
+                    ? selectedKind === 'light' && tool === 'select'
+                    : tool === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className={`hang-rail-tool${active ? ' active' : ''}`}
+                    title={t.hint}
+                    aria-pressed={active}
+                    onClick={() => {
+                      if (t.kind === 'spawn') {
+                        addLightSource();
+                        return;
+                      }
+                      setDesignerTool(t.id);
+                    }}
+                  >
+                    <span className="hang-rail-tool-label">{t.label}</span>
+                  </button>
+                );
+              })}
             </div>
           </div>
 

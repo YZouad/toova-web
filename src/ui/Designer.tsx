@@ -8,7 +8,7 @@ import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { supabase } from '../lib/supabase';
 import { type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
-import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item, type CameraPresetId } from '../store';
+import { useStore, DEFAULT_BLANKET_COLOR, type Item, type CameraPresetId } from '../store';
 import { planBounds } from '../lib/roomGeometry';
 import { FeedbackModal } from './FeedbackModal';
 import { ImportModelModal } from './ImportModelModal';
@@ -21,6 +21,7 @@ import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
 import { HangingDecorToolRail } from './HangingDecorToolRail';
 import { HangingDecorPanel } from './HangingDecorPanel';
+import { LightDecorPanel } from './LightDecorPanel';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
@@ -54,6 +55,7 @@ const KIND_COLORS: Record<string, string> = {
   lamp: '#D4C4A0',
   imported: '#7E8A60',
   hanging: '#8A8478',
+  light: '#E8C27A',
 };
 
 function getBaseSize(
@@ -97,8 +99,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
   const setBlanketColor = useStore((s) => s.setBlanketColor);
   const setBlanketTexture = useStore((s) => s.setBlanketTexture);
   const updatePosition = useStore((s) => s.updatePosition);
-  const setEmitterEnabled = useStore((s) => s.setEmitterEnabled);
-  const setEmitterConfig = useStore((s) => s.setEmitterConfig);
 
   const roomGeometry = useStore((s) => s.roomGeometry);
   const roomBounds = planBounds(roomGeometry);
@@ -113,6 +113,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
   const [importTab, setImportTab] = useState<'upload' | 'generate' | 'poster'>('generate');
   const [sizeMode, setSizeMode] = useState<'uniform' | 'axis'>('uniform');
   const [lookOpen, setLookOpen] = useState(false);
+  const [envOpen, setEnvOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState(false);
@@ -167,6 +168,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
     meshSizedRef.current.add(item.id);
     baseSizeRef.current.set(item.id, [item.size[0], item.size[1], item.size[2]]);
   }, [item]);
+
+  useEffect(() => {
+    if (item?.kind === 'light') setAdvancedOpen(true);
+  }, [selectedId, item?.kind]);
 
   const addFromGallery = useCallback(
     (model: GalleryModel) => {
@@ -243,7 +248,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
         const { items, order, roomGeometry } = useStore.getState();
         const floorItems = order
           .map((id) => items[id])
-          .filter((it): it is Item => Boolean(it) && it.kind !== 'hanging');
+          .filter((it): it is Item => Boolean(it) && it.kind !== 'hanging' && it.kind !== 'light');
 
         const modelUrls = [
           ...new Set(
@@ -334,15 +339,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
       if (item.beddingEnabled) setBeddingEnabled(newId, true);
       if (item.blanketColor) setBlanketColor(newId, item.blanketColor);
     }
-    if (item.emitter?.enabled) {
-      setEmitterEnabled(newId, true);
-      setEmitterConfig(newId, item.emitter);
-    }
   };
 
   const rotDeg = item ? Math.round(((item.rotationY * 180) / Math.PI) % 360) : 0;
   const maxElevation = item ? Math.max(0, roomGeometry.height - item.size[1]) : 0;
-  const emitter = item?.emitter;
 
   return (
     <div className="designer-page">
@@ -386,6 +386,11 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
             <Button size="sm" variant="outline" onClick={() => setFeedbackOpen(true)}>
               Feedback
             </Button>
+            {onEditFloorPlan ? (
+              <Button size="sm" variant="outline" onClick={onEditFloorPlan}>
+                Edit floor plan
+              </Button>
+            ) : null}
             <Button size="sm" variant="outline" onClick={onOpenChecklist}>
               Checklist
             </Button>
@@ -433,6 +438,18 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
                   >
                     Feedback
                   </button>
+                  {onEditFloorPlan ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onEditFloorPlan();
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      Edit floor plan
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"
@@ -501,17 +518,17 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
               if (!lookOpen) setAdvancedOpen(false);
             }}
             onCloseLook={() => setLookOpen(false)}
+            onEnvironmentOpenChange={setEnvOpen}
             lookPanel={
               <LookDrawer
                 open={lookOpen}
                 onClose={() => setLookOpen(false)}
                 onGoToPreset={(id: CameraPresetId) => sceneRef.current?.goToPreset(id)}
                 onOpenExport={() => setExportOpen(true)}
-                onEditFloorPlan={onEditFloorPlan}
               />
             }
           />
-          <HangingDecorToolRail />
+          {lookOpen || envOpen ? null : <HangingDecorToolRail />}
         </div>
 
         {!selectedId ? (
@@ -522,7 +539,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
           >
             Add furniture
           </Button>
-        ) : item?.kind === 'hanging' ? (
+        ) : item?.kind === 'hanging' || item?.kind === 'light' ? (
           <div className="designer-quick-bar">
             <span className="designer-quick-bar-label">{item.label}</span>
             <div className="designer-quick-bar-divider" />
@@ -582,7 +599,11 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
           <HangingDecorPanel onClose={() => setAdvancedOpen(false)} />
         ) : null}
 
-        {advancedOpen && item && item.kind !== 'hanging' ? (
+        {advancedOpen && item?.kind === 'light' ? (
+          <LightDecorPanel onClose={() => setAdvancedOpen(false)} />
+        ) : null}
+
+        {advancedOpen && item && item.kind !== 'hanging' && item.kind !== 'light' ? (
           <aside className="designer-advanced tv-scroll">
             <div className="designer-advanced-head">
               <span className="designer-advanced-eyebrow">Advanced · selected piece</span>
@@ -706,68 +727,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
               Wall mounted
               <MonoMeta size="sm" tone="dense">{item.wallMounted ? 'On' : 'Off'}</MonoMeta>
             </button>
-
-            <div className="designer-advanced-panel-block">
-              <Checkbox
-                checked={!!emitter?.enabled}
-                label="Emits light"
-                onChange={(checked) => setEmitterEnabled(item.id, checked)}
-              />
-              {emitter?.enabled ? (
-                <>
-                  <div className="designer-advanced-emitter-type">
-                    {(['point', 'spot'] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        className={(emitter.type ?? DEFAULT_EMITTER.type) === t ? 'active' : ''}
-                        onClick={() => setEmitterConfig(item.id, { type: t })}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="color"
-                    value={emitter.color ?? DEFAULT_EMITTER.color}
-                    onChange={(e) => setEmitterConfig(item.id, { color: e.target.value })}
-                    style={{ width: '100%', height: 32, marginBottom: 8, borderRadius: 'var(--radius-xs)', border: '1px solid var(--rule-hair)' }}
-                  />
-                  {(['intensity', 'range'] as const).map((field) => (
-                    <RangeControl
-                      key={field}
-                      label={field}
-                      value={emitter[field] ?? DEFAULT_EMITTER[field]}
-                      min={field === 'intensity' ? 0.1 : 20}
-                      max={field === 'intensity' ? 8 : 200}
-                      step={field === 'intensity' ? 0.1 : 5}
-                      formatValue={(v) => v.toFixed(1)}
-                      onChange={(v) => setEmitterConfig(item.id, { [field]: v })}
-                    />
-                  ))}
-                  {(emitter.type ?? 'point') === 'spot' ? (
-                    <RangeControl
-                      label="Angle"
-                      value={emitter.angleDeg ?? 45}
-                      min={15}
-                      max={90}
-                      step={5}
-                      unit="°"
-                      onChange={(v) => setEmitterConfig(item.id, { angleDeg: v })}
-                    />
-                  ) : null}
-                  <RangeControl
-                    label="Glow"
-                    value={Math.round((emitter.emissiveBoost ?? 0.35) * 100)}
-                    min={0}
-                    max={100}
-                    step={5}
-                    unit="%"
-                    onChange={(v) => setEmitterConfig(item.id, { emissiveBoost: v / 100 })}
-                  />
-                </>
-              ) : null}
-            </div>
 
             <div className="designer-advanced-actions">
               <Button size="sm" variant="outline" full onClick={duplicateSelected}>Duplicate</Button>

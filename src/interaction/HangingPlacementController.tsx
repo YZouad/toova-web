@@ -99,7 +99,7 @@ export function HangingPlacementController() {
 
         if (itemId) {
           const item = state.items[itemId];
-          if (!item || item.kind === 'hanging') continue;
+          if (!item || item.kind === 'hanging' || item.kind === 'light') continue;
           const local = furnitureLocalFromWorld(
             {
               attachmentKey: item.attachmentKey,

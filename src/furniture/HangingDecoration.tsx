@@ -3,6 +3,7 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore, type Item } from '../store';
 import { SelectionOutline } from './SelectionOutline';
+import { EMITTER_LIGHT_POWER } from './ItemEmitter';
 import { resolveRenderQuality } from '../lib/renderQuality';
 import {
   buildHangingPath,
@@ -568,6 +569,7 @@ function LedInstances({
   lightRange: number;
   qualityTier: string;
 }) {
+  const exposure = useStore((s) => s.environment.exposure);
   const spacing = ledSpacingInches(density);
   const samples = useMemo(() => sampleAlongPath(path, spacing), [path, spacing]);
   const meshRef = useRef<THREE.InstancedMesh>(null!);
@@ -619,6 +621,8 @@ function LedInstances({
 
   if (samples.length === 0) return null;
 
+  const exposureMul = Math.max(0.15, exposure);
+
   return (
     <>
       <instancedMesh
@@ -632,7 +636,7 @@ function LedInstances({
         const s = samples[idx]!;
         const col = paletteColorAt(palette.length ? palette : ['#fff4e0'], idx);
         const perLightIntensity =
-          (lightIntensity * (qualityTier === 'low' ? 1.4 : 0.9)) /
+          (lightIntensity * (qualityTier === 'low' ? 1.4 : 0.9) * EMITTER_LIGHT_POWER * exposureMul) /
           Math.max(1, Math.sqrt(lightIndices.length));
         return (
           <pointLight
@@ -640,8 +644,8 @@ function LedInstances({
             position={s.position}
             color={col}
             intensity={perLightIntensity}
-            distance={lightRange}
-            decay={2}
+            distance={Math.max(1, lightRange)}
+            decay={1.35}
             castShadow={false}
           />
         );
