@@ -19,6 +19,7 @@ const KNOWN_KINDS: FurnitureKind[] = [
   'lamp',
   'imported',
   'hanging',
+  'light',
 ];
 
 function isFurnitureKind(k: string): k is FurnitureKind {

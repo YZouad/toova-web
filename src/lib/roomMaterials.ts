@@ -68,15 +68,16 @@ export const MATERIAL_PRESETS: Record<MaterialPresetId, MaterialMaps> = {
   },
   concrete: {
     color: '#9a9a96',
-    roughness: 0.88,
-    repeatInches: 36,
+    roughness: 0.9,
+    // Seamless soft tile — keep period large enough to hide repeats, small enough to stay sharp.
+    repeatInches: 84,
     style: 'concrete',
-    variation: 0.08,
+    variation: 0.055,
     attribution: 'Procedural concrete (original, CC0)',
   },
   lightOak: {
     color: '#c4a574',
-    roughness: 0.55,
+    roughness: 0.74,
     repeatInches: 24,
     style: 'wood',
     variation: 0.06,
@@ -85,7 +86,7 @@ export const MATERIAL_PRESETS: Record<MaterialPresetId, MaterialMaps> = {
   },
   darkOak: {
     color: '#6b4a2e',
-    roughness: 0.6,
+    roughness: 0.76,
     repeatInches: 24,
     style: 'wood',
     variation: 0.07,

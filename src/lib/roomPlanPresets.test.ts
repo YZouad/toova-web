@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { isValidFloorPlan, serializeFloorPlan } from './floorPlanGeometry';
 import { getRoomPlanPreset, ROOM_PLAN_PRESETS } from './roomPlanPresets';
 
-describe('roomPlanPresets', () => {
+describe('roomPlanPresets (blank shapes)', () => {
   it('exposes three distinct presets', () => {
     expect(ROOM_PLAN_PRESETS).toHaveLength(3);
     expect(ROOM_PLAN_PRESETS.map((p) => p.id)).toEqual(['rectangle', 'square', 'l-shape']);

@@ -39,7 +39,7 @@ export function DesignerGalleryPanel({
   onPlace,
   onOpenImport,
 }: DesignerGalleryPanelProps) {
-  const [source, setSource] = useState<GallerySource>('community');
+  const [source, setSource] = useState<GallerySource>('toova');
   const [sort, setSort] = useState<GallerySort>('hot');
   const [categories, setCategories] = useState<string[]>([]);
   const [query, setQuery] = useState('');

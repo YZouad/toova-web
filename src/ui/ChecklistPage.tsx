@@ -70,7 +70,7 @@ export function ChecklistPage({
     async (product: CuratedProduct) => {
       await addToList(product.id);
       if (product.placeBuiltinKind && product.placeBuiltinKind in FURNITURE) {
-        addItem(product.placeBuiltinKind as Exclude<FurnitureKind, 'imported' | 'hanging'>, {
+        addItem(product.placeBuiltinKind as Exclude<FurnitureKind, 'imported' | 'hanging' | 'light'>, {
           label: product.name,
           curatedProductId: product.id,
         });

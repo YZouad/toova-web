@@ -1,227 +1,263 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  type RoomPlanPreset,
-  type RoomPlanPresetId,
-  ROOM_PLAN_PRESETS,
+  BLANK_PLAN_PRESETS,
+  type BlankPlanPreset,
+  type BlankPlanPresetId,
 } from '../lib/roomPlanPresets';
-import {
-  type RoomTemplate,
-  type RoomTemplateId,
-  ROOM_TEMPLATES,
-  buildTemplateEnvironment,
-  templatePreviewItems,
-} from '../lib/roomTemplates';
 import type { FloorPlan } from '../lib/floorPlanGeometry';
-import type { RoomEnvironment } from '../store';
-import { Modal, Button, MonoMeta, Plate } from './kit';
+import {
+  ROOM_STARTER_GOALS,
+  ROOM_STARTER_TIERS,
+  starterPieceCount,
+  starterPreviewItems,
+  starterTierLabel,
+  templatesForGoal,
+  type RoomStarterGoal,
+  type RoomStarterTemplate,
+} from '../lib/roomStarterTemplates';
+import { Button, Field, Input, Modal, Plate, Tabs } from './kit';
 import { RoomPreview } from './RoomPreview';
-import { PurchaseReviewPanel } from './PurchaseReviewPanel';
-import { useShoppingCatalogContext } from '../context/ShoppingCatalogContext';
-import type { CuratedProduct, ShoppingListEntry } from '../lib/dormChecklist';
 
-export type RoomCreateSelection =
-  | {
-      kind: 'template';
-      templateId: RoomTemplateId;
-      plan: FloorPlan;
-      environment: RoomEnvironment;
-    }
-  | {
-      kind: 'preset';
-      presetId: RoomPlanPresetId;
-      plan: FloorPlan;
-    };
+export type RoomPresetPickerSelection =
+  | { kind: 'starter'; template: RoomStarterTemplate }
+  | { kind: 'blank'; plan: FloorPlan; presetId: BlankPlanPresetId }
+  | { kind: 'customize'; plan: FloorPlan; template?: RoomStarterTemplate }
+  | { kind: 'custom' };
 
 interface RoomPresetPickerProps {
   open: boolean;
   creating?: boolean;
+  /** Suggested name shown as the field value / placeholder when the modal opens. */
+  defaultName?: string;
   onClose: () => void;
-  onSelect: (selection: RoomCreateSelection) => void | Promise<void>;
-  onCustomize: () => void;
+  onSelect: (selection: RoomPresetPickerSelection, name: string) => void | Promise<void>;
 }
 
-interface PresetPreview {
-  preset: RoomPlanPreset;
+interface StarterPreview {
+  template: RoomStarterTemplate;
+  plan: FloorPlan;
+}
+
+interface BlankPreview {
+  preset: BlankPlanPreset;
   plan: FloorPlan;
 }
 
 export function RoomPresetPicker({
   open,
   creating = false,
+  defaultName = 'Room 1',
   onClose,
   onSelect,
-  onCustomize,
 }: RoomPresetPickerProps) {
-  const { categories, addToList, list, markReviewDone } =
-    useShoppingCatalogContext();
-  const [busyId, setBusyId] = useState<string | null>(null);
-  const [reviewTemplateId, setReviewTemplateId] = useState<RoomTemplateId | null>(null);
+  const [roomName, setRoomName] = useState(defaultName);
+  const [goal, setGoal] = useState<RoomStarterGoal>('bedroom');
+  const [selectedStarterId, setSelectedStarterId] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const previews = useMemo<PresetPreview[]>(
-    () => ROOM_PLAN_PRESETS.map((preset) => ({ preset, plan: preset.build() })),
-    [],
-  );
-  const templatePreviews = useMemo(
+  useEffect(() => {
+    if (!open) return;
+    setRoomName(defaultName);
+    setGoal('bedroom');
+    setSelectedStarterId(null);
+    setBusy(false);
+    setError(null);
+  }, [open, defaultName]);
+
+  const starterPreviews = useMemo<StarterPreview[]>(
     () =>
-      ROOM_TEMPLATES.map((template) => ({
+      templatesForGoal(goal).map((template) => ({
         template,
         plan: template.buildPlan(),
-        items: templatePreviewItems(template),
       })),
+    [goal],
+  );
+
+  const blankPreviews = useMemo<BlankPreview[]>(
+    () => BLANK_PLAN_PRESETS.map((preset) => ({ preset, plan: preset.build() })),
     [],
   );
 
-  const disabled = creating || busyId !== null;
+  const disabled = creating || busy;
+  const selectedStarter = starterPreviews.find((p) => p.template.id === selectedStarterId);
+  const resolvedName = roomName.trim() || defaultName;
 
-  const reviewLines = useMemo(() => {
-    if (!reviewTemplateId) return [] as { entry: ShoppingListEntry; product: CuratedProduct }[];
-    const template = ROOM_TEMPLATES.find((t) => t.id === reviewTemplateId);
-    if (!template) return [];
-    const slugToProduct = new Map<string, CuratedProduct>();
-    for (const cat of categories) {
-      for (const p of cat.products) slugToProduct.set(p.slug, p);
-    }
-    const lines: { entry: ShoppingListEntry; product: CuratedProduct }[] = [];
-    for (const slug of template.essentialProductSlugs) {
-      const product = slugToProduct.get(slug);
-      if (!product) continue;
-      const entry =
-        list.find((e) => e.productId === product.id) ??
-        ({ productId: product.id, quantity: 1, reviewDone: false } satisfies ShoppingListEntry);
-      lines.push({ entry, product });
-    }
-    return lines;
-  }, [reviewTemplateId, categories, list]);
-
-  const runSelect = async (id: string, selection: RoomCreateSelection) => {
+  const runSelect = async (selection: RoomPresetPickerSelection) => {
     if (disabled) return;
-    setBusyId(id);
+    setBusy(true);
+    setError(null);
     try {
-      await onSelect(selection);
+      await onSelect(selection, resolvedName);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create room');
     } finally {
-      setBusyId(null);
+      setBusy(false);
     }
   };
 
-  const handleTemplateUse = async (template: RoomTemplate) => {
-    if (disabled) return;
-    // Prefill To Buy with simple essentials before opening the designer.
-    const slugToId = new Map<string, string>();
-    for (const cat of categories) {
-      for (const p of cat.products) slugToId.set(p.slug, p.id);
-    }
-    for (const slug of template.essentialProductSlugs) {
-      const productId = slugToId.get(slug);
-      if (productId) void addToList(productId);
-    }
-    await runSelect(template.id, {
-      kind: 'template',
-      templateId: template.id,
+  const handleCreateStarter = () => {
+    if (!selectedStarter) return;
+    void runSelect({ kind: 'starter', template: selectedStarter.template });
+  };
+
+  const handleBlank = (preset: BlankPlanPreset) => {
+    void runSelect({ kind: 'blank', plan: preset.build(), presetId: preset.id });
+  };
+
+  const handleCustomizeStarter = (template: RoomStarterTemplate) => {
+    void runSelect({
+      kind: 'customize',
       plan: template.buildPlan(),
-      environment: buildTemplateEnvironment(template),
+      template,
     });
   };
 
-  const handlePreset = async (preset: RoomPlanPreset) => {
-    await runSelect(preset.id, {
-      kind: 'preset',
-      presetId: preset.id,
-      plan: preset.build(),
-    });
+  const handleCustomizeBlank = (preset: BlankPlanPreset) => {
+    void runSelect({ kind: 'customize', plan: preset.build() });
   };
 
   const handleCustom = () => {
-    if (disabled) return;
-    setBusyId('custom');
-    onCustomize();
+    void runSelect({ kind: 'custom' });
+  };
+
+  const handleGoalChange = (id: string) => {
+    setGoal(id as RoomStarterGoal);
+    setSelectedStarterId(null);
   };
 
   return (
-    <>
-      <Modal
-        open={open}
-        meta="New room"
-        title="Choose a starting layout"
-        onClose={disabled ? () => undefined : onClose}
-        width={920}
-        className="room-preset-modal"
-      >
-        <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 12 }}>
-          Furnished starters
-        </MonoMeta>
-        <p style={{ margin: '0 0 16px', font: 'var(--type-body-sm)', color: 'var(--ink-4)', maxWidth: '52ch' }}>
-          Pick a room that is already designed. Order the simple supplies as-is, or open the designer
-          and edit tables, beds, and finishes.
-        </p>
-        <div className="room-preset-grid room-preset-grid--templates" role="list">
-          {templatePreviews.map(({ template, plan, items }) => {
-            const isBusy = busyId === template.id;
-            return (
-              <div
-                key={template.id}
-                className={[
-                  'kit-plate-card',
-                  'kit-plate-card--interactive',
-                  'room-preset-card',
-                  'room-template-card',
-                  disabled && !isBusy ? 'room-preset-card--disabled' : '',
-                  isBusy ? 'room-preset-card--busy' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' ')}
-                role="listitem"
-              >
-                <Plate height={148} topCaption={`${template.id}.room`}>
-                  <div className="app-ledger-plate-preview room-preset-preview">
-                    <RoomPreview geometry={plan} items={items} />
-                  </div>
-                </Plate>
-                <div className="kit-plate-card__caption">
-                  <div className="room-preset-card-copy">
-                    <div className="kit-plate-card__name">{template.label}</div>
-                    <div className="kit-plate-card__author">{template.description}</div>
-                  </div>
-                  <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense room-preset-card-dims">
-                    {isBusy ? 'Creating…' : template.tagline}
-                  </span>
-                </div>
-                <div className="room-template-card-actions">
-                  <Button
-                    size="sm"
-                    disabled={disabled}
-                    onClick={() => void handleTemplateUse(template)}
-                  >
-                    Use this room
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={disabled}
-                    onClick={() => setReviewTemplateId(template.id)}
-                  >
-                    Shop essentials
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
+    <Modal
+      open={open}
+      meta="New room"
+      title="What are you planning?"
+      onClose={disabled ? () => undefined : onClose}
+      width={880}
+      className="room-preset-modal"
+      footer={
+        <>
+          <Button size="sm" variant="outline" disabled={disabled} onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={disabled || !selectedStarter}
+            onClick={handleCreateStarter}
+          >
+            {busy || creating ? 'Creating…' : 'Create room'}
+          </Button>
+        </>
+      }
+    >
+      <div className="room-preset-picker">
+        <div className="room-preset-section">
+          <Field label="Room name">
+            <Input
+              value={roomName}
+              onChange={(e) => setRoomName(e.target.value)}
+              placeholder={defaultName}
+              disabled={disabled}
+              autoFocus
+              aria-label="Room name"
+            />
+          </Field>
         </div>
 
-        <MonoMeta size="sm" tone="dense" style={{ display: 'block', margin: '28px 0 12px' }}>
-          Blank floor plans
-        </MonoMeta>
-        <div className="room-preset-grid" role="list">
-          {previews.map(({ preset, plan }) => {
-            const isBusy = busyId === preset.id;
-            return (
+        <div className="room-preset-section">
+          <div className="room-preset-section-label">What kind of room?</div>
+          <Tabs
+            className="room-preset-goal-tabs"
+            active={goal}
+            onChange={handleGoalChange}
+            tabs={ROOM_STARTER_GOALS.map((g) => ({ id: g.id, label: g.label }))}
+          />
+          <p className="room-preset-goal-hint">
+            {ROOM_STARTER_GOALS.find((g) => g.id === goal)?.description}
+          </p>
+        </div>
+
+        <div className="room-preset-section">
+          <div className="room-preset-section-label">Starting look</div>
+          <div className="room-preset-tier-blurb-row" aria-hidden>
+            {ROOM_STARTER_TIERS.map((t) => (
+              <span key={t.id} className="room-preset-tier-chip">
+                <strong>{t.label}</strong> — {t.blurb}
+              </span>
+            ))}
+          </div>
+          <div className="room-preset-grid room-preset-grid--tiers" role="listbox" aria-label="Furnishing tier">
+            {starterPreviews.map(({ template, plan }) => {
+              const selected = selectedStarterId === template.id;
+              const pieces = starterPieceCount(template);
+              return (
+                <div
+                  key={template.id}
+                  className={[
+                    'kit-plate-card',
+                    'kit-plate-card--interactive',
+                    'room-preset-card',
+                    selected ? 'room-preset-card--selected' : '',
+                    disabled ? 'room-preset-card--disabled' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  role="option"
+                  aria-selected={selected}
+                >
+                  <button
+                    type="button"
+                    className="room-preset-card-btn"
+                    disabled={disabled}
+                    aria-pressed={selected}
+                    aria-label={`${template.label}: ${template.description}`}
+                    onClick={() => setSelectedStarterId(template.id)}
+                  >
+                    <Plate height={148} topCaption={`${template.tier}.plan`}>
+                      <div className="app-ledger-plate-preview room-preset-preview">
+                        <RoomPreview geometry={plan} items={starterPreviewItems(template)} />
+                      </div>
+                    </Plate>
+                    <div className="kit-plate-card__caption">
+                      <div className="room-preset-card-copy">
+                        <div className="kit-plate-card__name">{template.label}</div>
+                        <div className="kit-plate-card__author">{template.description}</div>
+                      </div>
+                      <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense room-preset-card-dims">
+                        {starterTierLabel(template.tier)} · {pieces} pcs · {template.dimensionsLabel}
+                      </span>
+                    </div>
+                  </button>
+                  <div className="room-preset-card-actions">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={disabled}
+                      onClick={() => handleCustomizeStarter(template)}
+                    >
+                      Customize
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="room-preset-section room-preset-section--blank">
+          <div className="room-preset-section-label">Blank room</div>
+          <p className="room-preset-goal-hint">
+            Start empty with a shape, or draw every wall yourself.
+          </p>
+          <div className="room-preset-grid room-preset-grid--blank" role="list">
+            {blankPreviews.map(({ preset, plan }) => (
               <div
                 key={preset.id}
                 className={[
                   'kit-plate-card',
                   'kit-plate-card--interactive',
                   'room-preset-card',
-                  disabled && !isBusy ? 'room-preset-card--disabled' : '',
-                  isBusy ? 'room-preset-card--busy' : '',
+                  'room-preset-card--blank',
+                  disabled ? 'room-preset-card--disabled' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -231,10 +267,10 @@ export function RoomPresetPicker({
                   type="button"
                   className="room-preset-card-btn"
                   disabled={disabled}
-                  onClick={() => void handlePreset(preset)}
+                  onClick={() => handleBlank(preset)}
                   aria-label={`${preset.label}: ${preset.description}`}
                 >
-                  <Plate height={148} topCaption={`${preset.id}.plan`}>
+                  <Plate height={112} topCaption={`${preset.id}.plan`}>
                     <div className="app-ledger-plate-preview room-preset-preview">
                       <RoomPreview geometry={plan} items={[]} />
                     </div>
@@ -245,84 +281,70 @@ export function RoomPresetPicker({
                       <div className="kit-plate-card__author">{preset.description}</div>
                     </div>
                     <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense room-preset-card-dims">
-                      {isBusy ? 'Creating…' : preset.dimensionsLabel}
+                      {preset.dimensionsLabel}
                     </span>
                   </div>
                 </button>
-              </div>
-            );
-          })}
-
-          <div
-            className={[
-              'kit-plate-card',
-              'kit-plate-card--interactive',
-              'room-preset-card',
-              'room-preset-card--custom',
-              disabled && busyId !== 'custom' ? 'room-preset-card--disabled' : '',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            role="listitem"
-          >
-            <button
-              type="button"
-              className="room-preset-card-btn"
-              disabled={disabled}
-              onClick={handleCustom}
-              aria-label="Customize your own floor plan"
-            >
-              <div className="room-preset-custom-plate" style={{ height: 148 }}>
-                <span className="room-preset-custom-glyph" aria-hidden>
-                  ✎
-                </span>
-                <span className="room-preset-custom-hint">Draw walls freely</span>
-              </div>
-              <div className="kit-plate-card__caption">
-                <div className="room-preset-card-copy">
-                  <div className="kit-plate-card__name">Customize your own</div>
-                  <div className="kit-plate-card__author">
-                    Start from a blank canvas and draw every wall yourself.
-                  </div>
+                <div className="room-preset-card-actions">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled}
+                    onClick={() => handleCustomizeBlank(preset)}
+                  >
+                    Customize
+                  </Button>
                 </div>
-                <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense room-preset-card-dims">
-                  Custom
-                </span>
               </div>
-            </button>
+            ))}
+
+            <div
+              className={[
+                'kit-plate-card',
+                'kit-plate-card--interactive',
+                'room-preset-card',
+                'room-preset-card--custom',
+                disabled ? 'room-preset-card--disabled' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              role="listitem"
+            >
+              <button
+                type="button"
+                className="room-preset-card-btn"
+                disabled={disabled}
+                onClick={handleCustom}
+                aria-label="Customize your own floor plan"
+              >
+                <div className="room-preset-custom-plate" style={{ height: 112 }}>
+                  <span className="room-preset-custom-glyph" aria-hidden>
+                    ✎
+                  </span>
+                  <span className="room-preset-custom-hint">Draw walls freely</span>
+                </div>
+                <div className="kit-plate-card__caption">
+                  <div className="room-preset-card-copy">
+                    <div className="kit-plate-card__name">Customize your own</div>
+                    <div className="kit-plate-card__author">
+                      Start from a blank canvas and draw every wall yourself.
+                    </div>
+                  </div>
+                  <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense room-preset-card-dims">
+                    Custom
+                  </span>
+                </div>
+              </button>
+            </div>
           </div>
         </div>
-      </Modal>
 
-      {reviewTemplateId && reviewLines.length > 0 ? (
-        <PurchaseReviewPanel
-          lines={reviewLines}
-          onClose={() => setReviewTemplateId(null)}
-          onMarkDone={(productId, done) => {
-            void addToList(productId);
-            void markReviewDone(productId, done);
-          }}
-        />
-      ) : null}
-      {reviewTemplateId && reviewLines.length === 0 ? (
-        <Modal
-          open
-          meta="Essentials"
-          title="Essentials coming soon."
-          onClose={() => setReviewTemplateId(null)}
-          width={420}
-          footer={
-            <Button size="sm" onClick={() => setReviewTemplateId(null)}>
-              Close
-            </Button>
-          }
-        >
-          <p style={{ margin: 0, font: 'var(--type-body-sm)', color: 'var(--ink-4)' }}>
-            We could not match the starter supplies to the live catalog yet. You can still use the
-            room and edit furniture in the designer.
+        {error ? (
+          <p className="room-preset-error" role="alert">
+            {error}
           </p>
-        </Modal>
-      ) : null}
-    </>
+        ) : null}
+      </div>
+    </Modal>
   );
 }
