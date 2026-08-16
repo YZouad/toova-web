@@ -5,10 +5,11 @@ import { useRoomSave } from '../hooks/useRoomLayout';
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import { recordCatalogDownload, shouldRecordCatalogDownload } from '../lib/catalogEngagement';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
+import { newPillowId } from '../lib/bedding/config';
 import { supabase } from '../lib/supabase';
 import { type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
-import { useStore, DEFAULT_BLANKET_COLOR, type Item, type CameraPresetId } from '../store';
+import { useStore, type Item, type CameraPresetId } from '../store';
 import { planBounds } from '../lib/roomGeometry';
 import { FeedbackModal } from './FeedbackModal';
 import { ImportModelModal } from './ImportModelModal';
@@ -21,6 +22,7 @@ import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
 import { HangingDecorToolRail } from './HangingDecorToolRail';
 import { HangingDecorPanel } from './HangingDecorPanel';
+import { BeddingPanel } from './BeddingPanel';
 import { LightDecorPanel } from './LightDecorPanel';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
@@ -82,6 +84,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
   const { workspace } = useRoomWorkspace();
   const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
   const sceneRef = useRef<SceneHandle>(null);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
   const baseSizeRef = useRef<Map<string, [number, number, number]>>(new Map());
   const meshSizedRef = useRef<Set<string>>(new Set());
   const [shareOpen, setShareOpen] = useState(false);
@@ -95,9 +98,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
   const setItemElevation = useStore((s) => s.setItemElevation);
   const setWallMounted = useStore((s) => s.setWallMounted);
   const setBedHeight = useStore((s) => s.setBedHeight);
-  const setBeddingEnabled = useStore((s) => s.setBeddingEnabled);
-  const setBlanketColor = useStore((s) => s.setBlanketColor);
-  const setBlanketTexture = useStore((s) => s.setBlanketTexture);
+  const setBeddingConfig = useStore((s) => s.setBeddingConfig);
   const updatePosition = useStore((s) => s.updatePosition);
 
   const roomGeometry = useStore((s) => s.roomGeometry);
@@ -109,6 +110,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
   const [forkMeta, setForkMeta] = useState<RoomAttributionPayload | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [beddingOpen, setBeddingOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importTab, setImportTab] = useState<'upload' | 'generate' | 'poster'>('generate');
   const [sizeMode, setSizeMode] = useState<'uniform' | 'axis'>('uniform');
@@ -121,13 +123,22 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
   const dirtyBaselineRef = useRef('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const [beddingBusy, setBeddingBusy] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [galleryRefreshKey, setGalleryRefreshKey] = useState(0);
 
   useEffect(() => {
     setRoomName(workspace?.name ?? '');
   }, [workspace?.name]);
+
+  useEffect(() => {
+    if (item?.kind === 'bed') {
+      setBeddingOpen(true);
+      setAdvancedOpen(false);
+      setLookOpen(false);
+    } else {
+      setBeddingOpen(false);
+    }
+  }, [selectedId, item?.kind]);
 
   useEffect(() => {
     dirtyBaselineRef.current = roomDirtyFingerprint(workspace?.name ?? '');
@@ -336,8 +347,20 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
     if (item.wallMounted) setWallMounted(newId, true);
     if (item.kind === 'bed') {
       if (item.bedLegHeight != null) setBedHeight(newId, item.bedLegHeight);
-      if (item.beddingEnabled) setBeddingEnabled(newId, true);
-      if (item.blanketColor) setBlanketColor(newId, item.blanketColor);
+      if (item.beddingConfig) {
+        setBeddingConfig(newId, {
+          topper: { ...item.beddingConfig.topper },
+          sheets: { ...item.beddingConfig.sheets },
+          comforter: { ...item.beddingConfig.comforter },
+          pillows: {
+            enabled: item.beddingConfig.pillows.enabled,
+            items: item.beddingConfig.pillows.items.map((p) => ({
+              ...p,
+              id: newPillowId(),
+            })),
+          },
+        });
+      }
     }
   };
 
@@ -503,9 +526,9 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
         <div className="tv-banner-error" style={{ margin: '0 20px', position: 'relative', zIndex: 25 }} role="alert">{saveError}</div>
       ) : null}
 
-      <div className="designer-canvas-wrap">
+      <div className="designer-canvas-wrap" ref={canvasWrapRef}>
         <div className="designer-canvas-full">
-          <Scene ref={sceneRef} />
+          <Scene ref={sceneRef} orbitCssTargetRef={canvasWrapRef} />
         </div>
 
         <SceneCheckoutPanel onOpenChecklist={onOpenChecklist} />
@@ -555,6 +578,39 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
               Customize
             </button>
           </div>
+        ) : item?.kind === 'bed' ? (
+          <div className="designer-quick-bar">
+            <span className="designer-quick-bar-label">{item.label}</span>
+            <div className="designer-quick-bar-divider" />
+            <button
+              type="button"
+              className={`designer-advanced-btn${beddingOpen ? ' active' : ''}`}
+              aria-pressed={beddingOpen}
+              onClick={() => {
+                setBeddingOpen((v) => !v);
+                if (!beddingOpen) {
+                  setLookOpen(false);
+                  setAdvancedOpen(false);
+                }
+              }}
+            >
+              Bedding
+            </button>
+            <button
+              type="button"
+              className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
+              aria-pressed={advancedOpen}
+              onClick={() => {
+                setAdvancedOpen((v) => !v);
+                if (!advancedOpen) {
+                  setLookOpen(false);
+                  setBeddingOpen(false);
+                }
+              }}
+            >
+              Advanced
+            </button>
+          </div>
         ) : item ? (
           <div className="designer-quick-bar">
             <RangeControl
@@ -595,6 +651,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
           }}
         />
 
+        {item?.kind === 'bed' ? (
+          <BeddingPanel open={beddingOpen} onClose={() => setBeddingOpen(false)} />
+        ) : null}
+
         {advancedOpen && item?.kind === 'hanging' ? (
           <HangingDecorPanel onClose={() => setAdvancedOpen(false)} />
         ) : null}
@@ -603,7 +663,11 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
           <LightDecorPanel onClose={() => setAdvancedOpen(false)} />
         ) : null}
 
-        {advancedOpen && item && item.kind !== 'hanging' && item.kind !== 'light' ? (
+        {advancedOpen &&
+        item &&
+        item.kind !== 'hanging' &&
+        item.kind !== 'light' &&
+        !(item.kind === 'bed' && beddingOpen) ? (
           <aside className="designer-advanced tv-scroll">
             <div className="designer-advanced-head">
               <span className="designer-advanced-eyebrow">Advanced · selected piece</span>
@@ -681,43 +745,15 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
               ) : null}
 
               {item.kind === 'bed' ? (
-                <>
-                  <RangeControl
-                    label="Leg height"
-                    value={item.bedLegHeight ?? 8}
-                    min={4}
-                    max={36}
-                    step={1}
-                    unit="″"
-                    onChange={(v) => setBedHeight(item.id, v)}
-                  />
-                  <Checkbox
-                    checked={!!item.beddingEnabled}
-                    label="Bedding"
-                    onChange={(checked) => setBeddingEnabled(item.id, checked)}
-                  />
-                  {item.beddingEnabled ? (
-                    <div style={{ marginBottom: 8 }}>
-                      <input type="color" value={item.blanketColor ?? DEFAULT_BLANKET_COLOR} onChange={(e) => setBlanketColor(item.id, e.target.value)} disabled={beddingBusy} style={{ width: '100%', height: 36, marginBottom: 8, borderRadius: 'var(--radius-xs)', border: '1px solid var(--rule-hair)' }} />
-                      <MonoMeta size="xs" tone="dense" upper style={{ display: 'block', marginBottom: 6 }}>Blanket pattern</MonoMeta>
-                      <input type="file" accept="image/*" disabled={beddingBusy} onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = '';
-                        if (!file) return;
-                        setBeddingBusy(true);
-                        try {
-                          const { uploadBlanketTexture, removeBlanketTexture } = await import('../lib/beddingStorage');
-                          const prevPath = item.blanketTexturePath;
-                          const { path, signedUrl } = await uploadBlanketTexture(file);
-                          setBlanketTexture(item.id, { path, url: signedUrl });
-                          if (prevPath && prevPath !== path) await removeBlanketTexture(prevPath).catch(() => {});
-                        } finally {
-                          setBeddingBusy(false);
-                        }
-                      }} />
-                    </div>
-                  ) : null}
-                </>
+                <RangeControl
+                  label="Leg height"
+                  value={item.bedLegHeight ?? 8}
+                  min={4}
+                  max={36}
+                  step={1}
+                  unit="″"
+                  onChange={(v) => setBedHeight(item.id, v)}
+                />
               ) : null}
             </div>
 
