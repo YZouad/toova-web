@@ -17,6 +17,14 @@ describe('trellisSiblingUrl', () => {
     expect(trellisSiblingUrl('status')).toBe('https://toova-bff.onrender.com/api/trellis/status');
   });
 
+  it('derives same-origin wake and status URLs in local dev', async () => {
+    vi.stubEnv('VITE_TRELLIS_GENERATE_URL', '');
+    const { trellisSiblingUrl } = await import('./trellisApi');
+
+    expect(trellisSiblingUrl('wake')).toBe('/api/trellis/wake');
+    expect(trellisSiblingUrl('status')).toBe('/api/trellis/status');
+  });
+
   it('throws when TRELLIS_GENERATE_URL does not end with /generate', async () => {
     vi.stubEnv('VITE_TRELLIS_GENERATE_URL', 'https://toova-bff.onrender.com/api/trellis/generate-extra');
     const { trellisSiblingUrl } = await import('./trellisApi');
@@ -37,21 +45,27 @@ describe('ensureTrellisReady', () => {
     vi.restoreAllMocks();
   });
 
-  it('skips wake and status when using same-origin dev proxy URL', async () => {
+  it('wakes and polls on the same-origin dev proxy URL', async () => {
     vi.stubEnv('VITE_TRELLIS_GENERATE_URL', '');
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/wake') || url.endsWith('/status')) {
+        return new Response(JSON.stringify({ ready: true, ec2: 'running', trellis: 'ready' }), {
+          status: 200,
+        });
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
     const { ensureTrellisReady } = await import('./trellisApi');
-
-    await ensureTrellisReady();
-
-    expect(fetchSpy).not.toHaveBeenCalled();
+    await expect(ensureTrellisReady()).resolves.toBeUndefined();
   });
 
   it('polls status until ready and respects abort before generate', async () => {
     vi.stubEnv('VITE_TRELLIS_GENERATE_URL', 'https://toova-bff.onrender.com/api/trellis/generate');
     const controller = new AbortController();
 
-    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.endsWith('/wake')) {
         return new Response(JSON.stringify({ ready: false }), { status: 200 });
@@ -85,9 +99,10 @@ describe('ensureTrellisReady', () => {
       if (url.endsWith('/status')) {
         statusCalls += 1;
         const ready = statusCalls >= 2;
-        return new Response(JSON.stringify({ ready, ec2: 'running', trellis: ready ? 'ready' : 'unreachable' }), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify({ ready, ec2: 'running', trellis: ready ? 'ready' : 'unreachable' }),
+          { status: 200 },
+        );
       }
       throw new Error(`Unexpected fetch: ${url}`);
     });

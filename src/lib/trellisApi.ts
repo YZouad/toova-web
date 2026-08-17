@@ -2,9 +2,9 @@ const raw = import.meta.env.VITE_TRELLIS_GENERATE_URL;
 
 /**
  * Mesh generation endpoint.
- * - Local dev: same-origin `/api/trellis/generate` (Vite or Express proxy).
- * - Production (e.g. GitHub Pages): set `VITE_TRELLIS_GENERATE_URL` to an HTTPS URL
- *   (direct Trellis with TLS + CORS, or this repo's Express BFF deployed behind HTTPS).
+ * - Local dev: same-origin `/api/trellis/generate` (Vite proxies the `/api/trellis`
+ *   prefix to the Render BFF, which talks to EC2).
+ * - Production (e.g. GitHub Pages): set `VITE_TRELLIS_GENERATE_URL` to an HTTPS URL.
  */
 export const TRELLIS_GENERATE_URL =
   typeof raw === 'string' && raw.trim() !== '' ? raw.trim() : '/api/trellis/generate';
@@ -51,13 +51,8 @@ export async function ensureTrellisReady(
   signal?: AbortSignal,
   onProgress?: (message: string) => void,
 ): Promise<void> {
-  if (!trellisUsesRemoteUrl) {
-    console.log('[trellis] skipping wake/status (same-origin dev URL):', TRELLIS_GENERATE_URL);
-    return;
-  }
-
   onProgress?.('Waking Trellis…');
-  console.log('[trellis] calling wake');
+
   const wakeRes = await fetch(trellisSiblingUrl('wake'), { method: 'POST', signal });
   if (!wakeRes.ok) {
     const text = await wakeRes.text();
@@ -68,7 +63,6 @@ export async function ensureTrellisReady(
   while (Date.now() < deadline) {
     throwIfAborted(signal);
 
-    console.log('[trellis] polling status');
     const statusRes = await fetch(trellisSiblingUrl('status'), { signal });
     if (!statusRes.ok) {
       const text = await statusRes.text();

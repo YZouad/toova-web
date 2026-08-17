@@ -16,7 +16,7 @@ import { ImportModelModal } from './ImportModelModal';
 import { DesignerGalleryPanel, pushRecentKind } from './DesignerGalleryPanel';
 import { SceneCheckoutPanel } from './SceneCheckoutPanel';
 import { AtmosphereStrip } from './AtmosphereStrip';
-import { LookDrawer } from './LookDrawer';
+import { LookDrawer, PaintColorPicker } from './LookDrawer';
 import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
@@ -28,6 +28,7 @@ import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profil
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
+import { DEFAULT_RUG_COLOR, isChecklistRug } from '../lib/checklistPublicGlbs';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
@@ -75,11 +76,13 @@ interface DesignerProps {
   onBack: () => void;
   onEditFloorPlan?: () => void;
   onOpenChecklist: () => void;
+  isAdmin?: boolean;
   /** Guest rooms call this instead of persisting to Supabase. */
   onRequestSaveAuth?: () => void;
 }
 
-export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSaveAuth }: DesignerProps) {
+export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = false, onRequestSaveAuth }: DesignerProps) {
+
   const { user } = useAuth();
   const { workspace } = useRoomWorkspace();
   const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
@@ -99,6 +102,8 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
   const setWallMounted = useStore((s) => s.setWallMounted);
   const setBedHeight = useStore((s) => s.setBedHeight);
   const setBeddingConfig = useStore((s) => s.setBeddingConfig);
+  const setTintColor = useStore((s) => s.setTintColor);
+
   const updatePosition = useStore((s) => s.updatePosition);
 
   const roomGeometry = useStore((s) => s.roomGeometry);
@@ -337,6 +342,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
         catalogSizeIn: item.catalogSizeIn
           ? ([...item.catalogSizeIn] as [number, number, number])
           : ([...item.size] as [number, number, number]),
+        tintColor: item.tintColor,
       });
     } else {
       newId = addItem(item.kind);
@@ -744,6 +750,16 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
                 />
               ) : null}
 
+              {isChecklistRug(item) ? (
+                <div style={{ margin: '12px 0 8px' }}>
+                  <PaintColorPicker
+                    label="Rug color"
+                    value={item.tintColor ?? DEFAULT_RUG_COLOR}
+                    onChange={(color) => setTintColor(item.id, color)}
+                  />
+                </div>
+              ) : null}
+
               {item.kind === 'bed' ? (
                 <RangeControl
                   label="Leg height"
@@ -777,6 +793,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, onRequestSa
           userId={user.id}
           open={importOpen}
           initialTab={importTab}
+          isAdmin={isAdmin}
           onClose={() => setImportOpen(false)}
           onAdded={() => {
             setGalleryRefreshKey((k) => k + 1);

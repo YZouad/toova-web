@@ -8,7 +8,11 @@ import {
   serializeLayoutForRoom,
   type RoomItemRow,
 } from '../lib/roomLayoutSerialize';
-import { signModelObjectPath } from '../lib/modelStorage';
+import {
+  publicModelAssetUrl,
+  resolveBrowsableModelUrl,
+  signModelObjectPath,
+} from '../lib/modelStorage';
 import {
   applyCatalogSizes,
   catalogDimsFromRpc,
@@ -111,9 +115,9 @@ export async function loadRoomLayout(roomId: string): Promise<RoomLoadResult> {
         item.importedStoragePath &&
         !item.importedUrl
       ) {
-        const signed = await signModelObjectPath(item.importedStoragePath);
-        if (signed) {
-          item.importedUrl = signed;
+        const url = await resolveBrowsableModelUrl(item.importedStoragePath);
+        if (url) {
+          item.importedUrl = url;
         }
       }
       if (
@@ -156,8 +160,9 @@ export async function loadSharedRoomLayout(token: string): Promise<SharedRoomLoa
     const item = dbRowToItem(row);
     if (!item) continue;
     if (item.kind === 'imported' && item.importedStoragePath) {
-      const signed = signedAssets[item.importedStoragePath];
-      if (signed) item.importedUrl = signed;
+      item.importedUrl =
+        publicModelAssetUrl(item.importedStoragePath) ??
+        signedAssets[item.importedStoragePath];
     }
     if (item.kind === 'bed' && item.blanketTexturePath) {
       const signed = signedAssets[item.blanketTexturePath];
@@ -204,8 +209,9 @@ export async function loadPublicRoomLayout(
     const item = dbRowToItem(row);
     if (!item) continue;
     if (item.kind === 'imported' && item.importedStoragePath) {
-      const signed = signedAssets[item.importedStoragePath];
-      if (signed) item.importedUrl = signed;
+      item.importedUrl =
+        publicModelAssetUrl(item.importedStoragePath) ??
+        signedAssets[item.importedStoragePath];
     }
     if (item.kind === 'bed' && item.blanketTexturePath) {
       const signed = signedAssets[item.blanketTexturePath];

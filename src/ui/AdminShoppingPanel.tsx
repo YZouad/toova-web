@@ -1,11 +1,15 @@
-import { useCallback, useEffect, useState } from 'react';
-import { supabase } from '../lib/supabase';
-import {
-  fetchAdminShoppingCatalog,
-} from '../lib/shoppingCatalog';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { fetchAdminShoppingCatalog } from '../lib/shoppingCatalog';
 import type { ChecklistCategoryWithProducts, CuratedProduct } from '../lib/dormChecklist';
-import { PRODUCT_IMAGES_BUCKET, formatPriceCents } from '../lib/dormChecklist';
-import { FURNITURE } from '../furniture/registry';
+import { formatPriceCents } from '../lib/dormChecklist';
+import { useAuth } from '../hooks/useAuth';
+import {
+  createChecklistCategory,
+  deleteCuratedProduct,
+  updateChecklistCategory,
+  updateCuratedProduct,
+} from '../lib/shoppingCatalogAdmin';
+import { ChecklistProductModal } from './ChecklistProductModal';
 import {
   Badge,
   Banner,
@@ -20,14 +24,6 @@ import {
   Spinner,
 } from './kit';
 
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '')
-    .slice(0, 48) || `item-${Date.now()}`;
-}
-
 const panelStyle = {
   background: 'var(--bg-raised)',
   border: '1px solid var(--rule-soft)',
@@ -35,26 +31,24 @@ const panelStyle = {
   padding: 14,
 } as const;
 
+function categoryLabel(cat: ChecklistCategoryWithProducts, categories: ChecklistCategoryWithProducts[]): string {
+  if (!cat.parentId) return cat.name;
+  const parent = categories.find((c) => c.id === cat.parentId);
+  return parent ? `${parent.name} › ${cat.name}` : cat.name;
+}
+
 export function AdminShoppingPanel() {
+  const { user } = useAuth();
   const [categories, setCategories] = useState<ChecklistCategoryWithProducts[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [productModalOpen, setProductModalOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<CuratedProduct | null>(null);
 
-  const [productForm, setProductForm] = useState({
-    name: '',
-    description: '',
-    affiliateUrl: '',
-    priceDollars: '',
-    retailer: 'Amazon',
-    brand: '',
-    featureBullets: '',
-    dimensionsText: '',
-    availability: '',
-    placeBuiltinKind: '',
-    published: true,
-  });
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryParentId, setNewCategoryParentId] = useState('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -75,21 +69,35 @@ export function AdminShoppingPanel() {
   }, [refresh]);
 
   const selected = categories.find((c) => c.id === selectedCategoryId) ?? null;
+  const isLeafCategory = Boolean(selected?.parentId);
+
+  const parentOptions = useMemo(
+    () => [
+      { value: '', label: 'Top-level group' },
+      ...categories
+        .filter((c) => !c.parentId)
+        .map((c) => ({ value: c.id, label: c.name })),
+    ],
+    [categories],
+  );
 
   async function addCategory() {
-    const name = window.prompt('Category name');
-    if (!name?.trim()) return;
+    if (!newCategoryName.trim()) {
+      setError('Category name is required');
+      return;
+    }
     setBusy(true);
+    setError(null);
     try {
-      const slug = slugify(name);
-      const sortOrder = (categories[categories.length - 1]?.sortOrder ?? 0) + 10;
-      const { error: err } = await supabase.from('checklist_categories').insert({
-        name: name.trim(),
-        slug,
-        sort_order: sortOrder,
-        published: true,
-      });
-      if (err) throw new Error(err.message);
+      await createChecklistCategory(
+        {
+          name: newCategoryName.trim(),
+          parentId: newCategoryParentId || null,
+        },
+        categories,
+      );
+      setNewCategoryName('');
+      setNewCategoryParentId('');
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not add category');
@@ -101,69 +109,10 @@ export function AdminShoppingPanel() {
   async function toggleCategoryPublished(catId: string, published: boolean) {
     setBusy(true);
     try {
-      const { error: err } = await supabase
-        .from('checklist_categories')
-        .update({ published, updated_at: new Date().toISOString() })
-        .eq('id', catId);
-      if (err) throw new Error(err.message);
+      await updateChecklistCategory(catId, { published });
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Update failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function addProduct() {
-    if (!selected) return;
-    if (!productForm.name.trim() || !productForm.affiliateUrl.trim()) {
-      setError('Name and affiliate URL are required');
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const priceCents = productForm.priceDollars.trim()
-        ? Math.round(Number(productForm.priceDollars) * 100)
-        : null;
-      const featureBullets = productForm.featureBullets
-        .split('\n')
-        .map((line) => line.trim())
-        .filter(Boolean);
-      const { error: err } = await supabase.from('curated_products').insert({
-        category_id: selected.id,
-        slug: slugify(productForm.name),
-        name: productForm.name.trim(),
-        description: productForm.description.trim(),
-        affiliate_url: productForm.affiliateUrl.trim(),
-        retailer: productForm.retailer.trim() || 'Amazon',
-        brand: productForm.brand.trim() || null,
-        feature_bullets: featureBullets,
-        dimensions_text: productForm.dimensionsText.trim() || null,
-        availability: productForm.availability.trim() || null,
-        price_cents: Number.isFinite(priceCents as number) ? priceCents : null,
-        published: productForm.published,
-        last_verified_at: new Date().toISOString(),
-        place_builtin_kind: productForm.placeBuiltinKind || null,
-        sort_order: (selected.products[selected.products.length - 1]?.sortOrder ?? 0) + 10,
-      });
-      if (err) throw new Error(err.message);
-      setProductForm({
-        name: '',
-        description: '',
-        affiliateUrl: '',
-        priceDollars: '',
-        retailer: 'Amazon',
-        brand: '',
-        featureBullets: '',
-        dimensionsText: '',
-        availability: '',
-        placeBuiltinKind: '',
-        published: true,
-      });
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not add product');
     } finally {
       setBusy(false);
     }
@@ -172,38 +121,10 @@ export function AdminShoppingPanel() {
   async function toggleProductPublished(product: CuratedProduct) {
     setBusy(true);
     try {
-      const { error: err } = await supabase
-        .from('curated_products')
-        .update({
-          published: !product.published,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', product.id);
-      if (err) throw new Error(err.message);
+      await updateCuratedProduct(product.id, { published: !product.published });
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Update failed');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function uploadImage(product: CuratedProduct, file: File) {
-    setBusy(true);
-    try {
-      const path = `${product.id}/${crypto.randomUUID()}-${file.name.replace(/[^\w.-]+/g, '_')}`;
-      const { error: upErr } = await supabase.storage
-        .from(PRODUCT_IMAGES_BUCKET)
-        .upload(path, file, { upsert: false, contentType: file.type });
-      if (upErr) throw new Error(upErr.message);
-      const { error: err } = await supabase
-        .from('curated_products')
-        .update({ image_path: path, updated_at: new Date().toISOString() })
-        .eq('id', product.id);
-      if (err) throw new Error(err.message);
-      await refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Upload failed');
     } finally {
       setBusy(false);
     }
@@ -213,11 +134,7 @@ export function AdminShoppingPanel() {
     if (!window.confirm('Delete this product?')) return;
     setBusy(true);
     try {
-      const { error: err } = await supabase
-        .from('curated_products')
-        .delete()
-        .eq('id', productId);
-      if (err) throw new Error(err.message);
+      await deleteCuratedProduct(productId);
       await refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Delete failed');
@@ -226,7 +143,15 @@ export function AdminShoppingPanel() {
     }
   }
 
-  const builtinKinds = Object.keys(FURNITURE);
+  function openAddProduct() {
+    setEditingProduct(null);
+    setProductModalOpen(true);
+  }
+
+  function openEditProduct(product: CuratedProduct) {
+    setEditingProduct(product);
+    setProductModalOpen(true);
+  }
 
   return (
     <div className="admin-shopping">
@@ -237,8 +162,26 @@ export function AdminShoppingPanel() {
         <aside className="admin-shopping-cats" style={panelStyle}>
           <div className="admin-shopping-cats-head">
             <h3 className="admin-shopping-cats-title">Categories.</h3>
+          </div>
+          <div className="admin-shopping-add-cat" style={{ display: 'grid', gap: 8, marginBottom: 12 }}>
+            <Field label="New category">
+              <Input
+                placeholder="Category name"
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                disabled={busy}
+              />
+            </Field>
+            <Field label="Parent">
+              <Select
+                value={newCategoryParentId}
+                onChange={setNewCategoryParentId}
+                disabled={busy}
+                options={parentOptions}
+              />
+            </Field>
             <Button size="sm" variant="outline" disabled={busy} onClick={() => void addCategory()}>
-              + Add
+              + Add category
             </Button>
           </div>
           <div className="admin-shopping-cats-cols" aria-hidden>
@@ -253,7 +196,7 @@ export function AdminShoppingPanel() {
                   className={cat.id === selectedCategoryId ? 'is-active' : undefined}
                   onClick={() => setSelectedCategoryId(cat.id)}
                 >
-                  <span className="admin-shopping-cat-name">{cat.name}</span>
+                  <span className="admin-shopping-cat-name">{categoryLabel(cat, categories)}</span>
                   <Badge tone="neutral">{cat.products.length}</Badge>
                 </button>
                 <Checkbox
@@ -271,7 +214,19 @@ export function AdminShoppingPanel() {
         <div className="admin-shopping-products" style={panelStyle}>
           {selected ? (
             <>
-              <SectionOpener level={5} title={`${selected.name} products.`} style={{ marginBottom: 16 }} />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 16 }}>
+                <SectionOpener level={5} title={`${selected.name} products.`} style={{ marginBottom: 0 }} />
+                {isLeafCategory && user?.id ? (
+                  <Button size="sm" onClick={openAddProduct}>
+                    Add product
+                  </Button>
+                ) : null}
+              </div>
+              {!isLeafCategory ? (
+                <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 16 }}>
+                  Select a subcategory (leaf) to add products.
+                </MonoMeta>
+              ) : null}
               {selected.products.length === 0 ? (
                 <MonoMeta size="sm" tone="dense">No products in this category yet.</MonoMeta>
               ) : (
@@ -291,9 +246,7 @@ export function AdminShoppingPanel() {
                         <div style={{ minWidth: 0 }}>
                           <div style={{ font: 'var(--type-ui-sm)', fontWeight: 600 }}>{p.name}</div>
                           <MonoMeta size="xs" tone="dense" style={{ display: 'block', marginTop: 4 }}>
-                            {p.brand ? `${p.brand} · ` : null}
                             {p.retailer}
-                            {p.featureBullets.length > 0 ? ` · ${p.featureBullets.length} bullets` : null}
                             {p.affiliateUrl ? ' · ' : null}
                             {p.affiliateUrl ? (
                               <a
@@ -317,18 +270,9 @@ export function AdminShoppingPanel() {
                       {p.published ? 'Published' : 'Draft'}
                     </Badge>,
                     <div key={`${p.id}-actions`} style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}>
-                      <label>
-                        <Button size="sm" variant="outline" as="span">Image</Button>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          hidden
-                          onChange={(e) => {
-                            const file = e.target.files?.[0];
-                            if (file) void uploadImage(p, file);
-                          }}
-                        />
-                      </label>
+                      <Button size="sm" variant="outline" onClick={() => openEditProduct(p)}>
+                        Edit
+                      </Button>
                       <Button size="sm" variant="outline" onClick={() => void toggleProductPublished(p)}>
                         {p.published ? 'Unpublish' : 'Publish'}
                       </Button>
@@ -340,107 +284,28 @@ export function AdminShoppingPanel() {
                   style={{ marginBottom: 24 }}
                 />
               )}
-
-              <SectionOpener level={5} title="Add product." style={{ marginBottom: 16 }} />
-              <div className="admin-shopping-form" style={{ display: 'grid', gap: 12 }}>
-                <Field label="Name">
-                  <Input
-                    placeholder="Name"
-                    value={productForm.name}
-                    onChange={(e) => setProductForm((f) => ({ ...f, name: e.target.value }))}
-                  />
-                </Field>
-                <Field label="Description">
-                  <textarea
-                    className="kit-input"
-                    placeholder="Description"
-                    value={productForm.description}
-                    onChange={(e) => setProductForm((f) => ({ ...f, description: e.target.value }))}
-                    rows={3}
-                    style={{ width: '100%', resize: 'vertical' }}
-                  />
-                </Field>
-                <Field label="Brand">
-                  <Input
-                    placeholder="Brand"
-                    value={productForm.brand}
-                    onChange={(e) => setProductForm((f) => ({ ...f, brand: e.target.value }))}
-                  />
-                </Field>
-                <Field label="Feature bullets" hint="One bullet per line.">
-                  <textarea
-                    className="kit-input"
-                    placeholder={'Warm LED light\nCompact footprint'}
-                    value={productForm.featureBullets}
-                    onChange={(e) => setProductForm((f) => ({ ...f, featureBullets: e.target.value }))}
-                    rows={4}
-                    style={{ width: '100%', resize: 'vertical' }}
-                  />
-                </Field>
-                <div className="admin-shopping-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  <Field label="Dimensions / details">
-                    <Input
-                      placeholder="About 14″ tall"
-                      value={productForm.dimensionsText}
-                      onChange={(e) => setProductForm((f) => ({ ...f, dimensionsText: e.target.value }))}
-                    />
-                  </Field>
-                  <Field label="Availability">
-                    <Input
-                      placeholder="In stock (optional)"
-                      value={productForm.availability}
-                      onChange={(e) => setProductForm((f) => ({ ...f, availability: e.target.value }))}
-                    />
-                  </Field>
-                </div>
-                <Field label="Affiliate URL">
-                  <Input
-                    placeholder="Affiliate URL"
-                    value={productForm.affiliateUrl}
-                    onChange={(e) => setProductForm((f) => ({ ...f, affiliateUrl: e.target.value }))}
-                  />
-                </Field>
-                <div className="admin-shopping-form-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                  <Field label="Price (USD)">
-                    <Input
-                      placeholder="Price (USD)"
-                      value={productForm.priceDollars}
-                      onChange={(e) => setProductForm((f) => ({ ...f, priceDollars: e.target.value }))}
-                    />
-                  </Field>
-                  <Field label="Retailer">
-                    <Input
-                      placeholder="Retailer"
-                      value={productForm.retailer}
-                      onChange={(e) => setProductForm((f) => ({ ...f, retailer: e.target.value }))}
-                    />
-                  </Field>
-                  <Field label="Place mapping">
-                    <Select
-                      value={productForm.placeBuiltinKind}
-                      onChange={(value) => setProductForm((f) => ({ ...f, placeBuiltinKind: value }))}
-                      options={[
-                        { value: '', label: 'No place mapping' },
-                        ...builtinKinds.map((k) => ({ value: k, label: k })),
-                      ]}
-                    />
-                  </Field>
-                </div>
-                <Checkbox
-                  checked={productForm.published}
-                  label="Published"
-                  onChange={(next) => setProductForm((f) => ({ ...f, published: next }))}
-                />
-                <Button size="sm" disabled={busy} onClick={() => void addProduct()}>
-                  Add product
-                </Button>
-              </div>
             </>
           ) : (
             <MonoMeta size="sm" tone="dense">Select a category</MonoMeta>
           )}
         </div>
       </div>
+
+      {user?.id && productModalOpen && selected && isLeafCategory ? (
+        <ChecklistProductModal
+          open={productModalOpen}
+          onClose={() => {
+            setProductModalOpen(false);
+            setEditingProduct(null);
+          }}
+          userId={user.id}
+          categoryId={selected.id}
+          categoryName={selected.name}
+          product={editingProduct}
+          existingProducts={selected.products}
+          onSaved={() => void refresh()}
+        />
+      ) : null}
     </div>
   );
 }

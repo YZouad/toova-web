@@ -24,6 +24,22 @@ export function ImportedModel({ item, selected, invalid }: Props) {
   );
 }
 
+function applyMeshTint(root: THREE.Object3D, hex: string) {
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    const src = obj.material;
+    const list = Array.isArray(src) ? src : [src];
+    const next = list.map((mat) => {
+      const cloned = mat.clone();
+      if ('color' in cloned && cloned.color instanceof THREE.Color) {
+        cloned.color.set(hex);
+      }
+      return cloned;
+    });
+    obj.material = Array.isArray(src) ? next : next[0]!;
+  });
+}
+
 function ImportedLoadingBox({ item, selected, invalid }: Props) {
   const displaySize = item.catalogSizeIn ?? item.size;
   return (
@@ -31,7 +47,7 @@ function ImportedLoadingBox({ item, selected, invalid }: Props) {
       <mesh position={[0, displaySize[1] / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={displaySize} />
         <meshStandardMaterial
-          color="#7E8A60"
+          color={item.tintColor ?? '#7E8A60'}
           roughness={0.85}
           transparent
           opacity={0.38}
@@ -55,6 +71,7 @@ function Inner({ item, selected, invalid, url }: Props & { url: string }) {
       relight: relightImports,
       log: import.meta.env.DEV,
     });
+    if (item.tintColor) applyMeshTint(cloned, item.tintColor);
 
     const box = new THREE.Box3().setFromObject(cloned);
     const s = new THREE.Vector3();
@@ -67,7 +84,7 @@ function Inner({ item, selected, invalid, url }: Props & { url: string }) {
       centeredScene: cloned,
       meshNaturalSize: [s.x, s.y, s.z] as [number, number, number],
     };
-  }, [scene, relightImports]);
+  }, [scene, relightImports, item.tintColor]);
 
   useEffect(() => {
     registerNatural(item.id, meshNaturalSize);

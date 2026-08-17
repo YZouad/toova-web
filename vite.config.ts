@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url';
 
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
-/** Same-origin path the app calls; Vite forwards to TRELLIS `/generate`. */
-const trellisProxyPath = '/api/trellis/generate';
+/** Same-origin prefix the app calls; Vite forwards to the Render BFF. */
+const trellisProxyPath = '/api/trellis';
+const defaultTrellisBffOrigin = 'https://toova-bff.onrender.com';
 
 /** GitHub Pages SPA fallback: unknown paths serve 404.html (= index.html). */
 function spa404Fallback(): Plugin {
@@ -24,18 +25,17 @@ function spa404Fallback(): Plugin {
   };
 }
 
-function buildTrellisProxy(trellisOrigin: string): Record<string, ProxyOptions> {
+function buildTrellisProxy(trellisBffOrigin: string): Record<string, ProxyOptions> {
   return {
     [trellisProxyPath]: {
-      target: trellisOrigin,
+      target: trellisBffOrigin,
       changeOrigin: true,
-      rewrite: () => '/generate',
       timeout: 600_000,
       proxyTimeout: 600_000,
       configure: (proxy) => {
-        proxy.on('proxyReq', (proxyReq, req) => {
+        proxy.on('proxyReq', (_proxyReq, req) => {
           console.log(
-            `[TRELLIS proxy] ${req.method} ${req.url} -> ${trellisOrigin}/generate`,
+            `[TRELLIS proxy] ${req.method} ${req.url} -> ${trellisBffOrigin}${req.url}`,
           );
         });
 
@@ -55,17 +55,17 @@ function buildTrellisProxy(trellisOrigin: string): Record<string, ProxyOptions> 
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
-  const trellisOrigin = env.TRELLIS_UPSTREAM_ORIGIN?.trim();
+  const trellisBffOrigin = env.TRELLIS_BFF_ORIGIN?.trim() || defaultTrellisBffOrigin;
   const base = env.VITE_BASE_PATH || '/';
 
-  if (mode === 'development' && !trellisOrigin && !env.VITE_TRELLIS_GENERATE_URL?.trim()) {
+  if (mode === 'development' && env.VITE_TRELLIS_GENERATE_URL?.trim()) {
     console.warn(
-      '[TRELLIS] Set TRELLIS_UPSTREAM_ORIGIN in .env.local (see .env.example) ' +
-        'or VITE_TRELLIS_GENERATE_URL to enable 3D model import in dev.',
+      '[TRELLIS] VITE_TRELLIS_GENERATE_URL is set; the browser will call that URL directly. ' +
+        'The Vite BFF proxy is still available for same-origin /api/trellis/*.',
     );
   }
 
-  const trellisProxy = trellisOrigin ? buildTrellisProxy(trellisOrigin) : undefined;
+  const trellisProxy = trellisBffOrigin ? buildTrellisProxy(trellisBffOrigin) : undefined;
 
   return {
     base,

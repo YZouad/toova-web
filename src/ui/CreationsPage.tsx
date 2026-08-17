@@ -125,6 +125,7 @@ export function CreationsPage({
         userId={user.id}
         open={importOpen}
         initialTab={importTab}
+        isAdmin={showAdmin}
         onClose={() => setImportOpen(false)}
         onAdded={() => {
           setRefreshKey((k) => k + 1);

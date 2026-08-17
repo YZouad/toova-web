@@ -193,10 +193,8 @@ export function LandingPage({
             <Button variant="mono" onClick={loggedIn && onGoDashboard ? onGoDashboard : onWatchDemo}>
               {loggedIn ? 'My rooms →' : '40-second demo →'}
             </Button>
-            <Button
-              variant="mono"
-              onClick={onOpenChecklist}
-            >
+            <Button variant="mono" onClick={onOpenChecklist}>
+
               Checklist →
             </Button>
           </div>

@@ -1,4 +1,5 @@
-import type { CSSProperties, ReactNode } from 'react';
+import { useRef, type CSSProperties, type MouseEvent, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Rule } from './Rule';
 
 export interface ModalProps {
@@ -11,6 +12,8 @@ export interface ModalProps {
   children?: ReactNode;
   className?: string;
   style?: CSSProperties;
+  /** Extra class on the scrim (e.g. stack above product drawer). */
+  scrimClassName?: string;
 }
 
 export function Modal({
@@ -23,13 +26,26 @@ export function Modal({
   width = 560,
   className,
   style,
+  scrimClassName,
 }: ModalProps) {
+  const pressedOnScrim = useRef(false);
+
   if (!open) return null;
 
-  return (
+  function handleScrimMouseDown(e: MouseEvent<HTMLDivElement>) {
+    pressedOnScrim.current = e.target === e.currentTarget;
+  }
+
+  function handleScrimClick(e: MouseEvent<HTMLDivElement>) {
+    if (pressedOnScrim.current && e.target === e.currentTarget) onClose();
+    pressedOnScrim.current = false;
+  }
+
+  return createPortal(
     <div
-      className="kit-modal__scrim"
-      onClick={onClose}
+      className={['kit-modal__scrim', scrimClassName].filter(Boolean).join(' ')}
+      onMouseDown={handleScrimMouseDown}
+      onClick={handleScrimClick}
       role="presentation"
     >
       <div
@@ -60,6 +76,7 @@ export function Modal({
         <div className="kit-modal__body">{children}</div>
         {footer ? <div className="kit-modal__footer">{footer}</div> : null}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

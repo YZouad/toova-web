@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { JUST_WEB_DEMO_URL, MOBILE_DEMO_URL, TWO_D_THREE_D_DEMO_URL, DemoVideoModal } from './DemoVideoModal';
+import { useEffect, useRef } from 'react';
+import { DemoShowcase } from './DemoShowcase';
 import {
   Button,
   DisplayEm,
@@ -45,69 +45,6 @@ const BOOTH_PERKS = [
   'Try Toova yourself',
 ];
 
-const DEMOS = [
-  {
-    id: '2d-3d',
-    badge: '2D → 3D',
-    url: TWO_D_THREE_D_DEMO_URL,
-    caption: 'Upload a product photo and watch AI turn it into an interactive 3D model.',
-    mobile: false,
-  },
-  {
-    id: 'web',
-    badge: 'Web',
-    url: JUST_WEB_DEMO_URL,
-    caption: 'Design your dorm, place furniture, and visualize your space on desktop.',
-    mobile: false,
-  },
-  {
-    id: 'mobile',
-    badge: 'Mobile / AR',
-    url: MOBILE_DEMO_URL,
-    caption: 'View your room in augmented reality on iPhone.',
-    mobile: true,
-  },
-] as const;
-
-function DemoCard({
-  demo,
-  onFullScreen,
-}: {
-  demo: (typeof DEMOS)[number];
-  onFullScreen: (url: string) => void;
-}) {
-  return (
-    <div
-      style={{
-        borderTop: '1px solid var(--rule-heavy)',
-        paddingTop: 20,
-        marginBottom: 32,
-      }}
-    >
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 16, marginBottom: 14 }}>
-        <MonoMeta size="sm" upper tone="dense">
-          {demo.badge}
-        </MonoMeta>
-        <Button variant="mono" onClick={() => onFullScreen(demo.url)}>
-          Full screen →
-        </Button>
-      </div>
-      <div
-        style={{
-          background: 'var(--bg-plate)',
-          border: '1px solid var(--rule-soft)',
-          overflow: 'hidden',
-          aspectRatio: demo.mobile ? '9 / 16' : '16 / 9',
-          maxWidth: demo.mobile ? 280 : '100%',
-        }}
-      >
-        <video src={demo.url} controls playsInline preload="metadata" style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }} />
-      </div>
-      <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', margin: '14px 0 0' }}>{demo.caption}</p>
-    </div>
-  );
-}
-
 export function PitchMadnessPage({
   onGoHome,
   onGetStarted,
@@ -119,11 +56,7 @@ export function PitchMadnessPage({
   scrollToDemosOnMount,
   onDemosScrolled,
 }: PitchMadnessPageProps) {
-  const [modalVideo, setModalVideo] = useState<string | null>(null);
   const demosRef = useRef<HTMLElement>(null);
-
-  const landscapeDemos = DEMOS.filter((d) => !d.mobile);
-  const mobileDemo = DEMOS.find((d) => d.mobile);
 
   const scrollToDemos = () => {
     demosRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -292,20 +225,11 @@ export function PitchMadnessPage({
         </div>
       </div>
 
-      <section id="pitch-demos" ref={demosRef} className="toova-frame" style={{ paddingTop: 104 }}>
-        <SectionOpener title="See it in action." note="2D → 3D · web · AR" />
-        <p style={{ font: 'var(--type-body)', color: 'var(--ink-2)', margin: '24px 0 40px', maxWidth: 540 }}>
-          Turn photos into 3D models, design on the web, then see it in AR on your phone.
-        </p>
-        <div className="pitch-demos-layout">
-          <div>
-            {landscapeDemos.map((demo) => (
-              <DemoCard key={demo.id} demo={demo} onFullScreen={setModalVideo} />
-            ))}
-          </div>
-          {mobileDemo ? <DemoCard demo={mobileDemo} onFullScreen={setModalVideo} /> : null}
-        </div>
-      </section>
+      <DemoShowcase
+        id="pitch-demos"
+        sectionRef={demosRef}
+        style={{ paddingTop: 104 }}
+      />
 
       <div className="toova-frame" style={{ paddingTop: 96 }}>
         <Eyebrow style={{ marginBottom: 28 }}>Our vision</Eyebrow>
@@ -354,8 +278,6 @@ export function PitchMadnessPage({
           ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
         ]}
       />
-
-      <DemoVideoModal open={!!modalVideo} src={modalVideo ?? undefined} onClose={() => setModalVideo(null)} />
     </div>
   );
 }

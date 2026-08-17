@@ -1,8 +1,10 @@
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { trackAffiliateClick } from '../lib/analytics';
 import type { CuratedProduct } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
+import { productHasPlaceableModel } from '../lib/checklistPublicGlbs';
+import { downloadCatalogModelByKind } from '../lib/modelStorage';
 import { Button, Eyebrow, MonoMeta, SectionOpener } from './kit';
 
 interface ProductDrawerProps {
@@ -13,15 +15,12 @@ interface ProductDrawerProps {
   onAddToList: (product: CuratedProduct) => void;
   onPlace?: (product: CuratedProduct) => void;
   placeHint?: string | null;
-}
-
-function formatRating(rating: number | null, reviewCount: number | null): string | null {
-  if (rating == null || !Number.isFinite(rating)) return null;
-  const stars = `${rating.toFixed(1)} out of 5`;
-  if (reviewCount != null && reviewCount > 0) {
-    return `${stars} · ${reviewCount.toLocaleString()} ratings`;
-  }
-  return stars;
+  /** Admin manage mode: show Add product and edit actions. */
+  adminMode?: boolean;
+  onAddProduct?: () => void;
+  onEditProduct?: (product: CuratedProduct) => void;
+  onDeleteProduct?: (product: CuratedProduct) => void;
+  onEditCategory?: () => void;
 }
 
 export function ProductDrawer({
@@ -32,9 +31,29 @@ export function ProductDrawer({
   onAddToList,
   onPlace,
   placeHint,
+  adminMode = false,
+  onAddProduct,
+  onEditProduct,
+  onDeleteProduct,
+  onEditCategory,
 }: ProductDrawerProps) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const [downloadKind, setDownloadKind] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  async function handleDownloadGlb(product: CuratedProduct) {
+    if (!product.placeCatalogKind || downloadKind) return;
+    setDownloadError(null);
+    setDownloadKind(product.placeCatalogKind);
+    try {
+      await downloadCatalogModelByKind(product.placeCatalogKind, product.name);
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Could not download model');
+    } finally {
+      setDownloadKind(null);
+    }
+  }
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -53,121 +72,176 @@ export function ProductDrawer({
   return createPortal(
     <div className="product-drawer-backdrop" role="presentation" onClick={onClose}>
       <div
-        className="product-drawer"
+        className={`product-drawer${adminMode ? ' product-drawer--admin' : ''}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="product-drawer-head">
+        <header className={`product-drawer-head${adminMode ? ' product-drawer-head--admin' : ''}`}>
           <div>
-            <Eyebrow level="section">Curated picks</Eyebrow>
+            <Eyebrow level="section">{adminMode ? 'Manage products' : 'Curated picks'}</Eyebrow>
             <SectionOpener level={5} title={`${categoryName}.`} id={titleId} style={{ marginTop: 8 }} />
           </div>
-          <button
-            ref={closeRef}
-            type="button"
-            className="product-drawer-close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ×
-          </button>
+          <div className="product-drawer-head-actions">
+            {adminMode && onEditCategory ? (
+              <Button size="sm" variant="outline" onClick={onEditCategory}>
+                Edit category
+              </Button>
+            ) : null}
+            {adminMode && onAddProduct ? (
+              <Button size="sm" onClick={onAddProduct}>
+                Add product
+              </Button>
+            ) : null}
+            <button
+              ref={closeRef}
+              type="button"
+              className="kit-modal__close"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              ×
+            </button>
+          </div>
         </header>
 
+        {downloadError ? (
+          <p className="product-drawer-hint" role="alert" style={{ margin: '0 0 8px' }}>
+            {downloadError}
+          </p>
+        ) : null}
+
         {products.length === 0 ? (
-          <p className="product-drawer-empty">Products coming soon for this item.</p>
+          <div className="product-drawer-empty-wrap">
+            <p className="product-drawer-empty" style={{ padding: '8px 0 0', margin: 0 }}>
+              {adminMode ? 'No products yet. Add one to get started.' : 'Products coming soon for this item.'}
+            </p>
+            {adminMode && onAddProduct ? (
+              <Button size="sm" onClick={onAddProduct} style={{ marginTop: 16 }}>
+                Add product
+              </Button>
+            ) : null}
+          </div>
         ) : (
-          <ul className="product-drawer-list">
+          <ul className="product-drawer-grid">
             {products.map((product) => {
               const price = formatPriceCents(product.priceCents, product.currency);
-              const placeable =
-                Boolean(product.placeBuiltinKind || product.placeCatalogKind) && canPlace;
-              const ratingLabel = formatRating(product.rating, product.reviewCount);
+              const shopUrl = product.affiliateUrl?.trim();
+              const placeable = canPlace && productHasPlaceableModel(product);
+              const recommended = /recommended/i.test(product.name) || /recommended/i.test(product.description);
               return (
-                <li key={product.id} className="product-drawer-item product-drawer-item--detail">
-                  <div className="product-drawer-item-media product-drawer-item-media--lg">
+                <li
+                  key={product.id}
+                  className={`product-drawer-card${adminMode ? ' product-drawer-card--admin' : ''}`}
+                >
+                  <div className="product-drawer-media" aria-hidden>
                     {product.imageUrl ? (
-                      <img src={product.imageUrl} alt="" />
+                      <img src={product.imageUrl} alt="" referrerPolicy="no-referrer" />
                     ) : (
-                      <span className="product-drawer-item-fallback">
+                      <span className="product-drawer-media-fallback">
                         {product.name.slice(0, 1)}
                       </span>
                     )}
                   </div>
-                  <div className="product-drawer-item-body">
-                    {product.brand ? (
-                      <MonoMeta size="xs" tone="dense" upper className="product-drawer-brand">
-                        {product.brand}
-                      </MonoMeta>
-                    ) : null}
-                    <div className="product-drawer-item-title-row">
-                      <h3 className="product-drawer-item-title">{product.name}</h3>
+                  <div className="product-drawer-body">
+                    <div className="product-drawer-meta">
+                      <h3 className="product-drawer-name">{product.name}</h3>
                       {price ? (
-                        <MonoMeta size="md" tone="dense" className="product-drawer-item-price">
-                          {price}
-                        </MonoMeta>
+                        <span className="product-drawer-price">{price}</span>
                       ) : (
-                        <MonoMeta size="md" tone="subtle" className="product-drawer-item-price">
-                          Price varies
-                        </MonoMeta>
+                        <span className="product-drawer-price product-drawer-price--na">—</span>
                       )}
                     </div>
-                    {ratingLabel ? (
-                      <p className="product-drawer-rating">{ratingLabel}</p>
+                    {!product.published && adminMode ? (
+                      <MonoMeta size="xs" tone="dense">Draft</MonoMeta>
                     ) : null}
-                    {product.availability ? (
-                      <p className="product-drawer-availability">{product.availability}</p>
+                    {recommended ? (
+                      <MonoMeta size="xs" tone="dense" upper>
+                        Recommended
+                      </MonoMeta>
                     ) : null}
                     {product.description ? (
-                      <p className="product-drawer-item-desc">{product.description}</p>
+                      <p className="product-drawer-desc">{product.description}</p>
                     ) : null}
-                    {product.featureBullets.length > 0 ? (
-                      <ul className="product-drawer-bullets">
-                        {product.featureBullets.map((bullet) => (
-                          <li key={bullet}>{bullet}</li>
-                        ))}
-                      </ul>
-                    ) : null}
-                    {product.dimensionsText ? (
-                      <p className="product-drawer-dims">
-                        <span className="product-drawer-dims-label">Details</span>
-                        {product.dimensionsText}
-                      </p>
-                    ) : null}
-                    <MonoMeta size="xs" tone="dense" upper className="product-drawer-retailer">
-                      Sold by {product.retailer}
-                    </MonoMeta>
-                    <div className="product-drawer-item-actions">
-                      <Button size="sm" variant="outline" onClick={() => onAddToList(product)}>
-                        Add to list
-                      </Button>
-                      <a
-                        className="kit-btn kit-btn--primary kit-btn--sm"
-                        href={product.affiliateUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() =>
-                          trackAffiliateClick({
-                            retailer: product.retailer,
-                            product_id: product.id,
-                            approximate: false,
-                            source: 'product_drawer',
-                          })
-                        }
-                      >
-                        Shop on {product.retailer}
-                      </a>
-                      {placeable && onPlace ? (
-                        <Button size="sm" variant="mono" onClick={() => onPlace(product)}>
-                          Place in room
-                        </Button>
-                      ) : null}
+                    <div className="product-drawer-actions">
+                      {adminMode ? (
+                        <>
+                          {onEditProduct ? (
+                            <Button size="sm" variant="outline" onClick={() => onEditProduct(product)}>
+                              Edit
+                            </Button>
+                          ) : null}
+                          {product.placeCatalogKind ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={downloadKind === product.placeCatalogKind}
+                              onClick={() => void handleDownloadGlb(product)}
+                            >
+                              {downloadKind === product.placeCatalogKind
+                                ? 'Downloading…'
+                                : 'Download GLB'}
+                            </Button>
+                          ) : null}
+                          {onDeleteProduct ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => onDeleteProduct(product)}
+                              style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                            >
+                              Delete
+                            </Button>
+                          ) : null}
+                        </>
+                      ) : (
+                        <>
+                          <Button size="sm" variant="outline" onClick={() => onAddToList(product)}>
+                            Add to list
+                          </Button>
+                          {shopUrl ? (
+                            <a
+                              className="kit-btn kit-btn--primary kit-btn--sm"
+                              href={shopUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() =>
+                                trackAffiliateClick({
+                                  retailer: product.retailer,
+                                  product_id: product.id,
+                                  approximate: false,
+                                  source: 'product_drawer',
+                                })
+                              }
+                            >
+                              Shop
+                            </a>
+                          ) : null}
+                          {product.placeCatalogKind ? (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              disabled={downloadKind === product.placeCatalogKind}
+                              onClick={() => void handleDownloadGlb(product)}
+                            >
+                              {downloadKind === product.placeCatalogKind
+                                ? 'Downloading…'
+                                : 'Download GLB'}
+                            </Button>
+                          ) : null}
+                          {placeable && onPlace ? (
+                            <Button size="sm" variant="mono" onClick={() => onPlace(product)}>
+                              Place in room
+                            </Button>
+                          ) : null}
+                        </>
+                      )}
                     </div>
-                    {!canPlace && (product.placeBuiltinKind || product.placeCatalogKind) ? (
-                      <MonoMeta size="xs" tone="subtle" className="product-drawer-place-hint">
+                    {!adminMode && !canPlace && productHasPlaceableModel(product) ? (
+                      <p className="product-drawer-hint">
                         {placeHint ?? 'Open a room to place this item.'}
-                      </MonoMeta>
+                      </p>
                     ) : null}
                   </div>
                 </li>
@@ -176,10 +250,12 @@ export function ProductDrawer({
           </ul>
         )}
 
-        <MonoMeta size="xs" tone="subtle" className="product-drawer-affiliate">
-          As an Amazon Associate, Toova may earn from qualifying purchases. Displayed prices
-          may change on the retailer site.
-        </MonoMeta>
+        {!adminMode ? (
+          <MonoMeta size="xs" tone="subtle" className="product-drawer-disclaimer">
+            As an Amazon Associate, Toova may earn from qualifying purchases. Displayed prices
+            may change on the retailer site.
+          </MonoMeta>
+        ) : null}
       </div>
     </div>,
     document.body,

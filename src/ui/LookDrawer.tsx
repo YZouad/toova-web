@@ -66,12 +66,16 @@ function FieldSelect({
   );
 }
 
-function WallColorPicker({
+export function PaintColorPicker({
+  label,
   value,
   onChange,
+  swatches = WALL_COLOR_SWATCHES,
 }: {
+  label: string;
   value: string;
   onChange: (color: string) => void;
+  swatches?: { label: string; color: string }[];
 }) {
   const [draft, setDraft] = useState(value);
   useEffect(() => {
@@ -80,14 +84,14 @@ function WallColorPicker({
 
   return (
     <div className="look-wall-color">
-      <span className="look-field-label">Wall paint</span>
+      <span className="look-field-label">{label}</span>
       <div className="look-wall-color-row">
         <input
           type="color"
           className="look-color-swatch-input"
           value={value.length === 7 ? value : '#d8d0c2'}
           onChange={(e) => onChange(e.target.value)}
-          aria-label="Wall color"
+          aria-label={`${label} color`}
         />
         <input
           type="text"
@@ -99,11 +103,11 @@ function WallColorPicker({
             if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) onChange(v);
           }}
           spellCheck={false}
-          aria-label="Wall color hex"
+          aria-label={`${label} hex`}
         />
       </div>
       <div className="look-swatches">
-        {WALL_COLOR_SWATCHES.map((s) => (
+        {swatches.map((s) => (
           <button
             key={s.color}
             type="button"
@@ -177,7 +181,8 @@ export function LookDrawer({
         </div>
 
         <Section title="Surfaces">
-          <WallColorPicker
+          <PaintColorPicker
+            label="Wall paint"
             value={appearance.wallColor}
             onChange={(wallColor) => setAppearance({ wallColor })}
           />

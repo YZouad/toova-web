@@ -3,6 +3,7 @@
  */
 
 import type { FurnitureKind } from '../furniture/registry';
+import { DEFAULT_RUG_COLOR, isChecklistRug } from './checklistPublicGlbs';
 import { DEFAULT_BLANKET_COLOR, newAttachmentKey, type EmitterConfig, type Item } from '../store';
 import {
   comforterHexFromConfig,
@@ -141,6 +142,16 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     if (row.bedding_enabled === true) return DEFAULT_BLANKET_COLOR;
     return undefined;
   })();
+  const tintColor = (() => {
+    if (row.kind !== 'imported') return undefined;
+    if (row.blanket_color != null && String(row.blanket_color).trim()) {
+      return String(row.blanket_color).trim();
+    }
+    if (isChecklistRug({ importedStoragePath, label: row.label })) {
+      return DEFAULT_RUG_COLOR;
+    }
+    return undefined;
+  })();
   const resolvedBeddingConfig =
     row.kind === 'bed'
       ? beddingConfig ??
@@ -157,6 +168,7 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     row.kind === 'bed' && resolvedBeddingConfig
       ? comforterHexFromConfig(resolvedBeddingConfig) ?? legacyBlanketColor
       : undefined;
+
   const blanketTexturePath =
     row.kind === 'bed' &&
     row.blanket_texture_path != null &&
@@ -190,7 +202,9 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
       row.kind === 'bed' && bedLeg !== undefined ? bedLeg : undefined,
     beddingEnabled,
     blanketColor,
+    tintColor,
     beddingConfig: resolvedBeddingConfig,
+
     blanketTexturePath,
     importedNaturalSize,
     importedUrl,
@@ -271,7 +285,10 @@ export function serializeLayoutForRoom(
           ? (it.beddingConfig
               ? comforterHexFromConfig(it.beddingConfig)
               : it.blanketColor) ?? null
-          : null,
+          : it.kind === 'imported' && it.tintColor
+            ? it.tintColor
+            : null,
+
       blanket_texture_path:
         it.kind === 'bed' && it.blanketTexturePath
           ? it.blanketTexturePath

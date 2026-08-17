@@ -10,12 +10,22 @@ import {
 } from './dormChecklist';
 
 function mapCategory(row: Record<string, unknown>): ChecklistCategory {
+  const imagePath =
+    row.image_path != null && String(row.image_path).trim()
+      ? String(row.image_path).trim()
+      : null;
   return {
     id: String(row.id),
     slug: String(row.slug),
     name: String(row.name),
     sortOrder: Number(row.sort_order ?? 0),
     published: row.published !== false,
+    parentId:
+      row.parent_id != null && String(row.parent_id).trim()
+        ? String(row.parent_id)
+        : null,
+    imagePath,
+    imageUrl: productImagePublicUrl(imagePath),
   };
 }
 
@@ -121,11 +131,12 @@ export async function fetchPublishedShoppingCatalog(): Promise<ChecklistCategory
   const [{ data: catRows, error: catErr }, prodResult] = await Promise.all([
     supabase
       .from('checklist_categories')
-      .select('id,slug,name,sort_order,published')
+      .select('id,slug,name,sort_order,published,parent_id,image_path')
       .eq('published', true)
       .order('sort_order', { ascending: true }),
     fetchCuratedProductRows(true),
   ]);
+
 
   if (catErr) throw new Error(catErr.message);
   if (prodResult.error) throw new Error(prodResult.error.message);
@@ -153,10 +164,11 @@ export async function fetchAdminShoppingCatalog(): Promise<ChecklistCategoryWith
   const [{ data: catRows, error: catErr }, prodResult] = await Promise.all([
     supabase
       .from('checklist_categories')
-      .select('id,slug,name,sort_order,published')
+      .select('id,slug,name,sort_order,published,parent_id,image_path')
       .order('sort_order', { ascending: true }),
     fetchCuratedProductRows(false),
   ]);
+
 
   if (catErr) throw new Error(catErr.message);
   if (prodResult.error) throw new Error(prodResult.error.message);

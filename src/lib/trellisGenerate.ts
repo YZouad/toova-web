@@ -13,7 +13,8 @@ export async function generateGlbFromPhoto(
 ): Promise<File> {
   await ensureTrellisReady(signal, onProgress);
 
-  console.log('[trellis] ready, calling generate');
+  onProgress?.('Generating 3D model…');
+
   const fd = new FormData();
   fd.append('file', imageFile);
 
@@ -48,6 +49,7 @@ export async function generateGlbFromPhoto(
     );
   }
 
+  onProgress?.('Downloading model…');
   const blob = await res.blob();
   if (blob.size === 0) {
     throw new Error('The server returned an empty model file.');

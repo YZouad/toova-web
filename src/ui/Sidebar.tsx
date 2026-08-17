@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useRoomWorkspace } from '../context/RoomWorkspaceContext';
+import { useAdminStats } from '../hooks/useAdminStats';
 import { useAuth } from '../hooks/useAuth';
 import { useRoomSave } from '../hooks/useRoomLayout';
 import { useUserCatalog } from '../hooks/useUserCatalog';
@@ -11,6 +12,7 @@ import { Button } from './kit/Button';
 
 export function Sidebar() {
   const { user, logout } = useAuth();
+  const { isAdmin } = useAdminStats(user?.id ?? null);
   const { workspace, exitWorkspace } = useRoomWorkspace();
   const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
   const addItem = useStore((s) => s.addItem);
@@ -88,6 +90,7 @@ export function Sidebar() {
         <ImportModelModal
           userId={user.id}
           open={importModalOpen}
+          isAdmin={isAdmin}
           onClose={() => setImportModalOpen(false)}
           onAdded={() => refresh()}
         />

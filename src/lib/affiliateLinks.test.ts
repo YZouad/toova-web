@@ -18,8 +18,8 @@ describe('shopping checklist helpers', () => {
 
   it('remaps legacy slug checked ids to category uuids', () => {
     const cats: ChecklistCategory[] = [
-      { id: 'uuid-lamp', slug: 'lamp', name: 'Lamp', sortOrder: 1, published: true },
-      { id: 'uuid-desk', slug: 'desk', name: 'Desk', sortOrder: 2, published: true },
+      { id: 'uuid-lamp', slug: 'lamp', name: 'Lamp', sortOrder: 1, published: true, parentId: null, imagePath: null, imageUrl: null },
+      { id: 'uuid-desk', slug: 'desk', name: 'Desk', sortOrder: 2, published: true, parentId: null, imagePath: null, imageUrl: null },
     ];
     const remapped = remapCheckedSlugsToIds(new Set(['lamp', 'uuid-desk', 'gone']), cats);
     expect([...remapped].sort()).toEqual(['uuid-desk', 'uuid-lamp']);
@@ -33,6 +33,9 @@ describe('shopping checklist helpers', () => {
         name: 'Lamp',
         sortOrder: 1,
         published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
         products: [
           {
             id: 'prod-lamp',
@@ -66,6 +69,9 @@ describe('shopping checklist helpers', () => {
         name: 'Desk',
         sortOrder: 2,
         published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
         products: [
           {
             id: 'prod-desk',
@@ -99,6 +105,9 @@ describe('shopping checklist helpers', () => {
         name: 'Towel',
         sortOrder: 3,
         published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
         products: [],
       },
     ];
@@ -117,6 +126,9 @@ describe('shopping checklist helpers', () => {
         name: 'Command Strips',
         sortOrder: 1,
         published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
         products: [
           {
             id: 'prod-strips',
@@ -150,6 +162,9 @@ describe('shopping checklist helpers', () => {
         name: 'Lamp',
         sortOrder: 2,
         published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
         products: [
           {
             id: 'prod-lamp',

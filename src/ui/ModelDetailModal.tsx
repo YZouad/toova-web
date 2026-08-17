@@ -13,7 +13,12 @@ import {
   catalogCategoryLabel,
 } from '../lib/catalogCategories';
 import { deleteCatalogModel, updateCatalogModel } from '../lib/galleryCatalog';
-import { MODEL_FILES_BUCKET } from '../lib/modelStorage';
+import {
+  MODEL_FILES_BUCKET,
+  catalogModelDownloadFilename,
+  downloadModelFile,
+  signBrowsableModelPath,
+} from '../lib/modelStorage';
 import { supabase } from '../lib/supabase';
 import { profilePath, navigate } from '../hooks/useRoute';
 import { Banner, Button, Field, Input, MonoMeta } from './kit';
@@ -76,6 +81,14 @@ export function ModelDetailModal({
   const [reportReason, setReportReason] = useState<CatalogReportReason>('inappropriate');
   const [reportBusy, setReportBusy] = useState(false);
   const [reported, setReported] = useState(() => hasReportedCatalogKind(model.kind));
+  const [downloadBusy, setDownloadBusy] = useState(false);
+  const canDownload = !model.isBuiltin && (!!model.signedUrl || !!model.storagePath);
+  const downloadFilename = catalogModelDownloadFilename(
+    model.label,
+    model.storagePath,
+    model.signedUrl ?? '',
+  );
+  const downloadExt = downloadFilename.split('.').pop()?.toUpperCase() ?? 'GLB';
 
   useEffect(() => {
     closeRef.current?.focus();
@@ -188,6 +201,25 @@ export function ModelDetailModal({
       setError(e instanceof Error ? e.message : 'Could not update visibility');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleDownload() {
+    if (!canDownload || downloadBusy) return;
+    setError(null);
+    setDownloadBusy(true);
+    try {
+      const url =
+        model.signedUrl ??
+        (model.storagePath ? await signBrowsableModelPath(model.storagePath) : null);
+      if (!url) {
+        throw new Error('Could not download model');
+      }
+      await downloadModelFile(url, downloadFilename);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not download model');
+    } finally {
+      setDownloadBusy(false);
     }
   }
 
@@ -468,6 +500,16 @@ export function ModelDetailModal({
             >
               Save
             </Button>
+          ) : null}
+          {canDownload ? (
+            <button
+              type="button"
+              className="model-detail-btn"
+              disabled={downloadBusy}
+              onClick={() => void handleDownload()}
+            >
+              {downloadBusy ? 'Downloading…' : `Download ${downloadExt}`}
+            </button>
           ) : null}
           <Button size="sm" onClick={() => onPlace(model)}>
             {placeLabel}
