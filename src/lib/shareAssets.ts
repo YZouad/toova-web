@@ -1,4 +1,9 @@
 import { supabase } from './supabase';
+import {
+  alignedExpiresIn,
+  readCachedSignedUrlMap,
+  writeCachedSignedUrlMap,
+} from './signedUrlCache';
 
 const SUPABASE_URL = 'https://xfifgtedssabneqlxbhf.supabase.co';
 const SUPABASE_PUBLISHABLE_KEY =
@@ -14,6 +19,11 @@ export async function signShareAssetPaths(
 ): Promise<Record<string, string>> {
   const trimmed = token.trim();
   if (!trimmed) return {};
+
+  const cached = readCachedSignedUrlMap(`share:${trimmed}`);
+  if (cached) return cached;
+
+  const { expiresIn, expiresAtMs } = alignedExpiresIn(expiresSec);
 
   const {
     data: { session },
@@ -34,7 +44,7 @@ export async function signShareAssetPaths(
     {
       method: 'POST',
       headers,
-      body: JSON.stringify({ token: trimmed, expires_sec: expiresSec }),
+      body: JSON.stringify({ token: trimmed, expires_sec: expiresIn }),
     },
   );
 
@@ -44,7 +54,11 @@ export async function signShareAssetPaths(
   }
 
   const body = (await res.json()) as { urls?: Record<string, string> };
-  return body.urls && typeof body.urls === 'object' ? body.urls : {};
+  const urls = body.urls && typeof body.urls === 'object' ? body.urls : {};
+  if (Object.keys(urls).length > 0) {
+    writeCachedSignedUrlMap(`share:${trimmed}`, urls, expiresAtMs);
+  }
+  return urls;
 }
 
 /** Resolve a storage path through share-signed URLs map, else null. */

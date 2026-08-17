@@ -1,19 +1,29 @@
+import { publicModelsUrl } from './modelStorage';
+import {
+  mirrorRoomThumbnailsToPublic,
+  unmirrorFromPublicModels,
+} from './publicModelsMirror';
+import { signStoragePath } from './signedUrlCache';
 import { supabase } from './supabase';
 
 export const ROOM_THUMBNAILS_BUCKET = 'room-thumbnails';
 
-/** Signed URL for a private room thumbnail object path. */
+/** Signed URL for a private room thumbnail, or public CDN URL for public rooms. */
 export async function signRoomThumbnailPath(
   objectPath: string,
   expiresSec = 60 * 60,
 ): Promise<string | null> {
+  return signStoragePath(ROOM_THUMBNAILS_BUCKET, objectPath, expiresSec);
+}
+
+export function resolveRoomThumbnailUrl(
+  objectPath: string,
+  isPublic: boolean,
+): Promise<string | null> {
   const trimmed = objectPath.trim();
-  if (!trimmed) return null;
-  const { data, error } = await supabase.storage
-    .from(ROOM_THUMBNAILS_BUCKET)
-    .createSignedUrl(trimmed, expiresSec);
-  if (error || !data?.signedUrl) return null;
-  return data.signedUrl;
+  if (!trimmed) return Promise.resolve(null);
+  if (isPublic) return Promise.resolve(publicModelsUrl(trimmed));
+  return signRoomThumbnailPath(trimmed);
 }
 
 /**
@@ -29,7 +39,7 @@ export async function uploadRoomThumbnail(
 
   const { data: existing, error: readErr } = await supabase
     .from('rooms')
-    .select('thumbnail_path')
+    .select('thumbnail_path, visibility')
     .eq('id', roomId)
     .maybeSingle();
 
@@ -40,14 +50,17 @@ export async function uploadRoomThumbnail(
     .from(ROOM_THUMBNAILS_BUCKET)
     .upload(objectPath, blob, {
       contentType: 'image/jpeg',
+      cacheControl: '86400',
       upsert: false,
     });
   if (upErr) return null;
 
-  const { error: dbErr } = await supabase
+  const { data: roomRow, error: dbErr } = await supabase
     .from('rooms')
     .update({ thumbnail_path: objectPath })
-    .eq('id', roomId);
+    .eq('id', roomId)
+    .select('visibility')
+    .maybeSingle();
 
   if (dbErr) {
     await supabase.storage.from(ROOM_THUMBNAILS_BUCKET).remove([objectPath]);
@@ -56,6 +69,11 @@ export async function uploadRoomThumbnail(
 
   if (previous && previous !== objectPath) {
     await supabase.storage.from(ROOM_THUMBNAILS_BUCKET).remove([previous]);
+    await unmirrorFromPublicModels([previous]);
+  }
+
+  if (roomRow?.visibility === 'public' || existing?.visibility === 'public') {
+    await mirrorRoomThumbnailsToPublic([objectPath]);
   }
 
   return objectPath;

@@ -1,11 +1,13 @@
 import { Canvas, useThree } from '@react-three/fiber';
 import { ContactShadows, Environment, OrbitControls, useGLTF } from '@react-three/drei';
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo } from 'react';
 import * as THREE from 'three';
 import { MARKETING_SHOWCASE } from '../lib/marketingShowcase';
-import { signBrowsableModelPath } from '../lib/modelStorage';
+import { publicModelAssetUrl } from '../lib/modelStorage';
 import { normalizeImportedMaterials } from '../lib/normalizeImportedMaterials';
 import { MonoMeta, Spinner } from './kit';
+
+const ARMCHAIR_URL = publicModelAssetUrl(MARKETING_SHOWCASE.object.modelPath);
 
 function TransparentClear() {
   const { gl } = useThree();
@@ -37,42 +39,18 @@ function ArmChairModel({ url }: { url: string }) {
   return <primitive object={object} />;
 }
 
-/** Hero slogan turntable: public catalog Arm Chair on a transparent canvas. */
+/** Hero slogan turntable: static public/marketing Arm Chair (not Supabase Storage). */
 export function MarketingObjectTurntable() {
-  const [url, setUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
   useEffect(() => {
-    let cancelled = false;
-    void (async () => {
-      const signed = await signBrowsableModelPath(MARKETING_SHOWCASE.object.modelPath);
-      if (cancelled) return;
-      if (!signed) {
-        setError('Model unavailable');
-        return;
-      }
-      useGLTF.preload(signed);
-      setUrl(signed);
-    })();
-    return () => {
-      cancelled = true;
-    };
+    if (ARMCHAIR_URL) useGLTF.preload(ARMCHAIR_URL);
   }, []);
 
-  if (error) {
+  if (!ARMCHAIR_URL) {
     return (
       <div className="landing-object-fallback">
         <MonoMeta size="sm" tone="dense">
-          {error}
+          Model unavailable
         </MonoMeta>
-      </div>
-    );
-  }
-
-  if (!url) {
-    return (
-      <div className="landing-object-fallback">
-        <Spinner label="Loading model…" />
       </div>
     );
   }
@@ -99,7 +77,7 @@ export function MarketingObjectTurntable() {
           <directionalLight position={[36, 48, 24]} intensity={1.05} />
           <directionalLight position={[-28, 18, -16]} intensity={0.35} color="#B05A3C" />
           <Environment preset="apartment" environmentIntensity={0.35} />
-          <ArmChairModel url={url} />
+          <ArmChairModel url={ARMCHAIR_URL} />
           <ContactShadows
             position={[0, 0.01, 0]}
             opacity={0.28}

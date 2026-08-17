@@ -2,6 +2,7 @@ import { buildAndUploadCatalogThumbnail } from './buildCatalogThumbnail';
 import type { CatalogCategorySlug } from './catalogCategories';
 import type { ConversionJobSource } from './conversionJobs';
 import { MODEL_FILES_BUCKET } from './modelStorage';
+import { mirrorToPublicModels } from './publicModelsMirror';
 import { supabase } from './supabase';
 
 export interface UploadCatalogModelInput {
@@ -49,6 +50,7 @@ export async function uploadCatalogModel(
     .from(MODEL_FILES_BUCKET)
     .upload(objectPath, input.glbFile, {
       contentType: input.glbFile.type || contentType,
+      cacheControl: '86400',
       upsert: false,
     });
   if (upErr) throw new Error(upErr.message);
@@ -80,6 +82,10 @@ export async function uploadCatalogModel(
     visibility: input.visibility ?? 'private',
   });
   if (insErr) throw new Error(insErr.message);
+
+  if ((input.visibility ?? 'private') === 'public') {
+    await mirrorToPublicModels([objectPath, thumbnailPath]);
+  }
 
   return { kind, objectPath };
 }

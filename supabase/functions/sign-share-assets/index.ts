@@ -95,8 +95,13 @@ Deno.serve(async (req: Request) => {
 
 function clampExpires(raw: unknown): number {
   const n = typeof raw === "number" ? raw : Number(raw);
-  if (!Number.isFinite(n)) return 60 * 60;
-  return Math.min(Math.max(Math.floor(n), 60), 60 * 60 * 24);
+  const requested = Number.isFinite(n) ? Math.min(Math.max(Math.floor(n), 60), 60 * 60 * 24) : 60 * 60;
+  const windowSec = requested <= 60 * 60 ? 60 * 60 : 60 * 60 * 24;
+  const now = Date.now();
+  const windowMs = windowSec * 1000;
+  let expiresAt = Math.ceil(now / windowMs) * windowMs;
+  if (expiresAt - now < 120_000) expiresAt += windowMs;
+  return Math.max(60, Math.round((expiresAt - now) / 1000));
 }
 
 async function createSignedUrl(

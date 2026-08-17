@@ -2,6 +2,7 @@ import { supabase } from './supabase';
 import { MODEL_FILES_BUCKET } from './modelStorage';
 import { requestUnfurlDeploy } from './requestUnfurlDeploy';
 import { buildShareUrl } from './shareLinks';
+import { signStoragePaths } from './signedUrlCache';
 
 export type ShareRole = 'viewer' | 'editor';
 
@@ -77,27 +78,12 @@ export async function fetchSharedRoom(token: string): Promise<SharedRoomRpcPaylo
   return data as SharedRoomRpcPayload;
 }
 
-/** After get_shared_room granted paths, mint short-lived signed URLs as anon/auth. */
+/** After get_shared_room granted paths, reuse a cached signed URL when possible. */
 export async function signGrantedAssetPaths(
   paths: string[],
   expiresSec = 60 * 60,
 ): Promise<Record<string, string>> {
-  const unique = [...new Set(paths.map((p) => p.trim()).filter(Boolean))];
-  if (unique.length === 0) return {};
-
-  const out: Record<string, string> = {};
-  const { data, error } = await supabase.storage
-    .from(MODEL_FILES_BUCKET)
-    .createSignedUrls(unique, expiresSec);
-
-  if (error || !data) return out;
-
-  for (const row of data) {
-    if (row.path && row.signedUrl && !row.error) {
-      out[row.path] = row.signedUrl;
-    }
-  }
-  return out;
+  return signStoragePaths(MODEL_FILES_BUCKET, paths, expiresSec);
 }
 
 export async function redeemShareToken(token: string): Promise<string> {

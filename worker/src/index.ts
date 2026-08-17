@@ -155,7 +155,7 @@ async function buildMeta(env: Env, deep: DeepLink): Promise<UnfurlMeta> {
         ? row.canonical_url
         : `https://toova.net/u/${deep.handle}/r/${deep.roomId}`;
     const imageUrl = thumbPath
-      ? await signRoomThumbnail(env, thumbPath)
+      ? publicModelsObjectUrl(env, thumbPath)
       : fallbackImage;
 
     return {
@@ -329,6 +329,16 @@ async function signStoragePath(
   if (!path) return null;
   if (path.startsWith('http')) return path;
   return `${base}/storage/v1${path.startsWith('/') ? path : `/${path}`}`;
+}
+
+function publicModelsObjectUrl(env: Env, path: string): string {
+  const base = env.SUPABASE_URL.replace(/\/+$/, '');
+  const encoded = path
+    .split('/')
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join('/');
+  return `${base}/storage/v1/object/public/public-models/${encoded}`;
 }
 
 function signRoomThumbnail(env: Env, path: string): Promise<string | null> {

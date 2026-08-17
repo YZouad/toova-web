@@ -17,7 +17,7 @@ import {
 } from '../lib/profiles';
 import { formatRelativeTime } from '../lib/userDisplay';
 import { profilePath, navigate, galleryPath } from '../hooks/useRoute';
-import { signBrowsableModelPath } from '../lib/modelStorage';
+import { resolveBrowsableModelUrl } from '../lib/modelStorage';
 import { planBounds } from '../lib/roomGeometry';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
 import { withPreviewTints } from '../hooks/useGalleryRooms';
@@ -145,7 +145,9 @@ export function ProfilePage({
           await Promise.all(
             catalog.models.map(async (m) => {
               if (!m.thumbnail_path) return;
-              const url = await signBrowsableModelPath(m.thumbnail_path);
+              const url = await resolveBrowsableModelUrl(m.thumbnail_path, {
+                access: m.visibility === 'public' ? 'public' : 'private',
+              });
               if (url) thumbs[m.kind] = url;
             }),
           );

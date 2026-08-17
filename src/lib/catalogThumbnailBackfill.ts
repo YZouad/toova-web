@@ -1,5 +1,6 @@
 import { generateGlbThumbnail } from './generateGlbThumbnail';
-import { signModelObjectPath, uploadModelThumbnail } from './modelStorage';
+import { publicModelsUrl, signModelObjectPath, uploadModelThumbnail } from './modelStorage';
+import { mirrorToPublicModels } from './publicModelsMirror';
 import { supabase } from './supabase';
 
 const sessionPreviewCache = new Map<string, string>();
@@ -91,11 +92,20 @@ async function drainQueue() {
             .update({ thumbnail_path: path })
             .eq('kind', job.kind);
           if (!error) {
-            const signed = await signModelObjectPath(path);
-            if (signed) {
+            const { data: catalog } = await supabase
+              .from('furniture_catalog')
+              .select('visibility')
+              .eq('kind', job.kind)
+              .maybeSingle();
+            const isPublic = catalog?.visibility === 'public';
+            if (isPublic) await mirrorToPublicModels([path]);
+            const preview = isPublic
+              ? publicModelsUrl(path)
+              : await signModelObjectPath(path);
+            if (preview) {
               URL.revokeObjectURL(previewUrl);
-              sessionPreviewCache.set(job.kind, signed);
-              job.onPreview(job.kind, signed);
+              sessionPreviewCache.set(job.kind, preview);
+              job.onPreview(job.kind, preview);
             }
           }
         }

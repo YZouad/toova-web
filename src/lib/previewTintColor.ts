@@ -1,4 +1,4 @@
-import { signModelObjectPath } from './modelStorage';
+import { resolveBrowsableModelUrl } from './modelStorage';
 import { supabase } from './supabase';
 
 const FALLBACK_IMPORTED = '#7E8A60';
@@ -94,7 +94,7 @@ export async function resolvePreviewTintsForModelUrls(
 
   const { data: catalogRows, error } = await supabase
     .from('furniture_catalog')
-    .select('model_url,thumbnail_path')
+    .select('model_url,thumbnail_path,visibility')
     .in('model_url', missing);
   if (error || !catalogRows?.length) {
     for (const u of missing) {
@@ -115,7 +115,9 @@ export async function resolvePreviewTintsForModelUrls(
         if (pathCached) {
           tint = pathCached;
         } else {
-          const signed = await signModelObjectPath(thumbPath);
+          const signed = await resolveBrowsableModelUrl(thumbPath, {
+            access: row.visibility === 'public' ? 'public' : 'private',
+          });
           if (signed) {
             const avg = await averageColorFromImageUrl(signed);
             if (avg) {

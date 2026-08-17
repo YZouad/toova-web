@@ -17,8 +17,9 @@ import {
   MODEL_FILES_BUCKET,
   catalogModelDownloadFilename,
   downloadModelFile,
-  signBrowsableModelPath,
+  resolveBrowsableModelUrl,
 } from '../lib/modelStorage';
+import { removePublicModelMirrors } from '../lib/publicModelsMirror';
 import { supabase } from '../lib/supabase';
 import { profilePath, navigate } from '../hooks/useRoute';
 import { Banner, Button, Field, Input, MonoMeta } from './kit';
@@ -211,7 +212,11 @@ export function ModelDetailModal({
     try {
       const url =
         model.signedUrl ??
-        (model.storagePath ? await signBrowsableModelPath(model.storagePath) : null);
+        (model.storagePath
+          ? await resolveBrowsableModelUrl(model.storagePath, {
+              access: model.visibility === 'public' ? 'public' : 'private',
+            })
+          : null);
       if (!url) {
         throw new Error('Could not download model');
       }
@@ -233,6 +238,7 @@ export function ModelDetailModal({
       );
       if (toRemove.length > 0) {
         await supabase.storage.from(MODEL_FILES_BUCKET).remove(toRemove);
+        await removePublicModelMirrors(toRemove);
       }
       onModelDeleted(model.kind);
       onClose();

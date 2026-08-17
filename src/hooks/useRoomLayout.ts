@@ -30,6 +30,7 @@ import {
   signPublicRoomAssetPaths,
   type RoomAttributionPayload,
 } from '../lib/profiles';
+import { mirrorRoomAssets } from '../lib/publicModelsMirror';
 import type { Item, RoomEnvironment } from '../store';
 import { DEFAULT_ENVIRONMENT, useStore } from '../store';
 
@@ -190,13 +191,47 @@ export async function loadSharedRoomLayout(token: string): Promise<SharedRoomLoa
   };
 }
 
+export interface LoadPublicRoomOptions {
+  /**
+   * Map storage object keys → same-origin public/ paths (or absolute URLs).
+   * Matching assets skip createSignedUrl so landing-page snapshots do not
+   * count against Supabase Storage egress.
+   */
+  assetUrlOverrides?: Record<string, string>;
+}
+
+function resolveRoomAssetUrl(
+  storagePath: string,
+  signedAssets: Record<string, string>,
+  overrides: Record<string, string>,
+): string | undefined {
+  const override = overrides[storagePath];
+  return (
+    publicModelAssetUrl(storagePath) ??
+    (override ? publicModelAssetUrl(override) ?? override : null) ??
+    signedAssets[storagePath]
+  );
+}
+
 /** Load a published profile room (works for anon via path-scoped storage policy). */
 export async function loadPublicRoomLayout(
   handle: string,
   roomId: string,
+  options?: LoadPublicRoomOptions,
 ): Promise<PublicRoomLoadResult> {
   const payload = await fetchPublicRoom(handle, roomId);
-  const signedAssets = await signPublicRoomAssetPaths(payload.asset_paths ?? []);
+  const overrides = options?.assetUrlOverrides ?? {};
+  const toSign = (payload.asset_paths ?? []).filter((raw) => {
+    const path = raw.trim();
+    if (!path) return false;
+    if (publicModelAssetUrl(path)) return false;
+    const override = overrides[path];
+    if (override && (publicModelAssetUrl(override) || override.startsWith('http'))) {
+      return false;
+    }
+    return true;
+  });
+  const signedAssets = await signPublicRoomAssetPaths(toSign);
 
   const environment = parseEnvironment(payload.room.environment) ?? { ...DEFAULT_ENVIRONMENT };
   const roomGeometry = parseFloorPlan(payload.room.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
@@ -209,13 +244,19 @@ export async function loadPublicRoomLayout(
     const item = dbRowToItem(row);
     if (!item) continue;
     if (item.kind === 'imported' && item.importedStoragePath) {
-      item.importedUrl =
-        publicModelAssetUrl(item.importedStoragePath) ??
-        signedAssets[item.importedStoragePath];
+      item.importedUrl = resolveRoomAssetUrl(
+        item.importedStoragePath,
+        signedAssets,
+        overrides,
+      );
     }
     if (item.kind === 'bed' && item.blanketTexturePath) {
-      const signed = signedAssets[item.blanketTexturePath];
-      if (signed) item.blanketTextureUrl = signed;
+      const url = resolveRoomAssetUrl(
+        item.blanketTexturePath,
+        signedAssets,
+        overrides,
+      );
+      if (url) item.blanketTextureUrl = url;
     }
     items.push(item);
     order.push(item.id);
@@ -275,6 +316,15 @@ export async function saveRoomLayout(
   const { error: upErr } = await supabase.from('rooms').update(roomUpdate).eq('id', roomId);
 
   if (upErr) throw new Error(formatRoomDbError(upErr.message));
+
+  const { data: room } = await supabase
+    .from('rooms')
+    .select('visibility')
+    .eq('id', roomId)
+    .maybeSingle();
+  if (room?.visibility === 'public') {
+    await mirrorRoomAssets(roomId, 'public');
+  }
 }
 
 const ROOM_SCHEMA_MIGRATION_HINT =

@@ -10,7 +10,7 @@ import {
   type GallerySort,
   type GallerySource,
 } from '../lib/galleryCatalog';
-import { signBrowsableModelPath } from '../lib/modelStorage';
+import { resolveBrowsableModelUrl } from '../lib/modelStorage';
 import type { CatalogVisibility } from '../lib/catalogEngagement';
 import type { CatalogCategorySlug } from '../lib/catalogCategories';
 import { BUILTIN_CATEGORIES } from '../lib/catalogCategories';
@@ -94,13 +94,14 @@ async function resolveUrls(row: GalleryCatalogRow): Promise<{
   if (!path) return { signedUrl: null, previewUrl: null };
 
   const isAbsolute = path.startsWith('http://') || path.startsWith('https://');
-  const signedUrl = isAbsolute ? path : await signBrowsableModelPath(path);
+  const access = row.visibility === 'public' ? 'public' : 'private';
+  const signedUrl = isAbsolute ? path : await resolveBrowsableModelUrl(path, { access });
   if (!signedUrl) return { signedUrl: null, previewUrl: null };
 
   const thumbPath = row.thumbnail_path?.trim() ?? '';
   let previewUrl: string | null = null;
   if (thumbPath) {
-    previewUrl = await signBrowsableModelPath(thumbPath);
+    previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
   } else {
     previewUrl = getSessionCatalogPreview(row.kind) ?? null;
   }
