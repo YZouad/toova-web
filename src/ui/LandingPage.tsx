@@ -80,6 +80,26 @@ const VALUES: [string, string][] = [
   ['Innovation', 'Spatial tools belong to shoppers, not only to architects and studios.'],
 ];
 
+const FAQ: { question: string; answer: string }[] = [
+  {
+    question: 'What is Toova?',
+    answer:
+      'A 3D room planner: turn a product photo into a model and place it in your room at real scale.',
+  },
+  {
+    question: 'How does the room planner work?',
+    answer: 'Photo → 3D (~30s) → arrange against your walls → buy from the room.',
+  },
+  {
+    question: 'Can I plan a dorm before I move in?',
+    answer: 'Yes; measured dorm plans are available today.',
+  },
+  {
+    question: 'Is Toova free?',
+    answer: 'Free for five rooms; Studio is $18/month.',
+  },
+];
+
 export function LandingPage({
   onGetStarted,
   onLogin,
@@ -217,7 +237,7 @@ export function LandingPage({
         <div className="toova-grid-label-prose">
           <div>
             <Eyebrow style={{ marginBottom: 16 }}>What is Toova</Eyebrow>
-            <DisplayHeading level={5}>Experience products before buying them.</DisplayHeading>
+            <DisplayHeading level={5} as="h2">Experience products before buying them.</DisplayHeading>
           </div>
           <p style={{ font: 'var(--type-body)', color: 'var(--ink-2)', margin: 0 }}>
             Every year millions of people buy furniture and decor without knowing whether it fits their space or
@@ -267,7 +287,7 @@ export function LandingPage({
           <Eyebrow tone="inverse" style={{ marginBottom: 40 }}>
             Why we&apos;re building Toova
           </Eyebrow>
-          <DisplayHeading level={3} inverse style={{ marginBottom: 56, maxWidth: 1000 }}>
+          <DisplayHeading level={3} as="h2" inverse style={{ marginBottom: 56, maxWidth: 1000 }}>
             The best return is the one that never happens.
           </DisplayHeading>
           <div className="landing-dark-band__grid">
@@ -327,7 +347,7 @@ export function LandingPage({
         <div className="landing-future__grid">
           <div className="landing-future__intro">
             <Eyebrow style={{ marginBottom: 16 }}>The future of shopping</Eyebrow>
-            <DisplayHeading level={5} style={{ marginBottom: 18 }}>
+            <DisplayHeading level={5} as="h2" style={{ marginBottom: 18 }}>
               One platform.
               <br />
               Every purchase.
@@ -352,7 +372,7 @@ export function LandingPage({
                 borderBottom: i < 2 ? '1px solid var(--rule-hair)' : 'none',
               }}
             >
-              <span className="landing-values__title">{title}</span>
+              <h3 className="landing-values__title">{title}</h3>
               <span className="landing-values__body">{body}</span>
             </div>
           ))}
@@ -380,6 +400,19 @@ export function LandingPage({
             ctaVariant="primary"
             onCta={primaryAction}
           />
+        </div>
+      </div>
+
+      {/* FAQ */}
+      <div className="toova-frame landing-section-pad">
+        <SectionOpener id="faq" title="Questions." note="Room planner · dorms · pricing" />
+        <div className="landing-faq" style={{ paddingTop: 32 }}>
+          {FAQ.map((item) => (
+            <div key={item.question} className="landing-faq__item">
+              <h3 className="landing-faq__question">{item.question}</h3>
+              <p className="landing-faq__answer">{item.answer}</p>
+            </div>
+          ))}
         </div>
       </div>
 

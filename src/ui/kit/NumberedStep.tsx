@@ -48,7 +48,7 @@ export function NumberedStep({
       style={style}
     >
       <div className="kit-numbered-step__numeral">{numeral}</div>
-      <div className="kit-numbered-step__title">{title}</div>
+      <h3 className="kit-numbered-step__title">{title}</h3>
       <p className="kit-numbered-step__body">{body}</p>
       <Plate src={plateSrc} height={plateHeight} topCaption={plateCaption} />
     </div>

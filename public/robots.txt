@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /r/
+
+Sitemap: https://toova.net/sitemap.xml

@@ -25,7 +25,7 @@ export function UserAvatar({ name, src, size = 36, className }: UserAvatarProps)
     return (
       <img
         src={src}
-        alt=""
+        alt={name}
         className={className ? `user-avatar ${className}` : 'user-avatar'}
         style={{ ...style, objectFit: 'cover', display: 'block', background: 'var(--accent-bg)' }}
       />

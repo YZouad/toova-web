@@ -861,12 +861,35 @@ button.landing-nav-brand { cursor: pointer; }
   color: var(--text-heading);
   flex: none;
   width: 11.5rem;
+  margin: 0;
 }
 .landing-values__body {
   font: var(--type-body-sm);
   color: var(--ink-4);
   flex: 1;
   min-width: 0;
+}
+.landing-faq {
+  border-top: 1px solid var(--rule-heavy);
+}
+.landing-faq__item {
+  padding: 28px 0;
+  border-bottom: 1px solid var(--rule-hair);
+}
+.landing-faq__item:last-child {
+  border-bottom: none;
+}
+.landing-faq__question {
+  font: var(--type-strong);
+  letter-spacing: var(--letter-tight);
+  color: var(--text-heading);
+  margin: 0 0 10px;
+}
+.landing-faq__answer {
+  font: var(--type-body-sm);
+  color: var(--ink-4);
+  margin: 0;
+  max-width: 540px;
 }
 @media (max-width: 900px) {
   .landing-hero-slogan {
@@ -8258,7 +8281,7 @@ button.landing-nav-brand { cursor: pointer; }
 .kit-numbered-step__title {
   font: var(--type-strong);
   letter-spacing: var(--letter-tight);
-  margin-bottom: 10px;
+  margin: 0 0 10px;
 }
 .kit-numbered-step__body {
   font: var(--type-body-sm);

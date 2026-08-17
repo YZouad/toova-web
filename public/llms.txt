@@ -1,0 +1,18 @@
+# Toova
+
+> A 3D room planner that turns product photos into real-scale models so you can design a room before you buy.
+
+Toova helps people place furniture and decor inside their own space at real scale. Start with a photo, get a 3D model in about thirty seconds, arrange it against your walls, then buy with confidence. Free for five rooms; Studio unlocks unlimited rooms.
+
+## Key pages
+
+- Homepage: https://toova.net/
+- Gallery: https://toova.net/gallery
+- Timeline: https://toova.net/timeline
+
+## Product
+
+- Photo → 3D conversion at real-world scale
+- Measured dorm plans (student housing first)
+- Free tier: up to 5 rooms
+- Studio: $18/month for unlimited rooms and priority processing

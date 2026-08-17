@@ -22,7 +22,7 @@ export function Footer({
   return (
     <footer className={['kit-footer', className].filter(Boolean).join(' ')} style={style}>
       <div className="kit-footer__inner">
-        <Logo size={18} />
+        <Logo size={18} alt="Toova" />
         <div className="kit-footer__links">
           {links.map((link) =>
             link.onClick ? (
