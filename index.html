@@ -3,20 +3,101 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <title>Toova - Design your room</title>
-    <meta name="description" content="Design your room in 3D with Toova." />
+    <title>Toova – 3D Room Planner to Design Before You Buy</title>
+    <meta
+      name="description"
+      content="Plan your room in 3D with Toova. Place furniture at real scale, use measured dorm plans, and see what fits before you buy. Free to start."
+    />
     <link rel="icon" href="/toova-logo-square.svg" type="image/svg+xml" />
     <link rel="canonical" href="https://toova.net/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Toova" />
-    <meta property="og:title" content="Toova - Design your room" />
-    <meta property="og:description" content="Design your room in 3D with Toova." />
+    <meta property="og:title" content="Toova – 3D Room Planner to Design Before You Buy" />
+    <meta
+      property="og:description"
+      content="Plan your room in 3D with Toova. Place furniture at real scale, use measured dorm plans, and see what fits before you buy. Free to start."
+    />
     <meta property="og:url" content="https://toova.net/" />
     <meta property="og:image" content="https://toova.net/toova-logo.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Toova - Design your room" />
-    <meta name="twitter:description" content="Design your room in 3D with Toova." />
+    <meta name="twitter:title" content="Toova – 3D Room Planner to Design Before You Buy" />
+    <meta
+      name="twitter:description"
+      content="Plan your room in 3D with Toova. Place furniture at real scale, use measured dorm plans, and see what fits before you buy. Free to start."
+    />
     <meta name="twitter:image" content="https://toova.net/toova-logo.png" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "Organization",
+            "@id": "https://toova.net/#organization",
+            "name": "Toova",
+            "url": "https://toova.net/",
+            "logo": "https://toova.net/toova-logo.png"
+          },
+          {
+            "@type": "WebSite",
+            "@id": "https://toova.net/#website",
+            "name": "Toova",
+            "url": "https://toova.net/",
+            "publisher": { "@id": "https://toova.net/#organization" }
+          },
+          {
+            "@type": "SoftwareApplication",
+            "name": "Toova",
+            "applicationCategory": "DesignApplication",
+            "operatingSystem": "Web",
+            "url": "https://toova.net/",
+            "description": "A 3D room planner that turns product photos into real-scale models so you can design a room before you buy.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "publisher": { "@id": "https://toova.net/#organization" }
+          },
+          {
+            "@type": "FAQPage",
+            "mainEntity": [
+              {
+                "@type": "Question",
+                "name": "What is Toova?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "A 3D room planner: turn a product photo into a model and place it in your room at real scale."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "How does the room planner work?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Photo → 3D (~30s) → arrange against your walls → buy from the room."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Can I plan a dorm before I move in?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Yes; measured dorm plans are available today."
+                }
+              },
+              {
+                "@type": "Question",
+                "name": "Is Toova free?",
+                "acceptedAnswer": {
+                  "@type": "Answer",
+                  "text": "Free for five rooms; Studio is $18/month."
+                }
+              }
+            ]
+          }
+        ]
+      }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -34,6 +115,13 @@
     </style>
   </head>
   <body>
+    <noscript>
+      <p>
+        Toova is a 3D room planner. Turn a product photo into a real-scale model, place it in your room,
+        and see what fits before you buy. Free to start at
+        <a href="https://toova.net/">toova.net</a>.
+      </p>
+    </noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
