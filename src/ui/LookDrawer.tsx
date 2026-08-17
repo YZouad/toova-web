@@ -128,7 +128,6 @@ interface LookDrawerProps {
   onClose: () => void;
   onGoToPreset: (id: CameraPresetId) => void;
   onOpenExport: () => void;
-  onEditFloorPlan?: () => void;
 }
 
 /** Surfaces, shell, camera — opened from the Atmosphere strip “Look” button. */
@@ -137,13 +136,12 @@ export function LookDrawer({
   onClose,
   onGoToPreset,
   onOpenExport,
-  onEditFloorPlan,
 }: LookDrawerProps) {
   const appearance = useStore((s) => s.environment.appearance);
   const setAppearance = useStore((s) => s.setAppearance);
   const visual = useStore((s) => s.visual);
   const setVisualQuality = useStore((s) => s.setVisualQuality);
-  const setRelightImports = useStore((s) => s.setRelightImports);
+  const setAdvancedControls = useStore((s) => s.setAdvancedControls);
   const setCutaway = useStore((s) => s.setCutaway);
   const setCameraPreset = useStore((s) => s.setCameraPreset);
   const roomGeometry = useStore((s) => s.roomGeometry);
@@ -170,6 +168,15 @@ export function LookDrawer({
         <div className="look-drawer-actions">
           <button type="button" className="look-action" onClick={onOpenExport}>
             Export render
+          </button>
+          <button
+            type="button"
+            className={`look-action${visual.advancedControls ? ' look-action--accent' : ''}`}
+            aria-pressed={visual.advancedControls}
+            title="Show height arrow and rotate ring on the selected object"
+            onClick={() => setAdvancedControls(!visual.advancedControls)}
+          >
+            Advanced controls
           </button>
         </div>
 
@@ -233,11 +240,6 @@ export function LookDrawer({
               <span className="look-height-val">{Math.round(roomGeometry.height)}″</span>
             </div>
           </label>
-          {onEditFloorPlan ? (
-            <button type="button" className="look-action look-action--block" onClick={onEditFloorPlan}>
-              Edit floor plan
-            </button>
-          ) : null}
           <p className="look-plan-meta">
             {roomGeometry.walls.length} walls · {doors} doors · {windows} windows
           </p>
@@ -266,17 +268,6 @@ export function LookDrawer({
             options={RENDER_QUALITY_TIERS.map((t) => ({ id: t, label: qualityLabel(t) }))}
             onChange={(id) => setVisualQuality(id as RenderQualityTier)}
           />
-          <div className="look-toggle-row">
-            <button
-              type="button"
-              className={`look-toggle${visual.relightImports ? ' active' : ''}`}
-              aria-pressed={visual.relightImports}
-              title="Soften baked lighting on imported / AI models so room lights affect them"
-              onClick={() => setRelightImports(!visual.relightImports)}
-            >
-              Relight imports
-            </button>
-          </div>
         </Section>
       </div>
     </GlassSurface>

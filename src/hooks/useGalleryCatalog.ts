@@ -111,7 +111,7 @@ async function resolveUrls(row: GalleryCatalogRow): Promise<{
 function localBuiltinModels(categories: string[], query: string): GalleryModel[] {
   const q = query.trim().toLowerCase();
   const required = categories.map((c) => c.toLowerCase());
-  return (Object.keys(FURNITURE) as Array<Exclude<FurnitureKind, 'imported' | 'hanging'>>)
+  return (Object.keys(FURNITURE) as Array<Exclude<FurnitureKind, 'imported' | 'hanging' | 'light'>>)
     .map((k) => {
       const def = FURNITURE[k];
       const cats = BUILTIN_CATEGORIES[k] ?? ['other'];

@@ -1,6 +1,7 @@
 import { create } from 'zustand';
-import { FURNITURE, FurnitureKind } from './furniture/registry';
+import { FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE } from './furniture/registry';
 import { findValidElevation, settleGravity, validatePlacement } from './interaction/collision';
+import { trackAddToDesign } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './lib/checklistPublicGlbs';
 import {
@@ -38,6 +39,13 @@ import {
   DEFAULT_LIGHT_CONFIG,
   hangingReferencesAttachmentKey,
 } from './lib/hangingDecorGeometry';
+import {
+  comforterHexFromConfig,
+  isAnyBeddingLayerEnabled,
+  mergeBeddingConfig,
+  resolveBeddingConfig,
+} from './lib/bedding/config';
+import type { BeddingConfig, BeddingConfigPatch } from './lib/bedding/types';
 
 export type {
   HangingAnchor,
@@ -45,7 +53,7 @@ export type {
   HangingDecorationConfig,
 } from './lib/hangingDecorGeometry';
 
-export type DesignerTool = 'select' | 'hanging-leaves' | 'hanging-lights';
+export type DesignerTool = 'select' | 'hanging-leaves' | 'hanging-lights' | 'place-light';
 
 export interface HangingDraft {
   kind: HangingDecorKind;
@@ -113,9 +121,9 @@ export const DEFAULT_EMITTER: EmitterConfig = {
   enabled: true,
   type: 'point',
   color: '#fff4e0',
-  intensity: 1.5,
-  range: 80,
-  emissiveBoost: 0.4,
+  intensity: 2.2,
+  range: 120,
+  emissiveBoost: 0.55,
 };
 
 export interface Item {
@@ -145,6 +153,8 @@ export interface Item {
   blanketTexturePath?: string;
   /** Signed URL for blanket texture (runtime only; not persisted). */
   blanketTextureUrl?: string;
+  /** Modular bedding layers (topper, sheets, comforter, pillows). */
+  beddingConfig?: BeddingConfig;
   emitter?: EmitterConfig;
   /** Verified curated shopping product linked to this placement. */
   curatedProductId?: string;
@@ -160,7 +170,10 @@ export interface Item {
 interface StoreState {
   items: Record<string, Item>;
   order: string[];
+  /** Primary selection (last clicked); used by inspector / arc menu. */
   selectedId: string | null;
+  /** All selected item ids (shift-click multi-select). Includes selectedId when set. */
+  selectedIds: string[];
   invalid: boolean;
 
   environment: RoomEnvironment;
@@ -185,6 +198,7 @@ interface StoreState {
   setAppearanceFull: (appearance: RoomAppearance) => void;
   setVisualQuality: (q: RenderQualityTier) => void;
   setRelightImports: (on: boolean) => void;
+  setAdvancedControls: (on: boolean) => void;
   setCameraPreset: (p: CameraPresetId) => void;
   setCutaway: (m: CutawayMode) => void;
   setCaptureMode: (on: boolean) => void;
@@ -200,6 +214,8 @@ interface StoreState {
   finishHangingDraft: () => string | null;
   setHangingConfig: (id: string, patch: Partial<HangingDecorationConfig>) => void;
   addHangingDecoration: (config: HangingDecorationConfig) => string;
+  /** Spawn a free-floating light at room center and select it. */
+  addLightSource: () => string;
 
   /** Replace layout from persisted data for the active room. */
   hydrateLayout: (payload: Item[], orderIds: string[]) => void;
@@ -223,6 +239,8 @@ interface StoreState {
   duplicateItem: (id: string) => string | null;
   removeItem: (id: string) => void;
   updatePosition: (id: string, position: [number, number, number]) => void;
+  /** Batch-update positions in one store write (group drag). */
+  updatePositions: (positions: Record<string, [number, number, number]>) => void;
   updateRotation: (id: string, rotationY: number) => void;
   setItemSize: (id: string, size: [number, number, number]) => void;
   /** Manual height — resolves vertical overlaps only (no gravity / no floor snap). */
@@ -231,6 +249,7 @@ interface StoreState {
   setWallMounted: (id: string, mounted: boolean) => void;
   setBedHeight: (id: string, h: number) => void;
   setBeddingEnabled: (id: string, enabled: boolean) => void;
+  setBeddingConfig: (id: string, patch: BeddingConfigPatch) => void;
   setBlanketColor: (id: string, hex: string) => void;
   setTintColor: (id: string, hex: string) => void;
   setBlanketTexture: (
@@ -241,8 +260,20 @@ interface StoreState {
   setEmitterConfig: (id: string, patch: Partial<EmitterConfig>) => void;
   registerImportedNaturalSize: (id: string, natural: [number, number, number]) => void;
   setImportedSize: (id: string, size: [number, number, number]) => void;
-  select: (id: string | null) => void;
+  /**
+   * Replace selection, or toggle membership when `additive` (shift-click).
+   * Pass null to clear.
+   */
+  select: (id: string | null, opts?: { additive?: boolean }) => void;
   setInvalid: (v: boolean) => void;
+}
+
+/** Keep selectedId in sync as the last id in selectedIds. */
+function selectionOf(ids: string[]): { selectedIds: string[]; selectedId: string | null } {
+  return {
+    selectedIds: ids,
+    selectedId: ids.length > 0 ? ids[ids.length - 1]! : null,
+  };
 }
 
 let nextId = 1;
@@ -289,8 +320,8 @@ function cascadeRemoveHangingForAttachment(
   items: Record<string, Item>,
   order: string[],
   attachmentKey: string,
-  selectedId: string | null,
-): { items: Record<string, Item>; order: string[]; selectedId: string | null } {
+  selectedIds: string[],
+): { items: Record<string, Item>; order: string[]; selectedIds: string[]; selectedId: string | null } {
   const nextItems = { ...items };
   const removeIds: string[] = [];
   for (const id of order) {
@@ -302,12 +333,13 @@ function cascadeRemoveHangingForAttachment(
     }
   }
   if (removeIds.length === 0) {
-    return { items, order, selectedId };
+    return { items, order, ...selectionOf(selectedIds) };
   }
+  const removeSet = new Set(removeIds);
   return {
     items: nextItems,
-    order: order.filter((id) => !removeIds.includes(id)),
-    selectedId: selectedId && removeIds.includes(selectedId) ? null : selectedId,
+    order: order.filter((id) => !removeSet.has(id)),
+    ...selectionOf(selectedIds.filter((id) => !removeSet.has(id))),
   };
 }
 
@@ -315,6 +347,7 @@ export const useStore = create<StoreState>((set, get) => ({
   items: {},
   order: [],
   selectedId: null,
+  selectedIds: [],
   invalid: false,
 
   environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
@@ -361,6 +394,12 @@ export const useStore = create<StoreState>((set, get) => ({
       saveVisualSettings(visual);
       return { visual };
     }),
+  setAdvancedControls: (on) =>
+    set((s) => {
+      const visual = { ...s.visual, advancedControls: on };
+      saveVisualSettings(visual);
+      return { visual };
+    }),
   setCameraPreset: (p) =>
     set((s) => {
       const visual = { ...s.visual, cameraPreset: p };
@@ -387,10 +426,14 @@ export const useStore = create<StoreState>((set, get) => ({
       if (tool === 'select') {
         return { designerTool: tool, hangingDraft: null };
       }
+      if (tool === 'place-light') {
+        // Spawn is handled by addLightSource; keep tool as select.
+        return { designerTool: 'select', hangingDraft: null };
+      }
       const kind: HangingDecorKind = tool === 'hanging-lights' ? 'lights' : 'leaves';
       return {
         designerTool: tool,
-        selectedId: null,
+        ...selectionOf([]),
         hangingDraft: { kind, anchors: [], cursorWorld: null },
       };
     }),
@@ -398,7 +441,7 @@ export const useStore = create<StoreState>((set, get) => ({
   beginHangingDraft: (kind) =>
     set({
       designerTool: kind === 'lights' ? 'hanging-lights' : 'hanging-leaves',
-      selectedId: null,
+      ...selectionOf([]),
       hangingDraft: { kind, anchors: [], cursorWorld: null },
     }),
 
@@ -478,10 +521,39 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({
       items: { ...s.items, [id]: item },
       order: [...s.order, id],
-      selectedId: id,
+      ...selectionOf([id]),
       designerTool: 'select',
       hangingDraft: null,
     }));
+    return id;
+  },
+
+  addLightSource: () => {
+    const id = `item-${nextId++}`;
+    const room = get().roomGeometry;
+    const size = [...LIGHT_SOURCE_SIZE] as [number, number, number];
+    const [cx, cz] = planCentroid(room);
+    const centerY = clamp(Math.round(Math.min(60, Math.max(28, room.height * 0.45))), size[1], room.height);
+    const y = clamp(centerY - size[1] / 2, 0, Math.max(0, room.height - size[1]));
+    const position = clampFullItemPosition([cx, y, cz], 0, size, room);
+    const item: Item = {
+      id,
+      kind: 'light',
+      position,
+      rotationY: 0,
+      size,
+      label: 'Light',
+      attachmentKey: newAttachmentKey(),
+      emitter: { ...DEFAULT_EMITTER, enabled: true },
+    };
+    set((s) => ({
+      items: { ...s.items, [id]: item },
+      order: [...s.order, id],
+      ...selectionOf([id]),
+      designerTool: 'select',
+      hangingDraft: null,
+    }));
+    trackAddToDesign({ kind: 'hanging' });
     return id;
   },
 
@@ -496,7 +568,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return {
         items,
         order: [...orderIds],
-        selectedId: null,
+        ...selectionOf([]),
         invalid: false,
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
@@ -518,7 +590,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return {
         items: {},
         order: [],
-        selectedId: null,
+        ...selectionOf([]),
         invalid: false,
         environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
         roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
@@ -530,6 +602,9 @@ export const useStore = create<StoreState>((set, get) => ({
   addItem: (kind, opts) => {
     if (kind === 'hanging') {
       throw new Error('Use addHangingDecoration for hanging items');
+    }
+    if (kind === 'light') {
+      return get().addLightSource();
     }
     const id = `item-${nextId++}`;
     const def = kind === 'imported' ? null : FURNITURE[kind];
@@ -571,8 +646,12 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({
       items: { ...s.items, [id]: item },
       order: [...s.order, id],
-      selectedId: id,
+      ...selectionOf([id]),
     }));
+    trackAddToDesign({
+      kind,
+      ...(opts?.curatedProductId ? { curated_product_id: opts.curatedProductId } : {}),
+    });
     return id;
   },
 
@@ -608,7 +687,7 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({
       items: { ...s.items, [newId]: clone },
       order: [...s.order, newId],
-      selectedId: newId,
+      ...selectionOf([newId]),
     }));
     return newId;
   },
@@ -620,19 +699,19 @@ export const useStore = create<StoreState>((set, get) => ({
       const { [id]: _, ...rest } = s.items;
       let items = rest;
       let order = s.order.filter((x) => x !== id);
-      let selectedId = s.selectedId === id ? null : s.selectedId;
+      let selectedIds = s.selectedIds.filter((x) => x !== id);
       if (removed.kind !== 'hanging' && removed.attachmentKey) {
         const cascaded = cascadeRemoveHangingForAttachment(
           items,
           order,
           removed.attachmentKey,
-          selectedId,
+          selectedIds,
         );
         items = cascaded.items;
         order = cascaded.order;
-        selectedId = cascaded.selectedId;
+        selectedIds = cascaded.selectedIds;
       }
-      return { items, order, selectedId };
+      return { items, order, ...selectionOf(selectedIds) };
     }),
 
   updatePosition: (id, position) =>
@@ -640,6 +719,23 @@ export const useStore = create<StoreState>((set, get) => ({
       const it = s.items[id];
       if (!it) return s;
       return { items: { ...s.items, [id]: { ...it, position } } };
+    }),
+
+  updatePositions: (positions) =>
+    set((s) => {
+      let items = s.items;
+      let changed = false;
+      for (const id of Object.keys(positions)) {
+        const it = items[id];
+        const position = positions[id];
+        if (!it || !position) continue;
+        if (!changed) {
+          items = { ...items };
+          changed = true;
+        }
+        items[id] = { ...it, position };
+      }
+      return changed ? { items } : s;
     }),
 
   updateRotation: (id, rotationY) =>
@@ -678,9 +774,17 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => {
       const it = s.items[id];
       if (!it || it.kind === 'hanging') return s;
-      const others = Object.values(s.items).filter((o) => o.id !== id);
       const maxY = Math.max(0, s.roomGeometry.height - it.size[1]);
       const targetY = clamp(y, 0, maxY);
+      if (it.kind === 'light') {
+        return {
+          items: {
+            ...s.items,
+            [id]: { ...it, position: [it.position[0], targetY, it.position[2]] },
+          },
+        };
+      }
+      const others = Object.values(s.items).filter((o) => o.id !== id);
       const candidate = { ...it, position: [it.position[0], targetY, it.position[2]] as [number, number, number] };
       const resolvedY = findValidElevation(candidate, others, targetY);
       return { items: { ...s.items, [id]: { ...it, position: [it.position[0], resolvedY, it.position[2]] } } };
@@ -689,7 +793,7 @@ export const useStore = create<StoreState>((set, get) => ({
   settleItem: (id) =>
     set((s) => {
       const it = s.items[id];
-      if (!it || it.kind === 'hanging') return s;
+      if (!it || it.kind === 'hanging' || it.kind === 'light') return s;
       const others = Object.values(s.items).filter((o) => o.id !== id);
       const y = settleGravity(it, others, it.position[1]);
       return { items: { ...s.items, [id]: { ...it, position: [it.position[0], y, it.position[2]] } } };
@@ -698,7 +802,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setWallMounted: (id, mounted) =>
     set((s) => {
       const it = s.items[id];
-      if (!it || it.kind === 'hanging') return s;
+      if (!it || it.kind === 'hanging' || it.kind === 'light') return s;
       const others = Object.values(s.items).filter((o) => o.id !== id);
 
       let next: Item = { ...it, wallMounted: mounted };
@@ -755,6 +859,27 @@ export const useStore = create<StoreState>((set, get) => ({
         next = { ...next, blanketTextureUrl: undefined };
       }
       return { items: { ...s.items, [id]: next } };
+    }),
+
+  setBeddingConfig: (id, patch) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'bed') return s;
+      const base = resolveBeddingConfig(it);
+      const beddingConfig = mergeBeddingConfig(base, patch);
+      const beddingEnabled = isAnyBeddingLayerEnabled(beddingConfig);
+      const blanketColor = comforterHexFromConfig(beddingConfig);
+      return {
+        items: {
+          ...s.items,
+          [id]: {
+            ...it,
+            beddingConfig,
+            beddingEnabled: beddingEnabled || undefined,
+            blanketColor,
+          },
+        },
+      };
     }),
 
   setBlanketColor: (id, hex) =>
@@ -857,6 +982,17 @@ export const useStore = create<StoreState>((set, get) => ({
       return { items: { ...s.items, [id]: { ...it, size, position } } };
     }),
 
-  select: (id) => set({ selectedId: id }),
+  select: (id, opts) =>
+    set((s) => {
+      if (id === null) return selectionOf([]);
+      if (!s.items[id]) return s;
+      if (opts?.additive) {
+        if (s.selectedIds.includes(id)) {
+          return selectionOf(s.selectedIds.filter((x) => x !== id));
+        }
+        return selectionOf([...s.selectedIds, id]);
+      }
+      return selectionOf([id]);
+    }),
   setInvalid: (v) => set({ invalid: v }),
 }));

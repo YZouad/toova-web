@@ -10,7 +10,6 @@ import {
   prepareGlbForCatalogUpload,
   readGlbAxisBoundsWithTimeout,
 } from '../lib/glbImportPipeline';
-import { formatInchDim } from '../lib/glbBounds';
 import { generateGlbFromPhoto } from '../lib/trellisGenerate';
 import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { validateCatalogText } from '../lib/bannedWords';

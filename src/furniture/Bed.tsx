@@ -1,10 +1,9 @@
 import { Item } from '../store';
-import { BedBedding } from './BedBedding';
+import { BedBedding, beddingSelectionExtraHeight } from './BedBedding';
 import { SelectionOutline } from './SelectionOutline';
 
 const FRAME_COLOR = '#6b4f33';
 const MATTRESS_COLOR = '#f1ece1';
-const SHEET_COLOR = '#dadfe6';
 const LEG_COLOR = '#3a2e22';
 
 interface Props {
@@ -35,6 +34,7 @@ export function Bed({ item, selected, invalid }: Props) {
 
   const yFrameMid = legH + frameH / 2;
   const yMattressMid = legH + frameH + mattressH / 2;
+  const outlineH = totalH + beddingSelectionExtraHeight(item, w, d, totalH, legH);
 
   return (
     <group>
@@ -55,24 +55,11 @@ export function Bed({ item, selected, invalid }: Props) {
         <meshStandardMaterial color={MATTRESS_COLOR} roughness={0.9} />
       </mesh>
 
-      {!item.beddingEnabled && (
-        <mesh position={[0, yMattressMid + mattressH / 2 + 0.5, -d / 2 + 7]} castShadow>
-          <boxGeometry args={[w - 4, 2, 12]} />
-          <meshStandardMaterial color={SHEET_COLOR} roughness={0.95} />
-        </mesh>
-      )}
-
-      <BedBedding
-        item={item}
-        w={w}
-        d={d}
-        yMattressMid={yMattressMid}
-        mattressH={mattressH}
-      />
+      <BedBedding item={item} w={w} d={d} totalH={totalH} legH={legH} />
 
       {selected && (
         <SelectionOutline
-          size={[w, totalH, d]}
+          size={[w, outlineH, d]}
           color={invalid ? '#ff5555' : '#4f8cff'}
         />
       )}

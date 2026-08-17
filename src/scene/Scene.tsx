@@ -20,6 +20,7 @@ import { DragController } from '../interaction/DragController';
 import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
 import { HangingPlacementController } from '../interaction/HangingPlacementController';
 import { ArcMenu } from './ArcMenu';
+import { ObjectGizmo } from './ObjectGizmo';
 import { HangingDraftPreview } from '../furniture/HangingDecoration';
 import { useStore, type CameraPresetId } from '../store';
 import { applyWeather, isDaytime, sampleSun } from '../lib/environment';
@@ -31,6 +32,7 @@ import { ProceduralSky } from './ProceduralSky';
 import { ScenePostProcessing } from './ScenePostProcessing';
 import { resolveRenderQuality } from '../lib/renderQuality';
 import { framingForPreset } from '../lib/presentationCameras';
+import { CameraOrbitSync } from './CameraOrbitSync';
 
 const SCENE_BG = '#E4DAC8';
 
@@ -490,6 +492,7 @@ function SceneInner({
   animRequestRef,
   readOnly,
   autoRotate,
+  orbitCssTargetRef,
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
   apiRef: MutableRefObject<CaptureApi | null>;
@@ -499,6 +502,7 @@ function SceneInner({
   }>;
   readOnly: boolean;
   autoRotate: boolean;
+  orbitCssTargetRef?: RefObject<HTMLElement | null>;
 }) {
   const deselect = useStore((s) => s.select);
   const skyMode = useStore((s) => s.environment.skyMode);
@@ -580,6 +584,7 @@ function SceneInner({
       ) : null}
       {showChrome && !hangingTool ? (
         <>
+          <ObjectGizmo />
           <ArcMenu />
           <DragController />
           <KeyboardShortcuts />
@@ -591,6 +596,9 @@ function SceneInner({
       <ScenePostProcessing />
       <CameraAnimator controlsRef={controlsRef} requestRef={animRequestRef} />
       <CaptureBridge apiRef={apiRef} controlsRef={controlsRef} />
+      {orbitCssTargetRef ? (
+        <CameraOrbitSync controlsRef={controlsRef} targetRef={orbitCssTargetRef} />
+      ) : null}
 
       <OrbitControls
         ref={controlsRef as never}
@@ -604,12 +612,13 @@ function SceneInner({
         makeDefault
         autoRotate={autoRotate}
         autoRotateSpeed={0.55}
-        enableZoom={!readOnly}
-        enablePan={!readOnly}
+        // View-only rooms still need orbit navigation (pinch/scroll zoom + pan).
+        enableZoom
+        enablePan
         mouseButtons={{
           LEFT: THREE.MOUSE.ROTATE,
-          MIDDLE: readOnly ? THREE.MOUSE.ROTATE : THREE.MOUSE.DOLLY,
-          RIGHT: readOnly ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN,
+          MIDDLE: THREE.MOUSE.DOLLY,
+          RIGHT: THREE.MOUSE.PAN,
         }}
       />
     </Canvas>
@@ -620,10 +629,12 @@ export interface SceneProps {
   readOnly?: boolean;
   /** Slow orbit for marketing embeds. */
   autoRotate?: boolean;
+  /** Host element for camera-orbit CSS vars (bedding sidebar tilt). */
+  orbitCssTargetRef?: RefObject<HTMLElement | null>;
 }
 
 export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
-  { readOnly = false, autoRotate = false },
+  { readOnly = false, autoRotate = false, orbitCssTargetRef },
   ref,
 ) {
   const controlsRef = useRef<OrbitControlsType>(null);
@@ -674,6 +685,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
       animRequestRef={animRequestRef}
       readOnly={readOnly}
       autoRotate={autoRotate}
+      orbitCssTargetRef={orbitCssTargetRef}
     />
   );
 });

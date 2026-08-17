@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
 import { renderObjectToJpeg } from './thumbnailRenderer';
 
-type BuiltinKind = Exclude<FurnitureKind, 'imported' | 'hanging'>;
+type BuiltinKind = Exclude<FurnitureKind, 'imported' | 'hanging' | 'light'>;
 
 function box(
   w: number,

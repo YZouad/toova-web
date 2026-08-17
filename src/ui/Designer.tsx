@@ -5,10 +5,11 @@ import { useRoomSave } from '../hooks/useRoomLayout';
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import { recordCatalogDownload, shouldRecordCatalogDownload } from '../lib/catalogEngagement';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
+import { newPillowId } from '../lib/bedding/config';
 import { supabase } from '../lib/supabase';
 import { type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
-import { useStore, DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, type Item, type CameraPresetId } from '../store';
+import { useStore, type Item, type CameraPresetId } from '../store';
 import { planBounds } from '../lib/roomGeometry';
 import { FeedbackModal } from './FeedbackModal';
 import { ImportModelModal } from './ImportModelModal';
@@ -21,6 +22,8 @@ import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
 import { HangingDecorToolRail } from './HangingDecorToolRail';
 import { HangingDecorPanel } from './HangingDecorPanel';
+import { BeddingPanel } from './BeddingPanel';
+import { LightDecorPanel } from './LightDecorPanel';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
@@ -55,6 +58,7 @@ const KIND_COLORS: Record<string, string> = {
   lamp: '#D4C4A0',
   imported: '#7E8A60',
   hanging: '#8A8478',
+  light: '#E8C27A',
 };
 
 function getBaseSize(
@@ -73,13 +77,17 @@ interface DesignerProps {
   onEditFloorPlan?: () => void;
   onOpenChecklist: () => void;
   isAdmin?: boolean;
+  /** Guest rooms call this instead of persisting to Supabase. */
+  onRequestSaveAuth?: () => void;
 }
 
-export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = false }: DesignerProps) {
+export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = false, onRequestSaveAuth }: DesignerProps) {
+
   const { user } = useAuth();
   const { workspace } = useRoomWorkspace();
   const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
   const sceneRef = useRef<SceneHandle>(null);
+  const canvasWrapRef = useRef<HTMLDivElement>(null);
   const baseSizeRef = useRef<Map<string, [number, number, number]>>(new Map());
   const meshSizedRef = useRef<Set<string>>(new Set());
   const [shareOpen, setShareOpen] = useState(false);
@@ -93,13 +101,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
   const setItemElevation = useStore((s) => s.setItemElevation);
   const setWallMounted = useStore((s) => s.setWallMounted);
   const setBedHeight = useStore((s) => s.setBedHeight);
-  const setBeddingEnabled = useStore((s) => s.setBeddingEnabled);
-  const setBlanketColor = useStore((s) => s.setBlanketColor);
+  const setBeddingConfig = useStore((s) => s.setBeddingConfig);
   const setTintColor = useStore((s) => s.setTintColor);
-  const setBlanketTexture = useStore((s) => s.setBlanketTexture);
+
   const updatePosition = useStore((s) => s.updatePosition);
-  const setEmitterEnabled = useStore((s) => s.setEmitterEnabled);
-  const setEmitterConfig = useStore((s) => s.setEmitterConfig);
 
   const roomGeometry = useStore((s) => s.roomGeometry);
   const roomBounds = planBounds(roomGeometry);
@@ -110,10 +115,12 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
   const [forkMeta, setForkMeta] = useState<RoomAttributionPayload | null>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [beddingOpen, setBeddingOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importTab, setImportTab] = useState<'upload' | 'generate' | 'poster'>('generate');
   const [sizeMode, setSizeMode] = useState<'uniform' | 'axis'>('uniform');
   const [lookOpen, setLookOpen] = useState(false);
+  const [envOpen, setEnvOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState(false);
@@ -121,13 +128,22 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
   const dirtyBaselineRef = useRef('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const [beddingBusy, setBeddingBusy] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [galleryRefreshKey, setGalleryRefreshKey] = useState(0);
 
   useEffect(() => {
     setRoomName(workspace?.name ?? '');
   }, [workspace?.name]);
+
+  useEffect(() => {
+    if (item?.kind === 'bed') {
+      setBeddingOpen(true);
+      setAdvancedOpen(false);
+      setLookOpen(false);
+    } else {
+      setBeddingOpen(false);
+    }
+  }, [selectedId, item?.kind]);
 
   useEffect(() => {
     dirtyBaselineRef.current = roomDirtyFingerprint(workspace?.name ?? '');
@@ -168,6 +184,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
     meshSizedRef.current.add(item.id);
     baseSizeRef.current.set(item.id, [item.size[0], item.size[1], item.size[2]]);
   }, [item]);
+
+  useEffect(() => {
+    if (item?.kind === 'light') setAdvancedOpen(true);
+  }, [selectedId, item?.kind]);
 
   const addFromGallery = useCallback(
     (model: GalleryModel) => {
@@ -225,6 +245,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
 
   const handleSave = useCallback(async () => {
     if (!workspace?.id) return;
+    if (onRequestSaveAuth) {
+      onRequestSaveAuth();
+      return;
+    }
     const trimmed = roomName.trim();
     if (trimmed && trimmed !== workspace.name) {
       await supabase.from('rooms').update({ name: trimmed }).eq('id', workspace.id);
@@ -240,7 +264,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
         const { items, order, roomGeometry } = useStore.getState();
         const floorItems = order
           .map((id) => items[id])
-          .filter((it): it is Item => Boolean(it) && it.kind !== 'hanging');
+          .filter((it): it is Item => Boolean(it) && it.kind !== 'hanging' && it.kind !== 'light');
 
         const modelUrls = [
           ...new Set(
@@ -273,7 +297,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
         console.warn('[toova] room thumbnail capture failed', err);
       }
     }
-  }, [workspace?.id, workspace?.name, roomName, save, user?.id]);
+  }, [workspace?.id, workspace?.name, roomName, save, user?.id, onRequestSaveAuth]);
 
   const requestLeave = useCallback(() => {
     if (!dirty) {
@@ -329,18 +353,25 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
     if (item.wallMounted) setWallMounted(newId, true);
     if (item.kind === 'bed') {
       if (item.bedLegHeight != null) setBedHeight(newId, item.bedLegHeight);
-      if (item.beddingEnabled) setBeddingEnabled(newId, true);
-      if (item.blanketColor) setBlanketColor(newId, item.blanketColor);
-    }
-    if (item.emitter?.enabled) {
-      setEmitterEnabled(newId, true);
-      setEmitterConfig(newId, item.emitter);
+      if (item.beddingConfig) {
+        setBeddingConfig(newId, {
+          topper: { ...item.beddingConfig.topper },
+          sheets: { ...item.beddingConfig.sheets },
+          comforter: { ...item.beddingConfig.comforter },
+          pillows: {
+            enabled: item.beddingConfig.pillows.enabled,
+            items: item.beddingConfig.pillows.items.map((p) => ({
+              ...p,
+              id: newPillowId(),
+            })),
+          },
+        });
+      }
     }
   };
 
   const rotDeg = item ? Math.round(((item.rotationY * 180) / Math.PI) % 360) : 0;
   const maxElevation = item ? Math.max(0, roomGeometry.height - item.size[1]) : 0;
-  const emitter = item?.emitter;
 
   return (
     <div className="designer-page">
@@ -384,6 +415,11 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
             <Button size="sm" variant="outline" onClick={() => setFeedbackOpen(true)}>
               Feedback
             </Button>
+            {onEditFloorPlan ? (
+              <Button size="sm" variant="outline" onClick={onEditFloorPlan}>
+                Edit floor plan
+              </Button>
+            ) : null}
             <Button size="sm" variant="outline" onClick={onOpenChecklist}>
               Checklist
             </Button>
@@ -399,7 +435,9 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
           <MonoMeta size="sm" tone="dense" className="designer-save-status">
             {saving ? 'Saving…' : savedLabel}
           </MonoMeta>
-          <Button size="sm" disabled={saving} onClick={() => void handleSave()}>Save</Button>
+          <Button size="sm" disabled={saving} onClick={() => void handleSave()}>
+            {onRequestSaveAuth ? 'Save design' : 'Save'}
+          </Button>
           <div className="designer-topbar-more">
             <button
               type="button"
@@ -429,6 +467,18 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
                   >
                     Feedback
                   </button>
+                  {onEditFloorPlan ? (
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        onEditFloorPlan();
+                        setMobileMenuOpen(false);
+                      }}
+                    >
+                      Edit floor plan
+                    </button>
+                  ) : null}
                   <button
                     type="button"
                     role="menuitem"
@@ -482,9 +532,9 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
         <div className="tv-banner-error" style={{ margin: '0 20px', position: 'relative', zIndex: 25 }} role="alert">{saveError}</div>
       ) : null}
 
-      <div className="designer-canvas-wrap">
+      <div className="designer-canvas-wrap" ref={canvasWrapRef}>
         <div className="designer-canvas-full">
-          <Scene ref={sceneRef} />
+          <Scene ref={sceneRef} orbitCssTargetRef={canvasWrapRef} />
         </div>
 
         <SceneCheckoutPanel onOpenChecklist={onOpenChecklist} />
@@ -497,17 +547,17 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
               if (!lookOpen) setAdvancedOpen(false);
             }}
             onCloseLook={() => setLookOpen(false)}
+            onEnvironmentOpenChange={setEnvOpen}
             lookPanel={
               <LookDrawer
                 open={lookOpen}
                 onClose={() => setLookOpen(false)}
                 onGoToPreset={(id: CameraPresetId) => sceneRef.current?.goToPreset(id)}
                 onOpenExport={() => setExportOpen(true)}
-                onEditFloorPlan={onEditFloorPlan}
               />
             }
           />
-          <HangingDecorToolRail />
+          {lookOpen || envOpen ? null : <HangingDecorToolRail />}
         </div>
 
         {!selectedId ? (
@@ -518,7 +568,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
           >
             Add furniture
           </Button>
-        ) : item?.kind === 'hanging' ? (
+        ) : item?.kind === 'hanging' || item?.kind === 'light' ? (
           <div className="designer-quick-bar">
             <span className="designer-quick-bar-label">{item.label}</span>
             <div className="designer-quick-bar-divider" />
@@ -532,6 +582,39 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
               }}
             >
               Customize
+            </button>
+          </div>
+        ) : item?.kind === 'bed' ? (
+          <div className="designer-quick-bar">
+            <span className="designer-quick-bar-label">{item.label}</span>
+            <div className="designer-quick-bar-divider" />
+            <button
+              type="button"
+              className={`designer-advanced-btn${beddingOpen ? ' active' : ''}`}
+              aria-pressed={beddingOpen}
+              onClick={() => {
+                setBeddingOpen((v) => !v);
+                if (!beddingOpen) {
+                  setLookOpen(false);
+                  setAdvancedOpen(false);
+                }
+              }}
+            >
+              Bedding
+            </button>
+            <button
+              type="button"
+              className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
+              aria-pressed={advancedOpen}
+              onClick={() => {
+                setAdvancedOpen((v) => !v);
+                if (!advancedOpen) {
+                  setLookOpen(false);
+                  setBeddingOpen(false);
+                }
+              }}
+            >
+              Advanced
             </button>
           </div>
         ) : item ? (
@@ -574,11 +657,23 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
           }}
         />
 
+        {item?.kind === 'bed' ? (
+          <BeddingPanel open={beddingOpen} onClose={() => setBeddingOpen(false)} />
+        ) : null}
+
         {advancedOpen && item?.kind === 'hanging' ? (
           <HangingDecorPanel onClose={() => setAdvancedOpen(false)} />
         ) : null}
 
-        {advancedOpen && item && item.kind !== 'hanging' ? (
+        {advancedOpen && item?.kind === 'light' ? (
+          <LightDecorPanel onClose={() => setAdvancedOpen(false)} />
+        ) : null}
+
+        {advancedOpen &&
+        item &&
+        item.kind !== 'hanging' &&
+        item.kind !== 'light' &&
+        !(item.kind === 'bed' && beddingOpen) ? (
           <aside className="designer-advanced tv-scroll">
             <div className="designer-advanced-head">
               <span className="designer-advanced-eyebrow">Advanced · selected piece</span>
@@ -666,43 +761,15 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
               ) : null}
 
               {item.kind === 'bed' ? (
-                <>
-                  <RangeControl
-                    label="Leg height"
-                    value={item.bedLegHeight ?? 8}
-                    min={4}
-                    max={36}
-                    step={1}
-                    unit="″"
-                    onChange={(v) => setBedHeight(item.id, v)}
-                  />
-                  <Checkbox
-                    checked={!!item.beddingEnabled}
-                    label="Bedding"
-                    onChange={(checked) => setBeddingEnabled(item.id, checked)}
-                  />
-                  {item.beddingEnabled ? (
-                    <div style={{ marginBottom: 8 }}>
-                      <input type="color" value={item.blanketColor ?? DEFAULT_BLANKET_COLOR} onChange={(e) => setBlanketColor(item.id, e.target.value)} disabled={beddingBusy} style={{ width: '100%', height: 36, marginBottom: 8, borderRadius: 'var(--radius-xs)', border: '1px solid var(--rule-hair)' }} />
-                      <MonoMeta size="xs" tone="dense" upper style={{ display: 'block', marginBottom: 6 }}>Blanket pattern</MonoMeta>
-                      <input type="file" accept="image/*" disabled={beddingBusy} onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        e.target.value = '';
-                        if (!file) return;
-                        setBeddingBusy(true);
-                        try {
-                          const { uploadBlanketTexture, removeBlanketTexture } = await import('../lib/beddingStorage');
-                          const prevPath = item.blanketTexturePath;
-                          const { path, signedUrl } = await uploadBlanketTexture(file);
-                          setBlanketTexture(item.id, { path, url: signedUrl });
-                          if (prevPath && prevPath !== path) await removeBlanketTexture(prevPath).catch(() => {});
-                        } finally {
-                          setBeddingBusy(false);
-                        }
-                      }} />
-                    </div>
-                  ) : null}
-                </>
+                <RangeControl
+                  label="Leg height"
+                  value={item.bedLegHeight ?? 8}
+                  min={4}
+                  max={36}
+                  step={1}
+                  unit="″"
+                  onChange={(v) => setBedHeight(item.id, v)}
+                />
               ) : null}
             </div>
 
@@ -712,68 +779,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
               Wall mounted
               <MonoMeta size="sm" tone="dense">{item.wallMounted ? 'On' : 'Off'}</MonoMeta>
             </button>
-
-            <div className="designer-advanced-panel-block">
-              <Checkbox
-                checked={!!emitter?.enabled}
-                label="Emits light"
-                onChange={(checked) => setEmitterEnabled(item.id, checked)}
-              />
-              {emitter?.enabled ? (
-                <>
-                  <div className="designer-advanced-emitter-type">
-                    {(['point', 'spot'] as const).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        className={(emitter.type ?? DEFAULT_EMITTER.type) === t ? 'active' : ''}
-                        onClick={() => setEmitterConfig(item.id, { type: t })}
-                      >
-                        {t}
-                      </button>
-                    ))}
-                  </div>
-                  <input
-                    type="color"
-                    value={emitter.color ?? DEFAULT_EMITTER.color}
-                    onChange={(e) => setEmitterConfig(item.id, { color: e.target.value })}
-                    style={{ width: '100%', height: 32, marginBottom: 8, borderRadius: 'var(--radius-xs)', border: '1px solid var(--rule-hair)' }}
-                  />
-                  {(['intensity', 'range'] as const).map((field) => (
-                    <RangeControl
-                      key={field}
-                      label={field}
-                      value={emitter[field] ?? DEFAULT_EMITTER[field]}
-                      min={field === 'intensity' ? 0.1 : 20}
-                      max={field === 'intensity' ? 8 : 200}
-                      step={field === 'intensity' ? 0.1 : 5}
-                      formatValue={(v) => v.toFixed(1)}
-                      onChange={(v) => setEmitterConfig(item.id, { [field]: v })}
-                    />
-                  ))}
-                  {(emitter.type ?? 'point') === 'spot' ? (
-                    <RangeControl
-                      label="Angle"
-                      value={emitter.angleDeg ?? 45}
-                      min={15}
-                      max={90}
-                      step={5}
-                      unit="°"
-                      onChange={(v) => setEmitterConfig(item.id, { angleDeg: v })}
-                    />
-                  ) : null}
-                  <RangeControl
-                    label="Glow"
-                    value={Math.round((emitter.emissiveBoost ?? 0.35) * 100)}
-                    min={0}
-                    max={100}
-                    step={5}
-                    unit="%"
-                    onChange={(v) => setEmitterConfig(item.id, { emissiveBoost: v / 100 })}
-                  />
-                </>
-              ) : null}
-            </div>
 
             <div className="designer-advanced-actions">
               <Button size="sm" variant="outline" full onClick={duplicateSelected}>Duplicate</Button>

@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
+import { ShoppingCatalogProvider } from './context/ShoppingCatalogContext';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
-import { createRoomWithGeometry, useRoomLoad } from './hooks/useRoomLayout';
+import { createRoomWithGeometry, saveRoomLayout, useRoomLoad } from './hooks/useRoomLayout';
 import {
   navigate,
   publicRoomPath,
@@ -13,17 +14,35 @@ import {
   useRoute,
 } from './hooks/useRoute';
 import { supabase } from './lib/supabase';
-import { useStore, DEFAULT_ENVIRONMENT } from './store';
+import { useStore, DEFAULT_ENVIRONMENT, type Item, type RoomEnvironment } from './store';
 import type { FloorPlan } from './lib/floorPlanGeometry';
 import { emptyPlan } from './lib/floorPlanGeometry';
 import { serializeFloorPlan } from './lib/roomGeometry';
+import {
+  getRoomStarterTemplate,
+  materializeStarterItems,
+  type RoomStarterTemplate,
+} from './lib/roomStarterTemplates';
+import {
+  buildGuestSnapshot,
+  clearGuestDesignSnapshot,
+  consumeGuestAuthIntent,
+  isGuestWorkspaceId,
+  loadGuestDesignSnapshot,
+  saveGuestDesignSnapshot,
+  setGuestAuthIntent,
+  type GuestDesignSnapshot,
+} from './lib/guestDesignSnapshot';
 import { LandingPage } from './ui/LandingPage';
 import { PitchMadnessPage } from './ui/PitchMadnessPage';
 import { AuthPage } from './ui/AuthPage';
 import { Dashboard } from './ui/Dashboard';
 import { Designer } from './ui/Designer';
 import { FloorPlanSetup } from './ui/FloorPlanSetup';
-import { RoomPresetPicker } from './ui/RoomPresetPicker';
+import {
+  RoomPresetPicker,
+  type RoomPresetPickerSelection,
+} from './ui/RoomPresetPicker';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
@@ -36,6 +55,8 @@ import { CreationsPage } from './ui/CreationsPage';
 import { AppRailChrome } from './ui/AppRailChrome';
 import type { GalleryModel } from './hooks/useGalleryCatalog';
 import { recordCatalogDownload, shouldRecordCatalogDownload } from './lib/catalogEngagement';
+import { trackPageView } from './lib/analytics';
+import { buildGallerySearchParams } from './lib/galleryCatalog';
 import type { FurnitureKind } from './furniture/registry';
 import { profileInitials } from './lib/userDisplay';
 import {
@@ -65,6 +86,8 @@ interface FloorPlanDraft {
   name: string;
   mode: 'create' | 'edit';
   initialPlan?: FloorPlan;
+  /** When set, create continues by seeding this starter’s furniture into the edited plan. */
+  starterTemplateId?: string;
 }
 
 /** Decorative only — does not encode a real URL. */
@@ -140,6 +163,14 @@ function ARPage() {
 }
 
 export default function App() {
+  return (
+    <ShoppingCatalogProvider>
+      <AppContent />
+    </ShoppingCatalogProvider>
+  );
+}
+
+function AppContent() {
   const { loading, user, logout, refreshProfile, profile, avatarUrl } = useAuth();
   const route = useRoute();
   const [screen, setScreen] = useState<Screen>('landing');
@@ -153,6 +184,9 @@ export default function App() {
   const [pendingShareToken, setPendingShareToken] = useState<string | null>(null);
   const [pendingPublicRoom, setPendingPublicRoom] = useState<{ handle: string; roomId: string } | null>(null);
   const [pendingGalleryModel, setPendingGalleryModel] = useState<GalleryModel | null>(null);
+  const [authReason, setAuthReason] = useState<string | null>(null);
+  const [guestTemplateId, setGuestTemplateId] = useState<string | undefined>(undefined);
+  const guestRestoreAttempted = useRef(false);
   const addItem = useStore((s) => s.addItem);
   const resetLayout = useStore((s) => s.resetLayout);
   const hydrateLayout = useStore((s) => s.hydrateLayout);
@@ -165,6 +199,16 @@ export default function App() {
     route.name === 'publicRoom' ||
     route.name === 'gallery' ||
     route.name === 'timeline';
+
+  useEffect(() => {
+    let path: string;
+    if (route.name === 'shared') path = `/r/${route.token}`;
+    else if (route.name === 'profile') path = `/u/${route.handle}`;
+    else if (route.name === 'publicRoom') path = `/u/${route.handle}/r/${route.roomId}`;
+    else if (route.name === 'gallery' || screen === 'gallery') path = '/gallery';
+    else path = `/${screen}`;
+    trackPageView(path);
+  }, [route, screen]);
 
   const {
     isAdmin,
@@ -180,21 +224,70 @@ export default function App() {
 
   useEffect(() => {
     if (!user) {
-      if (!routeIsPublic) {
-        resetLayout();
-        setWorkspace(null);
-      }
-      if (
-        screen !== 'landing'
-        && screen !== 'auth'
-        && screen !== 'pitch-madness'
-        && screen !== 'checklist'
-        && screen !== 'contact'
-        && !routeIsPublic
-      ) {
+      guestRestoreAttempted.current = false;
+      // Keep guest designer / dashboard / floor-plan work in progress.
+      const guestScreens: Screen[] = [
+        'landing',
+        'auth',
+        'pitch-madness',
+        'checklist',
+        'contact',
+        'dashboard',
+        'designer',
+        'floor-plan',
+      ];
+      if (!routeIsPublic && !guestScreens.includes(screen)) {
         setScreen('landing');
       }
-    } else if (screen === 'auth') {
+      return;
+    }
+
+    // Signed in: restore guest design once when Save design triggered auth.
+    if (!guestRestoreAttempted.current) {
+      guestRestoreAttempted.current = true;
+      const intent = consumeGuestAuthIntent();
+      const snapshot = loadGuestDesignSnapshot();
+      if (snapshot && intent === 'save-design') {
+        void (async () => {
+          try {
+            setFloorPlanBusy(true);
+            const room = await createRoomWithGeometry(
+              user.id,
+              snapshot.name,
+              snapshot.roomGeometry,
+              snapshot.environment,
+            );
+            const byId = Object.fromEntries(snapshot.items.map((it) => [it.id, it]));
+            if (snapshot.items.length > 0) {
+              await saveRoomLayout(
+                room.id,
+                byId,
+                snapshot.order,
+                snapshot.environment,
+                snapshot.roomGeometry,
+              );
+            }
+            clearGuestDesignSnapshot();
+            resetLayout();
+            hydrateLayout(snapshot.items, snapshot.order);
+            hydrateRoomSettings(snapshot.environment, snapshot.roomGeometry);
+            setWorkspace({ id: room.id, name: room.name, isOwner: true });
+            setGuestTemplateId(snapshot.templateId);
+            setAuthReason(null);
+            setScreen('designer');
+            navigate('/', true);
+          } catch (err) {
+            console.warn('[toova] failed to restore guest design', err);
+            setScreen('dashboard');
+          } finally {
+            setFloorPlanBusy(false);
+          }
+        })();
+        return;
+      }
+    }
+
+    if (screen === 'auth') {
       if (pendingShareToken) {
         const token = pendingShareToken;
         setPendingShareToken(null);
@@ -213,7 +306,17 @@ export default function App() {
         if (routeIsPublic) navigate('/', true);
       }
     }
-  }, [user, resetLayout, screen, routeIsPublic, pendingShareToken, pendingPublicRoom, pendingGalleryModel]);
+  }, [
+    user,
+    resetLayout,
+    hydrateLayout,
+    hydrateRoomSettings,
+    screen,
+    routeIsPublic,
+    pendingShareToken,
+    pendingPublicRoom,
+    pendingGalleryModel,
+  ]);
 
   useEffect(() => {
     if (screen === 'admin' && !adminStatsLoading && !isAdmin) {
@@ -285,14 +388,47 @@ export default function App() {
   }, []);
 
   const handleCreateWithPlan = useCallback(
-    async (name: string, plan: FloorPlan) => {
-      if (!user?.id) return;
+    async (
+      name: string,
+      plan: FloorPlan,
+      options?: {
+        environment?: RoomEnvironment;
+        seedItems?: Item[];
+        seedOrder?: string[];
+        starterId?: string;
+      },
+    ) => {
+      const environment = {
+        ...(options?.environment ?? DEFAULT_ENVIRONMENT),
+        appearance: {
+          ...(options?.environment?.appearance ?? DEFAULT_ENVIRONMENT.appearance),
+        },
+      };
+      const seedItems = options?.seedItems ?? [];
+      const seedOrder = options?.seedOrder ?? [];
+
+      // Guest path: design locally until save requires auth.
+      if (!user?.id) {
+        resetLayout();
+        hydrateLayout(seedItems, seedOrder);
+        hydrateRoomSettings(environment, plan);
+        setGuestTemplateId(options?.starterId);
+        setWorkspace({ id: `guest-${Date.now()}`, name, isOwner: true });
+        setFloorPlanDraft(null);
+        setScreen('designer');
+        return;
+      }
+
       setFloorPlanBusy(true);
       try {
-        const room = await createRoomWithGeometry(user.id, name, plan, { ...DEFAULT_ENVIRONMENT });
+        const room = await createRoomWithGeometry(user.id, name, plan, environment);
         resetLayout();
-        hydrateLayout([], []);
-        hydrateRoomSettings({ ...DEFAULT_ENVIRONMENT }, plan);
+        hydrateLayout(seedItems, seedOrder);
+        hydrateRoomSettings(environment, plan);
+        if (seedItems.length > 0) {
+          const byId = Object.fromEntries(seedItems.map((it) => [it.id, it]));
+          await saveRoomLayout(room.id, byId, seedOrder, environment, plan);
+        }
         setWorkspace({ id: room.id, name: room.name, isOwner: true });
         setFloorPlanDraft(null);
         setScreen('designer');
@@ -303,12 +439,62 @@ export default function App() {
     [hydrateLayout, hydrateRoomSettings, resetLayout, user?.id],
   );
 
-  const handleCustomizeOwnPlan = useCallback(() => {
-    setFloorPlanDraft((prev) =>
-      prev ? { ...prev, mode: 'create', initialPlan: emptyPlan() } : prev,
-    );
+  const handleCreateFromStarter = useCallback(
+    async (name: string, template: RoomStarterTemplate, planOverride?: FloorPlan) => {
+      const plan = planOverride ?? template.buildPlan();
+      const environment = template.buildEnvironment();
+      const { items, order } = materializeStarterItems(template, plan);
+      await handleCreateWithPlan(name, plan, {
+        environment,
+        seedItems: items,
+        seedOrder: order,
+        starterId: template.id,
+      });
+    },
+    [handleCreateWithPlan],
+  );
+
+  const handleCustomizeOwnPlan = useCallback((name: string) => {
+    setFloorPlanDraft({ name, mode: 'create', initialPlan: emptyPlan() });
     setScreen('floor-plan');
   }, []);
+
+  const handleCustomizePresetPlan = useCallback(
+    (name: string, plan: FloorPlan, template?: RoomStarterTemplate) => {
+      setFloorPlanDraft({
+        name,
+        mode: 'create',
+        initialPlan: structuredClone(plan),
+        starterTemplateId: template?.id,
+      });
+      setScreen('floor-plan');
+    },
+    [],
+  );
+
+  const handlePresetPickerSelect = useCallback(
+    async (selection: RoomPresetPickerSelection, name: string) => {
+      if (selection.kind === 'starter') {
+        await handleCreateFromStarter(name, selection.template);
+        return;
+      }
+      if (selection.kind === 'blank') {
+        await handleCreateWithPlan(name, selection.plan);
+        return;
+      }
+      if (selection.kind === 'customize') {
+        handleCustomizePresetPlan(name, selection.plan, selection.template);
+        return;
+      }
+      handleCustomizeOwnPlan(name);
+    },
+    [
+      handleCreateFromStarter,
+      handleCreateWithPlan,
+      handleCustomizeOwnPlan,
+      handleCustomizePresetPlan,
+    ],
+  );
 
   const handleEditFloorPlan = useCallback(() => {
     const geom = useStore.getState().roomGeometry;
@@ -409,16 +595,35 @@ export default function App() {
     setScreen('checklist');
   }, []);
 
+  const requestSaveAuth = useCallback(() => {
+    if (!workspace) return;
+    const state = useStore.getState();
+    const snapshot = buildGuestSnapshot({
+      name: workspace.name,
+      templateId: guestTemplateId as GuestDesignSnapshot["templateId"],
+      items: state.items,
+      order: state.order,
+      environment: state.environment,
+      roomGeometry: state.roomGeometry,
+    });
+    saveGuestDesignSnapshot(snapshot);
+    setGuestAuthIntent('save-design');
+    setAuthReason('Sign in to save this room to your account. Your design is kept on this device until then.');
+    setAuthMode('signup');
+    setScreen('auth');
+  }, [workspace, guestTemplateId]);
+
   const landingCallbacks = {
     loggedIn: !!user,
     onGoDashboard: () => setScreen('dashboard'),
     onGetStarted: () => {
       if (user) { setScreen('dashboard'); return; }
-      setAuthMode('signup');
-      setScreen('auth');
+      // Frictionless: design first, authenticate when saving.
+      setScreen('dashboard');
     },
     onLogin: () => {
       if (user) { setScreen('dashboard'); return; }
+      setAuthReason(null);
       setAuthMode('signin');
       setScreen('auth');
     },
@@ -439,9 +644,11 @@ export default function App() {
     return (
       <AuthPage
         initialMode={authMode}
+        authReason={authReason}
         onContact={siteFooterNav.onContact}
         onPitchMadness={siteFooterNav.onPitchMadness}
         onBack={() => {
+          setAuthReason(null);
           if (pendingShareToken) {
             navigate(sharePath(pendingShareToken), true);
             setScreen('landing');
@@ -450,6 +657,14 @@ export default function App() {
           if (pendingPublicRoom) {
             navigate(publicRoomPath(pendingPublicRoom.handle, pendingPublicRoom.roomId), true);
             setScreen('landing');
+            return;
+          }
+          if (workspace && isGuestWorkspaceId(workspace.id)) {
+            setScreen('designer');
+            return;
+          }
+          if (route.name === 'gallery') {
+            setScreen('gallery');
             return;
           }
           setScreen('landing');
@@ -644,18 +859,22 @@ export default function App() {
       <ChecklistPage
         onBack={() => setScreen(backTarget)}
         isAdmin={isAdmin}
-        canPlace={checklistReturn === 'designer' && Boolean(workspace && user)}
         onContact={siteFooterNav.onContact}
         onPitchMadness={siteFooterNav.onPitchMadness}
         onAdmin={landingCallbacks.onAdmin}
+        canPlace={
+          backTarget === 'designer'
+          && !!workspace
+          && (!!user || isGuestWorkspaceId(workspace.id))
+        }
         onDesign={() => {
           if (user) {
             if (workspace) setScreen('designer');
             else setScreen('dashboard');
             return;
           }
-          setAuthMode('signup');
-          setScreen('auth');
+          // Guest: continue into design without forcing auth first.
+          setScreen('dashboard');
         }}
       />
     );
@@ -687,6 +906,18 @@ export default function App() {
             {...landingCallbacks}
             onOpenChecklist={() => openChecklistFrom('landing')}
             onContact={() => setScreen('contact')}
+            onBrowseGallery={() => {
+              navigate(
+                galleryPath(
+                  buildGallerySearchParams({
+                    mode: 'rooms',
+                    roomSort: 'hot',
+                    query: '',
+                  }),
+                ),
+              );
+              setScreen('gallery');
+            }}
             onPitchMadness={() => {
               setPitchScrollToDemos(false);
               setScreen('pitch-madness');
@@ -721,20 +952,23 @@ export default function App() {
 
   if (loading && !user) return <AuthSplash />;
 
-  if (screen === 'designer' && workspace && user) {
+  if (screen === 'designer' && workspace && (user || isGuestWorkspaceId(workspace.id))) {
     return (
       <RoomWorkspaceProvider value={{ workspace, exitWorkspace }}>
         <Designer
           onBack={exitWorkspace}
           onEditFloorPlan={handleEditFloorPlan}
           onOpenChecklist={() => openChecklistFrom('designer')}
-          isAdmin={isAdmin}
+isAdmin={isAdmin}
+          onRequestSaveAuth={
+            isGuestWorkspaceId(workspace.id) ? requestSaveAuth : undefined
+          }
         />
       </RoomWorkspaceProvider>
     );
   }
 
-  if (screen === 'floor-plan' && floorPlanDraft && user) {
+  if (screen === 'floor-plan' && floorPlanDraft && (user || floorPlanDraft.mode === 'create')) {
     const items = Object.values(useStore.getState().items);
     return (
       <FloorPlanSetup
@@ -755,6 +989,14 @@ export default function App() {
         }}
         onContinue={async (plan) => {
           if (floorPlanDraft.mode === 'create') {
+            const starterId = floorPlanDraft.starterTemplateId;
+            if (starterId) {
+              const template = getRoomStarterTemplate(starterId);
+              if (template) {
+                await handleCreateFromStarter(floorPlanDraft.name, template, plan);
+                return;
+              }
+            }
             await handleCreateWithPlan(floorPlanDraft.name, plan);
           } else {
             await handleSaveEditedPlan(plan);
@@ -802,14 +1044,60 @@ export default function App() {
         <RoomPresetPicker
           open={!!showPresetPicker}
           creating={floorPlanBusy}
+          defaultName={floorPlanDraft?.name || 'Room 1'}
           onClose={() => setFloorPlanDraft(null)}
-          onSelectPreset={async (plan) => {
-            if (!floorPlanDraft) return;
-            await handleCreateWithPlan(floorPlanDraft.name, plan);
-          }}
-          onCustomize={handleCustomizeOwnPlan}
+          onSelect={handlePresetPickerSelect}
         />
       </>
+    );
+  }
+
+  // Guest dashboard: name a room and pick a starter without signing in.
+  if (screen === 'dashboard' || floorPlanDraft) {
+    const showPresetPicker =
+      !!floorPlanDraft && floorPlanDraft.mode === 'create' && !floorPlanDraft.initialPlan;
+    return (
+      <div className="toova-page app-page tv-scroll">
+        <div className="toova-paper" aria-hidden />
+        <main className="app-main" style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px' }}>
+          <MonoMeta size="sm" tone="dense" upper style={{ display: 'block', marginBottom: 12 }}>
+            Design without an account
+          </MonoMeta>
+          <DisplayHeading level={4} style={{ marginBottom: 12 }}>
+            Start with a room that fits your space.
+          </DisplayHeading>
+          <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', maxWidth: '46ch', margin: '0 0 28px' }}>
+            Choose a furnished template or draw your floor plan. Sign in later when you want to save.
+          </p>
+          <button
+            type="button"
+            className="kit-btn kit-btn--primary kit-btn--md"
+            onClick={() => {
+              const name = window.prompt('Room name', 'My dorm');
+              if (!name?.trim()) return;
+              handleStartFloorPlan(name.trim());
+            }}
+          >
+            New room
+          </button>
+          <div style={{ marginTop: 20 }}>
+            <button
+              type="button"
+              className="kit-btn kit-btn--mono kit-btn--sm"
+              onClick={() => setScreen('landing')}
+            >
+              ← Back to home
+            </button>
+          </div>
+        </main>
+        <RoomPresetPicker
+          open={!!showPresetPicker}
+          creating={floorPlanBusy}
+          defaultName={floorPlanDraft?.name || 'Room 1'}
+          onClose={() => setFloorPlanDraft(null)}
+          onSelect={handlePresetPickerSelect}
+        />
+      </div>
     );
   }
 

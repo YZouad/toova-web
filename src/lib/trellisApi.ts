@@ -52,6 +52,7 @@ export async function ensureTrellisReady(
   onProgress?: (message: string) => void,
 ): Promise<void> {
   onProgress?.('Waking Trellis…');
+
   const wakeRes = await fetch(trellisSiblingUrl('wake'), { method: 'POST', signal });
   if (!wakeRes.ok) {
     const text = await wakeRes.text();

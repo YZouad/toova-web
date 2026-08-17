@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { trackAffiliateClick } from '../lib/analytics';
 import type { CuratedProduct } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
 import { productHasPlaceableModel } from '../lib/checklistPublicGlbs';
@@ -205,6 +206,14 @@ export function ProductDrawer({
                               href={shopUrl}
                               target="_blank"
                               rel="noopener noreferrer"
+                              onClick={() =>
+                                trackAffiliateClick({
+                                  retailer: product.retailer,
+                                  product_id: product.id,
+                                  approximate: false,
+                                  source: 'product_drawer',
+                                })
+                              }
                             >
                               Shop
                             </a>

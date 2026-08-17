@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { trackAffiliateClick } from '../lib/analytics';
 import type { CuratedProduct, ShoppingListEntry } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
 import { Button } from './kit/Button';
@@ -90,6 +91,14 @@ export function PurchaseReviewPanel({
                   href={current.product.affiliateUrl}
                   target="_blank"
                   rel="noopener noreferrer"
+                  onClick={() =>
+                    trackAffiliateClick({
+                      retailer: current.product.retailer,
+                      product_id: current.product.id,
+                      approximate: false,
+                      source: 'purchase_review',
+                    })
+                  }
                 >
                   Open shop
                 </a>

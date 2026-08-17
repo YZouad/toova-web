@@ -50,7 +50,7 @@ export function mapPreviewItems(raw: unknown[]): RoomPreviewItem[] {
     const id = String(row.id ?? '');
     if (!id) continue;
     const kind = String(row.kind ?? 'imported');
-    if (kind === 'hanging') continue;
+    if (kind === 'hanging' || kind === 'light') continue;
     const modelUrl = String(row.model_url ?? '').trim() || null;
     out.push({
       id,

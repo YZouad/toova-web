@@ -1,7 +1,6 @@
-import { useState } from 'react';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { planBounds } from '../lib/roomGeometry';
-import { useStore, DEFAULT_BLANKET_COLOR } from '../store';
+import { useStore } from '../store';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
 import { MonoMeta } from './kit/MonoMeta';
@@ -18,13 +17,7 @@ export function InspectorPanel() {
   const setItemElevation = useStore((s) => s.setItemElevation);
   const setWallMounted = useStore((s) => s.setWallMounted);
   const setBedHeight = useStore((s) => s.setBedHeight);
-  const setBeddingEnabled = useStore((s) => s.setBeddingEnabled);
-  const setBlanketColor = useStore((s) => s.setBlanketColor);
-  const setBlanketTexture = useStore((s) => s.setBlanketTexture);
   const removeItem = useStore((s) => s.removeItem);
-
-  const [beddingBusy, setBeddingBusy] = useState(false);
-  const [beddingError, setBeddingError] = useState<string | null>(null);
 
   if (!item) {
     return (
@@ -120,82 +113,9 @@ export function InspectorPanel() {
       )}
 
       {item.kind === 'bed' && (
-        <div className="inspector-section">
-          <Checkbox
-            checked={!!item.beddingEnabled}
-            label="Bedsheets"
-            onChange={(checked) => {
-              setBeddingError(null);
-              setBeddingEnabled(item.id, checked);
-            }}
-          />
-          {item.beddingEnabled ? (
-            <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                <MonoMeta size="xs" tone="dense" upper>Blanket</MonoMeta>
-                <input
-                  type="color"
-                  value={item.blanketColor ?? DEFAULT_BLANKET_COLOR}
-                  onChange={(e) => setBlanketColor(item.id, e.target.value)}
-                  disabled={beddingBusy}
-                  style={{ width: 36, height: 28, padding: 0, border: '1px solid var(--rule-hair)', borderRadius: 'var(--radius-xs)' }}
-                />
-              </div>
-              <label style={{ cursor: beddingBusy ? 'not-allowed' : 'pointer' }}>
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={beddingBusy}
-                  style={{ display: 'none' }}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    e.target.value = '';
-                    if (!file) return;
-                    setBeddingError(null);
-                    setBeddingBusy(true);
-                    try {
-                      const { uploadBlanketTexture, removeBlanketTexture } = await import('../lib/beddingStorage');
-                      const prevPath = item.blanketTexturePath;
-                      const { path, signedUrl } = await uploadBlanketTexture(file);
-                      setBlanketTexture(item.id, { path, url: signedUrl });
-                      if (prevPath && prevPath !== path) {
-                        await removeBlanketTexture(prevPath).catch(() => {});
-                      }
-                    } catch (err) {
-                      setBeddingError(err instanceof Error ? err.message : 'Upload failed');
-                    } finally {
-                      setBeddingBusy(false);
-                    }
-                  }}
-                />
-                <Button size="sm" variant="outline" as="span">{beddingBusy ? 'Uploading…' : 'Choose pattern'}</Button>
-              </label>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={beddingBusy || !item.blanketTexturePath}
-                onClick={async () => {
-                  setBeddingError(null);
-                  setBeddingBusy(true);
-                  try {
-                    const { removeBlanketTexture } = await import('../lib/beddingStorage');
-                    if (item.blanketTexturePath) {
-                      await removeBlanketTexture(item.blanketTexturePath);
-                    }
-                    setBlanketTexture(item.id, null);
-                  } catch (err) {
-                    setBeddingError(err instanceof Error ? err.message : 'Could not remove pattern');
-                  } finally {
-                    setBeddingBusy(false);
-                  }
-                }}
-              >
-                Clear pattern
-              </Button>
-              {beddingError ? <MonoMeta size="sm" style={{ color: 'var(--danger)' }}>{beddingError}</MonoMeta> : null}
-            </div>
-          ) : null}
-        </div>
+        <MonoMeta size="xs" tone="dense" style={{ display: 'block', marginBottom: 12 }}>
+          Use the Bedding panel in the designer to customize sheets, comforter, and pillows.
+        </MonoMeta>
       )}
 
       {item.kind !== 'bed' && (

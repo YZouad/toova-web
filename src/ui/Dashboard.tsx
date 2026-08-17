@@ -25,7 +25,6 @@ import {
   Banner,
   Button,
   EmptyState,
-  Field,
   Input,
   Modal,
   MonoMeta,
@@ -128,7 +127,8 @@ interface DashboardProps {
   loadingLayout: boolean;
   showAdmin?: boolean;
   onPickExisting: (room: { id: string; name: string; isOwner?: boolean }) => Promise<void>;
-  onStartFloorPlan: (name: string) => void;
+  /** Opens the combined name + starter layout picker. Passes a suggested default name. */
+  onStartFloorPlan: (suggestedName: string) => void;
   onNavigate: (nav: AppShellNavId) => void;
   onLogout: () => void;
   onContact?: () => void;
@@ -154,8 +154,6 @@ export function Dashboard({
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
-  const [showNewRoom, setShowNewRoom] = useState(false);
-  const [newRoomName, setNewRoomName] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [sharedWithMe, setSharedWithMe] = useState<
@@ -396,16 +394,13 @@ export function Dashboard({
     await fetchRooms();
   }
 
-  function handleCreateRoom() {
-    const name = newRoomName.trim() || nextRoomName(rooms);
+  function handleNewRoom() {
     if (atLimit) {
       setActionError(`Room limit reached (${MAX_ROOMS} rooms).`);
       return;
     }
     setActionError(null);
-    setShowNewRoom(false);
-    setNewRoomName('');
-    onStartFloorPlan(name);
+    onStartFloorPlan(nextRoomName(rooms));
   }
 
   function toggleMenu(e: MouseEvent, roomId: string) {
@@ -588,14 +583,7 @@ export function Dashboard({
           <Button variant="mono" onClick={() => setFeedbackOpen(true)}>
             Feedback
           </Button>
-          <Button
-            size="sm"
-            onClick={() => {
-              setShowNewRoom(true);
-              setNewRoomName('');
-            }}
-            disabled={atLimit}
-          >
+          <Button size="sm" onClick={handleNewRoom} disabled={atLimit}>
             New room
           </Button>
         </>
@@ -682,11 +670,11 @@ export function Dashboard({
         <EmptyState
           style={{ marginTop: 48 }}
           label={tab === 'forks' ? 'No forks' : 'No rooms yet'}
-          title="Plan the room before the truck arrives."
-          body="Draw the floor plan once — every piece you place after that is measured against it."
+          title="Start with a room that fits your space."
+          body="Choose a furnished template or draw your floor plan — every piece you place is measured against it."
           action={
             tab === 'mine' ? (
-              <Button size="md" onClick={() => setShowNewRoom(true)}>
+              <Button size="md" onClick={handleNewRoom}>
                 New room
               </Button>
             ) : undefined
@@ -710,40 +698,15 @@ export function Dashboard({
         <EmptyState
           style={{ marginTop: 72 }}
           label={`${MAX_ROOMS - rooms.length} room${MAX_ROOMS - rooms.length === 1 ? '' : 's'} left`}
-          title="Plan the room before the truck arrives."
-          body="Draw the floor plan once — every piece you place after that is measured against it."
+          title="Start with a room that fits your space."
+          body="Choose a furnished template or draw your floor plan — every piece you place is measured against it."
           action={
-            <Button size="md" onClick={() => setShowNewRoom(true)}>
+            <Button size="md" onClick={handleNewRoom}>
               New room
             </Button>
           }
         />
       ) : null}
-
-      <Modal
-        open={showNewRoom}
-        meta="New room"
-        title="What are you planning?"
-        onClose={() => setShowNewRoom(false)}
-        footer={
-          <>
-            <Button size="sm" variant="outline" onClick={() => setShowNewRoom(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" onClick={handleCreateRoom}>
-              Continue
-            </Button>
-          </>
-        }
-      >
-        <Field label="Room name">
-          <Input
-            value={newRoomName}
-            onChange={(e) => setNewRoomName(e.target.value)}
-            placeholder={nextRoomName(rooms)}
-          />
-        </Field>
-      </Modal>
 
       <Modal
         open={!!deleteRoom}

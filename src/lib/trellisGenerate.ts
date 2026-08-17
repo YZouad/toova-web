@@ -14,6 +14,7 @@ export async function generateGlbFromPhoto(
   await ensureTrellisReady(signal, onProgress);
 
   onProgress?.('Generating 3D model…');
+
   const fd = new FormData();
   fd.append('file', imageFile);
 

@@ -6,6 +6,13 @@ import type { FurnitureKind } from '../furniture/registry';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './checklistPublicGlbs';
 import { DEFAULT_BLANKET_COLOR, newAttachmentKey, type EmitterConfig, type Item } from '../store';
 import {
+  comforterHexFromConfig,
+  isAnyBeddingLayerEnabled,
+  parseBeddingConfig,
+  resolveBeddingConfig,
+} from './bedding/config';
+import type { BeddingConfig } from './bedding/types';
+import {
   parseHangingConfig,
   type HangingDecorationConfig,
 } from './hangingDecorGeometry';
@@ -20,6 +27,7 @@ const KNOWN_KINDS: FurnitureKind[] = [
   'lamp',
   'imported',
   'hanging',
+  'light',
 ];
 
 function isFurnitureKind(k: string): k is FurnitureKind {
@@ -48,6 +56,7 @@ export interface RoomItemRow {
   bedding_enabled?: boolean | null;
   blanket_color?: string | null;
   blanket_texture_path?: string | null;
+  bedding_config?: BeddingConfig | null;
   emitter?: EmitterConfig | null;
   curated_product_id?: string | null;
   instance_key?: string | null;
@@ -74,6 +83,7 @@ export type RoomItemInsert = {
   bedding_enabled?: boolean;
   blanket_color: string | null;
   blanket_texture_path: string | null;
+  bedding_config: BeddingConfig | null;
   emitter?: EmitterConfig | null;
   curated_product_id: string | null;
   instance_key: string;
@@ -120,9 +130,11 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     }
   }
 
-  const beddingEnabled =
+  const beddingConfig =
+    row.kind === 'bed' ? parseBeddingConfig(row.bedding_config) : undefined;
+  const legacyBeddingEnabled =
     row.kind === 'bed' && row.bedding_enabled === true ? true : undefined;
-  const blanketColor = (() => {
+  const legacyBlanketColor = (() => {
     if (row.kind !== 'bed') return undefined;
     if (row.blanket_color != null && String(row.blanket_color).trim()) {
       return String(row.blanket_color);
@@ -140,6 +152,23 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     }
     return undefined;
   })();
+  const resolvedBeddingConfig =
+    row.kind === 'bed'
+      ? beddingConfig ??
+        resolveBeddingConfig({
+          beddingEnabled: legacyBeddingEnabled,
+          blanketColor: legacyBlanketColor,
+        })
+      : undefined;
+  const beddingEnabled =
+    row.kind === 'bed' && resolvedBeddingConfig
+      ? isAnyBeddingLayerEnabled(resolvedBeddingConfig) || undefined
+      : undefined;
+  const blanketColor =
+    row.kind === 'bed' && resolvedBeddingConfig
+      ? comforterHexFromConfig(resolvedBeddingConfig) ?? legacyBlanketColor
+      : undefined;
+
   const blanketTexturePath =
     row.kind === 'bed' &&
     row.blanket_texture_path != null &&
@@ -174,6 +203,8 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     beddingEnabled,
     blanketColor,
     tintColor,
+    beddingConfig: resolvedBeddingConfig,
+
     blanketTexturePath,
     importedNaturalSize,
     importedUrl,
@@ -241,17 +272,29 @@ export function serializeLayoutForRoom(
         it.kind === 'imported'
           ? (it.importedStoragePath ?? null)
           : null,
-      bedding_enabled: it.kind === 'bed' ? !!it.beddingEnabled : false,
+      bedding_enabled:
+        it.kind === 'bed'
+          ? !!(
+              it.beddingConfig
+                ? isAnyBeddingLayerEnabled(it.beddingConfig)
+                : it.beddingEnabled
+            )
+          : false,
       blanket_color:
-        it.kind === 'bed' && it.blanketColor
-          ? it.blanketColor
+        it.kind === 'bed'
+          ? (it.beddingConfig
+              ? comforterHexFromConfig(it.beddingConfig)
+              : it.blanketColor) ?? null
           : it.kind === 'imported' && it.tintColor
             ? it.tintColor
             : null,
+
       blanket_texture_path:
         it.kind === 'bed' && it.blanketTexturePath
           ? it.blanketTexturePath
           : null,
+      bedding_config:
+        it.kind === 'bed' && it.beddingConfig ? it.beddingConfig : null,
       curated_product_id: it.curatedProductId ?? null,
       emitter: it.emitter?.enabled ? it.emitter : null,
       instance_key: it.attachmentKey || newAttachmentKey(),
