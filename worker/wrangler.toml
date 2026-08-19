@@ -1,20 +1,37 @@
 name = "toova-og-gateway"
 main = "src/index.ts"
-compatibility_date = "2025-05-01"
-workers_dev = true
+compatibility_date = "2026-08-19"
+workers_dev = false
 
-# Route toova.net through this Worker (configure in Cloudflare dashboard or via routes below).
-# routes = [
-#   { pattern = "toova.net/*", zone_name = "toova.net" },
-#   { pattern = "www.toova.net/*", zone_name = "toova.net" }
-# ]
+[[routes]]
+pattern = "toova.net/r/*"
+zone_name = "toova.net"
+
+[[routes]]
+pattern = "toova.net/u/*"
+zone_name = "toova.net"
+
+[[routes]]
+pattern = "toova.net/og/*"
+zone_name = "toova.net"
+
+[[routes]]
+pattern = "www.toova.net/r/*"
+zone_name = "toova.net"
+
+[[routes]]
+pattern = "www.toova.net/u/*"
+zone_name = "toova.net"
+
+[[routes]]
+pattern = "www.toova.net/og/*"
+zone_name = "toova.net"
 
 [vars]
-# Override per environment; secrets go in wrangler secret / GitHub Actions.
-# ORIGIN_HOST = "yaniszouad.github.io"
-# ORIGIN_BASE_PATH = "/"   # use "/" when custom domain or Pages project root
+# HTML/assets come from the custom domain. Safe: this Worker only binds /r /u /og.
+SITE_ORIGIN = "https://toova.net"
+SUPABASE_URL = "https://xfifgtedssabneqlxbhf.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_BKydIgobs2Vj7Wf-PNCl_w_FUm4y2xv"
+R2_PUBLIC_BASE_URL = "https://assets.toova.net"
 
-# Secrets (set via `wrangler secret put` or CI):
-#   SUPABASE_URL
-#   SUPABASE_ANON_KEY
-#   CLOUDFLARE_API_TOKEN (CI only)
+# Secret: wrangler secret put SUPABASE_SERVICE_ROLE_KEY

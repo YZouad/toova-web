@@ -3,14 +3,14 @@ import {
   fetchGalleryHome,
   type GalleryRoomRow,
 } from '../lib/roomGallery';
-import { signRoomThumbnailPath } from '../lib/roomThumbnailStorage';
+import { resolveRoomThumbnailUrl } from '../lib/roomThumbnailStorage';
 import { parseFloorPlan } from '../lib/floorPlanGeometry';
 import type { GalleryModel } from './useGalleryCatalog';
 import type { GalleryRoom } from './useGalleryRooms';
 import { mapPreviewItems, withPreviewTints } from './useGalleryRooms';
 import type { CatalogCategorySlug } from '../lib/catalogCategories';
 import type { CatalogVisibility } from '../lib/catalogEngagement';
-import { signBrowsableModelPath } from '../lib/modelStorage';
+import { resolveBrowsableModelUrl } from '../lib/modelStorage';
 import { getSessionCatalogPreview } from '../lib/catalogThumbnailBackfill';
 
 function n(v: unknown): number {
@@ -20,12 +20,14 @@ function n(v: unknown): number {
 
 async function hydrateRoom(row: GalleryRoomRow): Promise<GalleryRoom> {
   const thumb = row.thumbnail_path?.trim() || null;
-  const thumbnailUrl = thumb ? await signRoomThumbnailPath(thumb) : null;
   const visibilityRaw = String(row.visibility ?? 'public');
   const visibility =
     visibilityRaw === 'private' || visibilityRaw === 'unlisted'
       ? visibilityRaw
       : 'public';
+  const thumbnailUrl = thumb
+    ? await resolveRoomThumbnailUrl(thumb, visibility === 'public')
+    : null;
   return {
     id: row.room_id,
     name: row.name,
@@ -60,15 +62,16 @@ async function hydrateModel(row: Record<string, unknown>): Promise<GalleryModel 
   const isAbsolute = path.startsWith('http://') || path.startsWith('https://');
   let signedUrl: string | null = null;
   let previewUrl: string | null = null;
+  const access = visibility === 'public' ? 'public' : 'private';
 
   if (isBuiltin) {
     previewUrl = getSessionCatalogPreview(kind) ?? null;
   } else if (path) {
-    signedUrl = isAbsolute ? path : await signBrowsableModelPath(path);
+    signedUrl = isAbsolute ? path : await resolveBrowsableModelUrl(path, { access });
     if (!signedUrl) return null;
     const thumbPath = String(row.thumbnail_path ?? '').trim();
     if (thumbPath) {
-      previewUrl = await signBrowsableModelPath(thumbPath);
+      previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
     } else {
       previewUrl = getSessionCatalogPreview(kind) ?? null;
     }

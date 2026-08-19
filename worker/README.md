@@ -1,15 +1,13 @@
-# Toova OG gateway (deprecated)
+# Toova OG gateway
 
-> **Deprecated.** Link previews are now **static unfurl pages** generated into the
-> GitHub Pages `dist` artifact (`npm run generate:unfurls`). See the root
-> [README](../README.md) § Link previews.
->
-> This Worker is no longer deployed. Keep the source only as reference for the
-> previous Cloudflare-based OG injection approach.
+Cloudflare Worker on `toova.net/r/*`, `/u/*`, and `/og/*`. Injects Open Graph
+tags into the GitHub Pages SPA shell so link previews work without a rebuild.
 
-Historically this Worker proxied `toova.net` to the GitHub Pages origin and
-returned **HTTP 200** HTML with escaped Open Graph / Twitter meta for:
+```bash
+cd worker
+npm ci
+npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+npx wrangler deploy
+```
 
-- `/r/:token` — share unfurl (`get_share_unfurl`)
-- `/u/:handle` — public profile (`get_profile_page`)
-- `/u/:handle/r/:roomId` — public room (`get_public_room_unfurl`)
+Origin HTML is fetched from `https://toova.net/index.html` (not bound to this Worker).

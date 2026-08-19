@@ -1,6 +1,8 @@
 import { supabase } from './supabase';
-import { MODEL_FILES_BUCKET } from './modelStorage';
+import { publicModelAssetUrl, publicModelsUrl } from './modelStorage';
+import { mirrorRoomAssets } from './publicModelsMirror';
 import { requestUnfurlDeploy } from './requestUnfurlDeploy';
+import { signStoragePath } from './signedUrlCache';
 
 export const PROFILE_AVATARS_BUCKET = 'profile-avatars';
 
@@ -207,6 +209,7 @@ export async function setRoomVisibility(
     p_visibility: visibility,
   });
   if (error) throw new Error(profileErrorMessage(error, 'Could not update room visibility.'));
+  await mirrorRoomAssets(roomId, visibility);
   void requestUnfurlDeploy();
 }
 
@@ -266,28 +269,18 @@ export async function signAvatarPath(
 ): Promise<string | null> {
   const trimmed = path?.trim();
   if (!trimmed) return null;
-  const { data, error } = await supabase.storage
-    .from(PROFILE_AVATARS_BUCKET)
-    .createSignedUrl(trimmed, expiresSec);
-  if (error || !data?.signedUrl) return null;
-  return data.signedUrl;
+  return signStoragePath(PROFILE_AVATARS_BUCKET, trimmed, expiresSec);
 }
 
+/** Stable public-models / R2 CDN URLs for a published room (no per-view signed tokens). */
 export async function signPublicRoomAssetPaths(
   paths: string[],
-  expiresSec = 60 * 60,
 ): Promise<Record<string, string>> {
   const unique = [...new Set(paths.map((p) => p.trim()).filter(Boolean))];
-  if (unique.length === 0) return {};
   const out: Record<string, string> = {};
-  const { data, error } = await supabase.storage
-    .from(MODEL_FILES_BUCKET)
-    .createSignedUrls(unique, expiresSec);
-  if (error || !data) return out;
-  for (const row of data) {
-    if (row.path && row.signedUrl && !row.error) {
-      out[row.path] = row.signedUrl;
-    }
+  for (const path of unique) {
+    const url = publicModelAssetUrl(path) ?? publicModelsUrl(path);
+    if (url) out[path] = url;
   }
   return out;
 }

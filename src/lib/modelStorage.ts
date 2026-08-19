@@ -1,19 +1,29 @@
 import { supabase } from './supabase';
+import { signStoragePath } from './signedUrlCache';
 
 export const MODEL_FILES_BUCKET = 'model-files';
+/** Public CDN mirror of catalog + public-room assets. Private originals stay in model-files. */
+export const PUBLIC_MODELS_BUCKET = 'public-models';
+/** Cloudflare R2 custom domain for currently-public catalog/room objects. */
+export const R2_PUBLIC_BASE_URL = 'https://assets.toova.net';
+
+export type StorageUrlAccess = 'public' | 'private';
+
+/** Stable public URL for a CDN object (R2, no signing). */
+export function publicModelsUrl(objectPath: string): string | null {
+  const trimmed = objectPath.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  const encoded = trimmed.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  return encoded ? `${R2_PUBLIC_BASE_URL}/${encoded}` : null;
+}
 
 /** Signed URL for private bucket objects (path = object key inside the bucket). */
 export async function signModelObjectPath(
   objectPath: string,
   expiresSec = 60 * 60 * 24,
 ): Promise<string | null> {
-  const trimmed = objectPath.trim();
-  if (!trimmed) return null;
-  const { data, error } = await supabase.storage
-    .from(MODEL_FILES_BUCKET)
-    .createSignedUrl(trimmed, expiresSec);
-  if (error || !data?.signedUrl) return null;
-  return data.signedUrl;
+  return signStoragePath(MODEL_FILES_BUCKET, objectPath, expiresSec);
 }
 
 /**
@@ -34,17 +44,26 @@ export function publicModelAssetUrl(objectPath: string): string | null {
   if (!trimmed) return null;
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
   const viteBase = (import.meta.env.BASE_URL || '/').replace(/\/?$/, '/');
-  if (trimmed.startsWith('checklist-refs/')) return `${viteBase}${trimmed}`;
+  if (trimmed.startsWith('checklist-refs/') || trimmed.startsWith('marketing/')) {
+    return `${viteBase}${trimmed}`;
+  }
   if (trimmed.startsWith('/')) return `${viteBase}${trimmed.replace(/^\//, '')}`;
   return null;
 }
 
-/** Public asset URL, or a signed storage URL for bucket object keys. */
+/** Repo static URL, public CDN URL, or a signed private-bucket URL. */
 export async function resolveBrowsableModelUrl(
   objectPath: string,
-  expiresSec = 60 * 60 * 24,
+  expiresSecOrOpts: number | { expiresSec?: number; access?: StorageUrlAccess } = 60 * 60 * 24,
 ): Promise<string | null> {
-  return publicModelAssetUrl(objectPath) ?? signBrowsableModelPath(objectPath, expiresSec);
+  const opts =
+    typeof expiresSecOrOpts === 'number'
+      ? { expiresSec: expiresSecOrOpts, access: 'private' as const }
+      : expiresSecOrOpts;
+  const staticUrl = publicModelAssetUrl(objectPath);
+  if (staticUrl) return staticUrl;
+  if (opts.access === 'public') return publicModelsUrl(objectPath);
+  return signBrowsableModelPath(objectPath, opts.expiresSec ?? 60 * 60 * 24);
 }
 
 /** Safe filename for a catalog GLB/GLTF download. */
@@ -89,14 +108,16 @@ export async function downloadCatalogModelByKind(
 ): Promise<void> {
   const { data, error } = await supabase
     .from('furniture_catalog')
-    .select('model_url,label')
+    .select('model_url,label,visibility')
     .eq('kind', kind)
     .maybeSingle();
   if (error || !data?.model_url) {
     throw new Error('Could not download model');
   }
   const path = String(data.model_url).trim();
-  const url = await resolveBrowsableModelUrl(path);
+  const url = await resolveBrowsableModelUrl(path, {
+    access: data.visibility === 'public' ? 'public' : 'private',
+  });
   if (!url) {
     throw new Error('Could not download model');
   }
@@ -120,6 +141,7 @@ export async function uploadModelThumbnail(
     .from(MODEL_FILES_BUCKET)
     .upload(objectPath, blob, {
       contentType: 'image/jpeg',
+      cacheControl: '86400',
       upsert: false,
     });
   if (error) return null;

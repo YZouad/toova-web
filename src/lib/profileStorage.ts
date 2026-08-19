@@ -1,5 +1,6 @@
 import { imageToJpegThumbnail } from './thumbnailImage';
 import { PROFILE_AVATARS_BUCKET, updateOwnProfile } from './profiles';
+import { signStoragePath } from './signedUrlCache';
 import { supabase } from './supabase';
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
@@ -29,11 +30,8 @@ export async function uploadProfileAvatar(file: File): Promise<{ path: string; s
 
   await updateOwnProfile({ avatarPath: objectPath });
 
-  const { data: signed } = await supabase.storage
-    .from(PROFILE_AVATARS_BUCKET)
-    .createSignedUrl(objectPath, 60 * 60);
-
-  return { path: objectPath, signedUrl: signed?.signedUrl ?? null };
+  const signedUrl = await signStoragePath(PROFILE_AVATARS_BUCKET, objectPath, 60 * 60);
+  return { path: objectPath, signedUrl };
 }
 
 export async function clearProfileAvatar(previousPath?: string | null): Promise<void> {

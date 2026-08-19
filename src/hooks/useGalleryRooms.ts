@@ -4,7 +4,7 @@ import {
   type GalleryRoomRow,
   type RoomGallerySort,
 } from '../lib/roomGallery';
-import { signRoomThumbnailPath } from '../lib/roomThumbnailStorage';
+import { resolveRoomThumbnailUrl } from '../lib/roomThumbnailStorage';
 import { parseFloorPlan, type FloorPlan } from '../lib/floorPlanGeometry';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
 import type { RoomPreviewItem } from '../ui/RoomPreview';
@@ -83,12 +83,14 @@ export async function withPreviewTints(
 
 async function rowToRoom(row: GalleryRoomRow): Promise<GalleryRoom> {
   const thumb = row.thumbnail_path?.trim() || null;
-  const thumbnailUrl = thumb ? await signRoomThumbnailPath(thumb) : null;
   const visibilityRaw = String(row.visibility ?? 'public');
   const visibility =
     visibilityRaw === 'private' || visibilityRaw === 'unlisted'
       ? visibilityRaw
       : 'public';
+  const thumbnailUrl = thumb
+    ? await resolveRoomThumbnailUrl(thumb, visibility === 'public')
+    : null;
   const previewItems = await withPreviewTints(mapPreviewItems(row.preview_items));
   return {
     id: row.room_id,

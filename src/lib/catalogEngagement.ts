@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { mirrorCatalogKind } from './publicModelsMirror';
 
 export type CatalogVisibility = 'private' | 'unlisted' | 'public';
 
@@ -32,6 +33,7 @@ export async function setCatalogVisibility(
     p_visibility: visibility,
   });
   if (error) throw new Error(error.message);
+  await mirrorCatalogKind(kind);
 }
 
 export async function toggleCatalogLike(

@@ -1,0 +1,13 @@
+-- After public_models_bucket.sql
+-- 1) Bucket is public
+-- select id, public from storage.buckets where id = 'public-models';
+-- Expect: public = true
+--
+-- 2) Anon cannot insert into public-models
+-- 3) Authenticated owner can copy own-folder objects from model-files → public-models
+-- 4) Authenticated cannot insert into another user's folder
+-- 5) GET /storage/v1/object/public/public-models/{public-catalog-path} → 200 after mirror
+-- 6) GET /storage/v1/object/public/public-models/{private-only-path} → 404
+-- 7) is_cdn_public_asset(public catalog model_url) as authenticated → true
+-- 8) is_cdn_public_asset(unreferenced private path) as authenticated → false
+-- 9) anon cannot EXECUTE is_cdn_public_asset

@@ -10,6 +10,7 @@ import {
 import type { User } from '@supabase/supabase-js';
 import { trackLogin, trackSignUp } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
+import { clearSignedUrlCache } from '../lib/signedUrlCache';
 import {
   fetchOwnProfile,
   signAvatarPath,
@@ -64,6 +65,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const next = session?.user ?? null;
+      if (event === 'SIGNED_OUT') {
+        clearSignedUrlCache();
+      }
       setUser(next);
       void loadProfile(next?.id);
 
@@ -89,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadProfile, user]);
 
   const logout = useCallback(async () => {
+    clearSignedUrlCache();
     await supabase.auth.signOut();
   }, []);
 

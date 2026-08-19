@@ -5,7 +5,7 @@ import {
 } from '../lib/catalogThumbnailBackfill';
 import { parseInchDims } from '../lib/importedItemSize';
 import type { CatalogVisibility } from '../lib/catalogEngagement';
-import { signBrowsableModelPath } from '../lib/modelStorage';
+import { resolveBrowsableModelUrl } from '../lib/modelStorage';
 import { supabase } from '../lib/supabase';
 
 export interface UserCatalogEntry {
@@ -78,11 +78,18 @@ export function useUserCatalog(enabled: boolean) {
           const path = (row.model_url as string | null)?.trim() ?? '';
           if (!path) return null;
 
+          const visibilityRaw = String(row.visibility ?? 'private');
+          const visibility: CatalogVisibility =
+            visibilityRaw === 'public' || visibilityRaw === 'unlisted'
+              ? visibilityRaw
+              : 'private';
+          const access = visibility === 'public' ? 'public' : 'private';
+
           const isAbsolute =
             path.startsWith('http://') || path.startsWith('https://');
           const signedUrl = isAbsolute
             ? path
-            : await signBrowsableModelPath(path);
+            : await resolveBrowsableModelUrl(path, { access });
 
           if (!signedUrl) return null;
 
@@ -92,16 +99,10 @@ export function useUserCatalog(enabled: boolean) {
           const thumbPath = (row.thumbnail_path as string | null)?.trim() ?? '';
           let previewUrl: string | null = null;
           if (thumbPath) {
-            previewUrl = await signBrowsableModelPath(thumbPath);
+            previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
           } else {
             previewUrl = getSessionCatalogPreview(row.kind as string) ?? null;
           }
-
-          const visibilityRaw = String(row.visibility ?? 'private');
-          const visibility: CatalogVisibility =
-            visibilityRaw === 'public' || visibilityRaw === 'unlisted'
-              ? visibilityRaw
-              : 'private';
 
           return {
             kind: row.kind as string,
