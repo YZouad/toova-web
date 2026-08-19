@@ -36,7 +36,7 @@ Trellis runs on EC2 and is reached through the Render BFF (`POST /api/trellis/wa
 | `npm run build` | Typecheck and build for production |
 | `npm run preview` | Preview the production build locally |
 | `npm run typecheck` | Run TypeScript without emitting files |
-| `npm run generate:unfurls` | After `build`, write static OG HTML into `dist/` (needs Supabase service role) |
+| `npm run generate:unfurls` | Optional: write static OG HTML into `dist/` (unused in production; Cloudflare Worker serves previews) |
 
 ## Environment variables
 
@@ -50,39 +50,31 @@ See [`.env.example`](.env.example). Copy it to `.env.local` for local dev (gitig
 
 ## Deployment
 
-The site deploys to GitHub Pages on every push to `main` (and on unfurl refresh) via [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
+The site deploys to GitHub Pages on every push to `main` via [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
 
 1. In the repo, go to **Settings → Pages** and set the source to **GitHub Actions**.
 2. Optionally set `VITE_TRELLIS_GENERATE_URL` under **Settings → Secrets and variables → Actions → Variables** so model import works in production.
 
 ### Custom domain (DNS)
 
-Point `toova.net` at **GitHub Pages** (not Cloudflare Workers):
+Point `toova.net` at **GitHub Pages** (apex A records / `www` CNAME). Cloudflare proxy can stay on; the OG Worker only intercepts `/r/*`, `/u/*`, and `/og/*`.
 
 - Apex: A records to `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
 - `www`: CNAME to `<user>.github.io`
 - In **Settings → Pages**, add the custom domain and enable HTTPS
 
-Until DNS serves Pages directly, static unfurl files only exist on the `*.github.io` origin.
+Until DNS serves Pages directly, the site is only on the `*.github.io` origin.
 
-### Link previews (static unfurls)
+### Link previews (Cloudflare Worker)
 
-Deep links (`/r/…`, `/u/…`, `/u/…/r/…`) get **static HTML** with Open Graph tags generated into the Pages artifact after each build (`scripts/generate-static-unfurls.mjs`). OG images are baked as `og.jpg` next to each page (Storage buckets stay private).
+Deep links (`/r/…`, `/u/…`, `/u/…/r/…`) are intercepted by the **toova-og-gateway** Worker (`worker/`). It fetches `index.html` from GitHub Pages, injects Open Graph tags, and returns HTTP 200 so chat apps unfurl immediately.
 
-Expect ~1–3 minutes after creating/revoking a share (or changing public visibility) before chat apps show the new card. Revoked links disappear from the next successful Pages deploy; third-party caches may linger.
+- Public room images: `https://assets.toova.net/…`
+- Private share / profile images: `https://toova.net/og/r/:token` and `https://toova.net/og/u/:handle` (Worker streams from Storage)
 
-**GitHub Actions secrets** for [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml):
+Deploy: `cd worker && npx wrangler deploy` (secret `SUPABASE_SERVICE_ROLE_KEY`).
 
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY` (CI-only; lists active shares/public pages and downloads thumbnails)
-
-**Supabase Edge Function** `request-unfurl-deploy` (call after share create/revoke and public visibility changes):
-
-- Secrets: `GITHUB_UNFURL_PAT` (PAT with `actions:write` on this repo), `GITHUB_REPO` (`owner/toova-web`)
-- Deploy: `supabase functions deploy request-unfurl-deploy`
-- Triggers `repository_dispatch` type `unfurl-refresh` → Pages rebuild
-
-The former Cloudflare Worker path is deprecated; see [`worker/README.md`](worker/README.md).
+The former static unfurl generator (`scripts/generate-static-unfurls.mjs`) is unused in CI.
 
 ## Supabase database
 

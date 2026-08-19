@@ -2,6 +2,7 @@ import {
   MODEL_FILES_BUCKET,
   PUBLIC_MODELS_BUCKET,
 } from './modelStorage';
+import { ingestPublicR2, unmirrorPublicR2 } from './r2StorageWorker';
 import { supabase } from './supabase';
 
 const ROOM_THUMBNAILS_BUCKET = 'room-thumbnails';
@@ -37,6 +38,9 @@ export async function mirrorToPublicModels(
       console.warn('[public-models] mirror failed', path, error.message);
     }),
   );
+  const r2Bucket =
+    sourceBucket === ROOM_THUMBNAILS_BUCKET ? 'room-thumbnails' : 'model-files';
+  await ingestPublicR2(unique.map((path) => ({ bucket: r2Bucket, path })));
 }
 
 export async function mirrorRoomThumbnailsToPublic(
@@ -68,6 +72,7 @@ export async function unmirrorFromPublicModels(
   if (stale.length === 0) return;
   const { error } = await supabase.storage.from(PUBLIC_MODELS_BUCKET).remove(stale);
   if (error) console.warn('[public-models] unmirror failed', error.message);
+  await unmirrorPublicR2(stale);
 }
 
 export async function removePublicModelMirrors(
@@ -76,6 +81,7 @@ export async function removePublicModelMirrors(
   const unique = storageObjectPaths(paths);
   if (unique.length === 0) return;
   await supabase.storage.from(PUBLIC_MODELS_BUCKET).remove(unique);
+  await unmirrorPublicR2(unique);
 }
 
 export async function mirrorCatalogKind(kind: string): Promise<void> {

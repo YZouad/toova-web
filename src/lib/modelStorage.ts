@@ -4,16 +4,18 @@ import { signStoragePath } from './signedUrlCache';
 export const MODEL_FILES_BUCKET = 'model-files';
 /** Public CDN mirror of catalog + public-room assets. Private originals stay in model-files. */
 export const PUBLIC_MODELS_BUCKET = 'public-models';
+/** Cloudflare R2 custom domain for currently-public catalog/room objects. */
+export const R2_PUBLIC_BASE_URL = 'https://assets.toova.net';
 
 export type StorageUrlAccess = 'public' | 'private';
 
-/** Stable public URL for a `public-models` object (cached CDN, no signing). */
+/** Stable public URL for a CDN object (R2, no signing). */
 export function publicModelsUrl(objectPath: string): string | null {
   const trimmed = objectPath.trim();
   if (!trimmed) return null;
   if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
-  const { data } = supabase.storage.from(PUBLIC_MODELS_BUCKET).getPublicUrl(trimmed);
-  return data.publicUrl || null;
+  const encoded = trimmed.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  return encoded ? `${R2_PUBLIC_BASE_URL}/${encoded}` : null;
 }
 
 /** Signed URL for private bucket objects (path = object key inside the bucket). */

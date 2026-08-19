@@ -1,0 +1,23 @@
+name = "toova-r2-storage"
+main = "src/index.ts"
+compatibility_date = "2026-08-19"
+workers_dev = false
+
+[[routes]]
+pattern = "storage.toova.net"
+custom_domain = true
+
+[[r2_buckets]]
+binding = "PUBLIC_BUCKET"
+bucket_name = "toova-public"
+
+[[r2_buckets]]
+binding = "PRIVATE_BUCKET"
+bucket_name = "toova-private"
+
+[vars]
+SUPABASE_URL = "https://xfifgtedssabneqlxbhf.supabase.co"
+SUPABASE_ANON_KEY = "sb_publishable_BKydIgobs2Vj7Wf-PNCl_w_FUm4y2xv"
+
+# Secret (wrangler secret put SUPABASE_SERVICE_ROLE_KEY):
+#   SUPABASE_SERVICE_ROLE_KEY

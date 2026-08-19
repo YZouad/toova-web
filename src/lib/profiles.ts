@@ -272,7 +272,7 @@ export async function signAvatarPath(
   return signStoragePath(PROFILE_AVATARS_BUCKET, trimmed, expiresSec);
 }
 
-/** Stable public-models CDN URLs for a published room (no per-view signed tokens). */
+/** Stable public-models / R2 CDN URLs for a published room (no per-view signed tokens). */
 export async function signPublicRoomAssetPaths(
   paths: string[],
 ): Promise<Record<string, string>> {
