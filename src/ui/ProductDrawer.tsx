@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { trackAffiliateClick } from '../lib/analytics';
+import { useAuth } from '../hooks/useAuth';
 import type { CuratedProduct } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
 import { productHasPlaceableModel } from '../lib/checklistPublicGlbs';
@@ -39,11 +40,13 @@ export function ProductDrawer({
 }: ProductDrawerProps) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
+  const { user } = useAuth();
+  const canDownloadGlb = adminMode || !!user?.id;
   const [downloadKind, setDownloadKind] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
 
   async function handleDownloadGlb(product: CuratedProduct) {
-    if (!product.placeCatalogKind || downloadKind) return;
+    if (!canDownloadGlb || !product.placeCatalogKind || downloadKind) return;
     setDownloadError(null);
     setDownloadKind(product.placeCatalogKind);
     try {
@@ -172,7 +175,7 @@ export function ProductDrawer({
                               Edit
                             </Button>
                           ) : null}
-                          {product.placeCatalogKind ? (
+                          {canDownloadGlb && product.placeCatalogKind ? (
                             <Button
                               size="sm"
                               variant="outline"
@@ -218,7 +221,7 @@ export function ProductDrawer({
                               Shop
                             </a>
                           ) : null}
-                          {product.placeCatalogKind ? (
+                          {canDownloadGlb && product.placeCatalogKind ? (
                             <Button
                               size="sm"
                               variant="outline"

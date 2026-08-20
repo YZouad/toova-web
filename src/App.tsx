@@ -545,6 +545,11 @@ function AppContent() {
       setScreen('landing');
       return;
     }
+    if (!user && (nav === 'rooms' || nav === 'models' || nav === 'ar' || nav === 'admin')) {
+      setAuthMode('signin');
+      setScreen('auth');
+      return;
+    }
     if (nav === 'rooms') {
       navigate('/');
       setScreen('dashboard');

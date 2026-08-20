@@ -19,6 +19,7 @@ import {
   toggleCatalogCategory,
   type CatalogCategorySlug,
 } from '../lib/catalogCategories';
+import { ImageFileField } from './ImageFileField';
 import { PosterImageCrop } from './PosterImageCrop';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
@@ -569,15 +570,12 @@ export function ImportModelModal({
 
         {tab === 'generate' ? (
           <div className="import-modal-generate">
-            <label className="import-modal-field">
-              <span>Source image</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(ev) => setImageFile(ev.target.files?.[0] ?? null)}
-                disabled={busy}
-              />
-            </label>
+            <ImageFileField
+              label="Source image"
+              file={imageFile}
+              disabled={busy}
+              onFile={setImageFile}
+            />
 
             {imagePreviewUrl ? (
               <img
@@ -633,7 +631,7 @@ export function ImportModelModal({
         ) : tab === 'poster' ? (
           <div className="import-modal-generate">
             <p className="import-modal-generate-status">
-              Set poster size first (aspect ratio locks the crop), pick a photo, pan and zoom inside the frame,
+              Set poster size first (aspect ratio locks the crop), pick or paste a photo, pan and zoom inside the frame,
               then create a textured flat GLB. You can tweak catalog dimensions again on Upload before saving.
             </p>
 
@@ -673,15 +671,12 @@ export function ImportModelModal({
               </label>
             </div>
 
-            <label className="import-modal-field">
-              <span>Poster image</span>
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(ev) => setPosterImageFile(ev.target.files?.[0] ?? null)}
-                disabled={busy}
-              />
-            </label>
+            <ImageFileField
+              label="Poster image"
+              file={posterImageFile}
+              disabled={busy}
+              onFile={setPosterImageFile}
+            />
 
             <PosterImageCrop
               imageUrl={posterPreviewUrl}

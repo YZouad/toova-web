@@ -11,11 +11,15 @@ import {
 } from '../lib/galleryCatalog';
 import { navigate, profilePath } from '../hooks/useRoute';
 import { profileInitials } from '../lib/userDisplay';
+import { FeedbackModal } from './FeedbackModal';
 import {
   AppShell,
   type AppShellNavId,
   Button,
   Input,
+  MarketingNav,
+  MonoMeta,
+  SiteFooter,
   Tabs,
 } from './kit';
 import { GalleryHome } from './GalleryHome';
@@ -51,6 +55,7 @@ function modeToTab(mode: GalleryBrowseMode): ShellTab {
 export function GalleryPage({
   loggedIn,
   showAdmin,
+  onGoHome,
   onRequestAuth,
   onUseInRoom,
   onNavigate,
@@ -59,6 +64,7 @@ export function GalleryPage({
   onPitchMadness,
 }: GalleryPageProps) {
   const { user, profile } = useAuth();
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const initial = parseGallerySearchParams(window.location.search);
   const [mode, setMode] = useState<GalleryBrowseMode>(initial.mode);
   const [source, setSource] = useState<GallerySource>(
@@ -164,49 +170,35 @@ export function GalleryPage({
   const showModelShelves =
     tab === 'models' && !browse && !query.trim() && categories.length === 0;
 
-  return (
-    <AppShell
-      active="gallery"
-      title="Gallery"
-      meta="Discover rooms & models"
-      showAdmin={showAdmin}
-      profileInitials={profileInitials(profile, user?.email)}
-      onNavigate={onNavigate}
-      onLogout={onLogout}
-      onContact={onContact}
-      onPitchMadness={onPitchMadness}
-      feedbackEmail={user?.email ?? ''}
-      feedbackUserId={user?.id}
-      onProfile={
-        profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
-      }
-      actions={
-        <>
-          <Button
-            variant="mono"
-            onClick={() => {
-              if (!loggedIn) {
-                onRequestAuth('signin');
-                return;
-              }
-              onNavigate('rooms');
-            }}
-          >
-            Submit a room →
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              setShellTab('models');
-              openBrowse('models');
-            }}
-          >
-            Use in a room
-          </Button>
-        </>
-      }
-    >
+  const actions = (
+    <>
+      <Button
+        variant="mono"
+        onClick={() => {
+          if (!loggedIn) {
+            onRequestAuth('signin');
+            return;
+          }
+          onNavigate('rooms');
+        }}
+      >
+        Submit a room →
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => {
+          setShellTab('models');
+          openBrowse('models');
+        }}
+      >
+        Use in a room
+      </Button>
+    </>
+  );
+
+  const body = (
+    <>
       <div className="gallery-page-header">
         <Tabs
           active={tab}
@@ -328,6 +320,78 @@ export function GalleryPage({
           onPlace={handlePlace}
         />
       ) : null}
+    </>
+  );
+
+  if (!loggedIn) {
+    return (
+      <div className="toova-page">
+        <div className="toova-paper" aria-hidden />
+        <FeedbackModal
+          open={feedbackOpen}
+          onClose={() => setFeedbackOpen(false)}
+          pageSource="gallery"
+        />
+        <MarketingNav
+          brandOnClick={onGoHome}
+          links={[
+            { label: 'Home', onClick: onGoHome },
+            { label: 'Gallery', active: true },
+            { label: 'Pitch Madness', onClick: onPitchMadness },
+            { label: 'Contact', onClick: onContact },
+          ]}
+          cta={
+            <>
+              <Button size="sm" variant="mono" onClick={() => onRequestAuth('signin')}>
+                Log in
+              </Button>
+              <Button size="sm" onClick={() => onRequestAuth('signup')}>
+                Start designing, free
+              </Button>
+            </>
+          }
+        />
+        <div className="toova-frame gallery-public-page">
+          <div className="gallery-public-page__head">
+            <div>
+              <h1 className="kit-app-shell__title">Gallery</h1>
+              <MonoMeta size="sm" upper tone="subtle" style={{ display: 'block', marginTop: 6 }}>
+                Discover rooms & models
+              </MonoMeta>
+            </div>
+            <div className="kit-app-shell__actions">{actions}</div>
+          </div>
+          {body}
+        </div>
+        <SiteFooter
+          className="gallery-public-page__footer"
+          onContact={onContact}
+          onPitchMadness={onPitchMadness}
+          onFeedback={() => setFeedbackOpen(true)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <AppShell
+      active="gallery"
+      title="Gallery"
+      meta="Discover rooms & models"
+      showAdmin={showAdmin}
+      profileInitials={profileInitials(profile, user?.email)}
+      onNavigate={onNavigate}
+      onLogout={onLogout}
+      onContact={onContact}
+      onPitchMadness={onPitchMadness}
+      feedbackEmail={user?.email ?? ''}
+      feedbackUserId={user?.id}
+      onProfile={
+        profile?.handle ? () => navigate(profilePath(profile.handle)) : undefined
+      }
+      actions={actions}
+    >
+      {body}
     </AppShell>
   );
 }

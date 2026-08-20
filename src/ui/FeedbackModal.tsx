@@ -1,7 +1,7 @@
 import { type FormEvent, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 
-export type FeedbackPageSource = 'landing' | 'dashboard' | 'designer' | 'contact';
+export type FeedbackPageSource = 'landing' | 'dashboard' | 'designer' | 'contact' | 'gallery';
 export type FeedbackCategory = 'bug' | 'feedback' | 'other';
 
 interface FeedbackModalProps {
