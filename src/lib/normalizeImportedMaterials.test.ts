@@ -56,7 +56,7 @@ describe('normalizeImportedMaterials', () => {
 
     normalizeImportedMaterials(root, { relight: true });
 
-    const out = mesh.material as THREE.MeshStandardMaterial;
+    const out = mesh.material as unknown as THREE.MeshStandardMaterial;
     expect(out).toBeInstanceOf(THREE.MeshStandardMaterial);
     expect(out.envMapIntensity).toBeGreaterThanOrEqual(1);
     expect(out.side).toBe(THREE.FrontSide);
@@ -84,7 +84,7 @@ describe('normalizeImportedMaterials', () => {
     normalizeImportedMaterials(root, { relight: true });
 
     const out = root.children[0] as THREE.Mesh;
-    const mat = out.material as THREE.MeshStandardMaterial;
+    const mat = out.material as unknown as THREE.MeshStandardMaterial;
     expect(mat.vertexColors).toBe(true);
     expect(mat.color.getHex()).toBe(0xffffff);
   });
