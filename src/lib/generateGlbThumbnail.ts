@@ -11,7 +11,7 @@ export async function generateGlbThumbnail(
   try {
     const loader = new GLTFLoader();
     const gltf = await loader.loadAsync(url);
-    const blob = await renderObjectToJpeg(gltf.scene);
+    const blob = await renderObjectToJpeg(gltf.scene, { normalize: true });
     disposeObject3D(gltf.scene);
     return blob;
   } catch {

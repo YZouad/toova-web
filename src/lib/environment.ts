@@ -117,8 +117,9 @@ export function sampleSun(
   const goldenFrac = sunUp ? clamp(1 - elevationDeg / 12, 0, 1) : 0; // 1 near horizon
   const nightFrac = clamp(-elevationDeg / 18, 0, 1); // 0 at horizon, 1 deep night
 
-  // Intensity: faint cool moonlight at night, ramping to ~1.4 at noon.
-  const intensity = sunUp ? 0.12 + 1.28 * Math.pow(dayFrac, 0.6) : 0.07;
+  // Intensity: faint moonlight at night. Floor of 0.38 keeps PBR readable at
+  // the horizon; exponent > 1 still leaves midday clearly brighter.
+  const intensity = sunUp ? 0.38 + 1.14 * Math.pow(dayFrac, 1.25) : 0.07;
 
   // Sun color: golden near the horizon, neutral warm-white high up, cool/blue at night.
   const GOLDEN = '#ffb878';
@@ -135,7 +136,7 @@ export function sampleSun(
   const groundColor = sunUp
     ? lerpHex('#2a2620', '#6b6256', dayFrac)
     : lerpHex('#15120e', '#0a0e18', nightFrac);
-  const ambient = sunUp ? 0.35 + 0.45 * dayFrac : 0.16 - 0.04 * nightFrac;
+  const ambient = sunUp ? 0.28 + 0.58 * Math.pow(dayFrac, 1.2) : 0.16 - 0.04 * nightFrac;
 
   // Gradient sky background (top -> horizon).
   const skyTop = sunUp
@@ -308,7 +309,53 @@ export function sunAngles(timeOfDay: number, orientationDeg: number) {
 export function horizonFactor(timeOfDay: number, orientationDeg: number): number {
   const { elevationDeg } = sunAngles(timeOfDay, orientationDeg);
   if (elevationDeg <= 0) return 0;
-  return clamp(1 - elevationDeg / 24, 0, 1);
+  // Hold the "early" grade into mid-morning (~9am). /24 dropped to 0 by ~8am.
+  return clamp(1 - elevationDeg / 38, 0, 1);
+}
+
+/**
+ * Indoor electric fill (recessed cans) follows the daylight mood so morning
+ * stays dimmer than noon. Floor of 0.4 keeps fixtures readable at sunrise.
+ */
+export function daylightFillScale(timeOfDay: number, orientationDeg: number): number {
+  const { elevationDeg } = sunAngles(timeOfDay, orientationDeg);
+  if (elevationDeg <= 0) return 0.4;
+  const dayFrac = clamp(elevationDeg / MAX_ELEVATION, 0, 1);
+  return 0.4 + 0.6 * Math.pow(dayFrac, 1.2);
+}
+
+/**
+ * Extra indoor IBL when the sun is grazing. Kept modest so 6am does not blow out.
+ */
+export function indoorHorizonFill(timeOfDay: number, orientationDeg: number): number {
+  const { elevationDeg } = sunAngles(timeOfDay, orientationDeg);
+  if (elevationDeg >= 34) return 0;
+  if (elevationDeg <= -4) return 0;
+  const t =
+    elevationDeg <= 0
+      ? clamp(1 + elevationDeg / 4, 0, 1)
+      : clamp(1 - elevationDeg / 34, 0, 1);
+  return t * 0.4;
+}
+
+/**
+ * Sun is up but still too low to light upward-facing PBR (sofa tops).
+ * True for ~6:15–8:15 and ~17:45–19:50 — not at 6:00, when the sun is down.
+ */
+export function grazingSunIndoor(timeOfDay: number, orientationDeg: number): boolean {
+  const { elevationDeg } = sunAngles(timeOfDay, orientationDeg);
+  return elevationDeg > 1.5 && elevationDeg < 36;
+}
+
+/**
+ * Trellis / photo-to-3D meshes self-shadow to black under a grazing sun.
+ * Receive roof shadows at midday; skip receiving while the sun is low.
+ */
+export function importedMeshesReceiveShadows(
+  timeOfDay: number,
+  orientationDeg: number,
+): boolean {
+  return !grazingSunIndoor(timeOfDay, orientationDeg);
 }
 
 /** Coarse keys so light-shaft geometry is not rebuilt every slider tick. */
@@ -427,10 +474,10 @@ export function colorGradingParams(
 
   const hue = day ? goldenBand * 0.035 - (weather === 'snow' ? 0.015 : 0) : 0.008;
   const brightness =
-    (exposure - 1) * 0.07 + (mod.ambientMul - 1) * 0.04 - horizon * 0.16;
+    (exposure - 1) * 0.07 + (mod.ambientMul - 1) * 0.04 - horizon * 0.04;
   const contrast = day ? 0.04 + mod.sunMul * 0.06 + horizon * 0.04 : 0.02;
   const vignetteDarkness = 0.28 + (day ? 0.05 + horizon * 0.06 : 0.14);
-  const toneExposure = exposure * (1 - horizon * 0.38);
+  const toneExposure = exposure * (1 - horizon * 0.18);
 
   return {
     bloomIntensity: clamp(bloomIntensity, 0.03, 0.45),

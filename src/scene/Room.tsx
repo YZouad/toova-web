@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import * as THREE from 'three';
-import { sampleSun, horizonFactor } from '../lib/environment';
+import { sampleSun, indoorHorizonFill } from '../lib/environment';
 import {
   allWallSegments,
   holesForWallSegment,
@@ -112,9 +112,9 @@ function WindowLightAndGlass({
   );
 
   const fillIntensity = useMemo(() => {
-    const horizon = horizonFactor(timeOfDay, orientationDeg);
+    const fill = indoorHorizonFill(timeOfDay, orientationDeg);
     const base = sun.ambient * exposure * 0.45 + sun.intensity * exposure * 0.18;
-    return base * (1 - horizon * 0.3) * 1.15;
+    return (base + fill * 0.12) * 1.15;
   }, [sun, timeOfDay, orientationDeg, exposure]);
 
   return (

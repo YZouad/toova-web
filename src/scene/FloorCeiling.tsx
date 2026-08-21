@@ -6,6 +6,7 @@ import { useRoomSurfaceMaterial, disposeMaterial } from './useRoomMaterial';
 import type { MaterialPresetId } from '../lib/roomMaterials';
 import { useStore } from '../store';
 import { useOrbitFade } from './useOrbitFade';
+import { daylightFillScale } from '../lib/environment';
 
 const ROOF_THICKNESS = 4;
 
@@ -185,6 +186,15 @@ export function ShadowRoof({
     });
   }, [shapes]);
 
+  const depthMaterial = useMemo(
+    () =>
+      new THREE.MeshDepthMaterial({
+        depthPacking: THREE.RGBADepthPacking,
+        side: THREE.DoubleSide,
+      }),
+    [],
+  );
+
   useEffect(() => {
     matRef.current = material;
     material.shadowSide = THREE.DoubleSide;
@@ -192,8 +202,9 @@ export function ShadowRoof({
 
   useEffect(() => () => {
     disposeMaterial(material);
+    depthMaterial.dispose();
     for (const g of geos) g.dispose();
-  }, [material, geos]);
+  }, [material, geos, depthMaterial]);
 
   useOrbitFade([matRef], [0, 1, 0], [cx, y - ROOF_THICKNESS / 2, cz], {
     groupRef,
@@ -215,6 +226,7 @@ export function ShadowRoof({
           castShadow
           receiveShadow
           material={material}
+          customDepthMaterial={depthMaterial}
         />
       ))}
     </group>
@@ -230,6 +242,8 @@ export function RecessedLights({
   enabled: boolean;
 }) {
   const exposure = useStore((s) => s.environment.exposure);
+  const timeOfDay = useStore((s) => s.environment.timeOfDay);
+  const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const [cx, cz] = planCentroid(geom);
   const b = planBounds(geom);
   if (!enabled) return null;
@@ -241,8 +255,9 @@ export function RecessedLights({
 
   // Sit flush on the underside of the roof slab (not inside its thickness).
   const fixtureY = roofUndersideY(geom) - 0.15;
-  const ambientBoost = 0.55 * exposure;
-  const fillIntensity = 42 * exposure;
+  const dayMul = daylightFillScale(timeOfDay, orientationDeg);
+  const ambientBoost = 0.55 * exposure * dayMul;
+  const fillIntensity = 42 * exposure * dayMul;
   const span = Math.max(b.width, b.depth);
 
   return (

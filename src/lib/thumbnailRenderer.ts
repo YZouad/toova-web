@@ -1,9 +1,12 @@
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { normalizeImportedMaterials } from './normalizeImportedMaterials';
 
 export const THUMB_SIZE = 384;
 export const PREVIEW_BG = 0xe9dfcc;
 
 let sharedRenderer: THREE.WebGLRenderer | null = null;
+let sharedEnvMap: THREE.Texture | null = null;
 
 function getRenderer(): THREE.WebGLRenderer {
   if (!sharedRenderer) {
@@ -14,8 +17,22 @@ function getRenderer(): THREE.WebGLRenderer {
     });
     sharedRenderer.setSize(THUMB_SIZE, THUMB_SIZE);
     sharedRenderer.setPixelRatio(1);
+    sharedRenderer.outputColorSpace = THREE.SRGBColorSpace;
+    sharedRenderer.toneMapping = THREE.ACESFilmicToneMapping;
+    sharedRenderer.toneMappingExposure = 1.1;
   }
   return sharedRenderer;
+}
+
+function getEnvMap(renderer: THREE.WebGLRenderer): THREE.Texture {
+  if (!sharedEnvMap) {
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const room = new RoomEnvironment();
+    sharedEnvMap = pmrem.fromScene(room, 0.04).texture;
+    room.dispose();
+    pmrem.dispose();
+  }
+  return sharedEnvMap;
 }
 
 export function disposeObject3D(root: THREE.Object3D) {
@@ -44,8 +61,16 @@ function addLights(scene: THREE.Scene) {
   scene.add(fill);
 }
 
+export type RenderObjectToJpegOptions = {
+  /** Match designer import lighting. Default false (builtin meshes already PBR). */
+  normalize?: boolean;
+};
+
 /** Center object at origin, render to JPEG using the shared offscreen renderer. */
-export async function renderObjectToJpeg(object: THREE.Object3D): Promise<Blob | null> {
+export async function renderObjectToJpeg(
+  object: THREE.Object3D,
+  opts: RenderObjectToJpegOptions = {},
+): Promise<Blob | null> {
   try {
     const box = new THREE.Box3().setFromObject(object);
     const center = new THREE.Vector3();
@@ -58,22 +83,29 @@ export async function renderObjectToJpeg(object: THREE.Object3D): Promise<Blob |
     scene.background = new THREE.Color(PREVIEW_BG);
 
     const clone = object.clone(true);
+    if (opts.normalize) {
+      normalizeImportedMaterials(clone, { relight: true });
+    }
     clone.position.sub(center);
     scene.add(clone);
     addLights(scene);
+
+    const renderer = getRenderer();
+    scene.environment = getEnvMap(renderer);
+    scene.environmentIntensity = 0.7;
 
     const camera = new THREE.PerspectiveCamera(32, 1, 0.01, maxDim * 25);
     const dist = maxDim * 1.75;
     camera.position.set(dist * 0.9, dist * 0.55, dist * 0.9);
     camera.lookAt(0, size.y * 0.12, 0);
 
-    const renderer = getRenderer();
     renderer.render(scene, camera);
 
     const blob = await new Promise<Blob | null>((resolve) => {
       renderer.domElement.toBlob((b) => resolve(b), 'image/jpeg', 0.85);
     });
 
+    scene.environment = null;
     disposeObject3D(clone);
     return blob;
   } catch {

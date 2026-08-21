@@ -2,8 +2,8 @@ import * as THREE from 'three';
 
 export type NormalizeImportedOptions = {
   /**
-   * Soften baked AO / emissive so directional + IBL lights dominate.
-   * Default true — AI generators (e.g. Trellis) often bake lighting into maps.
+   * Soften baked AO / strong emissive so directional + IBL lights dominate.
+   * Keeps a dim emissive floor so AI-generated meshes don't go black.
    */
   relight?: boolean;
   /** Log a one-line material summary to the console. Default false. */
@@ -41,6 +41,9 @@ function copyCommonMaterialProps(from: THREE.Material, to: THREE.Material) {
   to.depthTest = from.depthTest;
   to.visible = from.visible;
   to.userData = { ...from.userData, toovaNormalized: true };
+  if ('vertexColors' in to) {
+    (to as THREE.MeshStandardMaterial).vertexColors = from.vertexColors;
+  }
 }
 
 function basicToStandard(basic: THREE.MeshBasicMaterial): THREE.MeshStandardMaterial {
@@ -48,13 +51,16 @@ function basicToStandard(basic: THREE.MeshBasicMaterial): THREE.MeshStandardMate
   copyCommonMaterialProps(basic, std);
   std.color.copy(basic.color);
   std.map = basic.map;
+  if (std.map && std.color.r + std.color.g + std.color.b < 0.25) {
+    std.color.setRGB(1, 1, 1);
+  }
   std.alphaMap = basic.alphaMap;
   std.aoMap = basic.aoMap;
   std.lightMap = basic.lightMap;
   std.lightMapIntensity = basic.lightMapIntensity;
   std.roughness = 0.72;
   std.metalness = 0.02;
-  std.envMapIntensity = 1.25;
+  std.envMapIntensity = 1;
   ensureSrgbMap(std.map);
   ensureLinearMap(std.aoMap);
   return std;
@@ -77,7 +83,7 @@ function lambertOrPhongToStandard(
   std.lightMapIntensity = src.lightMapIntensity;
   std.roughness = src instanceof THREE.MeshPhongMaterial ? 1 - Math.min(1, src.shininess / 100) : 0.72;
   std.metalness = 0.02;
-  std.envMapIntensity = 1.25;
+  std.envMapIntensity = 1;
   ensureSrgbMap(std.map);
   ensureSrgbMap(std.emissiveMap);
   ensureLinearMap(std.normalMap);
@@ -99,7 +105,13 @@ function tunePbrMaterial(mat: THREE.MeshStandardMaterial, relight: boolean, stat
     mat.roughness = 0.68;
   }
 
-  mat.envMapIntensity = Math.max(mat.envMapIntensity || 0, 1.15);
+  mat.envMapIntensity = Math.max(mat.envMapIntensity || 0, 1);
+
+  // glTF default metallicFactor is 1 when omitted. Photo-to-3D meshes omit it
+  // and also omit normals — they render as black rough metal indoors.
+  mat.metalnessMap = null;
+  mat.metalness = Math.min(mat.metalness, 0.04);
+  if (!mat.roughnessMap && mat.roughness < 0.45) mat.roughness = 0.62;
 
   if (relight) {
     const emissiveLum = mat.emissive.r + mat.emissive.g + mat.emissive.b;
@@ -107,31 +119,94 @@ function tunePbrMaterial(mat: THREE.MeshStandardMaterial, relight: boolean, stat
       (mat.emissiveMap != null && mat.emissiveIntensity > 0.02) ||
       (emissiveLum > 0.04 && mat.emissiveIntensity > 0.02);
     if (hasEmissive) {
-      // Generators often put the full shaded look in emissive — disable so lights work.
       mat.emissive.setRGB(0, 0, 0);
       mat.emissiveMap = null;
       mat.emissiveIntensity = 0;
       stats.emissiveCleared += 1;
     }
     if (mat.aoMap) {
-      mat.aoMapIntensity = Math.min(mat.aoMapIntensity, 0.35);
+      mat.aoMapIntensity = Math.min(mat.aoMapIntensity, 0.15);
     }
     if (mat.lightMap) {
-      mat.lightMapIntensity = Math.min(mat.lightMapIntensity, 0.25);
+      mat.lightMapIntensity = Math.min(mat.lightMapIntensity, 0.15);
     }
-    mat.envMapIntensity = Math.max(mat.envMapIntensity, 1.35);
+    mat.metalnessMap = null;
+    mat.metalness = Math.min(mat.metalness, 0.04);
+    // Keep vertex colors — Trellis often stores the whole albedo there.
+    // Exporters sometimes set baseColor [0,0,0] * a texture → pitch black.
+    if (mat.map && mat.color.r + mat.color.g + mat.color.b < 0.25) {
+      mat.color.setRGB(1, 1, 1);
+    }
+    if (mat instanceof THREE.MeshPhysicalMaterial) {
+      mat.transmission = 0;
+      mat.thickness = 0;
+    }
+    // DoubleSide shows inner hulls as black on blob meshes (sofas, plants).
+    mat.side = THREE.FrontSide;
+    if (mat.opacity >= 0.98) {
+      mat.transparent = false;
+      mat.opacity = 1;
+      mat.depthWrite = true;
+    }
   }
 
   mat.needsUpdate = true;
 }
 
-function ensureMeshNormals(mesh: THREE.Mesh, stats: ImportedMaterialSummary) {
+function flipGeometryWinding(geo: THREE.BufferGeometry) {
+  const idx = geo.getIndex();
+  if (idx) {
+    const arr = idx.array;
+    for (let i = 0; i + 2 < arr.length; i += 3) {
+      const tmp = arr[i + 1];
+      arr[i + 1] = arr[i + 2];
+      arr[i + 2] = tmp;
+    }
+    idx.needsUpdate = true;
+  }
+  const nrm = geo.getAttribute('normal');
+  if (nrm) {
+    for (let i = 0; i < nrm.count; i++) {
+      nrm.setXYZ(i, -nrm.getX(i), -nrm.getY(i), -nrm.getZ(i));
+    }
+    nrm.needsUpdate = true;
+  }
+}
+
+/** True when sampled normals mostly point toward the mesh centroid (inside-out). */
+export function geometryNormalsPointInward(geo: THREE.BufferGeometry): boolean {
+  const pos = geo.getAttribute('position');
+  const nrm = geo.getAttribute('normal');
+  if (!pos || !nrm || pos.count < 3) return false;
+  const box = new THREE.Box3().setFromBufferAttribute(pos as THREE.BufferAttribute);
+  const center = new THREE.Vector3();
+  box.getCenter(center);
+  const p = new THREE.Vector3();
+  const n = new THREE.Vector3();
+  const toP = new THREE.Vector3();
+  let inward = 0;
+  let outward = 0;
+  const step = Math.max(1, Math.floor(pos.count / 256));
+  for (let i = 0; i < pos.count; i += step) {
+    p.fromBufferAttribute(pos as THREE.BufferAttribute, i);
+    n.fromBufferAttribute(nrm as THREE.BufferAttribute, i);
+    toP.subVectors(p, center);
+    if (n.dot(toP) < 0) inward += 1;
+    else outward += 1;
+  }
+  return inward > outward * 1.4;
+}
+
+function ensureMeshNormals(mesh: THREE.Mesh, stats: ImportedMaterialSummary, relight: boolean) {
   const geo = mesh.geometry;
   if (!geo) return;
   const normals = geo.getAttribute('normal');
-  if (!normals || normals.count === 0) {
+  if (!normals || normals.count === 0 || relight) {
     geo.computeVertexNormals();
-    stats.missingNormalsRepaired += 1;
+    if (!normals || normals.count === 0) stats.missingNormalsRepaired += 1;
+  }
+  if (relight && geometryNormalsPointInward(geo)) {
+    flipGeometryWinding(geo);
   }
 }
 
@@ -191,7 +266,7 @@ export function normalizeImportedMaterials(
   root.traverse((obj) => {
     if (!(obj instanceof THREE.Mesh)) return;
     stats.meshCount += 1;
-    ensureMeshNormals(obj, stats);
+    ensureMeshNormals(obj, stats, relight);
     obj.castShadow = true;
     obj.receiveShadow = true;
 
@@ -200,6 +275,26 @@ export function normalizeImportedMaterials(
     } else if (obj.material) {
       obj.material = normalizeOne(obj.material);
     }
+
+    const hasVertexColor = obj.geometry?.getAttribute('color') != null;
+    if (hasVertexColor) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      const next = mats.map((m) => {
+        if (!(m instanceof THREE.MeshStandardMaterial)) return m;
+        const out = m.vertexColors ? m : m.clone();
+        out.vertexColors = true;
+        if (out.color.r + out.color.g + out.color.b < 0.6) out.color.setRGB(1, 1, 1);
+        return out;
+      });
+      obj.material = Array.isArray(obj.material) ? next : next[0]!;
+    }
+
+    if (!obj.geometry?.getAttribute('uv2')) {
+      const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+      for (const m of mats) {
+        if (m instanceof THREE.MeshStandardMaterial && m.aoMap) m.aoMap = null;
+      }
+    }
   });
 
   if (opts.log) {
@@ -207,6 +302,32 @@ export function normalizeImportedMaterials(
   }
 
   return stats;
+}
+
+/**
+ * Photo-to-3D meshes self-shadow / lose top lighting under a grazing sun.
+ * Stay on the default layer; skip receiving wall/roof shadows while the sun
+ * is low. A room skylight covers the missing N·L on upward faces.
+ */
+export function applyImportedHorizonLook(
+  root: THREE.Object3D,
+  receiveShadows: boolean,
+): void {
+  root.traverse((obj) => {
+    if (!(obj instanceof THREE.Mesh)) return;
+    obj.layers.set(0);
+    obj.receiveShadow = receiveShadows;
+    obj.castShadow = true;
+    const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+    for (const m of mats) {
+      if (!(m instanceof THREE.MeshStandardMaterial)) continue;
+      m.envMapIntensity = receiveShadows ? 1 : 1.4;
+      m.emissive.setRGB(0, 0, 0);
+      m.emissiveMap = null;
+      m.emissiveIntensity = 0;
+      m.needsUpdate = true;
+    }
+  });
 }
 
 /**

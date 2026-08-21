@@ -1,4 +1,5 @@
 import { ensureTrellisReady, TRELLIS_GENERATE_URL } from './trellisApi';
+import { ensureJpegForTrellis } from './webpToJpeg';
 
 function isInvalidGlbContentType(contentType: string): boolean {
   const ct = contentType.toLowerCase();
@@ -13,10 +14,15 @@ export async function generateGlbFromPhoto(
 ): Promise<File> {
   await ensureTrellisReady(signal, onProgress);
 
+  const file = await ensureJpegForTrellis(imageFile);
+  if (signal?.aborted) {
+    throw new DOMException('Aborted', 'AbortError');
+  }
+
   onProgress?.('Generating 3D model…');
 
   const fd = new FormData();
-  fd.append('file', imageFile);
+  fd.append('file', file);
 
   const res = await fetch(TRELLIS_GENERATE_URL, {
     method: 'POST',

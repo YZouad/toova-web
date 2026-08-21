@@ -149,6 +149,32 @@ describe('light shafts night gate', () => {
     const day = sampleSun(14, 0, { width: 120, depth: 160 });
     expect(day.intensity).toBeGreaterThan(0.12);
   });
+
+  it('early morning is substantially dimmer than midday', async () => {
+    const { sampleSun, daylightFillScale } = await import('./environment');
+    const size = { width: 120, depth: 160 };
+    const dawn = sampleSun(6.5, 0, size);
+    const morning = sampleSun(8, 0, size);
+    const noon = sampleSun(13, 0, size);
+    expect(dawn.intensity).toBeLessThan(noon.intensity * 0.4);
+    expect(morning.intensity).toBeLessThan(noon.intensity * 0.6);
+    expect(morning.ambient).toBeLessThan(noon.ambient * 0.65);
+    expect(noon.intensity).toBeGreaterThan(1.45);
+    expect(daylightFillScale(8, 0)).toBeLessThan(daylightFillScale(13, 0) * 0.75);
+  });
+
+  it('imported meshes skip receiving shadows in the grazing-sun windows', async () => {
+    const { importedMeshesReceiveShadows, grazingSunIndoor } = await import('./environment');
+    expect(importedMeshesReceiveShadows(13, 0)).toBe(true);
+    expect(importedMeshesReceiveShadows(6, 0)).toBe(true);
+    expect(importedMeshesReceiveShadows(6.25, 0)).toBe(false);
+    expect(importedMeshesReceiveShadows(8.25, 0)).toBe(false);
+    expect(importedMeshesReceiveShadows(17.75, 0)).toBe(false);
+    expect(grazingSunIndoor(6, 0)).toBe(false);
+    expect(grazingSunIndoor(6.25, 0)).toBe(true);
+    expect(grazingSunIndoor(13, 0)).toBe(false);
+    expect(grazingSunIndoor(17.75, 0)).toBe(true);
+  });
 });
 
 describe('wallSlabs / buildWallGeometry', () => {

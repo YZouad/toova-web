@@ -8,6 +8,7 @@ import {
 import { getProceduralMaterialMaps } from '../lib/proceduralTextures';
 import type { MaterialPresetId } from '../lib/roomMaterials';
 import { useOrbitFade } from './useOrbitFade';
+import { SHADOW_ONLY_LAYER } from './shadowLayers';
 
 /**
  * Door casing, leaf, threshold, and handle — fades with its host wall in orbit mode.
@@ -330,7 +331,11 @@ function WindowFillLight({
     const light = lightRef.current;
     const target = targetRef.current;
     if (light && target) light.target = target;
-  }, []);
+    if (castShadows && light?.shadow?.camera) {
+      light.shadow.camera.layers.enable(0);
+      light.shadow.camera.layers.enable(SHADOW_ONLY_LAYER);
+    }
+  }, [castShadows]);
 
   return (
     <>

@@ -2,8 +2,12 @@ import { Suspense, useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { Item, useStore } from '../store';
-import { normalizeImportedMaterials } from '../lib/normalizeImportedMaterials';
+import { normalizeImportedMaterials, applyImportedHorizonLook } from '../lib/normalizeImportedMaterials';
+import { importedMeshesReceiveShadows } from '../lib/environment';
 import { SelectionOutline } from './SelectionOutline';
+
+/** Bump to remount loaded GLBs after material-pass changes (useGLTF cache is sticky). */
+const IMPORT_MATERIAL_PASS = 19;
 
 interface Props {
   item: Item;
@@ -19,7 +23,13 @@ export function ImportedModel({ item, selected, invalid }: Props) {
   if (!item.importedUrl) return null;
   return (
     <Suspense fallback={<ImportedLoadingBox item={item} selected={selected} invalid={invalid} />}>
-      <Inner item={item} selected={selected} invalid={invalid} url={item.importedUrl} />
+      <Inner
+        key={`${item.importedUrl}::${IMPORT_MATERIAL_PASS}`}
+        item={item}
+        selected={selected}
+        invalid={invalid}
+        url={item.importedUrl}
+      />
     </Suspense>
   );
 }
@@ -64,6 +74,9 @@ function Inner({ item, selected, invalid, url }: Props & { url: string }) {
   const { scene } = useGLTF(url) as { scene: THREE.Object3D };
   const relightImports = useStore((s) => s.visual.relightImports);
   const registerNatural = useStore((s) => s.registerImportedNaturalSize);
+  const timeOfDay = useStore((s) => s.environment.timeOfDay);
+  const orientationDeg = useStore((s) => s.environment.orientationDeg);
+  const receiveShadows = importedMeshesReceiveShadows(timeOfDay, orientationDeg);
 
   const { centeredScene, meshNaturalSize } = useMemo(() => {
     const cloned = scene.clone(true);
@@ -89,6 +102,10 @@ function Inner({ item, selected, invalid, url }: Props & { url: string }) {
   useEffect(() => {
     registerNatural(item.id, meshNaturalSize);
   }, [item.id, meshNaturalSize, registerNatural]);
+
+  useEffect(() => {
+    applyImportedHorizonLook(centeredScene, receiveShadows);
+  }, [centeredScene, receiveShadows]);
 
   const natural = item.importedNaturalSize ?? meshNaturalSize;
   const eps = 1e-3;
