@@ -110,8 +110,8 @@ export function buildWallGeometry(
  * One wall built as a continuous extruded slab with openings carved out.
  * Inner face sits at local z=0; thickness runs along +z (outward after rotation).
  *
- * Visual mesh can orbit-fade; a separate no-map proxy always casts shadows so
- * sunlight stays blocked when the wall is transparent.
+ * Visual mesh hides when it faces the camera. A separate untextured proxy
+ * always casts shadows so sunlight stays blocked when you look through the wall.
  */
 export function Wall({
   length,
@@ -149,7 +149,7 @@ export function Wall({
       roughness: maps.roughness,
       metalness: maps.metalness,
       side: THREE.FrontSide,
-      transparent: true,
+      transparent: false,
       opacity: 1,
     });
     // DoubleSide in the shadow pass — FrontSide alone flips to BackSide and
@@ -208,9 +208,8 @@ export function Wall({
   if (cutAway) return null;
 
   return (
-    <group ref={groupRef}>
-      {/* Always-on shadow occluder — stays solid in the shadow map while the
-          visible wall fades for orbit cutaway. */}
+    <group>
+      {/* Stays in the shadow map while the visible wall hides for orbit cutaway. */}
       <mesh
         ref={shadowRef}
         geometry={geometry}
@@ -225,15 +224,18 @@ export function Wall({
           /* shadow-only proxy — never participate in hanging surface picks */
         }}
       />
-      <mesh
-        geometry={geometry}
-        position={innerFaceCenter}
-        rotation={[0, rotationY, 0]}
-        castShadow={false}
-        receiveShadow
-        material={material}
-        userData={wallId ? { wallId } : undefined}
-      />
+      <group ref={groupRef}>
+        <mesh
+          geometry={geometry}
+          position={innerFaceCenter}
+          rotation={[0, rotationY, 0]}
+          castShadow={false}
+          receiveShadow
+          frustumCulled={false}
+          material={material}
+          userData={wallId ? { wallId } : undefined}
+        />
+      </group>
     </group>
   );
 }

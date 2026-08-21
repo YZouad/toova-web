@@ -83,7 +83,10 @@ export function ModelDetailModal({
   const [reportBusy, setReportBusy] = useState(false);
   const [reported, setReported] = useState(() => hasReportedCatalogKind(model.kind));
   const [downloadBusy, setDownloadBusy] = useState(false);
-  const canDownload = !model.isBuiltin && (!!model.signedUrl || !!model.storagePath);
+  const canDownload =
+    !!currentUserId &&
+    !model.isBuiltin &&
+    (!!model.signedUrl || !!model.storagePath);
   const downloadFilename = catalogModelDownloadFilename(
     model.label,
     model.storagePath,

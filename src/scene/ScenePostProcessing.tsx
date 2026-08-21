@@ -9,7 +9,7 @@ import {
   Vignette,
 } from '@react-three/postprocessing';
 import { ToneMappingMode, BlendFunction } from 'postprocessing';
-import { colorGradingParams } from '../lib/environment';
+import { colorGradingParams, grazingSunIndoor } from '../lib/environment';
 import { planBounds } from '../lib/roomGeometry';
 import { useStore } from '../store';
 import { resolveRenderQuality } from '../lib/renderQuality';
@@ -34,7 +34,7 @@ export function ScenePostProcessing() {
     [timeOfDay, orientationDeg, weather, exposure, geom],
   );
 
-  const aoSafe = q.ao && cutaway !== 'orbit';
+  const aoSafe = q.ao && cutaway !== 'orbit' && !grazingSunIndoor(timeOfDay, orientationDeg);
   const showGrade = skyMode === 'gradient';
   const active = showGrade || aoSafe;
   const rich = q.richPost;

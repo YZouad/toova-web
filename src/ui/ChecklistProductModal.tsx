@@ -13,6 +13,7 @@ import {
 import { generateGlbFromPhoto } from '../lib/trellisGenerate';
 import { trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { downloadCatalogModelByKind } from '../lib/modelStorage';
+import { ImageFileField } from './ImageFileField';
 import { Banner, Button, Checkbox, Field, Input, Modal, Spinner, Tabs } from './kit';
 
 type ModelTab = 'upload' | 'generate';
@@ -422,11 +423,11 @@ export function ChecklistProductModal({
             </div>
           ) : (
             <div className="import-modal-generate" style={{ marginTop: 12 }}>
-              <input
-                type="file"
-                accept="image/*"
+              <ImageFileField
+                label="Source image"
+                file={imageFile}
                 disabled={busy}
-                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                onFile={setImageFile}
               />
               {trellisUsesRemoteUrl ? (
                 <p className="import-modal-generate-status" style={{ marginTop: 8 }}>

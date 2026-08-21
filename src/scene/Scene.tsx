@@ -23,7 +23,7 @@ import { ArcMenu } from './ArcMenu';
 import { ObjectGizmo } from './ObjectGizmo';
 import { HangingDraftPreview } from '../furniture/HangingDecoration';
 import { useStore, type CameraPresetId } from '../store';
-import { applyWeather, isDaytime, sampleSun } from '../lib/environment';
+import { applyWeather, isDaytime, sampleSun, indoorHorizonFill, grazingSunIndoor } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
 import { WindowLightShafts } from './WindowLightShafts';
 import { RoomVolumetricHaze } from './RoomVolumetricHaze';
@@ -33,6 +33,7 @@ import { ScenePostProcessing } from './ScenePostProcessing';
 import { resolveRenderQuality } from '../lib/renderQuality';
 import { framingForPreset } from '../lib/presentationCameras';
 import { CameraOrbitSync } from './CameraOrbitSync';
+import { SHADOW_ONLY_LAYER } from './shadowLayers';
 
 const SCENE_BG = '#E4DAC8';
 
@@ -99,6 +100,10 @@ function EnvironmentRig() {
     const light = lightRef.current;
     const t = targetRef.current;
     if (light && t) light.target = t;
+    if (light?.shadow?.camera) {
+      light.shadow.camera.layers.enable(0);
+      light.shadow.camera.layers.enable(SHADOW_ONLY_LAYER);
+    }
   }, []);
 
   useEffect(() => {
@@ -143,15 +148,18 @@ function EnvironmentRig() {
 
   const ambientScale = 0.6;
   const sunScale = 1.05;
+  const horizonFill = indoorHorizonFill(timeOfDay, orientationDeg);
 
   return (
     <>
       <hemisphereLight
-        args={[
-          sun.skyColor,
-          sun.groundColor,
-          sun.ambient * exposure * (1 - IBL_AMBIENT_FRACTION) * mod.ambientMul * ambientScale,
-        ]}
+        color={sun.skyColor}
+        groundColor={sun.groundColor}
+        intensity={
+          (sun.ambient * (1 - IBL_AMBIENT_FRACTION) * mod.ambientMul * ambientScale +
+            horizonFill * 0.12) *
+          exposure
+        }
       />
       <directionalLight
         ref={lightRef}
@@ -165,12 +173,20 @@ function EnvironmentRig() {
         shadow-camera-top={shadowExtent}
         shadow-camera-bottom={-shadowExtent}
         shadow-camera-near={1}
-        shadow-camera-far={1200}
+        shadow-camera-far={Math.max(
+          1600,
+          Math.hypot(
+            sun.position[0] - target[0],
+            sun.position[1] - target[1],
+            sun.position[2] - target[2],
+          ) + shadowExtent,
+        )}
         shadow-radius={0}
         shadow-normalBias={0.12}
         shadow-bias={-0.0002}
       />
       <object3D ref={targetRef} position={target} />
+      <GrazingIndoorFill />
     </>
   );
 }
@@ -220,14 +236,16 @@ function ImageBasedLighting() {
     () => sampleSun(timeOfDay, orientationDeg, planBounds(geom)).ambient,
     [timeOfDay, orientationDeg, geom],
   );
+  const horizonFill = indoorHorizonFill(timeOfDay, orientationDeg);
 
   useEffect(() => {
     if (!q.ibl) {
       scene.environmentIntensity = 0;
       return;
     }
-    scene.environmentIntensity = ambient * exposure * IBL_INTENSITY_SCALE * 0.85;
-  }, [scene, ambient, exposure, q.ibl]);
+    scene.environmentIntensity =
+      (ambient + horizonFill * 0.22) * exposure * IBL_INTENSITY_SCALE * 0.85;
+  }, [scene, ambient, horizonFill, exposure, q.ibl]);
 
   useEffect(() => {
     if (!q.ibl) return;
@@ -311,6 +329,32 @@ function ColorSpaceSetup() {
     gl.toneMappingExposure = 1;
   }, [gl]);
   return null;
+}
+
+/** Downward indoor fill while the sun is up but too low to light sofa tops. */
+function GrazingIndoorFill() {
+  const timeOfDay = useStore((s) => s.environment.timeOfDay);
+  const orientationDeg = useStore((s) => s.environment.orientationDeg);
+  const exposure = useStore((s) => s.environment.exposure);
+  const geom = useStore((s) => s.roomGeometry);
+  const on = grazingSunIndoor(timeOfDay, orientationDeg);
+  const [cx, cz] = planCentroid(geom);
+  const b = planBounds(geom);
+  if (!on) return null;
+  const span = Math.max(b.width, b.depth);
+  return (
+    <>
+      <hemisphereLight args={['#f4eee4', '#4a4338', 0.7 * exposure]} />
+      <pointLight
+        position={[cx, geom.height - 10, cz]}
+        color="#fff3e4"
+        intensity={36 * exposure}
+        distance={span * 1.5}
+        decay={1.15}
+        castShadow={false}
+      />
+    </>
+  );
 }
 
 /**

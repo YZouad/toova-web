@@ -34,7 +34,14 @@ export function ProceduralSky() {
     const g = groupRef.current;
     if (!g) return;
     g.traverse((obj) => {
-      if (obj.type === 'Mesh') obj.raycast = () => null;
+      if (!(obj instanceof THREE.Mesh)) return;
+      obj.raycast = () => null;
+      obj.castShadow = false;
+      obj.receiveShadow = false;
+      const mat = obj.material as THREE.Material;
+      mat.depthWrite = false;
+      mat.depthTest = false;
+      obj.renderOrder = -1000;
     });
   }, [params]);
 
