@@ -49,7 +49,6 @@ export function ContactPage({
         brandOnClick={onGoHome}
         links={[
           { label: 'Home', onClick: onGoHome },
-          { label: 'Pitch Madness', onClick: onPitchMadness },
           { label: 'Contact', active: true },
           { label: loggedIn ? 'Dashboard' : 'Log in', onClick: secondaryAction },
         ]}

@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { Plate } from './Plate';
 
 export type NumberedStepEdge = 'first' | 'last';
@@ -9,7 +9,9 @@ export interface NumberedStepProps {
   body: React.ReactNode;
   plateCaption?: string;
   plateSrc?: string;
+  plateAlt?: string;
   plateHeight?: number;
+  plateChildren?: ReactNode;
   edge?: NumberedStepEdge;
   divider?: boolean;
   className?: string;
@@ -22,7 +24,9 @@ export function NumberedStep({
   body,
   plateCaption,
   plateSrc,
+  plateAlt,
   plateHeight = 130,
+  plateChildren,
   edge,
   divider = true,
   className,
@@ -50,7 +54,16 @@ export function NumberedStep({
       <div className="kit-numbered-step__numeral">{numeral}</div>
       <h3 className="kit-numbered-step__title">{title}</h3>
       <p className="kit-numbered-step__body">{body}</p>
-      <Plate src={plateSrc} height={plateHeight} topCaption={plateCaption} />
+      <Plate
+        src={plateChildren ? undefined : plateSrc}
+        alt={plateAlt}
+        height={plateHeight}
+        fit="contain"
+        aspectRatio="1"
+        topCaption={plateCaption}
+      >
+        {plateChildren}
+      </Plate>
     </div>
   );
 }

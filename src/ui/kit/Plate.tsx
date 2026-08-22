@@ -12,6 +12,10 @@ export interface PlateProps {
   children?: ReactNode;
   className?: string;
   style?: CSSProperties;
+  /** `contain` shows the full image; default `cover` fills the frame. */
+  fit?: 'cover' | 'contain';
+  /** When set, used instead of a fixed pixel height. */
+  aspectRatio?: string | number;
 }
 
 export function Plate({
@@ -25,16 +29,29 @@ export function Plate({
   children,
   className,
   style,
+  fit = 'cover',
+  aspectRatio,
 }: PlateProps) {
-  const classes = ['kit-plate', src ? 'kit-plate--image' : 'kit-plate--placeholder', className]
+  const classes = [
+    'kit-plate',
+    src ? 'kit-plate--image' : 'kit-plate--placeholder',
+    fit === 'contain' ? 'kit-plate--contain' : '',
+    className,
+  ]
     .filter(Boolean)
     .join(' ');
 
   return (
-    <div className={classes} style={{ ...style, height }}>
+    <div
+      className={classes}
+      style={{
+        ...style,
+        ...(aspectRatio != null ? { aspectRatio: String(aspectRatio) } : { height }),
+      }}
+    >
       {src ? (
         <img src={src} alt={alt} className="kit-plate__image" />
-      ) : (
+      ) : children ? null : (
         <div className="kit-plate__placeholder">{placeholder}</div>
       )}
       {children}

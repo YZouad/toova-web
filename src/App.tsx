@@ -1057,35 +1057,22 @@ isAdmin={isAdmin}
     );
   }
 
-  // Guest dashboard: name a room and pick a starter without signing in.
+  // Guest dashboard: pick a starter on the page — no empty prompt + modal.
   if (screen === 'dashboard' || floorPlanDraft) {
-    const showPresetPicker =
-      !!floorPlanDraft && floorPlanDraft.mode === 'create' && !floorPlanDraft.initialPlan;
     return (
       <div className="toova-page app-page tv-scroll">
         <div className="toova-paper" aria-hidden />
-        <main className="app-main" style={{ maxWidth: 720, margin: '0 auto', padding: '48px 24px' }}>
-          <MonoMeta size="sm" tone="dense" upper style={{ display: 'block', marginBottom: 12 }}>
-            Design without an account
-          </MonoMeta>
-          <DisplayHeading level={4} style={{ marginBottom: 12 }}>
-            Start with a room that fits your space.
-          </DisplayHeading>
-          <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', maxWidth: '46ch', margin: '0 0 28px' }}>
-            Choose a furnished template or draw your floor plan. Sign in later when you want to save.
-          </p>
-          <button
-            type="button"
-            className="kit-btn kit-btn--primary kit-btn--md"
-            onClick={() => {
-              const name = window.prompt('Room name', 'My dorm');
-              if (!name?.trim()) return;
-              handleStartFloorPlan(name.trim());
-            }}
-          >
-            New room
-          </button>
-          <div style={{ marginTop: 20 }}>
+        <main className="room-preset-page">
+          <header className="room-preset-page__head">
+            <MonoMeta size="sm" tone="dense" upper style={{ display: 'block', marginBottom: 12 }}>
+              Design without an account
+            </MonoMeta>
+            <DisplayHeading level={4} style={{ marginBottom: 12 }}>
+              Start with a room that fits your space.
+            </DisplayHeading>
+            <p className="room-preset-page__lede">
+              Choose a furnished template or draw your floor plan. Sign in later when you want to save.
+            </p>
             <button
               type="button"
               className="kit-btn kit-btn--mono kit-btn--sm"
@@ -1093,15 +1080,16 @@ isAdmin={isAdmin}
             >
               ← Back to home
             </button>
-          </div>
+          </header>
+          <RoomPresetPicker
+            variant="page"
+            creating={floorPlanBusy}
+            defaultName={floorPlanDraft?.name || 'My dorm'}
+            cancelLabel="Back to home"
+            onClose={() => setScreen('landing')}
+            onSelect={handlePresetPickerSelect}
+          />
         </main>
-        <RoomPresetPicker
-          open={!!showPresetPicker}
-          creating={floorPlanBusy}
-          defaultName={floorPlanDraft?.name || 'Room 1'}
-          onClose={() => setFloorPlanDraft(null)}
-          onSelect={handlePresetPickerSelect}
-        />
       </div>
     );
   }
