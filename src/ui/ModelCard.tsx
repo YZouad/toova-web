@@ -30,9 +30,7 @@ export function ModelCard({
   onOpen,
   onEdit,
 }: ModelCardProps) {
-  const previewUrl = model.isBuiltin
-    ? builtinPreviewUrl ?? model.previewUrl
-    : model.previewUrl;
+  const previewUrl = model.previewUrl ?? builtinPreviewUrl;
   const creatorLabel = model.isBuiltin
     ? 'Toova'
     : model.creatorHandle
