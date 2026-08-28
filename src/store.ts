@@ -1,8 +1,10 @@
 import { create } from 'zustand';
+import { lampMinHeight } from './furniture/lampGeometry';
 import { FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE } from './furniture/registry';
 import { findValidElevation, settleGravity, validatePlacement } from './interaction/collision';
 import { trackAddToDesign } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
+import { shouldStandImportedUpright, standUpFlatBounds } from './lib/importedUpright';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './lib/checklistPublicGlbs';
 import {
   clampPlan,
@@ -615,13 +617,18 @@ export const useStore = create<StoreState>((set, get) => ({
     const room = useStore.getState().roomGeometry;
     const [cx, cz] = planCentroid(room);
     const position: [number, number, number] = [cx, 0, cz];
-    const itemSize: [number, number, number] = isBed && def
+    const label = opts?.label ?? (def ? def.label : 'Model');
+    let itemSize: [number, number, number] = isBed && def
       ? [def.size[0], bedLegHeight! + bodyH, def.size[2]]
       : size;
-    const catalogSizeIn =
+    let catalogSizeIn =
       kind === 'imported'
         ? (opts?.catalogSizeIn ?? ([...itemSize] as [number, number, number]))
         : undefined;
+    if (kind === 'imported' && shouldStandImportedUpright(label)) {
+      itemSize = standUpFlatBounds(itemSize);
+      if (catalogSizeIn) catalogSizeIn = standUpFlatBounds(catalogSizeIn);
+    }
 
     const item: Item = {
       id,
@@ -633,7 +640,7 @@ export const useStore = create<StoreState>((set, get) => ({
       importedUrl: opts?.url,
       importedStoragePath: opts?.storagePath,
       catalogSizeIn,
-      label: opts?.label ?? (def ? def.label : 'Model'),
+      label,
       curatedProductId: opts?.curatedProductId,
       tintColor:
         opts?.tintColor ??
@@ -765,6 +772,9 @@ export const useStore = create<StoreState>((set, get) => ({
       if (it.kind === 'bed') {
         const leg = it.bedLegHeight ?? 8;
         size[1] = clamp(sizeInput[1], leg + BED_MIN_BODY_H, heightMax);
+      }
+      if (it.kind === 'lamp') {
+        size[1] = clamp(sizeInput[1], lampMinHeight(size), heightMax);
       }
       const position = clampFullItemPosition(it.position, it.rotationY, size);
       return { items: { ...s.items, [id]: { ...it, size, position } } };
@@ -956,14 +966,33 @@ export const useStore = create<StoreState>((set, get) => ({
   registerImportedNaturalSize: (id, natural) =>
     set((s) => {
       const it = s.items[id];
-      if (!it || it.kind !== 'imported' || it.importedNaturalSize) return s;
-      const size = resolveImportedInitialSize(it.size, natural, it.catalogSizeIn);
-      return {
-        items: {
-          ...s.items,
-          [id]: { ...it, importedNaturalSize: natural, size },
-        },
-      };
+      if (!it || it.kind !== 'imported') return s;
+      if (!it.importedNaturalSize) {
+        const size = resolveImportedInitialSize(it.size, natural, it.catalogSizeIn);
+        return {
+          items: {
+            ...s.items,
+            [id]: { ...it, importedNaturalSize: natural, size },
+          },
+        };
+      }
+      // Already-placed monitors that were saved lying flat: stand the box up
+      // to match the rotated mesh so scale stays uniform.
+      if (
+        shouldStandImportedUpright(it.label) &&
+        it.size[1] < it.size[0] &&
+        it.size[1] < it.size[2] &&
+        !(natural[1] < natural[0] && natural[1] < natural[2])
+      ) {
+        const size = standUpFlatBounds(it.size);
+        return {
+          items: {
+            ...s.items,
+            [id]: { ...it, importedNaturalSize: natural, size },
+          },
+        };
+      }
+      return s;
     }),
 
   setImportedSize: (id, sizeInput) =>

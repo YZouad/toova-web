@@ -64,19 +64,18 @@ async function hydrateModel(row: Record<string, unknown>): Promise<GalleryModel 
   let previewUrl: string | null = null;
   const access = visibility === 'public' ? 'public' : 'private';
 
-  if (isBuiltin) {
-    previewUrl = getSessionCatalogPreview(kind) ?? null;
-  } else if (path) {
+  if (path) {
     signedUrl = isAbsolute ? path : await resolveBrowsableModelUrl(path, { access });
-    if (!signedUrl) return null;
-    const thumbPath = String(row.thumbnail_path ?? '').trim();
-    if (thumbPath) {
-      previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
-    } else {
-      previewUrl = getSessionCatalogPreview(kind) ?? null;
-    }
-  } else {
+    if (!isBuiltin && !signedUrl) return null;
+  } else if (!isBuiltin) {
     return null;
+  }
+  const thumbPath = String(row.thumbnail_path ?? '').trim();
+  if (thumbPath) {
+    previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
+  }
+  if (!previewUrl) {
+    previewUrl = getSessionCatalogPreview(kind) ?? null;
   }
 
   return {

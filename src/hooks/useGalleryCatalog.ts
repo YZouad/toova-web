@@ -86,24 +86,29 @@ async function resolveUrls(row: GalleryCatalogRow): Promise<{
   signedUrl: string | null;
   previewUrl: string | null;
 }> {
-  if (row.is_builtin) {
-    return { signedUrl: null, previewUrl: getSessionCatalogPreview(row.kind) ?? null };
+  const path = row.model_url?.trim() ?? '';
+  const thumbPath = row.thumbnail_path?.trim() ?? '';
+  const access = row.visibility === 'public' ? 'public' : 'private';
+
+  let signedUrl: string | null = null;
+  if (path) {
+    const isAbsolute = path.startsWith('http://') || path.startsWith('https://');
+    signedUrl = isAbsolute ? path : await resolveBrowsableModelUrl(path, { access });
   }
 
-  const path = row.model_url?.trim() ?? '';
-  if (!path) return { signedUrl: null, previewUrl: null };
-
-  const isAbsolute = path.startsWith('http://') || path.startsWith('https://');
-  const access = row.visibility === 'public' ? 'public' : 'private';
-  const signedUrl = isAbsolute ? path : await resolveBrowsableModelUrl(path, { access });
-  if (!signedUrl) return { signedUrl: null, previewUrl: null };
-
-  const thumbPath = row.thumbnail_path?.trim() ?? '';
   let previewUrl: string | null = null;
   if (thumbPath) {
     previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
-  } else {
+  }
+  if (!previewUrl) {
     previewUrl = getSessionCatalogPreview(row.kind) ?? null;
+  }
+
+  if (row.is_builtin && !signedUrl) {
+    return { signedUrl: null, previewUrl };
+  }
+  if (!row.is_builtin && !signedUrl) {
+    return { signedUrl: null, previewUrl: null };
   }
   return { signedUrl, previewUrl };
 }

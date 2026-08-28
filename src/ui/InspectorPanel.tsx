@@ -1,3 +1,4 @@
+import { lampArmMaxForRoom, lampPartsFromSize, lampSizeFromArmHeight, LAMP_ARM_MIN } from '../furniture/lampGeometry';
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { planBounds } from '../lib/roomGeometry';
 import { useStore } from '../store';
@@ -38,6 +39,8 @@ export function InspectorPanel() {
   const currentY = Math.round(item.position[1]);
   const sizeLabels = ['Width', 'Height', 'Depth'] as const;
   const maxSide = Math.max(item.size[0], item.size[1], item.size[2]);
+  const lampParts = item.kind === 'lamp' ? lampPartsFromSize(item.size) : null;
+  const lampArmMax = lampParts ? lampArmMaxForRoom(item.size, roomGeometry.height) : LAMP_ARM_MIN;
 
   return (
     <aside className="inspector">
@@ -109,6 +112,18 @@ export function InspectorPanel() {
           step={1}
           unit="in"
           onChange={(v) => setBedHeight(item.id, v)}
+        />
+      )}
+
+      {item.kind === 'lamp' && lampParts && (
+        <RangeControl
+          label="Lamp neck height"
+          value={Math.round(lampParts.stemH)}
+          min={LAMP_ARM_MIN}
+          max={lampArmMax}
+          step={1}
+          unit="in"
+          onChange={(v) => setItemSize(item.id, lampSizeFromArmHeight(item.size, v))}
         />
       )}
 

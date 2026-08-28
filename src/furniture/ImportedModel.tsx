@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { Item, useStore } from '../store';
 import { normalizeImportedMaterials, applyImportedHorizonLook } from '../lib/normalizeImportedMaterials';
 import { importedMeshesReceiveShadows } from '../lib/environment';
+import { shouldStandImportedUpright, standUpRotationAxis } from '../lib/importedUpright';
 import { SelectionOutline } from './SelectionOutline';
 
 /** Bump to remount loaded GLBs after material-pass changes (useGLTF cache is sticky). */
@@ -89,15 +90,25 @@ function Inner({ item, selected, invalid, url }: Props & { url: string }) {
     const box = new THREE.Box3().setFromObject(cloned);
     const s = new THREE.Vector3();
     box.getSize(s);
+    const standAxis =
+      shouldStandImportedUpright(item.label)
+        ? standUpRotationAxis([s.x, s.y, s.z])
+        : null;
+    if (standAxis === 'x') cloned.rotation.x = Math.PI / 2;
+    if (standAxis === 'z') cloned.rotation.z = Math.PI / 2;
+    if (standAxis) cloned.updateMatrixWorld(true);
+    const oriented = new THREE.Box3().setFromObject(cloned);
+    const size = new THREE.Vector3();
+    oriented.getSize(size);
     const c = new THREE.Vector3();
-    box.getCenter(c);
-    cloned.position.set(-c.x, -box.min.y, -c.z);
+    oriented.getCenter(c);
+    cloned.position.set(-c.x, -oriented.min.y, -c.z);
 
     return {
       centeredScene: cloned,
-      meshNaturalSize: [s.x, s.y, s.z] as [number, number, number],
+      meshNaturalSize: [size.x, size.y, size.z] as [number, number, number],
     };
-  }, [scene, relightImports, item.tintColor]);
+  }, [scene, relightImports, item.tintColor, item.label]);
 
   useEffect(() => {
     registerNatural(item.id, meshNaturalSize);
