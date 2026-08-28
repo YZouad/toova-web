@@ -702,7 +702,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
             <div className="designer-advanced-section">
               {item.kind === 'lamp' && lampParts ? (
                 <RangeControl
-                  label="Arm height"
+                  label="Lamp neck height"
                   value={Math.round(lampParts.stemH)}
                   min={LAMP_ARM_MIN}
                   max={lampArmMax}

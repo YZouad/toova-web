@@ -117,7 +117,7 @@ export function InspectorPanel() {
 
       {item.kind === 'lamp' && lampParts && (
         <RangeControl
-          label="Arm height"
+          label="Lamp neck height"
           value={Math.round(lampParts.stemH)}
           min={LAMP_ARM_MIN}
           max={lampArmMax}
