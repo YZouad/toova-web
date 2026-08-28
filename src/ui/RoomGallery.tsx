@@ -9,6 +9,7 @@ interface RoomGalleryProps {
   sort: RoomGallerySortParam;
   query: string;
   hideFilters?: boolean;
+  showSearch?: boolean;
   onSortChange: (sort: RoomGallerySortParam) => void;
   onQueryChange: (query: string) => void;
 }
@@ -17,6 +18,7 @@ export function RoomGallery({
   sort,
   query,
   hideFilters,
+  showSearch,
   onSortChange,
   onQueryChange,
 }: RoomGalleryProps) {
@@ -49,6 +51,7 @@ export function RoomGallery({
           sort={sort}
           categories={[]}
           query={query}
+          showSearch={showSearch}
           onSourceChange={() => {
             /* rooms are always community */
           }}

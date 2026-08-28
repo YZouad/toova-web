@@ -85,6 +85,40 @@ function buildDresserGroup(): THREE.Group {
   return group;
 }
 
+function buildBookshelfGroup(): THREE.Group {
+  const [w, h, d] = FURNITURE.bookshelf.size;
+  const group = new THREE.Group();
+  const panelT = Math.max(0.7, Math.min(1.15, w * 0.035));
+  const backT = Math.max(0.45, panelT * 0.7);
+  const innerW = Math.max(1, w - panelT * 2);
+  const bayCount = 3;
+  const innerH = Math.max(panelT, h - panelT * 2);
+  const bayH = innerH / bayCount;
+
+  const left = box(panelT, h, d, '#a98662');
+  left.position.set(-w / 2 + panelT / 2, h / 2, 0);
+  group.add(left);
+  const right = box(panelT, h, d, '#a98662');
+  right.position.set(w / 2 - panelT / 2, h / 2, 0);
+  group.add(right);
+  const bottom = box(innerW, panelT, d, '#a98662');
+  bottom.position.set(0, panelT / 2, 0);
+  group.add(bottom);
+  const top = box(innerW, panelT, d, '#a98662');
+  top.position.set(0, h - panelT / 2, 0);
+  group.add(top);
+  const back = box(innerW, h - panelT, backT, '#8a6c4c', { roughness: 0.82 });
+  back.position.set(0, h / 2, -d / 2 + backT / 2);
+  group.add(back);
+
+  for (let i = 1; i < bayCount; i++) {
+    const shelf = box(innerW, panelT, d - backT, '#a98662');
+    shelf.position.set(0, panelT + i * bayH, backT / 2);
+    group.add(shelf);
+  }
+  return group;
+}
+
 function buildWardrobeGroup(): THREE.Group {
   const [w, h, d] = FURNITURE.wardrobe.size;
   const crownH = 2;
@@ -186,6 +220,18 @@ function buildNightstandGroup(): THREE.Group {
   return group;
 }
 
+function buildShelfGroup(): THREE.Group {
+  const [w, h, d] = FURNITURE.shelf.size;
+  const group = new THREE.Group();
+  const board = box(w, h, d, '#a98662', { roughness: 0.62 });
+  board.position.y = h / 2;
+  group.add(board);
+  const edge = box(w, h, 0.16, '#8a6c4c', { roughness: 0.7 });
+  edge.position.set(0, h / 2, d / 2 - 0.08);
+  group.add(edge);
+  return group;
+}
+
 function buildLampGroup(): THREE.Group {
   const size = FURNITURE.lamp.size;
   const { baseH, stemH, shadeH, shadeW, stemR, baseR } = lampPartsFromSize(size);
@@ -218,6 +264,8 @@ function buildLampGroup(): THREE.Group {
 const BUILDERS: Record<BuiltinKind, () => THREE.Group> = {
   bed: buildBedGroup,
   dresser: buildDresserGroup,
+  bookshelf: buildBookshelfGroup,
+  shelf: buildShelfGroup,
   wardrobe: buildWardrobeGroup,
   desk: buildDeskGroup,
   chair: buildChairGroup,

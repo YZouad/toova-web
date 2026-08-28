@@ -14,6 +14,8 @@ interface FurniturePreviewProps {
 const SWATCH_COLORS: Record<string, string> = {
   bed: '#C9B391',
   dresser: '#B08C5F',
+  bookshelf: '#A67C52',
+  shelf: '#B08968',
   wardrobe: '#A88457',
   desk: '#B5946C',
   chair: '#CBB28F',
@@ -25,6 +27,8 @@ const SWATCH_COLORS: Record<string, string> = {
 const KIND_GLYPH: Record<string, string> = {
   bed: '▭',
   dresser: '▣',
+  bookshelf: '▤',
+  shelf: '▬',
   wardrobe: '▥',
   desk: '▬',
   chair: '◫',

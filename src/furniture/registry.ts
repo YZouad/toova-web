@@ -1,6 +1,8 @@
 export type FurnitureKind =
   | 'bed'
   | 'dresser'
+  | 'bookshelf'
+  | 'shelf'
   | 'wardrobe'
   | 'desk'
   | 'chair'
@@ -38,18 +40,6 @@ export const FURNITURE: Record<GalleryFurnitureKind, FurnitureDef> = {
     clearance: 8,
     categories: ['beds'],
   },
-  dresser: {
-    kind: 'dresser',
-    label: 'Dresser',
-    size: [30, 32, 18],
-    categories: ['storage'],
-  },
-  wardrobe: {
-    kind: 'wardrobe',
-    label: 'Wardrobe',
-    size: [36, 72, 24],
-    categories: ['storage'],
-  },
   desk: {
     kind: 'desk',
     label: 'Desk',
@@ -57,17 +47,42 @@ export const FURNITURE: Record<GalleryFurnitureKind, FurnitureDef> = {
     clearance: 28.5,
     categories: ['desks_workspaces'],
   },
-  chair: {
-    kind: 'chair',
-    label: 'Chair',
-    size: [18, 36, 18],
-    categories: ['seating'],
+  wardrobe: {
+    kind: 'wardrobe',
+    label: 'Wardrobe',
+    size: [36, 72, 24],
+    categories: ['storage'],
+  },
+  bookshelf: {
+    kind: 'bookshelf',
+    label: 'Bookshelf',
+    size: [30, 32, 18],
+    categories: ['storage'],
+  },
+  shelf: {
+    kind: 'shelf',
+    label: 'Wall Shelf',
+    // Thin board parallel to the floor: width × thickness × depth.
+    size: [36, 1.5, 10],
+    categories: ['storage', 'decor_art'],
+  },
+  dresser: {
+    kind: 'dresser',
+    label: 'Dresser',
+    size: [30, 32, 18],
+    categories: ['storage'],
   },
   nightstand: {
     kind: 'nightstand',
     label: 'Nightstand',
     size: [18, 24, 18],
     categories: ['storage', 'beds'],
+  },
+  chair: {
+    kind: 'chair',
+    label: 'Chair',
+    size: [18, 36, 18],
+    categories: ['seating'],
   },
   lamp: {
     kind: 'lamp',
@@ -76,3 +91,19 @@ export const FURNITURE: Record<GalleryFurnitureKind, FurnitureDef> = {
     categories: ['lighting'],
   },
 };
+
+/** True for the floating wall shelf — keeps elevation (does not fall to the floor). */
+export function isWallShelfKind(kind: FurnitureKind): boolean {
+  return kind === 'shelf';
+}
+
+export const DEFAULT_SHELF_COLOR = '#a98662';
+
+export const SHELF_COLOR_SWATCHES: { label: string; color: string }[] = [
+  { label: 'Oak', color: '#a98662' },
+  { label: 'Light oak', color: '#c4a574' },
+  { label: 'Walnut', color: '#6b4f33' },
+  { label: 'White', color: '#f2efe8' },
+  { label: 'Sage', color: '#6b7f6a' },
+  { label: 'Charcoal', color: '#3a3a3a' },
+];

@@ -2,9 +2,10 @@ import { useRef, useState, type RefObject } from 'react';
 import { useGalleryRooms, type GalleryRoom } from '../hooks/useGalleryRooms';
 import { galleryPath, navigate, publicRoomPath } from '../hooks/useRoute';
 import { buildGallerySearchParams } from '../lib/galleryCatalog';
+import { publicModelAssetUrl } from '../lib/modelStorage';
 import { FeedbackModal } from './FeedbackModal';
 import { HeroTurntable } from './HeroTurntable';
-import { MarketingObjectTurntable } from './MarketingObjectTurntable';
+import { MarketingObjectTurntable, STEP_CHAIR_URL } from './MarketingObjectTurntable';
 import { RoomGalleryCard } from './RoomGalleryCard';
 import {
   Button,
@@ -41,24 +42,32 @@ const STEPS = [
     title: 'Find a product',
     body: 'Upload a photo from any store page, or browse the pieces we already support. One clear image is enough.',
     plateCaption: 'step-01.png',
+    plateSrc: publicModelAssetUrl('marketing/steps/step-01.jpg'),
+    plateAlt: 'Gaming chair product photo',
   },
   {
     numeral: '02',
     title: 'Get a 3D model',
     body: 'The photo becomes a solid object, reconstructed to real-world scale, in about thirty seconds.',
     plateCaption: 'step-02.png',
+    plateSrc: publicModelAssetUrl('marketing/steps/step-02.jpg'),
+    plateAlt: '3D preview of the gaming chair',
   },
   {
     numeral: '03',
     title: 'Design the space',
     body: 'Arrange it against the real walls of your room: windows, doors, radiators, the closet that opens the wrong way.',
     plateCaption: 'step-03.png',
+    plateSrc: publicModelAssetUrl('marketing/steps/step-03.png'),
+    plateAlt: 'Gaming chair placed in a planned room',
   },
   {
     numeral: '04',
     title: 'Then buy it',
     body: 'Check out from the room you designed, with the running total in front of you. Once, and keep it.',
     plateCaption: 'step-04.png',
+    plateSrc: publicModelAssetUrl('marketing/steps/step-04.png'),
+    plateAlt: 'Gaming chair product listing',
   },
 ] as const;
 
@@ -166,7 +175,6 @@ export function LandingPage({
           { label: 'How it works', onClick: () => scrollTo(howRef) },
           { label: 'Gallery', onClick: openGallery },
           { label: 'Pricing', onClick: () => scrollTo(pricingRef) },
-          { label: 'Pitch Madness', onClick: onPitchMadness },
           { label: 'Contact', onClick: onContact },
         ]}
         cta={
@@ -265,6 +273,14 @@ export function LandingPage({
               title={step.title}
               body={step.body}
               plateCaption={step.plateCaption}
+              plateSrc={step.plateSrc ?? undefined}
+              plateAlt={step.plateAlt}
+              plateHeight={200}
+              plateChildren={
+                step.numeral === '02' ? (
+                  <MarketingObjectTurntable url={STEP_CHAIR_URL} compact />
+                ) : undefined
+              }
             />
           ))}
         </div>

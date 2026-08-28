@@ -15,7 +15,9 @@ import {
   type RoomStarterGoal,
   type RoomStarterTemplate,
 } from '../lib/roomStarterTemplates';
+import type { RoomGallerySortParam } from '../lib/galleryCatalog';
 import { Button, Field, Input, Modal, Plate, Tabs } from './kit';
+import { RoomGallery } from './RoomGallery';
 import { RoomPreview } from './RoomPreview';
 
 export type RoomPresetPickerSelection =
@@ -25,10 +27,13 @@ export type RoomPresetPickerSelection =
   | { kind: 'custom' };
 
 interface RoomPresetPickerProps {
-  open: boolean;
+  open?: boolean;
+  /** `page` renders the form inline instead of a modal overlay. */
+  variant?: 'modal' | 'page';
   creating?: boolean;
   /** Suggested name shown as the field value / placeholder when the modal opens. */
   defaultName?: string;
+  cancelLabel?: string;
   onClose: () => void;
   onSelect: (selection: RoomPresetPickerSelection, name: string) => void | Promise<void>;
 }
@@ -44,26 +49,34 @@ interface BlankPreview {
 }
 
 export function RoomPresetPicker({
-  open,
+  open = true,
+  variant = 'modal',
   creating = false,
   defaultName = 'Room 1',
+  cancelLabel = 'Cancel',
   onClose,
   onSelect,
 }: RoomPresetPickerProps) {
+  const isPage = variant === 'page';
+  const active = isPage || open;
   const [roomName, setRoomName] = useState(defaultName);
   const [goal, setGoal] = useState<RoomStarterGoal>('bedroom');
   const [selectedStarterId, setSelectedStarterId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gallerySort, setGallerySort] = useState<RoomGallerySortParam>('hot');
+  const [galleryQuery, setGalleryQuery] = useState('');
 
   useEffect(() => {
-    if (!open) return;
+    if (!active) return;
     setRoomName(defaultName);
     setGoal('bedroom');
     setSelectedStarterId(null);
     setBusy(false);
     setError(null);
-  }, [open, defaultName]);
+    setGallerySort('hot');
+    setGalleryQuery('');
+  }, [active, defaultName]);
 
   const starterPreviews = useMemo<StarterPreview[]>(
     () =>
@@ -126,30 +139,23 @@ export function RoomPresetPicker({
     setSelectedStarterId(null);
   };
 
-  return (
-    <Modal
-      open={open}
-      meta="New room"
-      title="What are you planning?"
-      onClose={disabled ? () => undefined : onClose}
-      width={880}
-      className="room-preset-modal"
-      footer={
-        <>
-          <Button size="sm" variant="outline" disabled={disabled} onClick={onClose}>
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            disabled={disabled || !selectedStarter}
-            onClick={handleCreateStarter}
-          >
-            {busy || creating ? 'Creating…' : 'Create room'}
-          </Button>
-        </>
-      }
-    >
-      <div className="room-preset-picker">
+  const actions = (
+    <>
+      <Button size="sm" variant="outline" disabled={disabled} onClick={onClose}>
+        {cancelLabel}
+      </Button>
+      <Button
+        size="sm"
+        disabled={disabled || !selectedStarter}
+        onClick={handleCreateStarter}
+      >
+        {busy || creating ? 'Creating…' : 'Create room'}
+      </Button>
+    </>
+  );
+
+  const form = (
+    <div className="room-preset-picker">
         <div className="room-preset-section">
           <Field label="Room name">
             <Input
@@ -344,7 +350,47 @@ export function RoomPresetPicker({
             {error}
           </p>
         ) : null}
+    </div>
+  );
+
+  const gallery = (
+    <div className="room-preset-section room-preset-section--gallery">
+      <div className="room-preset-section-label">Looking for inspiration?</div>
+      <p className="room-preset-goal-hint">
+        Browse community rooms and copy a look you like.
+      </p>
+      <RoomGallery
+        sort={gallerySort}
+        query={galleryQuery}
+        showSearch
+        onSortChange={setGallerySort}
+        onQueryChange={setGalleryQuery}
+      />
+    </div>
+  );
+
+  if (isPage) {
+    return (
+      <div className="room-preset-page-form">
+        {form}
+        <div className="room-preset-page-form__actions">{actions}</div>
+        {gallery}
       </div>
+    );
+  }
+
+  return (
+    <Modal
+      open={open}
+      meta="New room"
+      title="What are you planning?"
+      onClose={disabled ? () => undefined : onClose}
+      width={880}
+      className="room-preset-modal"
+      footer={actions}
+    >
+      {form}
+      {gallery}
     </Modal>
   );
 }

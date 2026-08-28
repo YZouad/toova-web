@@ -834,6 +834,13 @@ button.landing-nav-brand { cursor: pointer; }
   cursor: grab;
   background: transparent;
 }
+.landing-object-turntable--compact {
+  touch-action: none;
+  inset: 16px 14px 14px;
+}
+.landing-object-turntable:active {
+  cursor: grabbing;
+}
 .landing-object-fallback {
   position: absolute;
   inset: 0;
@@ -5224,9 +5231,37 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .fp-setup-error { margin: 12px 24px 0; }
 
+/* Guest / inline new-room page (picker embedded, not a modal) */
+.room-preset-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 48px 24px 80px;
+}
+.room-preset-page__head {
+  margin-bottom: 36px;
+}
+.room-preset-page__lede {
+  font: var(--type-body-sm);
+  color: var(--ink-4);
+  max-width: 46ch;
+  margin: 0 0 20px;
+}
+.room-preset-page-form {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.room-preset-page-form__actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 4px 0 8px;
+}
+
 /* Room preset picker modal (after naming a new room) */
 .room-preset-modal.kit-modal {
-  width: min(880px, 100%) !important;
+  width: min(1080px, 100%) !important;
   max-height: min(92vh, 920px);
   display: flex;
   flex-direction: column;
@@ -5254,6 +5289,16 @@ button.landing-nav-brand { cursor: pointer; }
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+.room-preset-section--gallery {
+  padding-top: 20px;
+  border-top: 1px solid var(--rule-heavy, var(--border));
+}
+.room-preset-section--gallery .gallery-shelf-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.room-preset-section--gallery .gallery-filters-row {
+  margin-top: 8px;
 }
 .room-preset-section--blank {
   padding-top: 6px;
@@ -5421,9 +5466,15 @@ button.landing-nav-brand { cursor: pointer; }
   .room-preset-grid--tiers {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+  .room-preset-section--gallery .gallery-shelf-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (max-width: 640px) {
+  .room-preset-section--gallery .gallery-shelf-grid {
+    grid-template-columns: 1fr;
+  }
   .room-preset-modal.kit-modal {
     width: 100% !important;
     max-height: min(94vh, 860px);
@@ -8217,11 +8268,18 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .kit-plate--image { background: var(--paper-4); }
 .kit-plate--placeholder { background: var(--texture-plate); }
+.kit-plate--contain { background: var(--paper-3, var(--paper-4)); }
 .kit-plate__image {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+}
+.kit-plate--contain .kit-plate__image {
+  position: absolute;
+  inset: 0;
+  object-fit: contain;
+  object-position: center;
 }
 .kit-plate__placeholder {
   position: absolute;
@@ -8281,7 +8339,12 @@ button.landing-nav-brand { cursor: pointer; }
   gap: 24px;
 }
 
-.kit-numbered-step { padding: 32px; }
+.kit-numbered-step {
+  padding: 32px 32px 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
 .kit-numbered-step--first { padding: 32px 32px 0 0; }
 .kit-numbered-step--last { padding: 32px 0 0 32px; }
 .kit-numbered-step--divider { border-right: 1px solid var(--rule-hair); }
@@ -8299,6 +8362,24 @@ button.landing-nav-brand { cursor: pointer; }
   font: var(--type-body-sm);
   color: var(--ink-4);
   margin: 0 0 20px;
+  flex: 1 1 auto;
+}
+.kit-numbered-step .kit-plate {
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  flex-shrink: 0;
+  margin-top: auto;
+}
+.kit-numbered-step .kit-plate--contain .kit-plate__image {
+  top: 16px;
+  left: 14px;
+  right: auto;
+  bottom: auto;
+  width: calc(100% - 28px);
+  height: calc(100% - 36px);
+  object-fit: contain;
+  object-position: center;
 }
 
 .kit-ruled-list {
@@ -9359,6 +9440,18 @@ button.landing-nav-brand { cursor: pointer; }
   font-size: 15px;
   line-height: 1;
 }
+.dashboard-room-gallery {
+  margin-top: 56px;
+  padding-top: 40px;
+  border-top: 1px solid var(--rule-heavy);
+}
+.dashboard-room-gallery .kit-section-opener {
+  margin-bottom: 20px;
+}
+.dashboard-room-gallery .room-gallery {
+  gap: 8px;
+}
+
 .app-ledger-attribution {
   font: var(--type-mono-xs);
   color: var(--text-meta-dense);

@@ -8,6 +8,7 @@ import { normalizeImportedMaterials } from '../lib/normalizeImportedMaterials';
 import { MonoMeta, Spinner } from './kit';
 
 const ARMCHAIR_URL = publicModelAssetUrl(MARKETING_SHOWCASE.object.modelPath);
+const STEP_CHAIR_URL = publicModelAssetUrl(MARKETING_SHOWCASE.stepChair.modelPath);
 
 function TransparentClear() {
   const { gl } = useThree();
@@ -17,7 +18,7 @@ function TransparentClear() {
   return null;
 }
 
-function ArmChairModel({ url }: { url: string }) {
+function ShowcaseModel({ url, compact = false }: { url: string; compact?: boolean }) {
   const { scene } = useGLTF(url) as { scene: THREE.Object3D };
 
   const object = useMemo(() => {
@@ -30,22 +31,32 @@ function ArmChairModel({ url }: { url: string }) {
     box.getCenter(center);
     cloned.position.set(-center.x, -box.min.y, -center.z);
 
-    const target = 26;
+    const targetSize = compact ? 20 : 26;
     const maxDim = Math.max(size.x, size.y, size.z, 1e-3);
-    cloned.scale.setScalar(target / maxDim);
+    cloned.scale.setScalar(targetSize / maxDim);
     return cloned;
-  }, [scene]);
+  }, [compact, scene]);
 
   return <primitive object={object} />;
 }
 
-/** Hero slogan turntable: static public/marketing Arm Chair (not Supabase Storage). */
-export function MarketingObjectTurntable() {
-  useEffect(() => {
-    if (ARMCHAIR_URL) useGLTF.preload(ARMCHAIR_URL);
-  }, []);
+export interface MarketingObjectTurntableProps {
+  url?: string | null;
+  className?: string;
+  compact?: boolean;
+}
 
-  if (!ARMCHAIR_URL) {
+/** Static public/marketing GLB turntable (not Supabase Storage). */
+export function MarketingObjectTurntable({
+  url = ARMCHAIR_URL,
+  className,
+  compact = false,
+}: MarketingObjectTurntableProps) {
+  useEffect(() => {
+    if (url) useGLTF.preload(url);
+  }, [url]);
+
+  if (!url) {
     return (
       <div className="landing-object-fallback">
         <MonoMeta size="sm" tone="dense">
@@ -56,7 +67,12 @@ export function MarketingObjectTurntable() {
   }
 
   return (
-    <div className="landing-object-turntable">
+    <div
+      className={['landing-object-turntable', compact ? 'landing-object-turntable--compact' : '', className]
+        .filter(Boolean)
+        .join(' ')}
+      aria-label="Drag to rotate the 3D model"
+    >
       <Suspense
         fallback={
           <div className="landing-object-fallback">
@@ -65,7 +81,11 @@ export function MarketingObjectTurntable() {
         }
       >
         <Canvas
-          camera={{ position: [38, 24, 44], fov: 30 }}
+          camera={
+            compact
+              ? { position: [50, 23, 58], fov: 32 }
+              : { position: [38, 24, 44], fov: 30 }
+          }
           gl={{ antialias: true, alpha: true, premultipliedAlpha: false }}
           style={{ background: 'transparent', width: '100%', height: '100%' }}
           onCreated={({ gl }) => {
@@ -77,7 +97,7 @@ export function MarketingObjectTurntable() {
           <directionalLight position={[36, 48, 24]} intensity={1.05} />
           <directionalLight position={[-28, 18, -16]} intensity={0.35} color="#B05A3C" />
           <Environment preset="apartment" environmentIntensity={0.35} />
-          <ArmChairModel url={ARMCHAIR_URL} />
+          <ShowcaseModel url={url} compact={compact} />
           <ContactShadows
             position={[0, 0.01, 0]}
             opacity={0.28}
@@ -86,11 +106,11 @@ export function MarketingObjectTurntable() {
             far={40}
           />
           <OrbitControls
-            target={[0, 11, 0]}
+            target={compact ? [0, 10, 0] : [0, 11, 0]}
             enablePan={false}
             enableZoom={false}
             autoRotate
-            autoRotateSpeed={0.45}
+            autoRotateSpeed={0.55}
             enableDamping
           />
         </Canvas>
@@ -98,3 +118,5 @@ export function MarketingObjectTurntable() {
     </div>
   );
 }
+
+export { STEP_CHAIR_URL };

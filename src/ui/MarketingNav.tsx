@@ -73,13 +73,11 @@ export function MarketingNav({
               <button type="button" className="landing-nav-link" onClick={() => run(onHowItWorks)}>How it works</button>
               <button type="button" className="landing-nav-link" onClick={() => run(onGallery)}>Gallery</button>
               <button type="button" className="landing-nav-link" onClick={() => run(onPricing)}>Pricing</button>
-              <button type="button" className="landing-nav-link" onClick={() => run(onPitchMadness)}>Pitch Madness</button>
               <button type="button" className="landing-nav-link" onClick={() => run(onContact)}>Contact</button>
             </>
           ) : page === 'contact' ? (
             <>
               <button type="button" className="landing-nav-link" onClick={() => run(onHome)}>Home</button>
-              <button type="button" className="landing-nav-link" onClick={() => run(onPitchMadness)}>Pitch Madness</button>
               <span className="landing-nav-link landing-nav-link--active">Contact</span>
             </>
           ) : (
@@ -87,7 +85,6 @@ export function MarketingNav({
               <button type="button" className="landing-nav-link" onClick={() => run(onHome)}>Home</button>
               <button type="button" className="landing-nav-link" onClick={() => run(onSeeDemo)}>See demo</button>
               <button type="button" className="landing-nav-link" onClick={() => run(onContact)}>Contact</button>
-              <span className="landing-nav-link landing-nav-link--active">Pitch Madness</span>
             </>
           )}
           <button type="button" className="landing-nav-link landing-nav-link--emphasis" onClick={() => run(onSecondary)}>{secondaryLabel}</button>

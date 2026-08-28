@@ -16,6 +16,7 @@ import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
 import { listSharedWithMeRooms, type PublicAttribution, type ShareRole } from '../lib/roomShares';
 import { fetchRoomAttribution, setRoomVisibility } from '../lib/profiles';
 import { navigate, profilePath } from '../hooks/useRoute';
+import type { RoomGallerySortParam } from '../lib/galleryCatalog';
 import type { Profile } from '../lib/profiles';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
 import {
@@ -32,12 +33,15 @@ import {
   SectionOpener,
   Tabs,
 } from './kit';
+import { RoomGallery } from './RoomGallery';
 
 const MAX_ROOMS = 5;
 
 const KNOWN_KINDS = new Set([
   'bed',
   'dresser',
+  'bookshelf',
+  'shelf',
   'wardrobe',
   'desk',
   'chair',
@@ -160,6 +164,8 @@ export function Dashboard({
     Array<{ id: string; name: string; updated_at: string; role: ShareRole }>
   >([]);
   const [tab, setTab] = useState<'mine' | 'shared' | 'forks'>('mine');
+  const [gallerySort, setGallerySort] = useState<RoomGallerySortParam>('hot');
+  const [galleryQuery, setGalleryQuery] = useState('');
 
   const fetchRooms = useCallback(async () => {
     const { data: roomRows, error } = await supabase
@@ -707,6 +713,22 @@ export function Dashboard({
           }
         />
       ) : null}
+
+      <div className="dashboard-room-gallery">
+        <SectionOpener
+          level={5}
+          title="Looking for inspiration."
+          note="Browse all rooms"
+          noteOnClick={() => onNavigate('gallery')}
+        />
+        <RoomGallery
+          sort={gallerySort}
+          query={galleryQuery}
+          showSearch
+          onSortChange={setGallerySort}
+          onQueryChange={setGalleryQuery}
+        />
+      </div>
 
       <Modal
         open={!!deleteRoom}

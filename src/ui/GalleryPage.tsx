@@ -337,7 +337,6 @@ export function GalleryPage({
           links={[
             { label: 'Home', onClick: onGoHome },
             { label: 'Gallery', active: true },
-            { label: 'Pitch Madness', onClick: onPitchMadness },
             { label: 'Contact', onClick: onContact },
           ]}
           cta={

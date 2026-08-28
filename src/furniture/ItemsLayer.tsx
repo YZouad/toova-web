@@ -2,6 +2,8 @@ import { useStore, Item } from '../store';
 import { Selectable } from './Selectable';
 import { Bed } from './Bed';
 import { Dresser } from './Dresser';
+import { Bookshelf } from './Bookshelf';
+import { Shelf } from './Shelf';
 import { Wardrobe } from './Wardrobe';
 import { Desk } from './Desk';
 import { Chair } from './Chair';
@@ -86,6 +88,8 @@ function FurnitureBody({ item, selected, invalid }: { item: Item; selected: bool
   switch (item.kind) {
     case 'bed': return <Bed item={item} selected={selected} invalid={invalid} />;
     case 'dresser': return <Dresser item={item} selected={selected} invalid={invalid} />;
+    case 'bookshelf': return <Bookshelf item={item} selected={selected} invalid={invalid} />;
+    case 'shelf': return <Shelf item={item} selected={selected} invalid={invalid} />;
     case 'wardrobe': return <Wardrobe item={item} selected={selected} invalid={invalid} />;
     case 'desk': return <Desk item={item} selected={selected} invalid={invalid} />;
     case 'chair': return <Chair item={item} selected={selected} invalid={invalid} />;

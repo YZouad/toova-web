@@ -48,7 +48,12 @@ const ROOM_SORTS: { id: RoomGallerySort; label: string }[] = [
   { id: 'newest', label: 'Newest' },
 ];
 
-export function gallerySortLabel(entity: 'models' | 'rooms', sort: string): string {
+export function gallerySortLabel(
+  entity: 'models' | 'rooms',
+  sort: string,
+  source?: GallerySource,
+): string {
+  if (entity === 'models' && source === 'toova' && sort === 'hot') return 'Default';
   const opts = entity === 'models' ? MODEL_SORTS : ROOM_SORTS;
   return opts.find((s) => s.id === sort)?.label ?? 'Sort';
 }
@@ -93,6 +98,7 @@ export function GallerySortMenu({
 
   const activeSort =
     entity === 'models' && source === 'mine' && sort === 'hot' ? 'newest' : sort;
+  const activeLabel = gallerySortLabel(entity, activeSort, source);
 
   return (
     <div className="gallery-chip-menu" ref={wrapRef}>
@@ -103,7 +109,7 @@ export function GallerySortMenu({
         aria-expanded={open}
         aria-controls={menuId}
       >
-        {gallerySortLabel(entity, activeSort)} ▾
+        {activeLabel} ▾
       </Button>
       {open ? (
         <ul id={menuId} className="gallery-menu" role="listbox" aria-label="Sort by">
@@ -119,7 +125,7 @@ export function GallerySortMenu({
                   setOpen(false);
                 }}
               >
-                {s.label}
+                {entity === 'models' && source === 'toova' && s.id === 'hot' ? 'Default' : s.label}
               </button>
             </li>
           ))}
@@ -235,8 +241,8 @@ export function GalleryFilters({
   if (!showSourceTabs && !showTools) return null;
 
   const sourceTabs: { id: FilterSource; label: string }[] = [
-    { id: 'community', label: 'Community' },
     { id: 'toova', label: 'Toova' },
+    { id: 'community', label: 'Community' },
     ...(showMine ? [{ id: 'mine' as const, label: 'My creations' }] : []),
   ];
 

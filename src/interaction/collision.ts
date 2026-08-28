@@ -1,7 +1,9 @@
 import type { RoomGeometry } from '../lib/roomGeometry';
 import {
+  allWallSegments,
   isTouchingAnyWall,
   planBounds,
+  planCentroid,
   pointInPolygon,
 } from '../lib/floorPlanGeometry';
 import type { Item } from '../store';
@@ -224,6 +226,7 @@ export function findValidElevation(candidate: Item, others: Item[], desiredY: nu
 
   for (const other of others) {
     if (other.id === candidate.id) continue;
+    if (other.kind === 'hanging' || other.kind === 'light') continue;
     if (!rectsOverlap(rect, itemRect(other), -0.5)) continue;
 
     const oBot = other.position[1];
@@ -264,6 +267,7 @@ export function settleGravity(candidate: Item, others: Item[], fromY: number): n
   const surfaces: number[] = [0];
   for (const other of others) {
     if (other.id === candidate.id) continue;
+    if (other.kind === 'hanging' || other.kind === 'light') continue;
     if (!rectsOverlap(rect, itemRect(other), -0.5)) continue;
     const top = topSurfaceY(other);
     if (top <= startY + 0.5) surfaces.push(top);
@@ -291,6 +295,42 @@ export function settleGravity(candidate: Item, others: Item[], fromY: number): n
 export function isTouchingWall(item: Item, tolerance = 6): boolean {
   const rect = itemRect(item);
   return isTouchingAnyWall(rect.minX, rect.maxX, rect.minZ, rect.maxZ, room(), tolerance);
+}
+
+/** Lights and wall shelves keep their height while dragging; other wall-mounts only when flush. */
+export function itemPinsElevation(item: Item): boolean {
+  if (item.kind === 'light') return true;
+  if (item.kind === 'shelf') return item.wallMounted !== false;
+  return !!(item.wallMounted && isTouchingWall(item));
+}
+
+/** Typical floating-shelf height (inches from floor to the underside of the board). */
+export const DEFAULT_SHELF_ELEVATION = 48;
+
+/** Place a wall shelf flush against the longest wall, board parallel to the floor. */
+export function defaultWallShelfPose(
+  geom: RoomGeometry,
+  size: [number, number, number],
+): { position: [number, number, number]; rotationY: number } {
+  const [, h, d] = size;
+  const y = Math.max(0, Math.min(DEFAULT_SHELF_ELEVATION, geom.height - h));
+  const wideEnough = allWallSegments(geom).filter((s) => s.length >= size[0] + 4);
+  const pool = wideEnough.length > 0 ? wideEnough : allWallSegments(geom);
+  const seg = pool.slice().sort((a, b) => b.length - a.length)[0];
+  if (!seg) {
+    const [cx, cz] = planCentroid(geom);
+    return { position: [cx, y, cz], rotationY: 0 };
+  }
+  const interiorX = -seg.outward[0];
+  const interiorZ = -seg.outward[1];
+  const inset = d / 2 + ROOM_INSET;
+  const raw: [number, number, number] = [
+    seg.innerFaceCenter[0] + interiorX * inset,
+    y,
+    seg.innerFaceCenter[2] + interiorZ * inset,
+  ];
+  const [x, , z] = clampPositionInRoom(raw, seg.rotationY, size, geom);
+  return { position: [x, y, z], rotationY: seg.rotationY };
 }
 
 export function clampToRoom(item: Item, proposedX: number, proposedZ: number): [number, number] {

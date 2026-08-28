@@ -22,6 +22,11 @@ export const MARKETING_SHOWCASE = {
     label: 'Arm Chair',
     sizeIn: [24, 24, 24] as [number, number, number],
   },
+  /** Four-steps “Get a 3D model” plate — curated Gaming chair. */
+  stepChair: {
+    modelPath: 'marketing/gaming-chair.glb',
+    label: 'Gaming chair',
+  },
   /**
    * Storage object keys in the Woodlawn room → static copies under public/.
    * loadPublicRoomLayout uses these instead of createSignedUrl.

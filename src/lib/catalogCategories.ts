@@ -73,6 +73,8 @@ export function toggleCatalogCategory(
 export const BUILTIN_CATEGORIES: Record<string, CatalogCategorySlug[]> = {
   bed: ['beds'],
   dresser: ['storage'],
+  bookshelf: ['storage'],
+  shelf: ['storage', 'decor_art'],
   wardrobe: ['storage'],
   desk: ['desks_workspaces'],
   chair: ['seating'],
