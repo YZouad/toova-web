@@ -2,7 +2,7 @@
  * Serialization between Supabase `room_items` rows and the Zustand `Item` type.
  */
 
-import type { FurnitureKind } from '../furniture/registry';
+import { DEFAULT_SHELF_COLOR, isWallShelfKind, type FurnitureKind } from '../furniture/registry';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './checklistPublicGlbs';
 import { DEFAULT_BLANKET_COLOR, newAttachmentKey, type EmitterConfig, type Item } from '../store';
 import {
@@ -20,6 +20,8 @@ import {
 const KNOWN_KINDS: FurnitureKind[] = [
   'bed',
   'dresser',
+  'bookshelf',
+  'shelf',
   'wardrobe',
   'desk',
   'chair',
@@ -143,10 +145,11 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     return undefined;
   })();
   const tintColor = (() => {
-    if (row.kind !== 'imported') return undefined;
+    if (row.kind !== 'imported' && row.kind !== 'shelf') return undefined;
     if (row.blanket_color != null && String(row.blanket_color).trim()) {
       return String(row.blanket_color).trim();
     }
+    if (row.kind === 'shelf') return DEFAULT_SHELF_COLOR;
     if (isChecklistRug({ importedStoragePath, label: row.label })) {
       return DEFAULT_RUG_COLOR;
     }
@@ -213,6 +216,7 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     curatedProductId,
     attachmentKey,
     hanging: hanging ?? undefined,
+    wallMounted: isWallShelfKind(row.kind) ? true : undefined,
   };
 }
 
@@ -285,7 +289,7 @@ export function serializeLayoutForRoom(
           ? (it.beddingConfig
               ? comforterHexFromConfig(it.beddingConfig)
               : it.blanketColor) ?? null
-          : it.kind === 'imported' && it.tintColor
+          : (it.kind === 'imported' || it.kind === 'shelf') && it.tintColor
             ? it.tintColor
             : null,
 

@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../store';
-import { validatePlacement, clampToRoom, settleGravity, isTouchingWall } from './collision';
+import { validatePlacement, clampToRoom, settleGravity, itemPinsElevation } from './collision';
 
 /**
  * Left-drag moves the selected item(s) in XZ while keeping each item's height.
@@ -165,7 +165,7 @@ export function DragController() {
           })),
         ];
 
-        const pinHeight = item.kind === 'light' || !!(item.wallMounted && isTouchingWall(item));
+        const pinHeight = itemPinsElevation(item);
         if (pinHeight) {
           if (!validatePlacement(item, others).ok) {
             settled[id] = startPos;

@@ -7,7 +7,7 @@ import { recordCatalogDownload, shouldRecordCatalogDownload } from '../lib/catal
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { newPillowId } from '../lib/bedding/config';
 import { supabase } from '../lib/supabase';
-import { type FurnitureKind } from '../furniture/registry';
+import { DEFAULT_SHELF_COLOR, SHELF_COLOR_SWATCHES, type FurnitureKind } from '../furniture/registry';
 import { Scene, type SceneHandle } from '../scene/Scene';
 import { useStore, type Item, type CameraPresetId } from '../store';
 import { planBounds } from '../lib/roomGeometry';
@@ -51,6 +51,8 @@ function roomDirtyFingerprint(name: string): string {
 const KIND_COLORS: Record<string, string> = {
   bed: '#C9B391',
   dresser: '#B08C5F',
+  bookshelf: '#A67C52',
+  shelf: '#B08968',
   wardrobe: '#A88457',
   desk: '#B5946C',
   chair: '#CBB28F',
@@ -186,7 +188,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
   }, [item]);
 
   useEffect(() => {
-    if (item?.kind === 'light') setAdvancedOpen(true);
+    if (item?.kind === 'light' || item?.kind === 'shelf') setAdvancedOpen(true);
   }, [selectedId, item?.kind]);
 
   const addFromGallery = useCallback(
@@ -345,7 +347,9 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
         tintColor: item.tintColor,
       });
     } else {
-      newId = addItem(item.kind);
+      newId = addItem(item.kind, {
+        tintColor: item.tintColor,
+      });
       setItemSize(newId, [...item.size] as [number, number, number]);
     }
     updateRotation(newId, item.rotationY);
@@ -710,7 +714,10 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
                   onChange={handleUniformChange}
                 />
               ) : (
-                (['Width', 'Height', 'Depth'] as const).map((label, i) => (
+                (item.kind === 'shelf'
+                  ? (['Width', 'Thickness', 'Depth'] as const)
+                  : (['Width', 'Height', 'Depth'] as const)
+                ).map((label, i) => (
                   <RangeControl
                     key={label}
                     label={label}
@@ -756,6 +763,15 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
                     label="Rug color"
                     value={item.tintColor ?? DEFAULT_RUG_COLOR}
                     onChange={(color) => setTintColor(item.id, color)}
+                  />
+                </div>
+              ) : item.kind === 'shelf' ? (
+                <div style={{ margin: '12px 0 8px' }}>
+                  <PaintColorPicker
+                    label="Shelf color"
+                    value={item.tintColor ?? DEFAULT_SHELF_COLOR}
+                    onChange={(color) => setTintColor(item.id, color)}
+                    swatches={SHELF_COLOR_SWATCHES}
                   />
                 </div>
               ) : null}

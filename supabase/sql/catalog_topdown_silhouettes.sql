@@ -64,7 +64,7 @@ AS $$
    AND NULLIF(trim(fc.model_url), '') = NULLIF(trim(ri.model_url), '')
   WHERE ri.room_id = p_room_id
     AND ri.kind IN (
-      'bed', 'dresser', 'wardrobe', 'desk', 'chair', 'nightstand', 'lamp', 'imported'
+      'bed', 'dresser', 'bookshelf', 'wardrobe', 'desk', 'chair', 'nightstand', 'lamp', 'imported'
     );
 $$;
 

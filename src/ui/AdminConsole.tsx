@@ -40,7 +40,7 @@ const NAV: { id: AdminTab; label: string }[] = [
 ];
 
 const KIND_COLORS: Record<string, string> = {
-  bed: '#C9B391', dresser: '#B08C5F', wardrobe: '#A88457', desk: '#B5946C',
+  bed: '#C9B391', dresser: '#B08C5F', bookshelf: '#A67C52', shelf: '#B08968', wardrobe: '#A88457', desk: '#B5946C',
   chair: '#CBB28F', nightstand: '#C0A47A', lamp: '#D4C4A0', imported: '#7E8A60',
 };
 

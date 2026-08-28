@@ -154,7 +154,7 @@ WHERE cardinality(fc.categories) = 0
 
 -- Seed / sync Toova builtins with categories.
 UPDATE public.furniture_catalog SET categories = ARRAY['beds'] WHERE kind = 'bed' AND is_builtin;
-UPDATE public.furniture_catalog SET categories = ARRAY['storage'] WHERE kind IN ('dresser', 'wardrobe') AND is_builtin;
+UPDATE public.furniture_catalog SET categories = ARRAY['storage'] WHERE kind IN ('dresser', 'bookshelf', 'wardrobe') AND is_builtin;
 UPDATE public.furniture_catalog SET categories = ARRAY['desks_workspaces'] WHERE kind = 'desk' AND is_builtin;
 UPDATE public.furniture_catalog SET categories = ARRAY['seating'] WHERE kind = 'chair' AND is_builtin;
 UPDATE public.furniture_catalog SET categories = ARRAY['storage', 'beds'] WHERE kind = 'nightstand' AND is_builtin;
@@ -163,7 +163,8 @@ UPDATE public.furniture_catalog SET categories = ARRAY['lighting'] WHERE kind = 
 INSERT INTO public.furniture_catalog (
   kind, label, width_in, height_in, depth_in, clearance_in, is_builtin, model_url, tags, categories, visibility
 ) VALUES
-  ('lamp', 'Lamp', 10, 22, 10, null, true, null, '{}'::text[], ARRAY['lighting'], 'public')
+  ('lamp', 'Lamp', 10, 22, 10, null, true, null, '{}'::text[], ARRAY['lighting'], 'public'),
+  ('bookshelf', 'Bookshelf', 30, 32, 18, null, true, null, '{}'::text[], ARRAY['storage'], 'public')
 ON CONFLICT (kind) DO UPDATE
   SET label = EXCLUDED.label,
       width_in = EXCLUDED.width_in,

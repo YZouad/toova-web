@@ -22,6 +22,8 @@ export interface AffiliateOffer {
 const BUILTIN_SEARCH_TERMS: Record<string, string> = {
   bed: 'twin dorm bed frame',
   dresser: 'dorm dresser',
+  bookshelf: 'dorm bookshelf open shelf',
+  shelf: 'floating wall shelf',
   wardrobe: 'dorm wardrobe closet',
   desk: 'dorm desk',
   chair: 'dorm desk chair',

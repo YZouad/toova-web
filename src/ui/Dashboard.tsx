@@ -40,6 +40,8 @@ const MAX_ROOMS = 5;
 const KNOWN_KINDS = new Set([
   'bed',
   'dresser',
+  'bookshelf',
+  'shelf',
   'wardrobe',
   'desk',
   'chair',

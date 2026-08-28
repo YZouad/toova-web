@@ -1,6 +1,6 @@
 import { create } from 'zustand';
-import { FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE } from './furniture/registry';
-import { findValidElevation, settleGravity, validatePlacement } from './interaction/collision';
+import { DEFAULT_SHELF_COLOR, FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE, isWallShelfKind } from './furniture/registry';
+import { defaultWallShelfPose, findValidElevation, settleGravity, validatePlacement } from './interaction/collision';
 import { trackAddToDesign } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './lib/checklistPublicGlbs';
@@ -83,6 +83,12 @@ export function normalizeBedItem(it: Item): Item {
   };
 }
 
+function normalizeShelfItem(it: Item): Item {
+  if (!isWallShelfKind(it.kind)) return it;
+  if (it.wallMounted) return it;
+  return { ...it, wallMounted: true };
+}
+
 export interface RoomEnvironment {
   timeOfDay: number;       // 0..24
   orientationDeg: number;  // 0..360, room yaw vs sun
@@ -147,7 +153,7 @@ export interface Item {
   beddingEnabled?: boolean;
   /** Hex color for blanket when bedding is enabled. */
   blanketColor?: string;
-  /** Hex tint for recolorable imports (checklist rug). */
+  /** Hex tint for recolorable imports (checklist rug) and the wall shelf. */
   tintColor?: string;
   /** Supabase Storage path for blanket pattern image (`model-files` bucket). */
   blanketTexturePath?: string;
@@ -562,7 +568,7 @@ export const useStore = create<StoreState>((set, get) => ({
       bumpNextIdFromExistingIds(orderIds);
       const items: Record<string, Item> = {};
       for (const it of payload) {
-        const normalized = ensureAttachmentKey(normalizeBedItem(it));
+        const normalized = ensureAttachmentKey(normalizeShelfItem(normalizeBedItem(it)));
         items[normalized.id] = normalized;
       }
       return {
@@ -614,7 +620,6 @@ export const useStore = create<StoreState>((set, get) => ({
     const bodyH = isBed && def ? def.size[1] : 0;
     const room = useStore.getState().roomGeometry;
     const [cx, cz] = planCentroid(room);
-    const position: [number, number, number] = [cx, 0, cz];
     const itemSize: [number, number, number] = isBed && def
       ? [def.size[0], bedLegHeight! + bodyH, def.size[2]]
       : size;
@@ -623,11 +628,15 @@ export const useStore = create<StoreState>((set, get) => ({
         ? (opts?.catalogSizeIn ?? ([...itemSize] as [number, number, number]))
         : undefined;
 
+    const shelfPose = isWallShelfKind(kind) ? defaultWallShelfPose(room, itemSize) : null;
+    const position: [number, number, number] = shelfPose ? shelfPose.position : [cx, 0, cz];
+    const rotationY = shelfPose ? shelfPose.rotationY : 0;
+
     const item: Item = {
       id,
       kind,
       position,
-      rotationY: 0,
+      rotationY,
       size: itemSize,
       bedLegHeight,
       importedUrl: opts?.url,
@@ -635,12 +644,15 @@ export const useStore = create<StoreState>((set, get) => ({
       catalogSizeIn,
       label: opts?.label ?? (def ? def.label : 'Model'),
       curatedProductId: opts?.curatedProductId,
+      wallMounted: isWallShelfKind(kind) ? true : undefined,
       tintColor:
         opts?.tintColor ??
-        (kind === 'imported' &&
-        isChecklistRug({ importedStoragePath: opts?.storagePath, label: opts?.label })
-          ? DEFAULT_RUG_COLOR
-          : undefined),
+        (isWallShelfKind(kind)
+          ? DEFAULT_SHELF_COLOR
+          : kind === 'imported' &&
+              isChecklistRug({ importedStoragePath: opts?.storagePath, label: opts?.label })
+            ? DEFAULT_RUG_COLOR
+            : undefined),
       attachmentKey: newAttachmentKey(),
     };
     set((s) => ({
@@ -759,7 +771,7 @@ export const useStore = create<StoreState>((set, get) => ({
       let heightMax = room.height;
       let size: [number, number, number] = [
         clamp(sizeInput[0], 1, maxFootprint),
-        clamp(sizeInput[1], 4, heightMax),
+        clamp(sizeInput[1], it.kind === 'shelf' ? 0.5 : 4, heightMax),
         clamp(sizeInput[2], 1, maxFootprint),
       ];
       if (it.kind === 'bed') {
@@ -776,7 +788,7 @@ export const useStore = create<StoreState>((set, get) => ({
       if (!it || it.kind === 'hanging') return s;
       const maxY = Math.max(0, s.roomGeometry.height - it.size[1]);
       const targetY = clamp(y, 0, maxY);
-      if (it.kind === 'light') {
+      if (it.kind === 'light' || it.kind === 'shelf') {
         return {
           items: {
             ...s.items,
@@ -794,6 +806,7 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => {
       const it = s.items[id];
       if (!it || it.kind === 'hanging' || it.kind === 'light') return s;
+      if (it.kind === 'shelf' && it.wallMounted !== false) return s;
       const others = Object.values(s.items).filter((o) => o.id !== id);
       const y = settleGravity(it, others, it.position[1]);
       return { items: { ...s.items, [id]: { ...it, position: [it.position[0], y, it.position[2]] } } };
@@ -892,7 +905,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setTintColor: (id, hex) =>
     set((s) => {
       const it = s.items[id];
-      if (!it || it.kind !== 'imported') return s;
+      if (!it || (it.kind !== 'imported' && it.kind !== 'shelf')) return s;
       return { items: { ...s.items, [id]: { ...it, tintColor: hex } } };
     }),
 

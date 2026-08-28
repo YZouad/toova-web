@@ -3,6 +3,8 @@
 export const KIND_COLORS: Record<string, string> = {
   bed: '#C9B391',
   dresser: '#B08C5F',
+  bookshelf: '#A67C52',
+  shelf: '#B08968',
   wardrobe: '#A88457',
   desk: '#B5946C',
   chair: '#CBB28F',

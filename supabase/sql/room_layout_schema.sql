@@ -28,6 +28,7 @@ INSERT INTO public.furniture_catalog (
 ) VALUES
   ('bed',        'Twin Bed',   38, 14, 75, 8,    true, null, '{}'::text[]),
   ('dresser',    'Dresser',    30, 32, 18, null,  true, null, '{}'::text[]),
+  ('bookshelf',  'Bookshelf',  30, 32, 18, null,  true, null, '{}'::text[]),
   ('wardrobe',   'Wardrobe',   36, 72, 24, null,  true, null, '{}'::text[]),
   ('desk',       'Desk',       48, 30, 24, 28.5, true, null, '{}'::text[]),
   ('chair',      'Chair',      18, 36, 18, null,  true, null, '{}'::text[]),

@@ -36,7 +36,9 @@ export function InspectorPanel() {
   const maxItemFootprint = Math.max(planBounds(roomGeometry).width, planBounds(roomGeometry).depth, 200);
   const maxElevation = Math.max(0, roomGeometry.height - item.size[1]);
   const currentY = Math.round(item.position[1]);
-  const sizeLabels = ['Width', 'Height', 'Depth'] as const;
+  const sizeLabels = (item.kind === 'shelf'
+    ? (['Width', 'Thickness', 'Depth'] as const)
+    : (['Width', 'Height', 'Depth'] as const));
   const maxSide = Math.max(item.size[0], item.size[1], item.size[2]);
 
   return (
