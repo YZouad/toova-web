@@ -124,9 +124,7 @@ export function ModelDetailModal({
       });
   }, [model.kind, model.visibility, onModelPatched]);
 
-  const previewUrl = model.isBuiltin
-    ? builtinPreviewUrl ?? model.previewUrl
-    : model.previewUrl;
+  const previewUrl = model.previewUrl ?? builtinPreviewUrl;
 
   async function handleLike() {
     if (!canLike) return;

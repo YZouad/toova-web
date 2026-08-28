@@ -58,6 +58,7 @@ import { recordCatalogDownload, shouldRecordCatalogDownload } from './lib/catalo
 import { trackPageView } from './lib/analytics';
 import { buildGallerySearchParams } from './lib/galleryCatalog';
 import type { FurnitureKind } from './furniture/registry';
+import { galleryModelImportedSize, galleryModelPlacesAsImport, isProceduralBuiltinKind } from './lib/placeGalleryModel';
 import { profileInitials } from './lib/userDisplay';
 import {
   AppShell,
@@ -332,14 +333,10 @@ function AppContent() {
 
   const placePendingGalleryModel = useCallback(
     (model: GalleryModel) => {
-      if (model.isBuiltin) {
+      if (isProceduralBuiltinKind(model.kind)) {
         addItem(model.kind as FurnitureKind);
-      } else if (model.signedUrl) {
-        const dims: [number, number, number] = [
-          model.width_in,
-          model.height_in,
-          model.depth_in,
-        ];
+      } else if (galleryModelPlacesAsImport(model)) {
+        const dims = galleryModelImportedSize(model);
         addItem('imported', {
           url: model.signedUrl ?? undefined,
           storagePath: model.storagePath || undefined,

@@ -145,9 +145,8 @@ export function DesignerGalleryPanel({
                         kind={r.isBuiltin ? r.kind : 'imported'}
                         size={[r.width_in, r.height_in, r.depth_in]}
                         previewUrl={
-                          r.isBuiltin
-                            ? getBuiltinPreviewUrl(r.kind, builtinPreviews)
-                            : r.previewUrl
+                          r.previewUrl ??
+                          (r.isBuiltin ? getBuiltinPreviewUrl(r.kind, builtinPreviews) : null)
                         }
                         className="palette-recent-preview"
                       />

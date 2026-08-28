@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Item } from '../store';
+import { lampPartsFromSize } from './lampGeometry';
 import { SelectionOutline } from './SelectionOutline';
 
 const SHADE = '#f2e6d4';
@@ -15,16 +16,12 @@ interface Props {
 /** Simple procedural desk lamp for curated shopping products. */
 export function Lamp({ item, selected, invalid }: Props) {
   const [w, h, d] = item.size;
-  const baseH = Math.max(1.2, h * 0.08);
-  const stemH = h * 0.55;
-  const shadeH = h * 0.32;
-  const shadeW = Math.min(w, d) * 0.95;
-  const stemR = Math.min(w, d) * 0.08;
+  const { baseH, stemH, shadeH, shadeW, stemR, baseR } = lampPartsFromSize(item.size);
 
   return (
     <group>
       <mesh position={[0, baseH / 2, 0]} castShadow receiveShadow>
-        <cylinderGeometry args={[Math.min(w, d) * 0.35, Math.min(w, d) * 0.42, baseH, 16]} />
+        <cylinderGeometry args={[baseR * 0.85, baseR, baseH, 16]} />
         <meshStandardMaterial color={BASE} roughness={0.55} metalness={0.15} />
       </mesh>
       <mesh position={[0, baseH + stemH / 2, 0]} castShadow>

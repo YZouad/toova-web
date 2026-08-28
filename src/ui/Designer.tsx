@@ -7,7 +7,9 @@ import { recordCatalogDownload, shouldRecordCatalogDownload } from '../lib/catal
 import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
 import { newPillowId } from '../lib/bedding/config';
 import { supabase } from '../lib/supabase';
+import { lampArmMaxForRoom, lampPartsFromSize, lampSizeFromArmHeight, LAMP_ARM_MIN } from '../furniture/lampGeometry';
 import { DEFAULT_SHELF_COLOR, SHELF_COLOR_SWATCHES, type FurnitureKind } from '../furniture/registry';
+import { galleryModelImportedSize, galleryModelPlacesAsImport, isProceduralBuiltinKind } from '../lib/placeGalleryModel';
 import { Scene, type SceneHandle } from '../scene/Scene';
 import { useStore, type Item, type CameraPresetId } from '../store';
 import { planBounds } from '../lib/roomGeometry';
@@ -193,18 +195,14 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
 
   const addFromGallery = useCallback(
     (model: GalleryModel) => {
-      if (model.isBuiltin) {
+      if (isProceduralBuiltinKind(model.kind)) {
         const id = addItem(model.kind as FurnitureKind);
         const placed = useStore.getState().items[id];
         if (placed) {
           baseSizeRef.current.set(id, [...placed.size] as [number, number, number]);
         }
-      } else if (model.signedUrl) {
-        const dims: [number, number, number] = [
-          model.width_in,
-          model.height_in,
-          model.depth_in,
-        ];
+      } else if (galleryModelPlacesAsImport(model)) {
+        const dims = galleryModelImportedSize(model);
         const id = addItem('imported', {
           url: model.signedUrl ?? undefined,
           storagePath: model.storagePath || undefined,
@@ -212,7 +210,8 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
           size: dims,
           catalogSizeIn: dims,
         });
-        baseSizeRef.current.set(id, dims);
+        const placed = useStore.getState().items[id];
+        baseSizeRef.current.set(id, placed ? [...placed.size] as [number, number, number] : dims);
         if (shouldRecordCatalogDownload(model, user?.id)) {
           void recordCatalogDownload(model.kind).catch(() => {
             /* best-effort */
@@ -376,6 +375,8 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
 
   const rotDeg = item ? Math.round(((item.rotationY * 180) / Math.PI) % 360) : 0;
   const maxElevation = item ? Math.max(0, roomGeometry.height - item.size[1]) : 0;
+  const lampParts = item?.kind === 'lamp' ? lampPartsFromSize(item.size) : null;
+  const lampArmMax = item?.kind === 'lamp' ? lampArmMaxForRoom(item.size, roomGeometry.height) : LAMP_ARM_MIN;
 
   return (
     <div className="designer-page">
@@ -703,6 +704,18 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
             />
 
             <div className="designer-advanced-section">
+              {item.kind === 'lamp' && lampParts ? (
+                <RangeControl
+                  label="Lamp neck height"
+                  value={Math.round(lampParts.stemH)}
+                  min={LAMP_ARM_MIN}
+                  max={lampArmMax}
+                  step={1}
+                  unit="″"
+                  onChange={(v) => setItemSize(item.id, lampSizeFromArmHeight(item.size, v))}
+                />
+              ) : null}
+
               {sizeMode === 'uniform' ? (
                 <RangeControl
                   label="Scale"
@@ -717,22 +730,25 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
                 (item.kind === 'shelf'
                   ? (['Width', 'Thickness', 'Depth'] as const)
                   : (['Width', 'Height', 'Depth'] as const)
-                ).map((label, i) => (
-                  <RangeControl
-                    key={label}
-                    label={label}
-                    value={Math.round(item.size[i])}
-                    min={1}
-                    max={maxItemFootprint}
-                    step={1}
-                    unit="″"
-                    onChange={(v) => {
-                      const next = [...item.size] as [number, number, number];
-                      next[i] = v;
-                      setItemSize(item.id, next);
-                    }}
-                  />
-                ))
+                ).map((label, i) => {
+                  if (item.kind === 'lamp' && label === 'Height') return null;
+                  return (
+                    <RangeControl
+                      key={label}
+                      label={label}
+                      value={Math.round(item.size[i])}
+                      min={1}
+                      max={maxItemFootprint}
+                      step={1}
+                      unit="″"
+                      onChange={(v) => {
+                        const next = [...item.size] as [number, number, number];
+                        next[i] = v;
+                        setItemSize(item.id, next);
+                      }}
+                    />
+                  );
+                })
               )}
 
               <RangeControl
