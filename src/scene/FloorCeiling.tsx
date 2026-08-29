@@ -7,6 +7,7 @@ import type { MaterialPresetId } from '../lib/roomMaterials';
 import { useStore } from '../store';
 import { useOrbitFade } from './useOrbitFade';
 import { daylightFillScale } from '../lib/environment';
+import { createShadowOnlyMaterials } from './shadowLayers';
 
 const ROOF_THICKNESS = 4;
 
@@ -186,12 +187,8 @@ export function ShadowRoof({
     });
   }, [shapes]);
 
-  const depthMaterial = useMemo(
-    () =>
-      new THREE.MeshDepthMaterial({
-        depthPacking: THREE.RGBADepthPacking,
-        side: THREE.DoubleSide,
-      }),
+  const { depthMaterial, colorMaterial: shadowMaterial } = useMemo(
+    () => createShadowOnlyMaterials(),
     [],
   );
 
@@ -203,8 +200,9 @@ export function ShadowRoof({
   useEffect(() => () => {
     disposeMaterial(material);
     depthMaterial.dispose();
+    shadowMaterial.dispose();
     for (const g of geos) g.dispose();
-  }, [material, geos, depthMaterial]);
+  }, [material, geos, depthMaterial, shadowMaterial]);
 
   useOrbitFade([matRef], [0, 1, 0], [cx, y - ROOF_THICKNESS / 2, cz], {
     groupRef,
@@ -213,22 +211,45 @@ export function ShadowRoof({
 
   if (!enabled) return null;
 
+  const roofTransform = {
+    position: [0, y, 0] as [number, number, number],
+    rotation: [Math.PI / 2, 0, 0] as [number, number, number],
+  };
+
   return (
-    <group ref={groupRef}>
+    <group>
       {geos.map((geo, i) => (
         <mesh
-          key={i}
+          key={`shadow-${i}`}
           geometry={geo}
-          // Same basis as the floor: shape XY → world XZ via rotateX(+π/2).
-          // Extrude +Z then becomes world −Y, so the slab drops from the wall tops.
-          position={[0, y, 0]}
-          rotation={[Math.PI / 2, 0, 0]}
+          position={roofTransform.position}
+          rotation={roofTransform.rotation}
           castShadow
-          receiveShadow
-          material={material}
+          receiveShadow={false}
+          frustumCulled={false}
+          material={shadowMaterial}
           customDepthMaterial={depthMaterial}
+          userData={{ hangingPick: false }}
+          raycast={() => {
+            /* shadow-only — camera-facing roof still blocks the sun */
+          }}
         />
       ))}
+      <group ref={groupRef}>
+        {geos.map((geo, i) => (
+          <mesh
+            key={i}
+            geometry={geo}
+            // Same basis as the floor: shape XY → world XZ via rotateX(+π/2).
+            // Extrude +Z then becomes world −Y, so the slab drops from the wall tops.
+            position={roofTransform.position}
+            rotation={roofTransform.rotation}
+            castShadow={false}
+            receiveShadow
+            material={material}
+          />
+        ))}
+      </group>
     </group>
   );
 }

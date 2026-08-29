@@ -65,7 +65,7 @@ export const DEFAULT_LIGHT_CONFIG: Omit<HangingDecorationConfig, 'anchors' | 'se
   density: 6, // inches between bulbs
   palette: ['#fff4e0'],
   lightIntensity: 1.2,
-  lightRange: 56,
+  lightRange: 72,
 };
 
 export const LED_PALETTE_PRESETS: { label: string; colors: string[] }[] = [
@@ -112,6 +112,57 @@ export function hashSeed(parts: Array<string | number>): number {
     }
   }
   return h >>> 0;
+}
+
+/** Evenly spaced indices in `[0, count)`, always including the ends when count > 1. */
+export function evenlySpacedIndices(count: number, cap: number): number[] {
+  if (count <= 0 || cap <= 0) return [];
+  const n = Math.min(cap, count);
+  if (n === 1) return [0];
+  const idxs: number[] = [];
+  for (let i = 0; i < n; i++) {
+    idxs.push(Math.round((i * (count - 1)) / (n - 1)));
+  }
+  return idxs;
+}
+
+export interface ClusterLightAnchor {
+  position: Vec3;
+  /** Palette index of the cluster's middle bulb. */
+  colorIndex: number;
+}
+
+/**
+ * Collapse a dense LED run into a few real lights at group centroids.
+ * Keeps illumination along the whole string without one PointLight per bulb.
+ */
+export function clusterLightAnchors(
+  positions: Vec3[],
+  cap: number,
+): ClusterLightAnchor[] {
+  const count = positions.length;
+  if (count === 0 || cap <= 0) return [];
+  const n = Math.min(cap, count);
+  const out: ClusterLightAnchor[] = [];
+  for (let i = 0; i < n; i++) {
+    const start = Math.round((i * count) / n);
+    const end = Math.max(start + 1, Math.round(((i + 1) * count) / n));
+    let x = 0;
+    let y = 0;
+    let z = 0;
+    const span = end - start;
+    for (let j = start; j < end; j++) {
+      const p = positions[j]!;
+      x += p[0];
+      y += p[1];
+      z += p[2];
+    }
+    out.push({
+      position: [x / span, y / span, z / span],
+      colorIndex: start + Math.floor((span - 1) / 2),
+    });
+  }
+  return out;
 }
 
 export function createHangingSeed(): number {
@@ -479,7 +530,7 @@ export function parseHangingConfig(raw: unknown): HangingDecorationConfig | null
   const lightRange =
     typeof o.lightRange === 'number' && Number.isFinite(o.lightRange)
       ? clamp(o.lightRange, 8, 200)
-      : 56;
+      : 72;
 
   return {
     version: HANGING_CONFIG_VERSION,

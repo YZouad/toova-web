@@ -116,6 +116,10 @@ function EnvironmentRig() {
       light.shadow.map = null;
       light.shadow.mapSize.set(size, size);
     }
+    if (light.shadow.camera) {
+      light.shadow.camera.layers.enable(0);
+      light.shadow.camera.layers.enable(SHADOW_ONLY_LAYER);
+    }
     light.shadow.camera.updateProjectionMatrix();
     light.shadow.needsUpdate = true;
     light.shadow.autoUpdate = true;

@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { lampMinHeight } from './furniture/lampGeometry';
 import { DEFAULT_SHELF_COLOR, FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE, isWallShelfKind } from './furniture/registry';
-import { defaultWallShelfPose, findValidElevation, settleGravity, validatePlacement } from './interaction/collision';
+import { defaultWallShelfPose, findValidElevation, resolveValidXZ, settleGravity, validatePlacement } from './interaction/collision';
 import { trackAddToDesign } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
 import { shouldStandImportedUpright, standUpFlatBounds } from './lib/importedUpright';
@@ -761,11 +761,16 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => {
       const it = s.items[id];
       if (!it || it.kind === 'hanging') return s;
-      let next: Item = { ...it, rotationY };
-      next.position = clampFullItemPosition(next.position, rotationY, next.size);
+      const next: Item = { ...it, rotationY };
       const others = Object.values(s.items).filter((o) => o.id !== id);
-      if (!validatePlacement(next, others).ok) return s;
-      return { items: { ...s.items, [id]: next } };
+      const resolved = resolveValidXZ(next, others);
+      if (resolved.ok) {
+        next.position = resolved.position;
+        return { items: { ...s.items, [id]: next }, invalid: false };
+      }
+      // Boxed in: still rotate in place (room-clamped). Red outline until there's space.
+      next.position = clampFullItemPosition(it.position, rotationY, it.size, s.roomGeometry);
+      return { items: { ...s.items, [id]: next }, invalid: true };
     }),
 
   setItemSize: (id, sizeInput) =>

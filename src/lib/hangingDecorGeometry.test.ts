@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildHangingPath,
+  clusterLightAnchors,
   createHangingSeed,
+  evenlySpacedIndices,
   furnitureLocalFromWorld,
   hangingHasMissingTargets,
   hangingReferencesAttachmentKey,
@@ -19,6 +21,7 @@ import {
   wallAnchorFromWorldHit,
   type FurniturePose,
   type HangingDecorationConfig,
+  type Vec3,
 } from './hangingDecorGeometry';
 import { defaultRectanglePlan, getWallSegment } from './floorPlanGeometry';
 
@@ -182,5 +185,31 @@ describe('hangingDecorGeometry', () => {
     ]);
     expect(b.size[0]).toBeGreaterThan(10);
     expect(b.center[1]).toBe(b.min[1]);
+  });
+
+  it('evenlySpacedIndices covers both ends and respects the cap', () => {
+    expect(evenlySpacedIndices(0, 4)).toEqual([]);
+    expect(evenlySpacedIndices(5, 0)).toEqual([]);
+    expect(evenlySpacedIndices(8, 1)).toEqual([0]);
+    expect(evenlySpacedIndices(4, 10)).toEqual([0, 1, 2, 3]);
+    expect(evenlySpacedIndices(10, 3)).toEqual([0, 5, 9]);
+  });
+
+  it('clusterLightAnchors puts lights at group centroids', () => {
+    expect(clusterLightAnchors([], 4)).toEqual([]);
+    const line: Vec3[] = [
+      [0, 0, 0],
+      [10, 0, 0],
+      [20, 0, 0],
+      [30, 0, 0],
+    ];
+    expect(clusterLightAnchors(line, 1)).toEqual([
+      { position: [15, 0, 0], colorIndex: 1 },
+    ]);
+    expect(clusterLightAnchors(line, 4).map((c) => c.position)).toEqual(line);
+    expect(clusterLightAnchors(line, 2).map((c) => c.position)).toEqual([
+      [5, 0, 0],
+      [25, 0, 0],
+    ]);
   });
 });

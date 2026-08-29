@@ -4,6 +4,7 @@ import { ROOM } from '../units';
 import { applyWallSlabUVs } from '../lib/shapeUVs';
 import { getTintableWallMaps } from '../lib/proceduralTextures';
 import { useOrbitFade } from './useOrbitFade';
+import { createShadowOnlyMaterials } from './shadowLayers';
 
 interface WallProps {
   length: number;
@@ -11,10 +12,10 @@ interface WallProps {
   outwardNormal: [number, number, number];
   innerFaceCenter: [number, number, number];
   rotationY?: number;
-  holes?: { x: number; y: number; w: number; h: number }[];
+  holes?: { x: number; y: number; w: number; h: number; kind?: 'door' | 'window' }[];
   /** Wall segment id — used for deterministic cutaway. */
   wallId?: string;
-  /** When true in cutaway modes, hide this wall entirely. */
+  /** Hide this wall from the camera (open-front). Shadow caster stays. */
   cutAway?: boolean;
   /** Free paint color; multiplies the shared plaster texture. */
   color: string;
@@ -110,8 +111,8 @@ export function buildWallGeometry(
  * One wall built as a continuous extruded slab with openings carved out.
  * Inner face sits at local z=0; thickness runs along +z (outward after rotation).
  *
- * Visual mesh hides when it faces the camera. A separate untextured proxy
- * always casts shadows so sunlight stays blocked when you look through the wall.
+ * Visual mesh hides when it faces the camera (orbit) or is cut away (open-front).
+ * A separate untextured proxy always casts shadows so sunlight stays blocked.
  */
 export function Wall({
   length,
@@ -128,15 +129,32 @@ export function Wall({
   const groupRef = useRef<THREE.Group>(null);
   const shadowRef = useRef<THREE.Mesh>(null!);
 
-  const holesKey = holes.map((h) => `${h.x}:${h.y}:${h.w}:${h.h}`).join('|');
+  const holesKey = holes.map((h) => `${h.kind ?? ''}:${h.x}:${h.y}:${h.w}:${h.h}`).join('|');
   const geometry = useMemo(
     () => buildWallGeometry(length, height, holes),
     // holes is often a fresh array each parent render — key by contents.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [length, height, holesKey],
   );
+  // Doorways stay solid in the shadow map so sun doesn't pour through;
+  // windows keep their holes.
+  const shadowGeometry = useMemo(
+    () => buildWallGeometry(
+      length,
+      height,
+      holes.filter((h) => h.kind !== 'door'),
+    ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [length, height, holesKey],
+  );
 
-  useEffect(() => () => geometry.dispose(), [geometry]);
+  useEffect(
+    () => () => {
+      geometry.dispose();
+      shadowGeometry.dispose();
+    },
+    [geometry, shadowGeometry],
+  );
 
   const maps = useMemo(() => getTintableWallMaps(), []);
 
@@ -163,17 +181,12 @@ export function Wall({
     return m;
   }, [maps, color]);
 
-  // No textures — Three copies `map` onto the depth material and that breaks casting.
-  const shadowMaterial = useMemo(() => {
-    const m = new THREE.MeshBasicMaterial({
-      color: 0x000000,
-      side: THREE.DoubleSide,
-      colorWrite: false,
-      depthWrite: false,
-    });
-    m.shadowSide = THREE.DoubleSide;
-    return m;
-  }, []);
+  // Untextured depth material — Three copies `map` onto the default depth
+  // material and that breaks casting on plastered walls.
+  const { depthMaterial, colorMaterial: shadowMaterial } = useMemo(
+    () => createShadowOnlyMaterials(),
+    [],
+  );
 
   useEffect(() => {
     matRef.current = material;
@@ -183,7 +196,13 @@ export function Wall({
     };
   }, [material, color]);
 
-  useEffect(() => () => shadowMaterial.dispose(), [shadowMaterial]);
+  useEffect(
+    () => () => {
+      shadowMaterial.dispose();
+      depthMaterial.dispose();
+    },
+    [shadowMaterial, depthMaterial],
+  );
 
   useLayoutEffect(() => {
     const mesh = shadowRef.current;
@@ -205,37 +224,38 @@ export function Wall({
 
   useOrbitFade([matRef], outwardNormal, center, { groupRef, hidden: cutAway });
 
-  if (cutAway) return null;
-
   return (
     <group>
-      {/* Stays in the shadow map while the visible wall hides for orbit cutaway. */}
+      {/* Stays visible to the shadow pass while orbit fade hides the plaster mesh. */}
       <mesh
         ref={shadowRef}
-        geometry={geometry}
+        geometry={shadowGeometry}
         position={innerFaceCenter}
         rotation={[0, rotationY, 0]}
         castShadow
         receiveShadow={false}
         frustumCulled={false}
         material={shadowMaterial}
+        customDepthMaterial={depthMaterial}
         userData={{ hangingPick: false }}
         raycast={() => {
           /* shadow-only proxy — never participate in hanging surface picks */
         }}
       />
-      <group ref={groupRef}>
-        <mesh
-          geometry={geometry}
-          position={innerFaceCenter}
-          rotation={[0, rotationY, 0]}
-          castShadow={false}
-          receiveShadow
-          frustumCulled={false}
-          material={material}
-          userData={wallId ? { wallId } : undefined}
-        />
-      </group>
+      {!cutAway && (
+        <group ref={groupRef}>
+          <mesh
+            geometry={geometry}
+            position={innerFaceCenter}
+            rotation={[0, rotationY, 0]}
+            castShadow={false}
+            receiveShadow
+            frustumCulled={false}
+            material={material}
+            userData={wallId ? { wallId } : undefined}
+          />
+        </group>
+      )}
     </group>
   );
 }
