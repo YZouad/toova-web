@@ -1234,7 +1234,7 @@ export function isTouchingAnyWall(
 export function holesForWallSegment(
   plan: FloorPlan,
   segment: WallSegment,
-): { x: number; y: number; w: number; h: number }[] {
+): { x: number; y: number; w: number; h: number; kind: OpeningKind }[] {
   const { length, outward, tangent } = segment;
   const [ox, oz] = outward;
   const [tx, tz] = tangent;
@@ -1254,6 +1254,7 @@ export function holesForWallSegment(
       y: o.kind === 'window' ? (o.sill ?? 36) : 0,
       w: o.width,
       h: o.height,
+      kind: o.kind,
     };
   });
 }

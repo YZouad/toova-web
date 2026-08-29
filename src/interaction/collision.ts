@@ -8,6 +8,7 @@ import {
 } from '../lib/floorPlanGeometry';
 import type { Item } from '../store';
 import { useStore } from '../store';
+import { ROOM } from '../units';
 
 function room() {
   return useStore.getState().roomGeometry;
@@ -88,7 +89,11 @@ export function clearanceOf(item: Item): number {
 // Room bounds
 // ---------------------------------------------------------------------------
 
-export const ROOM_INSET = 1;
+/**
+ * Floor-plan edges are wall centerlines; the inner face sits
+ * `wallThickness/2` into the room. Keep footprints clear of that face.
+ */
+export const ROOM_INSET = ROOM.wallThickness / 2;
 
 function footprintInsideRoom(rect: Rect, geom: RoomGeometry, inset = ROOM_INSET): boolean {
   const corners: [number, number][] = [
@@ -196,6 +201,72 @@ export function validatePlacement(candidate: Item, others: Item[]): ValidationRe
   }
 
   return { ok: true };
+}
+
+function firstSolidBlocker(candidate: Item, others: Item[]): Item | null {
+  for (const other of others) {
+    if (other.id === candidate.id) continue;
+    if (other.kind === 'hanging' || other.kind === 'light') continue;
+    if (!volumeConflict(candidate, other)) continue;
+    if (validatePlacement(candidate, [other]).ok) continue;
+    return other;
+  }
+  return null;
+}
+
+/** Minimum XZ translation that separates overlapping AABBs, along the shorter axis. */
+function mtvXZ(a: Rect, b: Rect, clearance = 0.5): { x: number; z: number } {
+  const left = a.maxX - (b.minX - clearance);
+  const right = (b.maxX + clearance) - a.minX;
+  const down = a.maxZ - (b.minZ - clearance);
+  const up = (b.maxZ + clearance) - a.minZ;
+  const xMag = Math.min(left, right);
+  const zMag = Math.min(down, up);
+  const pad = 0.05;
+  if (xMag <= zMag) {
+    return { x: (left < right ? -1 : 1) * (xMag + pad), z: 0 };
+  }
+  return { x: 0, z: (down < up ? -1 : 1) * (zMag + pad) };
+}
+
+/**
+ * Keep a pose legal: clamp to the room (same as rotating against a wall),
+ * then nudge XZ out of any solid furniture overlap.
+ */
+export function resolveValidXZ(
+  candidate: Item,
+  others: Item[],
+): { position: [number, number, number]; ok: boolean } {
+  const geom = room();
+  const y = candidate.position[1];
+  let [x, , z] = clampPositionInRoom(
+    candidate.position,
+    candidate.rotationY,
+    candidate.size,
+    geom,
+  );
+  let next: Item = { ...candidate, position: [x, y, z] };
+  if (validatePlacement(next, others).ok) {
+    return { position: next.position, ok: true };
+  }
+
+  for (let i = 0; i < 8; i++) {
+    const blocker = firstSolidBlocker(next, others);
+    if (!blocker) break;
+    const push = mtvXZ(itemRect(next), itemRect(blocker));
+    [x, , z] = clampPositionInRoom(
+      [next.position[0] + push.x, y, next.position[2] + push.z],
+      next.rotationY,
+      next.size,
+      geom,
+    );
+    next = { ...next, position: [x, y, z] };
+    if (validatePlacement(next, others).ok) {
+      return { position: next.position, ok: true };
+    }
+  }
+
+  return { position: next.position, ok: validatePlacement(next, others).ok };
 }
 
 /** Check whether all placed items fit inside a proposed floor plan. */
@@ -341,4 +412,86 @@ export function clampToRoom(item: Item, proposedX: number, proposedZ: number): [
     room(),
   );
   return [x, z];
+}
+
+// ---------------------------------------------------------------------------
+// Drag resolution (XZ)
+// ---------------------------------------------------------------------------
+
+export interface DragMover {
+  item: Item;
+  start: [number, number, number];
+}
+
+/** True when every mover can sit at start + (dx, dz) without overlaps. */
+export function groupDeltaValid(
+  movers: DragMover[],
+  others: Item[],
+  dx: number,
+  dz: number,
+): boolean {
+  for (const { item, start } of movers) {
+    const [cx, cz] = clampToRoom(item, start[0] + dx, start[2] + dz);
+    const pos: [number, number, number] = [cx, start[1], cz];
+    if (!validatePlacement({ ...item, position: pos }, others).ok) return false;
+  }
+  return true;
+}
+
+function lastValidOnAxis(
+  from: number,
+  desired: number,
+  test: (value: number) => boolean,
+): number {
+  if (test(desired)) return desired;
+  let lo = from;
+  let hi = desired;
+  for (let i = 0; i < 14; i++) {
+    const mid = (lo + hi) / 2;
+    if (test(mid)) lo = mid;
+    else hi = mid;
+  }
+  return lo;
+}
+
+/**
+ * Shared XZ delta for a drag. Follows the cursor until something solid is hit,
+ * then slides along the face instead of freezing in place.
+ *
+ * If the current pose is already illegal, the desired delta is used so the
+ * user can drag out of the overlap.
+ */
+export function resolveGroupDragDelta(
+  movers: DragMover[],
+  others: Item[],
+  desiredDx: number,
+  desiredDz: number,
+  fromDx: number,
+  fromDz: number,
+): { dx: number; dz: number; desiredOk: boolean } {
+  const valid = (dx: number, dz: number) => groupDeltaValid(movers, others, dx, dz);
+  const desiredOk = valid(desiredDx, desiredDz);
+  if (desiredOk) return { dx: desiredDx, dz: desiredDz, desiredOk };
+
+  if (!valid(fromDx, fromDz)) {
+    return { dx: desiredDx, dz: desiredDz, desiredOk };
+  }
+
+  const xThenZ = () => {
+    const dx = lastValidOnAxis(fromDx, desiredDx, (x) => valid(x, fromDz));
+    const dz = lastValidOnAxis(fromDz, desiredDz, (z) => valid(dx, z));
+    return { dx, dz };
+  };
+  const zThenX = () => {
+    const dz = lastValidOnAxis(fromDz, desiredDz, (z) => valid(fromDx, z));
+    const dx = lastValidOnAxis(fromDx, desiredDx, (x) => valid(x, dz));
+    return { dx, dz };
+  };
+
+  const a = xThenZ();
+  const b = zThenX();
+  const err = (p: { dx: number; dz: number }) =>
+    (p.dx - desiredDx) ** 2 + (p.dz - desiredDz) ** 2;
+  const best = err(a) <= err(b) ? a : b;
+  return { ...best, desiredOk };
 }

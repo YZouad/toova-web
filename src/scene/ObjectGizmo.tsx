@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Line } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { clampFullItemPosition, useStore } from '../store';
-import { validatePlacement } from '../interaction/collision';
+import { useStore } from '../store';
 
 const _hit = new THREE.Vector3();
 const _ndc = new THREE.Vector2();
@@ -42,7 +41,6 @@ export function ObjectGizmo() {
   const advanced = useStore((s) => s.visual.advancedControls);
   const selectedId = useStore((s) => s.selectedId);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
-  const updatePosition = useStore((s) => s.updatePosition);
   const updateRotation = useStore((s) => s.updateRotation);
   const setItemElevation = useStore((s) => s.setItemElevation);
   const setInvalid = useStore((s) => s.setInvalid);
@@ -91,20 +89,10 @@ export function ObjectGizmo() {
         radius={yawRadius}
         rotationY={item.rotationY}
         onRotate={(rotationY) => {
-          const position = clampFullItemPosition(item.position, rotationY, item.size);
-          const candidate = { ...item, position, rotationY };
-          const others = Object.values(useStore.getState().items).filter((o) => o.id !== item.id);
-          if (!validatePlacement(candidate, others).ok) {
-            setInvalid(true);
-            return;
-          }
-          setInvalid(false);
           updateRotation(item.id, rotationY);
-          updatePosition(item.id, position);
         }}
         onDragStart={() => setOrbitEnabled(controls, false)}
         onDragEnd={() => {
-          setInvalid(false);
           setOrbitEnabled(controls, true);
         }}
       />

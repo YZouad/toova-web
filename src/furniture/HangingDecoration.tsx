@@ -7,6 +7,7 @@ import { EMITTER_LIGHT_POWER } from './ItemEmitter';
 import { resolveRenderQuality } from '../lib/renderQuality';
 import {
   buildHangingPath,
+  clusterLightAnchors,
   leafCountForPath,
   ledSpacingInches,
   mulberry32,
@@ -50,18 +51,50 @@ function qualityLeafMul(tier: string): number {
 }
 
 function maxRealLights(tier: string): number {
+  // Real punctual lights are O(lights × scene meshes). Keep this tiny and
+  // fake per-bulb emission with the HDR instances instead.
   switch (tier) {
     case 'low':
-      return 1;
+      return 2;
     case 'balanced':
       return 3;
     case 'high':
-      return 6;
+      return 4;
     case 'presentation':
-      return 8;
+      return 6;
     default:
       return 3;
   }
+}
+
+/** Soft radial sprite used as the per-bulb fairy-light halo. */
+let ledGlowTexture: THREE.CanvasTexture | null = null;
+function getLedGlowTexture(): THREE.CanvasTexture {
+  if (ledGlowTexture) return ledGlowTexture;
+  const size = 64;
+  const canvas = document.createElement('canvas');
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext('2d')!;
+  const g = ctx.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
+  g.addColorStop(0, 'rgba(255,255,255,1)');
+  g.addColorStop(0.18, 'rgba(255,255,255,0.65)');
+  g.addColorStop(0.45, 'rgba(255,255,255,0.16)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, size, size);
+  ledGlowTexture = new THREE.CanvasTexture(canvas);
+  ledGlowTexture.colorSpace = THREE.NoColorSpace;
+  ledGlowTexture.needsUpdate = true;
+  return ledGlowTexture;
+}
+
+/** Halo sprite size in inches — brightness must not change this. */
+const LED_HALO_SIZE = 1.2;
+
+/** HDR multiplier so bulbs survive ACES / bloom instead of reading as matte beads. */
+function ledGlowFactor(lightIntensity: number): number {
+  return 3.4 + Math.max(0.2, lightIntensity) * 4.6;
 }
 
 function tubeSegments(tier: string): number {
@@ -573,9 +606,12 @@ function LedInstances({
   const spacing = ledSpacingInches(density);
   const samples = useMemo(() => sampleAlongPath(path, spacing), [path, spacing]);
   const meshRef = useRef<THREE.InstancedMesh>(null!);
+  const haloRef = useRef<THREE.InstancedMesh>(null!);
+  const glow = ledGlowFactor(lightIntensity);
 
   useEffect(() => {
     const mesh = meshRef.current;
+    const halo = haloRef.current;
     if (!mesh) return;
     const c = new THREE.Color();
     for (let i = 0; i < samples.length; i++) {
@@ -585,63 +621,107 @@ function LedInstances({
       _scale.set(1, 1, 1);
       _mat.compose(_pos, _quat, _scale);
       mesh.setMatrixAt(i, _mat);
-      c.set(paletteColorAt(palette.length ? palette : ['#fff4e0'], i));
+      c.set(paletteColorAt(palette, i));
       mesh.setColorAt(i, c);
+      if (halo) {
+        _scale.set(LED_HALO_SIZE, LED_HALO_SIZE, 1);
+        _mat.compose(_pos, _quat, _scale);
+        halo.setMatrixAt(i, _mat);
+        halo.setColorAt(i, c);
+      }
     }
     mesh.instanceMatrix.needsUpdate = true;
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
     mesh.count = samples.length;
+    if (halo) {
+      halo.instanceMatrix.needsUpdate = true;
+      if (halo.instanceColor) halo.instanceColor.needsUpdate = true;
+      halo.count = samples.length;
+    }
   }, [samples, palette]);
 
-  const bulbGeo = useMemo(() => new THREE.SphereGeometry(0.28, 8, 8), []);
-  useEffect(() => () => bulbGeo.dispose(), [bulbGeo]);
+  useFrame(({ camera }) => {
+    const halo = haloRef.current;
+    if (!halo || samples.length === 0) return;
+    camera.getWorldQuaternion(_quat);
+    _scale.set(LED_HALO_SIZE, LED_HALO_SIZE, 1);
+    for (let i = 0; i < samples.length; i++) {
+      const s = samples[i]!;
+      _pos.set(...s.position);
+      _mat.compose(_pos, _quat, _scale);
+      halo.setMatrixAt(i, _mat);
+    }
+    halo.instanceMatrix.needsUpdate = true;
+  });
 
-  const material = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: '#ffffff',
-        toneMapped: false,
-      }),
-    [],
-  );
+  const bulbGeo = useMemo(() => new THREE.SphereGeometry(0.30, 10, 8), []);
+  useEffect(() => () => bulbGeo.dispose(), [bulbGeo]);
+  const haloGeo = useMemo(() => new THREE.PlaneGeometry(1, 1), []);
+  useEffect(() => () => haloGeo.dispose(), [haloGeo]);
+
+  const material = useMemo(() => {
+    const mat = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(glow, glow, glow),
+      toneMapped: false,
+    });
+    return mat;
+  }, [glow]);
   useEffect(() => () => material.dispose(), [material]);
 
-  // Sparse real lights
+  const haloMaterial = useMemo(() => {
+    const mat = new THREE.MeshBasicMaterial({
+      map: getLedGlowTexture(),
+      color: new THREE.Color(glow * 0.42, glow * 0.42, glow * 0.42),
+      toneMapped: false,
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+    });
+    return mat;
+  }, [glow]);
+  useEffect(() => () => haloMaterial.dispose(), [haloMaterial]);
+
   const lightCap = maxRealLights(qualityTier);
-  const lightIndices = useMemo(() => {
-    if (samples.length === 0) return [] as number[];
-    const step = Math.max(1, Math.floor(samples.length / lightCap));
-    const idxs: number[] = [];
-    for (let i = 0; i < samples.length && idxs.length < lightCap; i += step) {
-      idxs.push(i);
-    }
-    if (idxs.length === 0) idxs.push(0);
-    return idxs;
-  }, [samples.length, lightCap]);
+  const lightAnchors = useMemo(
+    () => clusterLightAnchors(
+      samples.map((s) => s.position),
+      lightCap,
+    ),
+    [samples, lightCap],
+  );
 
   if (samples.length === 0) return null;
 
   const exposureMul = Math.max(0.15, exposure);
+  const instanceCount = Math.max(1, samples.length);
 
   return (
     <>
       <instancedMesh
         ref={meshRef}
-        args={[bulbGeo, material, Math.max(1, samples.length)]}
+        args={[bulbGeo, material, instanceCount]}
         castShadow={false}
         receiveShadow={false}
         frustumCulled={false}
       />
-      {lightIndices.map((idx) => {
-        const s = samples[idx]!;
-        const col = paletteColorAt(palette.length ? palette : ['#fff4e0'], idx);
+      <instancedMesh
+        ref={haloRef}
+        args={[haloGeo, haloMaterial, instanceCount]}
+        castShadow={false}
+        receiveShadow={false}
+        frustumCulled={false}
+        renderOrder={2}
+      />
+      {lightAnchors.map((anchor, i) => {
+        const col = paletteColorAt(palette, anchor.colorIndex);
         const perLightIntensity =
-          (lightIntensity * (qualityTier === 'low' ? 1.4 : 0.9) * EMITTER_LIGHT_POWER * exposureMul) /
-          Math.max(1, Math.sqrt(lightIndices.length));
+          (lightIntensity * (qualityTier === 'low' ? 1.8 : 1.35) * EMITTER_LIGHT_POWER * exposureMul) /
+          Math.max(1, Math.sqrt(lightAnchors.length));
         return (
           <pointLight
-            key={idx}
-            position={s.position}
+            key={i}
+            position={anchor.position}
             color={col}
             intensity={perLightIntensity}
             distance={Math.max(1, lightRange)}

@@ -2,12 +2,13 @@ import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../store';
-import { validatePlacement, clampToRoom, settleGravity, itemPinsElevation } from './collision';
+import { validatePlacement, clampToRoom, settleGravity, itemPinsElevation, resolveGroupDragDelta, type DragMover } from './collision';
 
 /**
  * Left-drag moves the selected item(s) in XZ while keeping each item's height.
  * When multiple items are selected, dragging any one moves the whole set by the
- * same delta (all-or-nothing collision).
+ * same delta (all-or-nothing collision). Hits slide along the obstacle instead
+ * of freezing; the outline turns red while the cursor is in an illegal pose.
  *
  * Wall mount (+ touching wall): release keeps height; only invalid XZ snaps back.
  * Otherwise: gravity on release — settles on floor or top of nearest support below.
@@ -22,6 +23,7 @@ export function DragController() {
     grabOffset: THREE.Vector3;
     baseY: number;
     startPositions: Record<string, [number, number, number]>;
+    lastValid: Record<string, [number, number, number]>;
   } | null>(null);
 
   useEffect(() => {
@@ -88,6 +90,7 @@ export function DragController() {
         grabOffset: new THREE.Vector3(primary.position[0] - start.x, 0, primary.position[2] - start.z),
         baseY: primary.position[1],
         startPositions,
+        lastValid: { ...startPositions },
       };
 
       if (controls) controls.enabled = false;
@@ -112,36 +115,42 @@ export function DragController() {
         planeHit.x + drag.grabOffset.x,
         planeHit.z + drag.grabOffset.z,
       );
-      const dx = pcx - primaryStart[0];
-      const dz = pcz - primaryStart[2];
+      const desiredDx = pcx - primaryStart[0];
+      const desiredDz = pcz - primaryStart[2];
+      const fromDx = primary.position[0] - primaryStart[0];
+      const fromDz = primary.position[2] - primaryStart[2];
 
       const moving = new Set(drag.ids);
       const others = Object.values(state.items).filter((it) => !moving.has(it.id));
-      const proposed: Record<string, [number, number, number]> = {};
-      let allOk = true;
-
+      const movers: DragMover[] = [];
       for (const id of drag.ids) {
         const it = state.items[id];
         const start = drag.startPositions[id];
-        if (!it || !start) {
-          allOk = false;
-          break;
-        }
-        const [cx, cz] = clampToRoom(it, start[0] + dx, start[2] + dz);
-        const pos: [number, number, number] = [cx, start[1], cz];
-        if (!validatePlacement({ ...it, position: pos }, others).ok) {
-          allOk = false;
-          break;
-        }
-        proposed[id] = pos;
+        if (!it || !start) return;
+        movers.push({ item: it, start });
       }
 
-      if (allOk) {
-        useStore.getState().updatePositions(proposed);
-        useStore.getState().setInvalid(false);
-      } else {
-        useStore.getState().setInvalid(true);
+      const { dx, dz, desiredOk } = resolveGroupDragDelta(
+        movers,
+        others,
+        desiredDx,
+        desiredDz,
+        fromDx,
+        fromDz,
+      );
+
+      const proposed: Record<string, [number, number, number]> = {};
+      let appliedOk = true;
+      for (const { item, start } of movers) {
+        const [cx, cz] = clampToRoom(item, start[0] + dx, start[2] + dz);
+        const pos: [number, number, number] = [cx, start[1], cz];
+        if (!validatePlacement({ ...item, position: pos }, others).ok) appliedOk = false;
+        proposed[item.id] = pos;
       }
+
+      useStore.getState().updatePositions(proposed);
+      useStore.getState().setInvalid(!desiredOk);
+      if (appliedOk) drag.lastValid = proposed;
     };
 
     const handlePointerUp = (e: PointerEvent) => {
@@ -166,9 +175,10 @@ export function DragController() {
         ];
 
         const pinHeight = itemPinsElevation(item);
+        const fallback = drag.lastValid[id] ?? startPos;
         if (pinHeight) {
           if (!validatePlacement(item, others).ok) {
-            settled[id] = startPos;
+            settled[id] = fallback;
           } else {
             settled[id] = [...item.position];
           }
@@ -176,9 +186,9 @@ export function DragController() {
           const settledY = settleGravity(item, others, item.position[1]);
           let pos: [number, number, number] = [item.position[0], settledY, item.position[2]];
           if (!validatePlacement({ ...item, position: pos }, others).ok) {
-            pos = [startPos[0], settledY, startPos[2]];
+            pos = [fallback[0], settledY, fallback[2]];
             if (!validatePlacement({ ...item, position: pos }, others).ok) {
-              pos = startPos;
+              pos = fallback;
             }
           }
           settled[id] = pos;
