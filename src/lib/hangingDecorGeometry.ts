@@ -46,6 +46,11 @@ export interface HangingDecorationConfig {
   lightIntensity: number;
   /** LED point-light range (inches). */
   lightRange: number;
+  /**
+   * When false, string lights render as dark bulbs (no emission).
+   * Undefined = enabled (legacy rooms).
+   */
+  lightsEnabled?: boolean;
 }
 
 export const DEFAULT_LEAF_CONFIG: Omit<HangingDecorationConfig, 'anchors' | 'seed'> = {
@@ -56,6 +61,7 @@ export const DEFAULT_LEAF_CONFIG: Omit<HangingDecorationConfig, 'anchors' | 'see
   palette: [],
   lightIntensity: 1,
   lightRange: 48,
+  lightsEnabled: true,
 };
 
 export const DEFAULT_LIGHT_CONFIG: Omit<HangingDecorationConfig, 'anchors' | 'seed'> = {
@@ -66,6 +72,7 @@ export const DEFAULT_LIGHT_CONFIG: Omit<HangingDecorationConfig, 'anchors' | 'se
   palette: ['#fff4e0'],
   lightIntensity: 1.2,
   lightRange: 72,
+  lightsEnabled: true,
 };
 
 export const LED_PALETTE_PRESETS: { label: string; colors: string[] }[] = [
@@ -531,6 +538,7 @@ export function parseHangingConfig(raw: unknown): HangingDecorationConfig | null
     typeof o.lightRange === 'number' && Number.isFinite(o.lightRange)
       ? clamp(o.lightRange, 8, 200)
       : 72;
+  const lightsEnabled = o.lightsEnabled === false ? false : true;
 
   return {
     version: HANGING_CONFIG_VERSION,
@@ -542,6 +550,7 @@ export function parseHangingConfig(raw: unknown): HangingDecorationConfig | null
     palette,
     lightIntensity,
     lightRange,
+    lightsEnabled,
   };
 }
 

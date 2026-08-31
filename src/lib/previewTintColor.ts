@@ -1,4 +1,4 @@
-import { resolveBrowsableModelUrl } from './modelStorage';
+import { signBrowsableModelPath } from './modelStorage';
 import { supabase } from './supabase';
 
 const FALLBACK_IMPORTED = '#7E8A60';
@@ -77,6 +77,9 @@ export interface PreviewTintResolved {
 /**
  * Resolve plan-rect tint colors for imported models from catalog thumbnails.
  * Returns model_url → hex. Missing thumbs fall back to the imported green.
+ *
+ * Uses signed Supabase storage URLs (not the R2 CDN) so canvas sampling works
+ * from localhost — assets.toova.net does not send CORS for Vite origin.
  */
 export async function resolvePreviewTintsForModelUrls(
   modelUrls: string[],
@@ -115,9 +118,8 @@ export async function resolvePreviewTintsForModelUrls(
         if (pathCached) {
           tint = pathCached;
         } else {
-          const signed = await resolveBrowsableModelUrl(thumbPath, {
-            access: row.visibility === 'public' ? 'public' : 'private',
-          });
+          // Signed private-bucket URL is CORS-friendly; public CDN is not on localhost.
+          const signed = await signBrowsableModelPath(thumbPath);
           if (signed) {
             const avg = await averageColorFromImageUrl(signed);
             if (avg) {

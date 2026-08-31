@@ -313,6 +313,7 @@ export function useShoppingCatalog() {
 
   return {
     categories,
+    categoriesById,
     productsById,
     loading,
     error,

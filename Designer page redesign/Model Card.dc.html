@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #EFE8DC; }
+  a { color: #8A4530; }
+  a:hover { color: #9A4E36; }
+  @keyframes mcPop { from { opacity: 0; scale: 0.97; } to { opacity: 1; scale: 1; } }
+  @keyframes mcSheet { from { opacity: 0; translate: 0 28px; } to { opacity: 1; translate: 0 0; } }
+  @keyframes mcSpin { to { rotate: 360deg; } }
+</style>
+</helmet>
+
+<section id="3a" style="display:flex; flex-direction:column; gap:26px; padding:40px; font-family:'Hanken Grotesk', system-ui, sans-serif;">
+  <div style="display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; max-width:1560px;">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span style="font:500 11px/1 'Spline Sans Mono', monospace; letter-spacing:0.14em; text-transform:uppercase; color:#FBF7F0; background:#241F19; padding:6px 9px; border-radius:3px;">3a</span>
+      <span style="font:400 30px/1 Newsreader, Georgia, serif; letter-spacing:-0.022em; color:#241F19;">Model card — one object, everything about it</span>
+    </div>
+    <span style="flex:1; min-width:300px; font:400 14px/1.55 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Same payload as today — views, likes, downloads, creator, categories, inches, description, report, owner edit / visibility / delete, download and place — reorganised so the model is the biggest thing on screen and the numbers stop competing with the buttons. Switch roles to see every state.</span>
+    <div style="display:flex; gap:5px; align-items:center; background:#FBF7F0; border:1px solid #D6CBB8; border-radius:99px; padding:5px;">
+      <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357; padding:0 8px;">role</span>
+      <button type="button" onClick="{{ roleViewer }}" style="font:500 12px/1 'Hanken Grotesk',sans-serif; border:none; background:{{ vwBg }}; color:{{ vwC }}; padding:8px 12px; border-radius:99px; cursor:pointer;">Visitor</button>
+      <button type="button" onClick="{{ roleOwner }}" style="font:500 12px/1 'Hanken Grotesk',sans-serif; border:none; background:{{ owBg }}; color:{{ owC }}; padding:8px 12px; border-radius:99px; cursor:pointer;">Owner</button>
+      <button type="button" onClick="{{ roleToova }}" style="font:500 12px/1 'Hanken Grotesk',sans-serif; border:none; background:{{ tvBg }}; color:{{ tvC }}; padding:8px 12px; border-radius:99px; cursor:pointer;">Toova model</button>
+    </div>
+  </div>
+
+  <!-- ══ desktop ══ -->
+  <div style="display:flex; flex-direction:column; gap:11px;">
+    <div style="display:flex; align-items:baseline; gap:9px;">
+      <span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Desktop</span>
+      <span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">modal over the gallery · esc closes</span>
+    </div>
+
+    <div style="position:relative; width:1440px; height:820px; border:1px solid #D6CBB8; border-radius:6px; overflow:hidden; background:#EFE8DC; box-shadow:0 24px 60px -30px rgba(36,31,25,0.4);">
+      <!-- gallery behind -->
+      <div style="position:absolute; inset:0; padding:26px 30px; display:flex; flex-direction:column; gap:18px; filter:saturate(0.9);">
+        <div style="display:flex; align-items:baseline; gap:14px;">
+          <span style="font:500 24px/1 Newsreader, Georgia, serif; color:#241F19;">Community gallery</span>
+          <span style="font:400 11px/1 'Spline Sans Mono',monospace; color:#6B6357;">2,870 models</span>
+        </div>
+        <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:16px;">
+          <sc-for list="{{ tiles }}" as="t" hint-placeholder-count="15">
+            <div style="display:flex; flex-direction:column; gap:8px;">
+              <span style="height:150px; border-radius:10px; background:{{ t.color }}; border:1px solid rgba(36,31,25,0.1);"></span>
+              <span style="font:500 12px/1 'Hanken Grotesk',sans-serif; color:#3F382F;">{{ t.name }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </div>
+      <div style="position:absolute; inset:0; background:rgba(36,31,25,0.42); backdrop-filter:blur(3px);"></div>
+
+      <!-- card -->
+      <div style="position:absolute; left:50%; top:50%; width:1020px; height:648px; margin-left:-510px; margin-top:-324px; display:flex; background:#FBF7F0; border:1px solid #D6CBB8; border-radius:18px; box-shadow:0 50px 100px -40px rgba(36,31,25,0.75); overflow:hidden; animation:mcPop 0.2s ease both;">
+
+        <!-- preview -->
+        <div style="position:relative; flex:none; width:498px; background:radial-gradient(120% 100% at 50% 20%, #F2EADB, #DFD3BC 70%, #CFC1A8); display:flex; flex-direction:column; justify-content:space-between; padding:18px;">
+          <div style="display:flex; align-items:center; gap:8px;">
+            <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.1em; text-transform:uppercase; color:#6B6357; background:rgba(251,247,240,0.86); border:1px solid #D6CBB8; padding:6px 8px; border-radius:99px;">{{ sourceChip }}</span>
+            <sc-if value="{{ isPrivate }}" hint-placeholder-val="{{ false }}">
+              <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.1em; text-transform:uppercase; color:#8A4530; background:rgba(176,90,60,0.12); border:1px solid #B08C74; padding:6px 8px; border-radius:99px;">private</span>
+            </sc-if>
+          </div>
+
+          <div style="position:absolute; inset:0; display:grid; place-items:center; pointer-events:none;">
+            <div style="position:relative; width:300px; height:300px;">
+              <span style="position:absolute; left:50%; bottom:22px; margin-left:-118px; width:236px; height:34px; border-radius:50%; background:rgba(36,31,25,0.22); filter:blur(9px);"></span>
+              <span style="position:absolute; left:56px; bottom:56px; width:188px; height:150px; border-radius:8px 8px 4px 4px; background:linear-gradient(150deg,#D3BB95,#B08C5F 70%); box-shadow:inset 0 -30px 40px -30px rgba(36,31,25,0.5);"></span>
+              <span style="position:absolute; left:74px; bottom:196px; width:152px; height:64px; border-radius:10px; background:linear-gradient(150deg,#E0CCA8,#C4A47D);"></span>
+              <span style="position:absolute; left:66px; bottom:36px; width:16px; height:26px; background:#9C7A50;"></span>
+              <span style="position:absolute; right:66px; bottom:36px; width:16px; height:26px; background:#9C7A50;"></span>
+            </div>
+          </div>
+
+          <div style="display:flex; align-items:flex-end; justify-content:space-between; gap:10px;">
+            <span style="display:flex; align-items:center; gap:8px; font:400 11px/1 'Spline Sans Mono', monospace; color:#5C5448; background:rgba(251,247,240,0.86); border:1px solid #D6CBB8; padding:8px 11px; border-radius:99px;">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8A4530" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block; flex:none;"><path d="M20 12a8 8 0 1 1-2.4-5.7"/><path d="M20 4v4h-4"/></svg>
+              drag to spin · scroll to zoom
+            </span>
+            <span style="font:400 11px/1 'Spline Sans Mono', monospace; color:#3F382F; background:rgba(251,247,240,0.86); border:1px solid #D6CBB8; padding:8px 11px; border-radius:99px; white-space:nowrap;">{{ dims }}</span>
+          </div>
+        </div>
+
+        <!-- meta -->
+        <div style="flex:1; min-width:0; display:flex; flex-direction:column;">
+          <div style="flex:none; display:flex; align-items:flex-start; gap:14px; padding:22px 22px 0;">
+            <div style="flex:1; min-width:0; display:flex; flex-direction:column; gap:9px;">
+              <span style="font:500 29px/1.08 Newsreader, Georgia, serif; letter-spacing:-0.02em; color:#241F19; text-wrap:pretty;">{{ title }}</span>
+              <div style="display:flex; align-items:center; gap:9px;">
+                <span style="width:26px; height:26px; border-radius:50%; background:{{ avatarBg }}; flex:none;"></span>
+                <a href="#3a" style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#8A4530; text-decoration:none;">{{ creator }}</a>
+                <span style="font:400 11px/1 'Spline Sans Mono',monospace; color:#6B6357;">{{ addedAgo }}</span>
+              </div>
+            </div>
+            <button type="button" style="width:34px; height:34px; display:grid; place-items:center; border:1px solid #E3D9C8; background:#FBF7F0; border-radius:9px; cursor:pointer; color:#3F382F; flex:none;" style-hover="background:#EBE2D2;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
+
+          <!-- stats -->
+          <div style="flex:none; display:flex; align-items:stretch; gap:0; margin:18px 22px 0; border:1px solid #E3D9C8; border-radius:12px; overflow:hidden; background:#FFFDF9;">
+            <div style="flex:1; display:flex; flex-direction:column; gap:5px; padding:12px 14px;">
+              <span style="font:400 9px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Views</span>
+              <span style="font:500 19px/1 Newsreader, Georgia, serif; color:#241F19;">12,480</span>
+            </div>
+            <div style="width:1px; background:#E3D9C8;"></div>
+            <button type="button" onClick="{{ toggleLike }}" style="flex:1; display:flex; flex-direction:column; gap:5px; padding:12px 14px; border:none; background:{{ likeCellBg }}; cursor:{{ likeCursor }}; text-align:left;" style-hover="background:#F7EFE2;">
+              <span style="font:400 9px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Likes</span>
+              <span style="display:flex; align-items:center; gap:7px;">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="{{ heartFill }}" stroke="{{ heartStroke }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block; flex:none;"><path d="M12 20s-7-4.6-7-9.4A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.6C19 15.4 12 20 12 20z"/></svg>
+                <span style="font:500 19px/1 Newsreader, Georgia, serif; color:#241F19;">{{ likeCount }}</span>
+              </span>
+            </button>
+            <div style="width:1px; background:#E3D9C8;"></div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:5px; padding:12px 14px;">
+              <span style="font:400 9px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Downloads</span>
+              <span style="font:500 19px/1 Newsreader, Georgia, serif; color:#241F19;">318</span>
+            </div>
+            <div style="width:1px; background:#E3D9C8;"></div>
+            <div style="flex:1; display:flex; flex-direction:column; gap:5px; padding:12px 14px;">
+              <span style="font:400 9px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Placed</span>
+              <span style="font:500 19px/1 Newsreader, Georgia, serif; color:#241F19;">341</span>
+            </div>
+          </div>
+
+          <div style="flex:1; min-height:0; overflow:auto; padding:18px 22px 6px; display:flex; flex-direction:column; gap:17px;">
+            <sc-if value="{{ reading }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; flex-direction:column; gap:17px;">
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                  <sc-for list="{{ cats }}" as="c" hint-placeholder-count="2">
+                    <span style="font:500 11px/1 'Hanken Grotesk',sans-serif; color:#3F382F; background:#EFE8DC; border:1px solid #E3D9C8; padding:7px 11px; border-radius:99px;">{{ c.label }}</span>
+                  </sc-for>
+                </div>
+                <span style="font:400 14px/1.6 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">{{ desc }}</span>
+                <div style="display:flex; flex-direction:column; gap:9px; padding:14px; background:#EFE8DC; border:1px solid #E3D9C8; border-radius:12px;">
+                  <span style="font:400 9px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Specifics</span>
+                  <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px 18px;">
+                    <span style="display:flex; justify-content:space-between; gap:10px; font:400 12px/1.4 'Hanken Grotesk',sans-serif; color:#5C5448;">Size<span style="font:400 12px/1.4 'Spline Sans Mono',monospace; color:#241F19;">{{ dims }}</span></span>
+                    <span style="display:flex; justify-content:space-between; gap:10px; font:400 12px/1.4 'Hanken Grotesk',sans-serif; color:#5C5448;">Clearance<span style="font:400 12px/1.4 'Spline Sans Mono',monospace; color:#241F19;">24″ front</span></span>
+                    <span style="display:flex; justify-content:space-between; gap:10px; font:400 12px/1.4 'Hanken Grotesk',sans-serif; color:#5C5448;">File<span style="font:400 12px/1.4 'Spline Sans Mono',monospace; color:#241F19;">GLB · 3.1 MB</span></span>
+                    <span style="display:flex; justify-content:space-between; gap:10px; font:400 12px/1.4 'Hanken Grotesk',sans-serif; color:#5C5448;">Triangles<span style="font:400 12px/1.4 'Spline Sans Mono',monospace; color:#241F19;">48,610</span></span>
+                  </div>
+                </div>
+
+                <sc-if value="{{ canReport }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex; flex-direction:column; gap:11px;">
+                    <sc-if value="{{ reportIdle }}" hint-placeholder-val="{{ true }}">
+                      <button type="button" onClick="{{ openReport }}" style="align-self:flex-start; font:500 12px/1 'Hanken Grotesk',sans-serif; color:#6B6357; background:transparent; border:none; padding:0; cursor:pointer; text-decoration:underline; text-underline-offset:3px;" style-hover="color:#B0463C;">Report this model</button>
+                    </sc-if>
+                    <sc-if value="{{ reportOpen }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex; flex-direction:column; gap:11px; padding:14px; background:#FDF4F1; border:1px solid #E4C9C2; border-radius:12px;">
+                        <span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:#B0463C;">What's wrong with it?</span>
+                        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                          <sc-for list="{{ reasons }}" as="r" hint-placeholder-count="4">
+                            <button type="button" onClick="{{ r.pick }}" style="font:500 12px/1 'Hanken Grotesk',sans-serif; color:{{ r.color }}; background:{{ r.bg }}; border:1px solid {{ r.line }}; padding:9px 12px; border-radius:99px; cursor:pointer;">{{ r.label }}</button>
+                          </sc-for>
+                        </div>
+                        <div style="display:flex; gap:8px; align-items:center;">
+                          <button type="button" onClick="{{ sendReport }}" style="font:600 12px/1 'Hanken Grotesk',sans-serif; color:#FBF7F0; background:#B0463C; border:none; padding:10px 14px; border-radius:8px; cursor:pointer;">Send report</button>
+                          <button type="button" onClick="{{ cancelReport }}" style="font:500 12px/1 'Hanken Grotesk',sans-serif; color:#6B6357; background:transparent; border:none; padding:10px 4px; cursor:pointer;">Cancel</button>
+                          <span style="flex:1; text-align:right; font:400 11px/1.4 'Hanken Grotesk',sans-serif; color:#8A7F70;">Goes to a human, not the creator.</span>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ reported }}" hint-placeholder-val="{{ false }}">
+                      <span style="align-self:flex-start; font:500 12px/1 'Hanken Grotesk',sans-serif; color:#5C5448; background:#EFE8DC; border:1px solid #E3D9C8; padding:9px 12px; border-radius:99px;">Reported — thanks, we'll take a look</span>
+                    </sc-if>
+                  </div>
+                </sc-if>
+              </div>
+            </sc-if>
+
+            <!-- owner edit -->
+            <sc-if value="{{ editing }}" hint-placeholder-val="{{ false }}">
+              <div style="display:flex; flex-direction:column; gap:16px;">
+                <div style="display:flex; align-items:center; gap:11px; padding:13px 14px; background:#EFE8DC; border:1px solid #E3D9C8; border-radius:12px;">
+                  <span style="flex:1; display:flex; flex-direction:column; gap:3px;">
+                    <span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:#2B2620;">{{ visTitle }}</span>
+                    <span style="font:400 11px/1.4 'Hanken Grotesk',sans-serif; color:#5C5448;">{{ visNote }}</span>
+                  </span>
+                  <div style="display:flex; gap:2px; padding:3px; background:#FBF7F0; border:1px solid #E3D9C8; border-radius:99px; flex:none;">
+                    <button type="button" onClick="{{ makePublic }}" style="font:500 12px/1 'Hanken Grotesk',sans-serif; padding:9px 13px; border:none; border-radius:99px; background:{{ pubBg }}; color:{{ pubC }}; cursor:pointer;">Public</button>
+                    <button type="button" onClick="{{ makePrivate }}" style="font:500 12px/1 'Hanken Grotesk',sans-serif; padding:9px 13px; border:none; border-radius:99px; background:{{ privBg }}; color:{{ privC }}; cursor:pointer;">Private</button>
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="display:flex; align-items:baseline; justify-content:space-between;"><span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:#2B2620;">Name</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">24 / 80</span></div>
+                  <div style="display:flex; align-items:center; height:46px; padding:0 13px; background:#FFFDF9; border:1px solid #D8CDB9; border-radius:9px; font:400 14px/1 'Hanken Grotesk',sans-serif; color:#241F19;">{{ title }}<span style="opacity:0.4;">|</span></div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:7px;">
+                  <div style="display:flex; align-items:baseline; justify-content:space-between;"><span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:#2B2620;">Description</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">118 / 500</span></div>
+                  <div style="padding:12px 13px; min-height:70px; background:#FFFDF9; border:1px solid #D8CDB9; border-radius:9px; font:400 13px/1.55 'Hanken Grotesk',sans-serif; color:#3F382F;">{{ desc }}</div>
+                </div>
+                <div style="display:flex; flex-direction:column; gap:8px;">
+                  <span style="font:400 9px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Categories · locked after upload</span>
+                  <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                    <sc-for list="{{ cats }}" as="c" hint-placeholder-count="2">
+                      <span style="font:500 11px/1 'Hanken Grotesk',sans-serif; color:#8A7F70; background:#EFE8DC; border:1px dashed #D8CDB9; padding:7px 11px; border-radius:99px;">{{ c.label }}</span>
+                    </sc-for>
+                  </div>
+                </div>
+                <div style="display:flex; align-items:center; gap:10px; padding:13px 14px; background:#FDF4F1; border:1px solid #E4C9C2; border-radius:12px;">
+                  <span style="flex:1; display:flex; flex-direction:column; gap:3px;">
+                    <span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:#B0463C;">{{ delTitle }}</span>
+                    <span style="font:400 11px/1.4 'Hanken Grotesk',sans-serif; color:#8A7F70;">{{ delNote }}</span>
+                  </span>
+                  <sc-if value="{{ delIdle }}" hint-placeholder-val="{{ true }}">
+                    <button type="button" onClick="{{ askDelete }}" style="font:600 12px/1 'Hanken Grotesk',sans-serif; color:#B0463C; background:transparent; border:1px solid #B0463C; padding:10px 13px; border-radius:8px; cursor:pointer; flex:none;" style-hover="background:#F7E9E5;">Delete model</button>
+                  </sc-if>
+                  <sc-if value="{{ delConfirm }}" hint-placeholder-val="{{ false }}">
+                    <span style="display:flex; gap:7px; flex:none;">
+                      <button type="button" onClick="{{ keepModel }}" style="font:500 12px/1 'Hanken Grotesk',sans-serif; color:#3F382F; background:#FBF7F0; border:1px solid #D8CDB9; padding:10px 13px; border-radius:8px; cursor:pointer;">Keep it</button>
+                      <button type="button" onClick="{{ keepModel }}" style="font:600 12px/1 'Hanken Grotesk',sans-serif; color:#FBF7F0; background:#B0463C; border:none; padding:10px 13px; border-radius:8px; cursor:pointer;">Delete for good</button>
+                    </span>
+                  </sc-if>
+                </div>
+              </div>
+            </sc-if>
+          </div>
+
+          <!-- footer -->
+          <div style="flex:none; display:flex; align-items:center; gap:9px; padding:16px 22px 20px; border-top:1px solid #E3D9C8;">
+            <sc-if value="{{ showLikeBtn }}" hint-placeholder-val="{{ true }}">
+              <button type="button" onClick="{{ toggleLike }}" style="display:flex; align-items:center; gap:8px; height:48px; padding:0 16px; border:1px solid {{ likeLine }}; background:{{ likeBg }}; border-radius:10px; cursor:pointer; white-space:nowrap;" style-hover="border-color:#B08C74;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="{{ heartFill }}" stroke="{{ heartStroke }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block; flex:none;"><path d="M12 20s-7-4.6-7-9.4A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.6C19 15.4 12 20 12 20z"/></svg>
+                <span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:{{ likeTextC }};">{{ likeLabel }}</span>
+              </button>
+            </sc-if>
+            <sc-if value="{{ isOwner }}" hint-placeholder-val="{{ false }}">
+              <button type="button" onClick="{{ toggleEdit }}" style="display:flex; align-items:center; gap:8px; height:48px; padding:0 16px; border:1px solid #241F19; background:#FBF7F0; border-radius:10px; cursor:pointer; white-space:nowrap;" style-hover="background:#EBE2D2;">
+                <span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">{{ editLabel }}</span>
+              </button>
+            </sc-if>
+            <button type="button" style="display:flex; align-items:center; gap:8px; height:48px; padding:0 16px; border:1px solid #D8CDB9; background:#FBF7F0; border-radius:10px; cursor:pointer; white-space:nowrap;" style-hover="background:#EBE2D2;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#3F382F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block; flex:none;"><path d="M12 4v12"/><path d="M8 12l4 4 4-4"/><path d="M4 18v2h16v-2"/></svg>
+              <span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:#3F382F;">Download GLB</span>
+            </button>
+            <div style="flex:1;"></div>
+            <button type="button" style="display:flex; align-items:center; gap:10px; height:48px; padding:0 22px; border:none; background:#241F19; border-radius:10px; cursor:pointer; white-space:nowrap;" style-hover="background:#3F382F;">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F8F3EA" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="display:block; flex:none;"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              <span style="font:600 14px/1 'Hanken Grotesk',sans-serif; color:#F8F3EA;">Add to my room</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ mobile ══ -->
+  <div style="display:flex; gap:34px; flex-wrap:wrap; align-items:flex-start;">
+    <div style="display:flex; flex-direction:column; gap:11px;">
+      <div style="display:flex; align-items:baseline; gap:9px;">
+        <span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Mobile</span>
+        <span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">sheet over the grid · swipe down to close</span>
+      </div>
+
+      <div style="position:relative; width:390px; height:844px; background:#241F19; border-radius:44px; padding:8px; box-shadow:0 30px 60px -30px rgba(36,31,25,0.6);">
+        <div style="position:relative; width:374px; height:828px; border-radius:37px; overflow:hidden; background:#EFE8DC;">
+          <div style="position:absolute; left:0; right:0; top:0; height:44px; z-index:60; display:flex; align-items:center; justify-content:space-between; padding:0 22px;">
+            <span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">9:41</span>
+            <div style="display:flex; align-items:center; gap:5px;">
+              <span style="width:16px; height:9px; border:1px solid #241F19; border-radius:2px;"></span>
+              <span style="width:15px; height:10px; background:#241F19; border-radius:2px; opacity:0.55;"></span>
+              <span style="width:22px; height:11px; border:1px solid #241F19; border-radius:3px; position:relative;"><span style="position:absolute; left:2px; top:2px; bottom:2px; width:12px; background:#241F19; border-radius:1px;"></span></span>
+            </div>
+          </div>
+
+          <div style="position:absolute; inset:0; padding:56px 14px 0; display:grid; grid-template-columns:1fr 1fr; gap:12px; align-content:start;">
+            <sc-for list="{{ mobileTiles }}" as="t" hint-placeholder-count="6">
+              <div style="display:flex; flex-direction:column; gap:7px;">
+                <span style="height:132px; border-radius:12px; background:{{ t.color }}; border:1px solid rgba(36,31,25,0.1);"></span>
+                <span style="font:500 12px/1 'Hanken Grotesk',sans-serif; color:#3F382F;">{{ t.name }}</span>
+              </div>
+            </sc-for>
+          </div>
+          <div style="position:absolute; inset:0; background:rgba(36,31,25,0.4);"></div>
+
+          <div style="position:absolute; left:0; right:0; bottom:0; top:74px; z-index:40; display:flex; flex-direction:column; background:#FBF7F0; border-radius:24px 24px 0 0; box-shadow:0 -22px 44px -20px rgba(36,31,25,0.6); overflow:hidden; animation:mcSheet 0.22s cubic-bezier(0.2,0.7,0.2,1) both;">
+            <div style="flex:none; display:grid; place-items:center; padding:9px 0 3px;"><span style="width:38px; height:4px; border-radius:99px; background:#D6CBB8;"></span></div>
+
+            <div style="flex:1; min-height:0; overflow:auto;">
+              <div style="position:relative; height:250px; background:radial-gradient(120% 100% at 50% 20%, #F2EADB, #DFD3BC 70%, #CFC1A8); display:grid; place-items:center;">
+                <div style="position:relative; width:200px; height:190px;">
+                  <span style="position:absolute; left:50%; bottom:12px; margin-left:-80px; width:160px; height:24px; border-radius:50%; background:rgba(36,31,25,0.22); filter:blur(8px);"></span>
+                  <span style="position:absolute; left:34px; bottom:34px; width:132px; height:104px; border-radius:7px; background:linear-gradient(150deg,#D3BB95,#B08C5F 70%);"></span>
+                  <span style="position:absolute; left:48px; bottom:132px; width:104px; height:44px; border-radius:8px; background:linear-gradient(150deg,#E0CCA8,#C4A47D);"></span>
+                </div>
+                <span style="position:absolute; left:12px; top:12px; font:400 9px/1 'Spline Sans Mono', monospace; letter-spacing:0.1em; text-transform:uppercase; color:#6B6357; background:rgba(251,247,240,0.88); border:1px solid #D6CBB8; padding:6px 8px; border-radius:99px;">{{ sourceChip }}</span>
+                <span style="position:absolute; right:12px; bottom:12px; font:400 10px/1 'Spline Sans Mono', monospace; color:#3F382F; background:rgba(251,247,240,0.88); border:1px solid #D6CBB8; padding:7px 9px; border-radius:99px;">{{ dims }}</span>
+                <span style="position:absolute; left:12px; bottom:12px; font:400 10px/1 'Spline Sans Mono', monospace; color:#5C5448; background:rgba(251,247,240,0.88); border:1px solid #D6CBB8; padding:7px 9px; border-radius:99px;">drag to spin</span>
+              </div>
+
+              <div style="padding:16px 16px 0; display:flex; flex-direction:column; gap:13px;">
+                <div style="display:flex; flex-direction:column; gap:9px;">
+                  <span style="font:500 23px/1.1 Newsreader, Georgia, serif; letter-spacing:-0.018em; color:#241F19; text-wrap:pretty;">{{ title }}</span>
+                  <div style="display:flex; align-items:center; gap:9px;">
+                    <span style="width:24px; height:24px; border-radius:50%; background:{{ avatarBg }}; flex:none;"></span>
+                    <a href="#3a" style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#8A4530; text-decoration:none;">{{ creator }}</a>
+                    <span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">{{ addedAgo }}</span>
+                  </div>
+                </div>
+
+                <div style="display:flex; border:1px solid #E3D9C8; border-radius:13px; overflow:hidden; background:#FFFDF9;">
+                  <div style="flex:1; display:flex; flex-direction:column; gap:4px; padding:11px 8px; align-items:center;">
+                    <span style="font:500 16px/1 Newsreader, Georgia, serif; color:#241F19;">12.5k</span>
+                    <span style="font:400 9px/1 'Spline Sans Mono',monospace; letter-spacing:0.1em; text-transform:uppercase; color:#6B6357;">views</span>
+                  </div>
+                  <div style="width:1px; background:#E3D9C8;"></div>
+                  <button type="button" onClick="{{ toggleLike }}" style="flex:1; display:flex; flex-direction:column; gap:4px; padding:11px 8px; align-items:center; border:none; background:{{ likeCellBg }}; cursor:{{ likeCursor }};">
+                    <span style="display:flex; align-items:center; gap:5px;">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="{{ heartFill }}" stroke="{{ heartStroke }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block; flex:none;"><path d="M12 20s-7-4.6-7-9.4A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.6C19 15.4 12 20 12 20z"/></svg>
+                      <span style="font:500 16px/1 Newsreader, Georgia, serif; color:#241F19;">{{ likeCount }}</span>
+                    </span>
+                    <span style="font:400 9px/1 'Spline Sans Mono',monospace; letter-spacing:0.1em; text-transform:uppercase; color:#6B6357;">likes</span>
+                  </button>
+                  <div style="width:1px; background:#E3D9C8;"></div>
+                  <div style="flex:1; display:flex; flex-direction:column; gap:4px; padding:11px 8px; align-items:center;">
+                    <span style="font:500 16px/1 Newsreader, Georgia, serif; color:#241F19;">318</span>
+                    <span style="font:400 9px/1 'Spline Sans Mono',monospace; letter-spacing:0.1em; text-transform:uppercase; color:#6B6357;">downloads</span>
+                  </div>
+                  <div style="width:1px; background:#E3D9C8;"></div>
+                  <div style="flex:1; display:flex; flex-direction:column; gap:4px; padding:11px 8px; align-items:center;">
+                    <span style="font:500 16px/1 Newsreader, Georgia, serif; color:#241F19;">341</span>
+                    <span style="font:400 9px/1 'Spline Sans Mono',monospace; letter-spacing:0.1em; text-transform:uppercase; color:#6B6357;">placed</span>
+                  </div>
+                </div>
+
+                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                  <sc-for list="{{ cats }}" as="c" hint-placeholder-count="2">
+                    <span style="font:500 11px/1 'Hanken Grotesk',sans-serif; color:#3F382F; background:#EFE8DC; border:1px solid #E3D9C8; padding:8px 12px; border-radius:99px;">{{ c.label }}</span>
+                  </sc-for>
+                </div>
+
+                <span style="font:400 13px/1.6 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">{{ desc }}</span>
+
+                <div style="display:flex; flex-direction:column; gap:8px; padding:13px; background:#EFE8DC; border:1px solid #E3D9C8; border-radius:12px;">
+                  <span style="font:400 9px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Specifics</span>
+                  <span style="display:flex; justify-content:space-between; font:400 12px/1.4 'Hanken Grotesk',sans-serif; color:#5C5448;">Size<span style="font:400 12px/1.4 'Spline Sans Mono',monospace; color:#241F19;">{{ dims }}</span></span>
+                  <span style="display:flex; justify-content:space-between; font:400 12px/1.4 'Hanken Grotesk',sans-serif; color:#5C5448;">Clearance<span style="font:400 12px/1.4 'Spline Sans Mono',monospace; color:#241F19;">24″ front</span></span>
+                  <span style="display:flex; justify-content:space-between; font:400 12px/1.4 'Hanken Grotesk',sans-serif; color:#5C5448;">File<span style="font:400 12px/1.4 'Spline Sans Mono',monospace; color:#241F19;">GLB · 3.1 MB</span></span>
+                </div>
+
+                <sc-if value="{{ canReport }}" hint-placeholder-val="{{ true }}">
+                  <div style="display:flex; flex-direction:column; gap:9px; padding-bottom:6px;">
+                    <sc-if value="{{ reportIdle }}" hint-placeholder-val="{{ true }}">
+                      <button type="button" onClick="{{ openReport }}" style="align-self:flex-start; height:44px; padding:0 4px; font:500 12px/1 'Hanken Grotesk',sans-serif; color:#6B6357; background:transparent; border:none; cursor:pointer; text-decoration:underline; text-underline-offset:3px;">Report this model</button>
+                    </sc-if>
+                    <sc-if value="{{ reportOpen }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex; flex-direction:column; gap:10px; padding:13px; background:#FDF4F1; border:1px solid #E4C9C2; border-radius:12px;">
+                        <span style="font:600 13px/1 'Hanken Grotesk',sans-serif; color:#B0463C;">What's wrong with it?</span>
+                        <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                          <sc-for list="{{ reasons }}" as="r" hint-placeholder-count="4">
+                            <button type="button" onClick="{{ r.pick }}" style="height:42px; padding:0 13px; font:500 12px/1 'Hanken Grotesk',sans-serif; color:{{ r.color }}; background:{{ r.bg }}; border:1px solid {{ r.line }}; border-radius:99px; cursor:pointer;">{{ r.label }}</button>
+                          </sc-for>
+                        </div>
+                        <div style="display:flex; gap:8px;">
+                          <button type="button" onClick="{{ sendReport }}" style="flex:1; height:46px; font:600 13px/1 'Hanken Grotesk',sans-serif; color:#FBF7F0; background:#B0463C; border:none; border-radius:12px; cursor:pointer;">Send report</button>
+                          <button type="button" onClick="{{ cancelReport }}" style="height:46px; padding:0 15px; font:500 13px/1 'Hanken Grotesk',sans-serif; color:#6B6357; background:#FBF7F0; border:1px solid #D8CDB9; border-radius:12px; cursor:pointer;">Cancel</button>
+                        </div>
+                      </div>
+                    </sc-if>
+                    <sc-if value="{{ reported }}" hint-placeholder-val="{{ false }}">
+                      <span style="align-self:flex-start; font:500 12px/1 'Hanken Grotesk',sans-serif; color:#5C5448; background:#EFE8DC; border:1px solid #E3D9C8; padding:10px 12px; border-radius:99px;">Reported — thanks, we'll take a look</span>
+                    </sc-if>
+                  </div>
+                </sc-if>
+
+                <sc-if value="{{ isOwner }}" hint-placeholder-val="{{ false }}">
+                  <div style="display:flex; flex-direction:column; gap:9px; padding-bottom:6px;">
+                    <div style="display:flex; align-items:center; gap:10px; padding:12px 13px; background:#EFE8DC; border:1px solid #E3D9C8; border-radius:12px;">
+                      <span style="flex:1; font:600 13px/1.3 'Hanken Grotesk',sans-serif; color:#2B2620;">{{ visTitle }}</span>
+                      <div style="display:flex; gap:2px; padding:3px; background:#FBF7F0; border:1px solid #E3D9C8; border-radius:99px; flex:none;">
+                        <button type="button" onClick="{{ makePublic }}" style="height:38px; padding:0 13px; font:500 12px/1 'Hanken Grotesk',sans-serif; border:none; border-radius:99px; background:{{ pubBg }}; color:{{ pubC }}; cursor:pointer;">Public</button>
+                        <button type="button" onClick="{{ makePrivate }}" style="height:38px; padding:0 13px; font:500 12px/1 'Hanken Grotesk',sans-serif; border:none; border-radius:99px; background:{{ privBg }}; color:{{ privC }}; cursor:pointer;">Private</button>
+                      </div>
+                    </div>
+                    <div style="display:flex; gap:8px;">
+                      <button type="button" onClick="{{ toggleEdit }}" style="flex:1; height:48px; font:600 13px/1 'Hanken Grotesk',sans-serif; color:#241F19; background:#FBF7F0; border:1px solid #241F19; border-radius:12px; cursor:pointer;">{{ editLabel }}</button>
+                      <button type="button" onClick="{{ askDelete }}" style="height:48px; padding:0 15px; font:600 13px/1 'Hanken Grotesk',sans-serif; color:#B0463C; background:#F7E9E5; border:1px solid #E4C9C2; border-radius:12px; cursor:pointer;">Delete</button>
+                    </div>
+                    <sc-if value="{{ delConfirm }}" hint-placeholder-val="{{ false }}">
+                      <div style="display:flex; align-items:center; gap:9px; padding:12px 13px; background:#FDF4F1; border:1px solid #E4C9C2; border-radius:12px;">
+                        <span style="flex:1; font:400 12px/1.45 'Hanken Grotesk',sans-serif; color:#8A7F70;">{{ delNote }}</span>
+                        <button type="button" onClick="{{ keepModel }}" style="height:42px; padding:0 12px; font:500 12px/1 'Hanken Grotesk',sans-serif; color:#3F382F; background:#FBF7F0; border:1px solid #D8CDB9; border-radius:10px; cursor:pointer; flex:none;">Keep</button>
+                        <button type="button" onClick="{{ keepModel }}" style="height:42px; padding:0 12px; font:600 12px/1 'Hanken Grotesk',sans-serif; color:#FBF7F0; background:#B0463C; border:none; border-radius:10px; cursor:pointer; flex:none;">Delete</button>
+                      </div>
+                    </sc-if>
+                  </div>
+                </sc-if>
+                <div style="height:6px;"></div>
+              </div>
+            </div>
+
+            <div style="flex:none; display:flex; gap:8px; padding:11px 16px 22px; border-top:1px solid #E3D9C8; background:#FBF7F0;">
+              <sc-if value="{{ showLikeBtn }}" hint-placeholder-val="{{ true }}">
+                <button type="button" onClick="{{ toggleLike }}" style="width:56px; height:54px; display:grid; place-items:center; border:1px solid {{ likeLine }}; background:{{ likeBg }}; border-radius:15px; cursor:pointer; flex:none;">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="{{ heartFill }}" stroke="{{ heartStroke }}" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 20s-7-4.6-7-9.4A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.6C19 15.4 12 20 12 20z"/></svg>
+                </button>
+              </sc-if>
+              <button type="button" style="width:56px; height:54px; display:grid; place-items:center; border:1px solid #D8CDB9; background:#FBF7F0; border-radius:15px; cursor:pointer; flex:none;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3F382F" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="display:block;"><path d="M12 4v12"/><path d="M8 12l4 4 4-4"/><path d="M4 18v2h16v-2"/></svg>
+              </button>
+              <button type="button" style="flex:1; height:54px; display:flex; align-items:center; justify-content:center; gap:9px; border:none; background:#241F19; border-radius:15px; cursor:pointer;">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#F8F3EA" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" style="display:block; flex:none;"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                <span style="font:600 15px/1 'Hanken Grotesk',sans-serif; color:#F8F3EA;">Add to my room</span>
+              </button>
+            </div>
+          </div>
+
+          <div style="position:absolute; left:50%; bottom:7px; margin-left:-58px; width:116px; height:5px; border-radius:99px; background:rgba(251,247,240,0.5); z-index:70;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div style="flex:1; min-width:320px; max-width:520px; display:flex; flex-direction:column; gap:20px; padding-top:34px;">
+      <div style="display:flex; flex-direction:column; gap:7px;">
+        <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Numbers become a strip, not a sentence</span>
+        <span style="font:400 15px/1.55 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">Views, likes, downloads and placements sit in one bordered strip with the count above the label — scannable at a glance, and the likes cell is the like button itself (it fills and counts up on tap). Everything today's card shows is still here; nothing is an emoji run.</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:7px;">
+        <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">One primary action</span>
+        <span style="font:400 15px/1.55 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">Add to my room is the only dark button. Like and Download sit beside it as outlines; on mobile they compress to 56px icon squares so the primary keeps its full width.</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:7px;">
+        <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Report stays quiet</span>
+        <span style="font:400 15px/1.55 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">A plain underlined link until you need it, then an inline panel with the four reasons — inappropriate, spam, stolen, other — Send, and a line saying it goes to a human. Once sent it becomes a settled “Reported” pill; it can't be sent twice.</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:7px;">
+        <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Owner mode</span>
+        <span style="font:400 15px/1.55 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">Switch the role above to Owner: public/private is a visible switch with its consequence spelled out, name and description are editable with counters (80 / 500), categories show as locked chips, and delete asks once before it means it.</span>
+      </div>
+      <div style="display:flex; flex-direction:column; gap:7px;">
+        <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Toova models</span>
+        <span style="font:400 15px/1.55 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">Built-ins drop like, report and download — there's nothing to like or flag — leaving the model, its measurements and one button. The card shape doesn't change, so nothing jumps around between models.</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;role&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;viewer&quot;,&quot;owner&quot;,&quot;toova&quot;],&quot;default&quot;:&quot;viewer&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;startLiked&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const REASONS = [['inappropriate', 'Inappropriate'], ['spam', 'Spam'], ['stolen', 'Stolen'], ['other', 'Other']];
+const TILES = [
+  ['Loft bed + desk', '#C9B391'], ['Papasan chair', '#CBB28F'], ['LED strip shelf', '#E8C27A'], ['Record crate', '#A67C52'], ['Gallery wall set', '#8A8478'],
+  ['Mini fridge', '#CFC7BA'], ['Rolling cart', '#B08968'], ['Floor mirror', '#D9CCB5'], ['Bean bag', '#C98A6B'], ['Clip fan', '#ADA298'],
+  ['Desk hutch', '#B5946C'], ['Vinyl shelf', '#A88457'], ['Bar stool', '#C0A47A'], ['Plant stand', '#7E8A60'], ['Rug 5 × 7', '#B87F60'],
+];
+
+class Component extends DCLogic {
+  state = {
+    role: 'viewer', liked: false, likes: 1204,
+    report: 'idle', reason: 'inappropriate',
+    editing: false, vis: 'public', del: 'idle',
+  };
+
+  componentDidMount() {
+    const role = this.props.role;
+    const liked = this.props.startLiked ?? false;
+    this.setState({
+      role: role || 'viewer',
+      editing: role === 'owner',
+      liked: role === 'owner' ? false : liked,
+    });
+  }
+
+  set = (p) => this.setState(p);
+  up = (fn) => this.setState(fn);
+
+  renderVals() {
+    const s = this.state;
+    const owner = s.role === 'owner';
+    const builtin = s.role === 'toova';
+    const on = '#241F19', onC = '#F8F3EA';
+    const editing = owner && s.editing;
+
+    return {
+      roleViewer: () => this.set({ role: 'viewer', editing: false, report: 'idle', del: 'idle' }),
+      roleOwner: () => this.set({ role: 'owner', editing: true, report: 'idle', liked: false, del: 'idle' }),
+      roleToova: () => this.set({ role: 'toova', editing: false, report: 'idle', del: 'idle' }),
+      vwBg: s.role === 'viewer' ? on : 'transparent', vwC: s.role === 'viewer' ? onC : '#3F382F',
+      owBg: owner ? on : 'transparent', owC: owner ? onC : '#3F382F',
+      tvBg: builtin ? on : 'transparent', tvC: builtin ? onC : '#3F382F',
+
+      title: builtin ? 'Three-drawer dresser' : 'Thrifted oak dresser',
+      desc: builtin
+        ? 'Standard dorm dresser, three deep drawers. Sized to slide under a lofted bed at 30″ or higher.'
+        : 'Scanned from the dresser in my room — 36″ wide, three drawers, fits under a loft bed at 32″. Feet are removable if you need another inch.',
+      creator: builtin ? 'Toova' : '@maren · Maren Ito',
+      avatarBg: builtin ? '#241F19' : '#B08968',
+      addedAgo: builtin ? 'in the core library' : 'shared 3 weeks ago',
+      sourceChip: builtin ? 'Toova library' : 'Community model',
+      dims: '36″ × 32″ × 18″',
+      cats: builtin ? [{ label: 'Storage' }] : [{ label: 'Storage' }, { label: 'Beds' }],
+      tiles: TILES.map(([name, color]) => ({ name, color })),
+      mobileTiles: TILES.slice(0, 6).map(([name, color]) => ({ name, color })),
+
+      reading: !editing,
+      editing,
+      isOwner: owner,
+      isPrivate: owner && s.vis === 'private',
+      canReport: !owner && !builtin,
+
+      showLikeBtn: !owner && !builtin,
+      likeCursor: !owner && !builtin ? 'pointer' : 'default',
+      likeCount: (s.liked ? s.likes + 1 : s.likes).toLocaleString(),
+      toggleLike: () => (owner || builtin ? null : this.up((st) => ({ liked: !st.liked }))),
+      heartFill: s.liked ? '#B05A3C' : 'none',
+      heartStroke: s.liked ? '#B05A3C' : '#8A4530',
+      likeCellBg: s.liked ? 'rgba(176,90,60,0.08)' : 'transparent',
+      likeBg: s.liked ? 'rgba(176,90,60,0.12)' : '#FBF7F0',
+      likeLine: s.liked ? '#B08C74' : '#D8CDB9',
+      likeTextC: s.liked ? '#8A4530' : '#3F382F',
+      likeLabel: s.liked ? 'Liked' : 'Like',
+
+      reportIdle: s.report === 'idle',
+      reportOpen: s.report === 'open',
+      reported: s.report === 'sent',
+      openReport: () => this.set({ report: 'open' }),
+      cancelReport: () => this.set({ report: 'idle' }),
+      sendReport: () => this.set({ report: 'sent' }),
+      reasons: REASONS.map(([id, label]) => ({
+        label,
+        bg: s.reason === id ? 'rgba(176,70,60,0.12)' : '#FBF7F0',
+        line: s.reason === id ? '#B0463C' : '#E4C9C2',
+        color: s.reason === id ? '#B0463C' : '#5C5448',
+        pick: () => this.set({ reason: id }),
+      })),
+
+      editLabel: editing ? 'Done editing' : 'Edit details',
+      toggleEdit: () => this.up((st) => ({ editing: !st.editing, del: 'idle' })),
+      visTitle: s.vis === 'public' ? 'Anyone can find and place this' : 'Only you can see this',
+      visNote: s.vis === 'public'
+        ? 'It shows in the community gallery and counts likes, views and placements.'
+        : 'It stays in Your models. Existing rooms that use it keep working.',
+      pubBg: s.vis === 'public' ? on : 'transparent', pubC: s.vis === 'public' ? onC : '#3F382F',
+      privBg: s.vis === 'private' ? on : 'transparent', privC: s.vis === 'private' ? onC : '#3F382F',
+      makePublic: () => this.set({ vis: 'public' }),
+      makePrivate: () => this.set({ vis: 'private' }),
+
+      delIdle: s.del === 'idle',
+      delConfirm: s.del === 'confirm',
+      askDelete: () => this.set({ del: 'confirm', editing: true }),
+      keepModel: () => this.set({ del: 'idle' }),
+      delTitle: s.del === 'confirm' ? 'Delete it for good?' : 'Delete this model',
+      delNote: s.del === 'confirm'
+        ? 'The file and its thumbnail go too. Rooms already using it lose the piece.'
+        : 'Removes the file, the thumbnail and its stats. Not reversible.',
+    };
+  }
+}
+
+</script>
+</body>
+</html>

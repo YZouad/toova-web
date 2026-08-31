@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import {
   hasReportedCatalogKind,
@@ -9,9 +10,7 @@ import {
   type CatalogReportReason,
   type CatalogVisibility,
 } from '../lib/catalogEngagement';
-import {
-  catalogCategoryLabel,
-} from '../lib/catalogCategories';
+import { catalogCategoryLabel } from '../lib/catalogCategories';
 import { deleteCatalogModel, updateCatalogModel } from '../lib/galleryCatalog';
 import {
   MODEL_FILES_BUCKET,
@@ -21,11 +20,11 @@ import {
 } from '../lib/modelStorage';
 import { removePublicModelMirrors } from '../lib/publicModelsMirror';
 import { supabase } from '../lib/supabase';
+import { formatRelativeTime } from '../lib/userDisplay';
 import { profilePath, navigate } from '../hooks/useRoute';
-import { Banner, Button, Field, Input, MonoMeta } from './kit';
-import { FurniturePreview } from './FurniturePreview';
+import './model-detail.css';
 
-interface ModelDetailModalProps {
+export interface ModelDetailModalProps {
   model: GalleryModel;
   builtinPreviewUrl?: string | null;
   currentUserId?: string | null;
@@ -38,6 +37,8 @@ interface ModelDetailModalProps {
   startInEdit?: boolean;
 }
 
+const COMPACT_MQ = '(max-width: 1023px)';
+
 const REPORT_REASONS: { value: CatalogReportReason; label: string }[] = [
   { value: 'inappropriate', label: 'Inappropriate' },
   { value: 'spam', label: 'Spam' },
@@ -45,15 +46,100 @@ const REPORT_REASONS: { value: CatalogReportReason; label: string }[] = [
   { value: 'other', label: 'Other' },
 ];
 
+const FOCUSABLE =
+  'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
 function formatCount(n: number): string {
   return n.toLocaleString();
+}
+
+function formatDims(w: number, h: number, d: number): string {
+  return `${Math.round(w)}″ × ${Math.round(h)}″ × ${Math.round(d)}″`;
+}
+
+function HeartIcon({ filled, size = 15 }: { filled: boolean; size?: number }) {
+  return (
+    <svg
+      className={`md-heart${filled ? ' is-filled' : ''}`}
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill={filled ? 'currentColor' : 'none'}
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 20s-7-4.6-7-9.4A3.9 3.9 0 0 1 12 8a3.9 3.9 0 0 1 7 2.6C19 15.4 12 20 12 20z" />
+    </svg>
+  );
+}
+
+function DownloadIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="md-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 4v12" />
+      <path d="M8 12l4 4 4-4" />
+      <path d="M4 18v2h16v-2" />
+    </svg>
+  );
+}
+
+function PlusIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg
+      className="md-icon"
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M12 5v14" />
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function CloseIcon() {
+  return (
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.9"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
 }
 
 export function ModelDetailModal({
   model,
   builtinPreviewUrl,
   currentUserId,
-  placeLabel = 'Add to room',
+  placeLabel = 'Add to my room',
   onClose,
   onPlace,
   onModelPatched,
@@ -61,16 +147,22 @@ export function ModelDetailModal({
   startInEdit = false,
 }: ModelDetailModalProps) {
   const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+
   const isOwner =
     !!currentUserId && !!model.userId && currentUserId === model.userId && !model.isBuiltin;
-  const canLike = model.visibility === 'public' && !isOwner;
+  const canLike = model.visibility === 'public' && !isOwner && !model.isBuiltin;
   const canReport =
     !!currentUserId &&
     !isOwner &&
     !model.isBuiltin &&
     model.visibility === 'public';
 
+  const [compact, setCompact] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(COMPACT_MQ).matches,
+  );
   const [editing, setEditing] = useState(startInEdit && isOwner);
   const [label, setLabel] = useState(model.label);
   const [description, setDescription] = useState(model.description ?? '');
@@ -83,6 +175,8 @@ export function ModelDetailModal({
   const [reportBusy, setReportBusy] = useState(false);
   const [reported, setReported] = useState(() => hasReportedCatalogKind(model.kind));
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [imgBroken, setImgBroken] = useState(false);
+
   const canDownload =
     !!currentUserId &&
     !model.isBuiltin &&
@@ -94,18 +188,75 @@ export function ModelDetailModal({
   );
   const downloadExt = downloadFilename.split('.').pop()?.toUpperCase() ?? 'GLB';
 
+  const previewUrl = model.previewUrl ?? builtinPreviewUrl ?? null;
+  const showPreviewImg = !!previewUrl && !imgBroken;
+  const dims = formatDims(model.width_in, model.height_in, model.depth_in);
+  const sourceChip = isOwner
+    ? 'Your model'
+    : model.isBuiltin
+      ? 'Toova library'
+      : 'Community model';
+  const creatorName = model.isBuiltin
+    ? 'Toova'
+    : model.creatorHandle
+      ? `@${model.creatorHandle}${model.creatorDisplayName ? ` · ${model.creatorDisplayName}` : ''}`
+      : model.creatorDisplayName ?? 'Community';
+  const agoLabel = model.isBuiltin
+    ? 'in the core library'
+    : model.createdAt
+      ? `shared ${formatRelativeTime(model.createdAt)}`
+      : null;
+
   useEffect(() => {
+    const mq = window.matchMedia(COMPACT_MQ);
+    const sync = () => setCompact(mq.matches);
+    sync();
+    mq.addEventListener('change', sync);
+    return () => mq.removeEventListener('change', sync);
+  }, []);
+
+  useEffect(() => {
+    restoreFocusRef.current = document.activeElement as HTMLElement | null;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
     closeRef.current?.focus();
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      restoreFocusRef.current?.focus?.();
+    };
   }, []);
 
   useEffect(() => {
     setReported(hasReportedCatalogKind(model.kind));
     setReportOpen(false);
-  }, [model.kind]);
+    setImgBroken(false);
+    setLabel(model.label);
+    setDescription(model.description ?? '');
+    setConfirmDelete(false);
+    if (!(startInEdit && isOwner)) setEditing(false);
+  }, [model.kind, model.label, model.description, startInEdit, isOwner]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== 'Tab' || !dialogRef.current) return;
+      const nodes = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(FOCUSABLE),
+      ).filter((el) => !el.hasAttribute('disabled') && el.tabIndex !== -1);
+      if (nodes.length === 0) return;
+      const first = nodes[0];
+      const last = nodes[nodes.length - 1];
+      if (e.shiftKey && document.activeElement === first) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && document.activeElement === last) {
+        e.preventDefault();
+        first.focus();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -123,8 +274,6 @@ export function ModelDetailModal({
         /* best-effort */
       });
   }, [model.kind, model.visibility, onModelPatched]);
-
-  const previewUrl = model.previewUrl ?? builtinPreviewUrl;
 
   async function handleLike() {
     if (!canLike) return;
@@ -186,6 +335,7 @@ export function ModelDetailModal({
         description: description.trim() || null,
       });
       setEditing(false);
+      setConfirmDelete(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not save');
     } finally {
@@ -193,7 +343,20 @@ export function ModelDetailModal({
     }
   }
 
+  async function handleDoneEditing() {
+    const dirty =
+      label.trim() !== model.label ||
+      (description.trim() || null) !== (model.description ?? null);
+    if (dirty) {
+      await handleSaveEdit();
+      return;
+    }
+    setEditing(false);
+    setConfirmDelete(false);
+  }
+
   async function handleVisibility(next: CatalogVisibility) {
+    if (model.visibility === next) return;
     setError(null);
     setBusy(true);
     try {
@@ -250,279 +413,532 @@ export function ModelDetailModal({
     }
   }
 
-  return (
-    <div className="model-detail-backdrop" role="presentation" onClick={onClose}>
-      <div
-        className="model-detail-modal tv-scroll"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <header className="model-detail-head">
-          <h2 id={titleId} className="model-detail-title">
-            {model.label}
-          </h2>
-          <button
-            ref={closeRef}
-            type="button"
-            className="model-detail-close"
-            onClick={onClose}
-            aria-label="Close"
-          >
-            ✕
-          </button>
-        </header>
+  const reading = !(editing && isOwner);
 
-        <div className="model-detail-preview">
-          <FurniturePreview
-            kind={model.isBuiltin ? model.kind : 'imported'}
-            size={[model.width_in, model.height_in, model.depth_in]}
-            previewUrl={previewUrl}
-            className="model-detail-preview-inner"
-          />
+  const statsStrip = (
+    <div className="md-stats" role="group" aria-label="Engagement">
+      <div className="md-stat">
+        <span className="md-stat-label">Views</span>
+        <span className="md-stat-value">{formatCount(model.viewsCount)}</span>
+      </div>
+      {canLike ? (
+        <button
+          type="button"
+          className={`md-stat md-stat--btn${model.likedByMe ? ' md-stat--liked' : ''}`}
+          disabled={likeBusy}
+          onClick={() => void handleLike()}
+          aria-pressed={model.likedByMe}
+          aria-label={model.likedByMe ? 'Unlike' : 'Like'}
+        >
+          <span className="md-stat-label">Likes</span>
+          <span className="md-stat-value">
+            <HeartIcon filled={model.likedByMe} />
+            {formatCount(model.likesCount)}
+          </span>
+        </button>
+      ) : (
+        <div className="md-stat">
+          <span className="md-stat-label">Likes</span>
+          <span className="md-stat-value">
+            <HeartIcon filled={false} />
+            {formatCount(model.likesCount)}
+          </span>
         </div>
-
-        <div className="model-detail-meta">
-          {model.isBuiltin ? (
-            <span className="model-detail-creator model-detail-creator--toova">
-              Toova
-            </span>
-          ) : model.creatorHandle ? (
-            <button
-              type="button"
-              className="model-detail-creator"
-              onClick={() => navigate(profilePath(model.creatorHandle!))}
-            >
-              @{model.creatorHandle}
-              {model.creatorDisplayName ? ` · ${model.creatorDisplayName}` : ''}
-            </button>
-          ) : (
-            <span className="model-detail-creator">Community</span>
-          )}
-
-          <div className="model-detail-stats">
-            <span>👁 {formatCount(model.viewsCount)} views</span>
-            {canLike ? (
-              <button
-                type="button"
-                className={`model-detail-stat-like${model.likedByMe ? ' is-liked' : ''}`}
-                disabled={likeBusy}
-                onClick={() => void handleLike()}
-                aria-pressed={model.likedByMe}
-                title={currentUserId ? (model.likedByMe ? 'Unlike' : 'Like') : 'Sign in to like'}
-              >
-                {model.likedByMe ? '♥' : '♡'} {formatCount(model.likesCount)} likes
-              </button>
-            ) : (
-              <span>♥ {formatCount(model.likesCount)} likes</span>
-            )}
-            <span>↓ {formatCount(model.downloadsCount)} downloads</span>
-          </div>
-
-          {model.categories.length > 0 ? (
-            <div className="model-detail-cats">
-              {model.categories.map((c) => (
-                <span key={c} className="model-card-cat">
-                  {catalogCategoryLabel(c)}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          <p className="model-detail-dims">
-            {model.width_in}" × {model.height_in}" × {model.depth_in}"
-          </p>
-
-          {!editing && model.description ? (
-            <p className="model-detail-desc">{model.description}</p>
-          ) : null}
-        </div>
-
-        {error ? <Banner tone="error">{error}</Banner> : null}
-
-        {editing && isOwner ? (
-          <div className="model-detail-edit">
-            <div className="model-detail-vis-row" role="group" aria-label="Visibility">
-              <button
-                type="button"
-                className={`model-detail-btn${model.visibility === 'public' ? ' is-active' : ''}`}
-                disabled={busy || model.visibility === 'public'}
-                onClick={() => void handleVisibility('public')}
-              >
-                Make public
-              </button>
-              <button
-                type="button"
-                className={`model-detail-btn${model.visibility === 'private' ? ' is-active' : ''}`}
-                disabled={busy || model.visibility === 'private'}
-                onClick={() => void handleVisibility('private')}
-              >
-                Make private
-              </button>
-            </div>
-
-            <Field label="Name">
-              <Input
-                value={label}
-                maxLength={80}
-                disabled={busy}
-                onChange={(e) => setLabel(e.target.value)}
-              />
-            </Field>
-            <Field label="Description">
-              <textarea
-                className="kit-input"
-                value={description}
-                maxLength={500}
-                rows={3}
-                disabled={busy}
-                onChange={(e) => setDescription(e.target.value)}
-                style={{ width: '100%', resize: 'vertical' }}
-              />
-            </Field>
-            <div className="model-detail-cats-readonly">
-              <MonoMeta size="sm" tone="dense" upper style={{ display: 'block', marginBottom: 8 }}>
-                Categories (locked)
-              </MonoMeta>
-              <div className="model-detail-cats">
-                {model.categories.map((c) => (
-                  <span key={c} className="model-card-cat">
-                    {catalogCategoryLabel(c)}
-                  </span>
-                ))}
-                {model.categories.length === 0 ? (
-                  <span className="model-detail-muted">None</span>
-                ) : null}
-              </div>
-            </div>
-            {!confirmDelete ? (
-              <button
-                type="button"
-                className="model-detail-delete"
-                disabled={busy}
-                onClick={() => setConfirmDelete(true)}
-              >
-                Delete model
-              </button>
-            ) : (
-              <div className="model-detail-delete-confirm">
-                <button
-                  type="button"
-                  className="model-detail-delete"
-                  disabled={busy}
-                  onClick={() => void handleDelete()}
-                >
-                  Confirm
-                </button>
-                <button
-                  type="button"
-                  className="model-detail-btn"
-                  disabled={busy}
-                  onClick={() => setConfirmDelete(false)}
-                >
-                  Keep
-                </button>
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        {canReport && !editing ? (
-          <div className="model-detail-report">
-            {reported ? (
-              <span className="model-detail-report-done">Reported</span>
-            ) : !reportOpen ? (
-              <button
-                type="button"
-                className="model-detail-report-link"
-                onClick={() => setReportOpen(true)}
-              >
-                Report
-              </button>
-            ) : (
-              <div className="model-detail-report-form">
-                <div className="model-detail-report-reasons" role="group" aria-label="Report reason">
-                  {REPORT_REASONS.map((r) => (
-                    <button
-                      key={r.value}
-                      type="button"
-                      className={`model-detail-report-chip${reportReason === r.value ? ' is-active' : ''}`}
-                      disabled={reportBusy}
-                      onClick={() => setReportReason(r.value)}
-                    >
-                      {r.label}
-                    </button>
-                  ))}
-                </div>
-                <div className="model-detail-report-actions">
-                  <button
-                    type="button"
-                    className="model-detail-report-send"
-                    disabled={reportBusy}
-                    onClick={() => void handleReport()}
-                  >
-                    {reportBusy ? 'Sending…' : 'Send'}
-                  </button>
-                  <button
-                    type="button"
-                    className="model-detail-report-link"
-                    disabled={reportBusy}
-                    onClick={() => setReportOpen(false)}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        <footer className="model-detail-actions">
-          {canLike ? (
-            <button
-              type="button"
-              className={`model-detail-like${model.likedByMe ? ' is-liked' : ''}`}
-              disabled={likeBusy}
-              onClick={() => void handleLike()}
-              aria-pressed={model.likedByMe}
-            >
-              {model.likedByMe ? '♥ Liked' : '♡ Like'}
-            </button>
-          ) : null}
-          {isOwner && !editing ? (
-            <button
-              type="button"
-              className="model-detail-btn"
-              onClick={() => setEditing(true)}
-            >
-              Edit
-            </button>
-          ) : null}
-          {editing && isOwner ? (
-            <Button
-              size="sm"
-              disabled={busy || !label.trim()}
-              onClick={() => void handleSaveEdit()}
-            >
-              Save
-            </Button>
-          ) : null}
-          {canDownload ? (
-            <button
-              type="button"
-              className="model-detail-btn"
-              disabled={downloadBusy}
-              onClick={() => void handleDownload()}
-            >
-              {downloadBusy ? 'Downloading…' : `Download ${downloadExt}`}
-            </button>
-          ) : null}
-          <Button size="sm" onClick={() => onPlace(model)}>
-            {placeLabel}
-          </Button>
-        </footer>
+      )}
+      <div className="md-stat">
+        <span className="md-stat-label">Downloads</span>
+        <span className="md-stat-value">{formatCount(model.downloadsCount)}</span>
       </div>
     </div>
   );
+
+  const reportBlock =
+    canReport && reading ? (
+      <div className="md-report">
+        {reported ? (
+          <span className="md-report-done">Reported — thanks, we&apos;ll take a look</span>
+        ) : !reportOpen ? (
+          <button
+            type="button"
+            className="md-report-link"
+            onClick={() => setReportOpen(true)}
+          >
+            Report this model
+          </button>
+        ) : (
+          <div className="md-report-panel">
+            <span className="md-report-title">What&apos;s wrong with it?</span>
+            <div className="md-report-reasons" role="group" aria-label="Report reason">
+              {REPORT_REASONS.map((r) => (
+                <button
+                  key={r.value}
+                  type="button"
+                  className={`md-report-chip${reportReason === r.value ? ' is-active' : ''}`}
+                  disabled={reportBusy}
+                  onClick={() => setReportReason(r.value)}
+                >
+                  {r.label}
+                </button>
+              ))}
+            </div>
+            <div className="md-report-actions">
+              <button
+                type="button"
+                className="md-report-send"
+                disabled={reportBusy}
+                onClick={() => void handleReport()}
+              >
+                {reportBusy ? 'Sending…' : 'Send report'}
+              </button>
+              <button
+                type="button"
+                className="md-report-link"
+                disabled={reportBusy}
+                onClick={() => setReportOpen(false)}
+              >
+                Cancel
+              </button>
+              {!compact ? (
+                <span className="md-report-hint">Goes to a human, not the creator.</span>
+              ) : null}
+            </div>
+          </div>
+        )}
+      </div>
+    ) : null;
+
+  const editBlock =
+    editing && isOwner ? (
+      <div className="md-edit">
+        <div className="md-vis" role="group" aria-label="Visibility">
+          <div className="md-vis-copy">
+            <span className="md-vis-title">
+              {model.visibility === 'public'
+                ? 'Anyone can find and place this'
+                : 'Only you can see this'}
+            </span>
+            <span className="md-vis-note">
+              {model.visibility === 'public'
+                ? 'It shows in the community gallery and counts likes, views and downloads.'
+                : 'It stays in Your models. Existing rooms that use it keep working.'}
+            </span>
+          </div>
+          <div className="md-vis-toggle">
+            <button
+              type="button"
+              className={`md-vis-btn${model.visibility === 'public' ? ' is-active' : ''}`}
+              disabled={busy || model.visibility === 'public'}
+              onClick={() => void handleVisibility('public')}
+            >
+              Public
+            </button>
+            <button
+              type="button"
+              className={`md-vis-btn${model.visibility === 'private' ? ' is-active' : ''}`}
+              disabled={busy || model.visibility === 'private'}
+              onClick={() => void handleVisibility('private')}
+            >
+              Private
+            </button>
+          </div>
+        </div>
+
+        <div className="md-field">
+          <div className="md-field-head">
+            <span className="md-field-label">Name</span>
+            <span className="md-field-count">{label.length} / 80</span>
+          </div>
+          <input
+            className="md-input"
+            value={label}
+            maxLength={80}
+            disabled={busy}
+            onChange={(e) => setLabel(e.target.value)}
+            aria-label="Model name"
+          />
+        </div>
+
+        <div className="md-field">
+          <div className="md-field-head">
+            <span className="md-field-label">Description</span>
+            <span className="md-field-count">{description.length} / 500</span>
+          </div>
+          <textarea
+            className="md-textarea"
+            value={description}
+            maxLength={500}
+            rows={3}
+            disabled={busy}
+            onChange={(e) => setDescription(e.target.value)}
+            aria-label="Model description"
+          />
+        </div>
+
+        <div className="md-field">
+          <span className="md-cats-locked-label">Categories · locked after upload</span>
+          <div className="md-cats">
+            {model.categories.map((c) => (
+              <span key={c} className="md-cat md-cat--locked">
+                {catalogCategoryLabel(c)}
+              </span>
+            ))}
+            {model.categories.length === 0 ? (
+              <span className="md-cat md-cat--locked">None</span>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="md-delete">
+          <div className="md-delete-copy">
+            <span className="md-delete-title">
+              {confirmDelete ? 'Delete it for good?' : 'Delete this model'}
+            </span>
+            <span className="md-delete-note">
+              {confirmDelete
+                ? 'The file and its thumbnail go too. Rooms already using it lose the piece.'
+                : 'Removes the file, the thumbnail and its stats. Not reversible.'}
+            </span>
+          </div>
+          {!confirmDelete ? (
+            <button
+              type="button"
+              className="md-delete-ask"
+              disabled={busy}
+              onClick={() => setConfirmDelete(true)}
+            >
+              Delete model
+            </button>
+          ) : (
+            <div className="md-delete-actions">
+              <button
+                type="button"
+                className="md-delete-keep"
+                disabled={busy}
+                onClick={() => setConfirmDelete(false)}
+              >
+                Keep it
+              </button>
+              <button
+                type="button"
+                className="md-delete-confirm"
+                disabled={busy}
+                onClick={() => void handleDelete()}
+              >
+                Delete for good
+              </button>
+            </div>
+          )}
+        </div>
+
+        {compact ? (
+          <button
+            type="button"
+            className="md-btn md-btn--save"
+            style={{ width: '100%' }}
+            disabled={busy || !label.trim()}
+            onClick={() => void handleDoneEditing()}
+          >
+            {busy ? 'Saving…' : 'Done editing'}
+          </button>
+        ) : null}
+      </div>
+    ) : null;
+
+  const readingBlock = reading ? (
+    <>
+      {model.categories.length > 0 ? (
+        <div className="md-cats">
+          {model.categories.map((c) => (
+            <span key={c} className="md-cat">
+              {catalogCategoryLabel(c)}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      {model.description ? <p className="md-desc">{model.description}</p> : null}
+
+      <div className="md-specifics">
+        <span className="md-specifics-title">Specifics</span>
+        <div className="md-specifics-grid">
+          <div className="md-spec-row">
+            <span>Size</span>
+            <span>{dims}</span>
+          </div>
+          {model.clearance_in != null ? (
+            <div className="md-spec-row">
+              <span>Clearance</span>
+              <span>{Math.round(model.clearance_in)}″ front</span>
+            </div>
+          ) : null}
+          <div className="md-spec-row">
+            <span>File</span>
+            <span>{downloadExt}</span>
+          </div>
+        </div>
+      </div>
+
+      {reportBlock}
+    </>
+  ) : (
+    editBlock
+  );
+
+  const mobileOwner =
+    isOwner && compact && !editing ? (
+      <div className="md-mobile-owner">
+        <div className="md-vis">
+          <div className="md-vis-copy">
+            <span className="md-vis-title">
+              {model.visibility === 'public'
+                ? 'Anyone can find and place this'
+                : 'Only you can see this'}
+            </span>
+          </div>
+          <div className="md-vis-toggle">
+            <button
+              type="button"
+              className={`md-vis-btn${model.visibility === 'public' ? ' is-active' : ''}`}
+              disabled={busy || model.visibility === 'public'}
+              onClick={() => void handleVisibility('public')}
+            >
+              Public
+            </button>
+            <button
+              type="button"
+              className={`md-vis-btn${model.visibility === 'private' ? ' is-active' : ''}`}
+              disabled={busy || model.visibility === 'private'}
+              onClick={() => void handleVisibility('private')}
+            >
+              Private
+            </button>
+          </div>
+        </div>
+        <div className="md-mobile-owner-actions">
+          <button
+            type="button"
+            className="md-btn md-btn--edit"
+            onClick={() => {
+              setEditing(true);
+              setConfirmDelete(false);
+            }}
+          >
+            Edit details
+          </button>
+          <button
+            type="button"
+            className="md-btn md-btn--danger"
+            disabled={busy}
+            onClick={() => setConfirmDelete(true)}
+          >
+            Delete
+          </button>
+        </div>
+        {confirmDelete ? (
+          <div className="md-delete">
+            <div className="md-delete-copy">
+              <span className="md-delete-note">
+                The file and its thumbnail go too. Rooms already using it lose the piece.
+              </span>
+            </div>
+            <div className="md-delete-actions">
+              <button
+                type="button"
+                className="md-delete-keep"
+                disabled={busy}
+                onClick={() => setConfirmDelete(false)}
+              >
+                Keep
+              </button>
+              <button
+                type="button"
+                className="md-delete-confirm"
+                disabled={busy}
+                onClick={() => void handleDelete()}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    ) : null;
+
+  const modal = (
+    <div
+      className={`md-backdrop${compact ? ' is-compact' : ''}`}
+      role="presentation"
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <div
+        ref={dialogRef}
+        className={`md-card${compact ? ' is-compact' : ''}`}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <div className="md-handle" aria-hidden>
+          <span className="md-handle-bar" />
+        </div>
+
+        <div className="md-preview" aria-hidden={!showPreviewImg}>
+          <div className="md-preview-chips">
+            <span className="md-chip">{sourceChip}</span>
+            {isOwner && model.visibility === 'private' ? (
+              <span className="md-chip md-chip--private">private</span>
+            ) : null}
+          </div>
+
+          <div className="md-preview-stage">
+            {showPreviewImg ? (
+              <img
+                className="md-preview-img"
+                src={previewUrl}
+                alt=""
+                draggable={false}
+                onError={() => setImgBroken(true)}
+              />
+            ) : (
+              <div className="md-preview-fallback">
+                <span className="md-preview-fallback-block" />
+                <span className="md-preview-fallback-label">No preview</span>
+              </div>
+            )}
+          </div>
+
+          <div className="md-preview-foot">
+            <span className="md-preview-dims">{dims}</span>
+          </div>
+        </div>
+
+        <div className="md-body">
+          <header className="md-head">
+            <div className="md-head-main">
+              <h2 id={titleId} className="md-title">
+                {model.label}
+              </h2>
+              <div className="md-creator-row">
+                <span
+                  className={`md-avatar${model.isBuiltin ? ' md-avatar--toova' : ''}`}
+                  aria-hidden
+                >
+                  {model.isBuiltin
+                    ? 'T'
+                    : (model.creatorDisplayName || model.creatorHandle || '?')
+                        .replace(/^@/, '')
+                        .slice(0, 1)
+                        .toUpperCase()}
+                </span>
+                {model.isBuiltin ? (
+                  <span className="md-creator md-creator--static">{creatorName}</span>
+                ) : model.creatorHandle ? (
+                  <button
+                    type="button"
+                    className="md-creator"
+                    onClick={() => navigate(profilePath(model.creatorHandle!))}
+                  >
+                    {creatorName}
+                  </button>
+                ) : (
+                  <span className="md-creator md-creator--static">{creatorName}</span>
+                )}
+                {agoLabel ? <span className="md-ago">{agoLabel}</span> : null}
+              </div>
+            </div>
+            <button
+              ref={closeRef}
+              type="button"
+              className="md-close"
+              onClick={onClose}
+              aria-label="Close"
+            >
+              <CloseIcon />
+            </button>
+          </header>
+
+          {statsStrip}
+
+          <div className="md-scroll">
+            {error ? <p className="md-error" role="alert">{error}</p> : null}
+            {readingBlock}
+            {mobileOwner}
+          </div>
+
+          <footer className="md-footer">
+            {canLike ? (
+              <button
+                type="button"
+                className={`md-btn md-btn--like${compact ? ' md-btn--icon' : ''}${model.likedByMe ? ' is-liked' : ''}`}
+                disabled={likeBusy}
+                onClick={() => void handleLike()}
+                aria-pressed={model.likedByMe}
+                aria-label={model.likedByMe ? 'Unlike' : 'Like'}
+              >
+                <HeartIcon filled={model.likedByMe} size={compact ? 20 : 16} />
+                {!compact ? <span>{model.likedByMe ? 'Liked' : 'Like'}</span> : null}
+              </button>
+            ) : null}
+
+            {isOwner && !compact ? (
+              editing ? (
+                <>
+                  <button
+                    type="button"
+                    className="md-btn md-btn--save"
+                    disabled={busy || !label.trim()}
+                    onClick={() => void handleDoneEditing()}
+                  >
+                    {busy ? 'Saving…' : 'Done editing'}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className="md-btn md-btn--edit"
+                  onClick={() => {
+                    setEditing(true);
+                    setConfirmDelete(false);
+                  }}
+                >
+                  Edit details
+                </button>
+              )
+            ) : null}
+
+            {canDownload ? (
+              <button
+                type="button"
+                className={`md-btn${compact ? ' md-btn--icon' : ''}`}
+                disabled={downloadBusy}
+                onClick={() => void handleDownload()}
+                aria-label={downloadBusy ? 'Downloading' : `Download ${downloadExt}`}
+              >
+                <DownloadIcon size={compact ? 20 : 16} />
+                {!compact ? (
+                  <span>{downloadBusy ? 'Downloading…' : `Download ${downloadExt}`}</span>
+                ) : null}
+              </button>
+            ) : null}
+
+            {!compact ? <span className="md-spacer" /> : null}
+
+            <button
+              type="button"
+              className="md-btn md-btn--primary"
+              onClick={() => onPlace(model)}
+            >
+              <PlusIcon size={compact ? 18 : 16} />
+              <span>{placeLabel}</span>
+            </button>
+          </footer>
+        </div>
+      </div>
+    </div>
+  );
+
+  return createPortal(modal, document.body);
 }

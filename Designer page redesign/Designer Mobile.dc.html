@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<meta name="design_doc_mode" content="canvas">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:wght@400;500&family=Hanken+Grotesk:wght@400;500;600&family=Spline+Sans+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #EFE8DC; }
+  a { color: #8A4530; }
+  a:hover { color: #9A4E36; }
+</style>
+</helmet>
+
+<section id="2a" style="display:flex; flex-direction:column; gap:26px; padding:40px; font-family:'Hanken Grotesk', system-ui, sans-serif;">
+  <div style="display:flex; align-items:flex-end; gap:18px; flex-wrap:wrap; max-width:1720px;">
+    <div style="display:flex; align-items:center; gap:12px;">
+      <span style="font:500 11px/1 'Spline Sans Mono', monospace; letter-spacing:0.14em; text-transform:uppercase; color:#FBF7F0; background:#241F19; padding:6px 9px; border-radius:3px;">2a</span>
+      <span style="font:400 30px/1 Newsreader, Georgia, serif; letter-spacing:-0.022em; color:#241F19;">Designer on a phone — dock, sheets, thumb-sized handles</span>
+    </div>
+    <span style="flex:1; min-width:280px; font:400 14px/1.55 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Same four verbs as <a href="#1a">1a</a>, re-seated for one hand: the rail becomes a bottom dock, panels become snap-height sheets, and every control that used to be a 28px target is now 44px or larger. Each screen below is live — tap around inside them.</span>
+  </div>
+
+  <div style="display:flex; gap:30px; flex-wrap:wrap; max-width:1720px;">
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Room</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">nothing selected</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Room fills the screen. Dock sits in the thumb arc; camera chip and the $412 checklist pill ride the top corners; the gesture legend is spelled out, once.</span>
+      <dc-import name="Designer Phone" screen="home" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Piece selected</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">tap a piece</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">The dock swaps for an action sheet: size, height, rotate, copy, remove, and one dark button into details. Rotate and lift also sit in-scene as 46px pucks beside the piece.</span>
+      <dc-import name="Designer Phone" screen="select" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Raising a piece</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">42″ up</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">▲▼ puck, a stepper in the sheet, or long-press and drag up. The dotted line to the floor and the inch chip stay visible while it floats, so nothing looks broken.</span>
+      <dc-import name="Designer Phone" screen="lift" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Add</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">tall sheet</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Search, three sources, categories as a scrolling chip row instead of a sidebar, and one-column rows big enough to hit. Draw-your-own and “bring in your own piece” pin to the footer.</span>
+      <dc-import name="Designer Phone" screen="add" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Checklist</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">$412 pill</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">The pill opens a full sheet, not a dropdown: progress ring, To place / Placed / All, and rows grouped by zone with sticky headers — it scrolls to any length. Each row shows how many options exist and the cheapest one, with a Shop pill as the tap target.</span>
+      <dc-import name="Designer Phone" screen="checklist" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Shopping one item</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">5 options</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Tapping a row replaces the sheet with that item's options — price, retailer and ship time up front. Shop is the 54px accent button; Place in room, Add to list and GLB sit under it. Sort by popular or price; back returns to the checklist.</span>
+      <dc-import name="Designer Phone" screen="shopItem" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Drawing lights</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">tap to place</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Instructions at the top where a thumb never covers them, Cancel / Undo / Finish across the bottom at 52px. Tap the room to drop anchors; the swag previews as you go.</span>
+      <dc-import name="Designer Phone" screen="draw" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Light</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">fixtures live here</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Time of day, brightness, then Fixtures: the ceiling-lights switch, the strands you've drawn, and the two draw buttons. Room look stays about surfaces.</span>
+      <dc-import name="Designer Phone" screen="light" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Edit details</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">three tabs</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">One sheet, the same adaptive tabs as desktop. Swatches are 46px, steppers 40px, sliders have a 30px hit band — no pinching to hit a duvet color.</span>
+      <dc-import name="Designer Phone" screen="details" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Bring a piece in</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">route first</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Phone leads with the camera, because that's the thing a phone has and a laptop doesn't. Three routes, then one form — never three tabs of fields on a 390px screen.</span>
+      <dc-import name="Designer Phone" screen="import" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">From a photo</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">camera route</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Framing guide, capture, then a job card you can walk away from. Name, categories and the measured inches follow underneath in one scroll.</span>
+      <dc-import name="Designer Phone" screen="importPhoto" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Poster</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">size, then crop</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">Print size comes first because it locks the crop shape; the frame then fills the sheet, panned by drag and zoomed by pinch — the one place a phone beats the desktop.</span>
+      <dc-import name="Designer Phone" screen="importPoster" hint-size="390px,844px"></dc-import>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:9px;">
+      <div style="display:flex; align-items:baseline; gap:9px;"><span style="font:500 13px/1 'Hanken Grotesk',sans-serif; color:#241F19;">Present</span><span style="font:400 10px/1 'Spline Sans Mono',monospace; color:#6B6357;">share the room</span></div>
+      <span style="width:346px; font:400 12px/1.5 'Hanken Grotesk',sans-serif; color:#5C5448; text-wrap:pretty;">All chrome gone but one bar: previous, current view, next, and Edit. Tapping the room hides even that — this is the screen you hand to a roommate.</span>
+      <dc-import name="Designer Phone" screen="present" hint-size="390px,844px"></dc-import>
+    </div>
+  </div>
+
+  <div style="display:flex; gap:34px; max-width:1720px; flex-wrap:wrap; padding-top:14px; border-top:1px solid #D6CBB8;">
+    <div style="flex:1; min-width:250px; display:flex; flex-direction:column; gap:7px;">
+      <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Rail → dock</span>
+      <span style="font:400 15px/1.5 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">Add, Room look, Light, Pieces keep their order and labels, so muscle memory carries between devices. The dock hides whenever a sheet or a selection owns the bottom of the screen.</span>
+    </div>
+    <div style="flex:1; min-width:250px; display:flex; flex-direction:column; gap:7px;">
+      <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Panels → sheets</span>
+      <span style="font:400 15px/1.5 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">Every desktop panel becomes a sheet with a drag handle and its own snap height — Add nearly full, Light about two thirds, Pieces short. Tap the dimmed room or the handle to dismiss.</span>
+    </div>
+    <div style="flex:1; min-width:250px; display:flex; flex-direction:column; gap:7px;">
+      <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Gestures</span>
+      <span style="font:400 15px/1.5 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">One finger orbits, pinch zooms, two fingers pan, drag on a selected piece moves it, long-press-and-drag lifts it. Stated once under the camera chip instead of hidden in a help modal.</span>
+    </div>
+    <div style="flex:1; min-width:250px; display:flex; flex-direction:column; gap:7px;">
+      <span style="font:400 10px/1 'Spline Sans Mono', monospace; letter-spacing:0.12em; text-transform:uppercase; color:#6B6357;">Open question</span>
+      <span style="font:400 15px/1.5 'Hanken Grotesk',sans-serif; color:#3F382F; text-wrap:pretty;">Whether the phone should also carry floor-plan editing, or send people to a laptop for that one step. It's the only flow I'd cut rather than shrink — say the word and I'll design either answer.</span>
+    </div>
+  </div>
+</section>
+
+</x-dc>
+</body>
+</html>

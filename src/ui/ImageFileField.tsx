@@ -4,7 +4,6 @@ import {
   pasteShortcutLabel,
   readImageFileFromClipboard,
 } from '../lib/clipboardImage';
-import { Button } from './kit/Button';
 
 interface ImageFileFieldProps {
   label: string;
@@ -14,6 +13,13 @@ interface ImageFileFieldProps {
   onFile: (file: File | null) => void;
 }
 
+function formatBytes(n: number): string {
+  if (!Number.isFinite(n) || n <= 0) return '';
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 export function ImageFileField({
   label,
   file,
@@ -21,8 +27,10 @@ export function ImageFileField({
   accept = 'image/*',
   onFile,
 }: ImageFileFieldProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
   const [pasteError, setPasteError] = useState<string | null>(null);
   const [pasteBusy, setPasteBusy] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const onFileRef = useRef(onFile);
   onFileRef.current = onFile;
   const shortcut = pasteShortcutLabel();
@@ -67,33 +75,97 @@ export function ImageFileField({
     }
   };
 
+  const pickFromList = (list: FileList | null) => {
+    const next = list?.[0] ?? null;
+    if (next && !next.type.startsWith('image/')) {
+      setPasteError('Choose an image file (jpg, png, or webp).');
+      return;
+    }
+    applyFile(next);
+  };
+
   return (
-    <div className="import-modal-field">
-      <span>{label}</span>
-      <div className="import-modal-image-source">
-        <input
-          type="file"
-          accept={accept}
-          disabled={disabled}
-          onChange={(ev) => applyFile(ev.target.files?.[0] ?? null)}
-        />
-        <Button
+    <div className="image-file-field">
+      <span className="image-file-field__label">{label}</span>
+
+      <input
+        ref={inputRef}
+        type="file"
+        accept={accept}
+        disabled={disabled}
+        className="image-file-field__input"
+        onChange={(ev) => {
+          pickFromList(ev.target.files);
+          ev.target.value = '';
+        }}
+      />
+
+      {file ? (
+        <div className={`image-file-field__file${disabled ? ' is-disabled' : ''}`}>
+          <div className="image-file-field__thumb" aria-hidden />
+          <div className="image-file-field__copy">
+            <span className="image-file-field__name">{file.name}</span>
+            <span className="image-file-field__meta">
+              {[formatBytes(file.size), 'image'].filter(Boolean).join(' · ')}
+            </span>
+          </div>
+          <button
+            type="button"
+            className="image-file-field__replace"
+            disabled={disabled}
+            onClick={() => inputRef.current?.click()}
+          >
+            Replace
+          </button>
+        </div>
+      ) : (
+        <button
           type="button"
-          size="sm"
-          variant="outline"
-          disabled={disabled || pasteBusy}
-          onClick={() => void handlePasteClick()}
+          className={`image-file-field__drop${dragging ? ' is-dragging' : ''}`}
+          disabled={disabled}
+          onClick={() => inputRef.current?.click()}
+          onDragEnter={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (!disabled) setDragging(true);
+          }}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragging(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setDragging(false);
+            if (disabled) return;
+            pickFromList(e.dataTransfer.files);
+          }}
         >
-          {pasteBusy ? 'Pasting…' : 'Paste from clipboard'}
-        </Button>
-      </div>
-      <small className="import-modal-image-source-hint">
-        {file
-          ? file.name
-          : `Choose a file, or paste with ${shortcut}.`}
-      </small>
+          <span className="image-file-field__drop-title">Drop an image or click to browse</span>
+          <span className="image-file-field__drop-hint">jpg, png, or webp</span>
+        </button>
+      )}
+
+      <button
+        type="button"
+        className="image-file-field__paste"
+        disabled={disabled || pasteBusy}
+        onClick={() => void handlePasteClick()}
+      >
+        {pasteBusy ? 'Pasting…' : `Paste from clipboard · ${shortcut}`}
+      </button>
+
+      <span className="image-file-field__hint">
+        {file ? file.name : `Choose a file, or paste with ${shortcut}.`}
+      </span>
+
       {pasteError ? (
-        <div className="import-modal-error" role="status">
+        <div className="image-file-field__error" role="status">
           {pasteError}
         </div>
       ) : null}

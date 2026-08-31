@@ -1,7 +1,8 @@
+import { useEffect, useState } from 'react';
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import { catalogCategoryLabel } from '../lib/catalogCategories';
-import { MonoMeta, Plate, PlateCard } from './kit';
-import { FurniturePreview } from './FurniturePreview';
+import { MonoMeta, Plate } from './kit';
+import './model-detail.css';
 
 interface ModelCardProps {
   model: GalleryModel;
@@ -30,7 +31,14 @@ export function ModelCard({
   onOpen,
   onEdit,
 }: ModelCardProps) {
-  const previewUrl = model.previewUrl ?? builtinPreviewUrl;
+  const previewUrl = model.previewUrl ?? builtinPreviewUrl ?? null;
+  const [imgBroken, setImgBroken] = useState(false);
+  const showImg = !!previewUrl && !imgBroken;
+
+  useEffect(() => {
+    setImgBroken(false);
+  }, [previewUrl]);
+
   const creatorLabel = model.isBuiltin
     ? 'Toova'
     : model.creatorHandle
@@ -41,18 +49,7 @@ export function ModelCard({
     : 'Model';
   const stats = `♥ ${formatCount(model.likesCount)} · ↓ ${formatCount(model.downloadsCount)}`;
   const filename = `${model.kind.split('-')[0]}.glb`;
-
-  const previewPlate = previewUrl ? (
-    <PlateCard
-      name={model.label}
-      author={creatorLabel}
-      meta={dense ? undefined : stats}
-      height={dense ? 150 : 240}
-      filename={filename}
-      src={previewUrl}
-      onClick={() => onOpen(model)}
-    />
-  ) : (
+  const previewPlate = (
     <div>
       <div
         className="kit-plate-card kit-plate-card--interactive"
@@ -67,10 +64,19 @@ export function ModelCard({
         }}
       >
         <Plate height={dense ? 150 : 240} topCaption={filename}>
-          <FurniturePreview
-            kind={model.isBuiltin ? model.kind : 'imported'}
-            className="furniture-preview-fill"
-          />
+          {showImg ? (
+            <img
+              className="furniture-preview-img furniture-preview-fill"
+              src={previewUrl}
+              alt=""
+              draggable={false}
+              onError={() => setImgBroken(true)}
+            />
+          ) : (
+            <div className="md-card-fallback" aria-hidden>
+              <span className="md-card-fallback-block" />
+            </div>
+          )}
           {isOwner ? (
             <span className={`gallery-vis-badge gallery-vis-badge--${model.visibility}`}>
               {model.visibility}
@@ -82,7 +88,7 @@ export function ModelCard({
             <div className="kit-plate-card__name">{model.label}</div>
             <div className="kit-plate-card__author">{creatorLabel}</div>
           </div>
-          {!dense && stats ? (
+          {!dense ? (
             <MonoMeta size="sm" tone="dense">
               {stats}
             </MonoMeta>

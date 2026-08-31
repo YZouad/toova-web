@@ -1,10 +1,10 @@
 # Toova Web
 
-Web frontend for **Toova** — a 3D room planner where users design spaces, place furniture, and import AI-generated 3D models.
+Web frontend for Toova, a 3D room planner where users design spaces, place furniture, and import AI-generated 3D models.
 
-Built with React, Three.js (`@react-three/fiber`), Vite, and Supabase.
+Built with React, Three.js (`@react-three/fiber`), Vite, Cloudflare, and Supabase.
 
-**Live site:** https://toova.net
+**Live site:** [https://toova.net](https://toova.net)
 
 ## Local development
 
@@ -14,50 +14,62 @@ cp .env.example .env.local   # then edit TRELLIS_BFF_ORIGIN if your BFF host dif
 npm run dev
 ```
 
-Open http://localhost:5173
+Open [http://localhost:5173](http://localhost:5173)
 
 ### Trellis (3D model import)
 
 Trellis runs on EC2 and is reached through the Render BFF (`POST /api/trellis/wake`, `GET /api/trellis/status`, then `POST /api/trellis/generate`). Do not call the EC2 IP from the browser or the Vite proxy — the instance is idle-stopped and port 8000 is not open to laptops.
 
-| Environment | How it works |
-|-------------|--------------|
-| **Local dev** | Vite proxies `/api/trellis/*` → `TRELLIS_BFF_ORIGIN` (defaults to `https://toova-bff.onrender.com`). The client wakes Trellis and polls status before generate. |
-| **Local dev (alt)** | Set `VITE_TRELLIS_GENERATE_URL` to a direct HTTPS BFF URL instead of using the Vite proxy (BFF must allow localhost CORS). |
-| **Production (GitHub Pages / toova.net)** | Set repo variable `VITE_TRELLIS_GENERATE_URL` to `https://toova-bff.onrender.com/api/trellis/generate`. |
+
+| Environment                               | How it works                                                                                                                                                    |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Local dev**                             | Vite proxies `/api/trellis/`* → `TRELLIS_BFF_ORIGIN` (defaults to `https://toova-bff.onrender.com`). The client wakes Trellis and polls status before generate. |
+| **Local dev (alt)**                       | Set `VITE_TRELLIS_GENERATE_URL` to a direct HTTPS BFF URL instead of using the Vite proxy (BFF must allow localhost CORS).                                      |
+| **Production (GitHub Pages / toova.net)** | Set repo variable `VITE_TRELLIS_GENERATE_URL` to `https://toova-bff.onrender.com/api/trellis/generate`.                                                         |
+
 
 **Mixed content:** Production (`https://toova.net`) cannot call `http://EC2_IP:8000` directly. Always use the Render BFF.
 
 ## Scripts
 
-| Command | Description |
-|---------|-------------|
-| `npm run dev` | Start the Vite dev server |
-| `npm run build` | Typecheck and build for production |
-| `npm run preview` | Preview the production build locally |
-| `npm run typecheck` | Run TypeScript without emitting files |
+
+| Command                    | Description                                                                                           |
+| -------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `npm run dev`              | Start the Vite dev server                                                                             |
+| `npm run build`            | Typecheck and build for production                                                                    |
+| `npm run preview`          | Preview the production build locally                                                                  |
+| `npm run typecheck`        | Run TypeScript without emitting files                                                                 |
 | `npm run generate:unfurls` | Optional: write static OG HTML into `dist/` (unused in production; Cloudflare Worker serves previews) |
+
+
+
 
 ## Environment variables
 
-See [`.env.example`](.env.example). Copy it to `.env.local` for local dev (gitignored).
+See `[.env.example](.env.example)`. Copy it to `.env.local` for local dev (gitignored).
 
-| Variable | Description |
-|----------|-------------|
-| `TRELLIS_BFF_ORIGIN` | Render BFF origin for the Vite dev proxy (local only, not committed). Defaults to `https://toova-bff.onrender.com`. |
-| `VITE_TRELLIS_GENERATE_URL` | HTTPS endpoint baked into production builds; optional override in dev. |
-| `VITE_BASE_PATH` | Base URL path for assets. Use `/` for the custom domain (`toova.net`). |
+
+| Variable                    | Description                                                                                                         |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `TRELLIS_BFF_ORIGIN`        | Render BFF origin for the Vite dev proxy (local only, not committed). Defaults to `https://toova-bff.onrender.com`. |
+| `VITE_TRELLIS_GENERATE_URL` | HTTPS endpoint baked into production builds; optional override in dev.                                              |
+| `VITE_BASE_PATH`            | Base URL path for assets. Use `/` for the custom domain (`toova.net`).                                              |
+
+
+
 
 ## Deployment
 
-The site deploys to GitHub Pages on every push to `main` via [`.github/workflows/deploy-pages.yml`](.github/workflows/deploy-pages.yml).
+The site deploys to GitHub Pages on every push to `main` via `[.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml)`.
 
 1. In the repo, go to **Settings → Pages** and set the source to **GitHub Actions**.
 2. Optionally set `VITE_TRELLIS_GENERATE_URL` under **Settings → Secrets and variables → Actions → Variables** so model import works in production.
 
+
+
 ### Custom domain (DNS)
 
-Point `toova.net` at **GitHub Pages** (apex A records / `www` CNAME). Cloudflare proxy can stay on; the OG Worker only intercepts `/r/*`, `/u/*`, and `/og/*`.
+Point `toova.net` at **GitHub Pages** (apex A records / `www` CNAME). Cloudflare proxy can stay on; the OG Worker only intercepts `/r/`*, `/u/*`, and `/og/*`.
 
 - Apex: A records to `185.199.108.153`, `185.199.109.153`, `185.199.110.153`, `185.199.111.153`
 - `www`: CNAME to `<user>.github.io`
@@ -90,7 +102,7 @@ ALTER TABLE public.room_items
   ADD COLUMN IF NOT EXISTS emitter jsonb DEFAULT NULL;
 ```
 
-New projects should use [`supabase/sql/room_layout_schema.sql`](supabase/sql/room_layout_schema.sql), which already includes these columns.
+New projects should use `[supabase/sql/room_layout_schema.sql](supabase/sql/room_layout_schema.sql)`, which already includes these columns.
 
 ## Project layout
 
@@ -101,3 +113,4 @@ scripts/      Build utilities (including static unfurl generation)
 worker/       Deprecated Cloudflare OG gateway (reference only)
 supabase/     SQL migrations and Supabase config
 ```
+
