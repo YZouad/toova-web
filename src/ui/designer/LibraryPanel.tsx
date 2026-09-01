@@ -10,6 +10,8 @@ import {
 } from '../../lib/catalogCategories';
 import type { GallerySort, GallerySource } from '../../lib/galleryCatalog';
 import type { CatalogModel } from './chromeTypes';
+import type { HangingDecorKind } from '../../store';
+import { IconFreeLight, IconHangingLeaves, IconHangingLights, IconLedStrip } from './icons';
 import { PanelShell } from './PanelShell';
 import { placeFromCatalog } from './placeCatalogModel';
 
@@ -32,7 +34,7 @@ export interface LibraryPanelProps {
   onClose: () => void;
   onImport: () => void;
   onOpenModel: (model: CatalogModel) => void;
-  onStartDraw: (kind: 'lights' | 'leaves') => void;
+  onStartDraw: (kind: HangingDecorKind) => void;
   onAddLight: () => void;
 }
 
@@ -81,56 +83,111 @@ export function LibraryPanel({
     setCategories((cur) => toggleCatalogCategory(cur, slug));
   }, []);
 
+  const drawRow = (
+    row: {
+      label: string;
+      meta: string;
+      color: string;
+      Icon: typeof IconHangingLights;
+      run: () => void;
+    },
+  ) => (
+    <button
+      key={row.label}
+      type="button"
+      className="dg-row"
+      style={{
+        padding: '8px 9px',
+        border: '1px solid var(--rule-soft)',
+        borderRadius: 8,
+        background: 'var(--paper-0)',
+        cursor: 'pointer',
+        textAlign: 'left',
+        width: '100%',
+      }}
+      onClick={row.run}
+    >
+      <span
+        style={{
+          width: 28,
+          height: 28,
+          borderRadius: 6,
+          background: row.color,
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          color: 'var(--ink-1)',
+        }}
+      >
+        <row.Icon size={14} stroke="currentColor" />
+      </span>
+      <span style={{ marginLeft: 8 }}>
+        <span style={{ display: 'block', font: 'var(--type-body-sm)', color: 'var(--ink-1)' }}>
+          {row.label}
+        </span>
+        <span style={{ display: 'block', font: 'var(--type-mono-xs)', color: 'var(--ink-5)' }}>
+          {row.meta}
+        </span>
+      </span>
+    </button>
+  );
+
   const createRows = useMemo(
     () => (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-        <span
-          style={{
-            font: 'var(--type-mono-xs)',
-            letterSpacing: 'var(--tracking-eyebrow)',
-            textTransform: 'uppercase',
-            color: 'var(--ink-6)',
-          }}
-        >
-          Draw it in the room
-        </span>
-        {(
-          [
-            { label: 'Draw hanging lights', meta: 'click a path', color: '#E8C27A', run: () => onStartDraw('lights') },
-            { label: 'Draw hanging leaves', meta: 'click a path', color: '#7E8A60', run: () => onStartDraw('leaves') },
-            { label: 'Place a free light', meta: 'drops in, then lift', color: '#F0DCA8', run: onAddLight },
-          ] as const
-        ).map((row) => (
-          <button
-            key={row.label}
-            type="button"
-            className="dg-row"
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span
             style={{
-              padding: '8px 9px',
-              border: '1px solid var(--rule-soft)',
-              borderRadius: 8,
-              background: 'var(--paper-0)',
-              cursor: 'pointer',
-              textAlign: 'left',
-              width: '100%',
+              font: 'var(--type-mono-xs)',
+              letterSpacing: 'var(--tracking-eyebrow)',
+              textTransform: 'uppercase',
+              color: 'var(--ink-6)',
             }}
-            onClick={row.run}
           >
-            <span
-              style={{
-                width: 22,
-                height: 22,
-                borderRadius: 5,
-                background: row.color,
-                flex: 'none',
-              }}
-            />
-            <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
-              <span className="dg-row__label">{row.label}</span>
-              <span className="dg-row__meta">{row.meta}</span>
-            </span>
-          </button>
-        ))}
+            Draw it in the room
+          </span>
+          {drawRow({
+            label: 'Draw fairy lights',
+            meta: 'draped path',
+            color: '#E8C27A',
+            Icon: IconHangingLights,
+            run: () => onStartDraw('lights'),
+          })}
+          {drawRow({
+            label: 'Draw hanging leaves',
+            meta: 'draped path',
+            color: '#7E8A60',
+            Icon: IconHangingLeaves,
+            run: () => onStartDraw('leaves'),
+          })}
+          {drawRow({
+            label: 'Place a free light',
+            meta: 'drops in, then lift',
+            color: '#F0DCA8',
+            Icon: IconFreeLight,
+            run: onAddLight,
+          })}
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <span
+            style={{
+              font: 'var(--type-mono-xs)',
+              letterSpacing: 'var(--tracking-eyebrow)',
+              textTransform: 'uppercase',
+              color: 'var(--ink-6)',
+            }}
+          >
+            LED strips
+          </span>
+          {drawRow({
+            label: 'Draw LED strip',
+            meta: 'straight runs between points',
+            color: '#6EB5FF',
+            Icon: IconLedStrip,
+            run: () => onStartDraw('led-strip'),
+          })}
+        </div>
       </div>
     ),
     [onAddLight, onStartDraw],

@@ -2,9 +2,11 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { trackAffiliateClick } from '../lib/analytics';
 import { useAuth } from '../hooks/useAuth';
-import type { CuratedProduct } from '../lib/dormChecklist';
+import type { ChecklistLineStatus, CuratedProduct } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
+import { ChecklistResolutionActions } from './designer/ChecklistBudgetFoot';
 import { productHasPlaceableModel } from '../lib/checklistPublicGlbs';
+import { getProductDrawKind } from '../lib/dormChecklist';
 import { downloadCatalogModelByKind } from '../lib/modelStorage';
 import { Button, Eyebrow, MonoMeta, SectionOpener } from './kit';
 
@@ -22,6 +24,8 @@ interface ProductDrawerProps {
   onEditProduct?: (product: CuratedProduct) => void;
   onDeleteProduct?: (product: CuratedProduct) => void;
   onEditCategory?: () => void;
+  lineStatus?: ChecklistLineStatus;
+  onSetResolution?: (resolution: 'have' | 'skip' | null) => void;
 }
 
 export function ProductDrawer({
@@ -37,6 +41,8 @@ export function ProductDrawer({
   onEditProduct,
   onDeleteProduct,
   onEditCategory,
+  lineStatus,
+  onSetResolution,
 }: ProductDrawerProps) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -108,6 +114,16 @@ export function ProductDrawer({
             </button>
           </div>
         </header>
+
+        {!adminMode && lineStatus && onSetResolution ? (
+          <ChecklistResolutionActions
+            status={lineStatus}
+            onHave={() => onSetResolution('have')}
+            onSkip={() => onSetResolution('skip')}
+            onUndo={() => onSetResolution(null)}
+            className="product-drawer-resolution"
+          />
+        ) : null}
 
         {downloadError ? (
           <p className="product-drawer-hint" role="alert" style={{ margin: '0 0 8px' }}>
@@ -235,7 +251,7 @@ export function ProductDrawer({
                           ) : null}
                           {placeable && onPlace ? (
                             <Button size="sm" variant="mono" onClick={() => onPlace(product)}>
-                              Place in room
+                              {getProductDrawKind(product) ? 'Draw in room' : 'Place in room'}
                             </Button>
                           ) : null}
                         </>

@@ -718,6 +718,7 @@ export function Designer({
                 onToggle={() => chrome.setTickerOpen(!chrome.tickerOpen)}
                 compact={false}
                 onOpenFull={onOpenChecklist}
+                onStartDraw={chrome.startDraw}
               />
             ) : null}
 

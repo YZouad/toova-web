@@ -4,10 +4,16 @@ import {
   formatPriceCents,
   categoryIdsSatisfiedByPlacements,
   categoryIdsSatisfiedByPurchases,
+  roomItemsToPlacementRefs,
   type ChecklistCategory,
   type ChecklistCategoryWithProducts,
+  type CuratedProduct,
 } from './dormChecklist';
 import { amazonSearchUrl, resolveAffiliateForItem } from './affiliateLinks';
+import {
+  countRoomPlacementsForProduct,
+  findRoomItemForProduct,
+} from './placeCuratedProduct';
 import type { Item } from '../store';
 
 describe('shopping checklist helpers', () => {
@@ -54,6 +60,8 @@ describe('shopping checklist helpers', () => {
             lastVerifiedAt: null,
             placeBuiltinKind: 'lamp',
             placeCatalogKind: null,
+            placeHangingKind: null,
+      placeBeddingKind: null,
             brand: null,
             featureBullets: [],
             dimensionsText: null,
@@ -90,6 +98,8 @@ describe('shopping checklist helpers', () => {
             lastVerifiedAt: null,
             placeBuiltinKind: 'desk',
             placeCatalogKind: null,
+            placeHangingKind: null,
+      placeBeddingKind: null,
             brand: null,
             featureBullets: [],
             dimensionsText: null,
@@ -116,6 +126,295 @@ describe('shopping checklist helpers', () => {
       { kind: 'lamp', curatedProductId: 'prod-lamp' },
     ]);
     expect([...placed].sort()).toEqual(['uuid-desk', 'uuid-lamp']);
+  });
+
+  it('marks checklist categories from drawn string lights and leaves', () => {
+    const hangingProduct = (
+      id: string,
+      categoryId: string,
+      slug: string,
+      placeHangingKind: 'lights' | 'leaves' | 'led-strip',
+    ): CuratedProduct => ({
+      id,
+      categoryId,
+      slug,
+      name: slug,
+      description: '',
+      retailer: 'amazon',
+      affiliateUrl: '',
+      priceCents: null,
+      currency: 'USD',
+      imagePath: null,
+      imageUrl: null,
+      sortOrder: 1,
+      published: true,
+      lastVerifiedAt: null,
+      placeBuiltinKind: null,
+      placeCatalogKind: null,
+      placeHangingKind,
+      placeBeddingKind: null,
+      brand: null,
+      featureBullets: [],
+      dimensionsText: null,
+      rating: null,
+      reviewCount: null,
+      availability: null,
+    });
+
+    const cats: ChecklistCategoryWithProducts[] = [
+      {
+        id: 'uuid-fairy',
+        slug: 'fairy-lights',
+        name: 'Fairy lights',
+        sortOrder: 1,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [hangingProduct('prod-fairy', 'uuid-fairy', 'fairlylights1', 'lights')],
+      },
+      {
+        id: 'uuid-led',
+        slug: 'led-strips',
+        name: 'LED strips',
+        sortOrder: 2,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [hangingProduct('prod-led', 'uuid-led', 'led1', 'led-strip')],
+      },
+      {
+        id: 'uuid-leaves',
+        slug: 'leaves',
+        name: 'Ivy garland',
+        sortOrder: 3,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [hangingProduct('prod-leaves', 'uuid-leaves', 'leaves', 'leaves')],
+      },
+    ];
+
+    const lightsPlaced = categoryIdsSatisfiedByPlacements(cats, [
+      { kind: 'hanging', hangingKind: 'lights' },
+    ]);
+    expect([...lightsPlaced]).toEqual(['uuid-fairy']);
+
+    const stripPlaced = categoryIdsSatisfiedByPlacements(cats, [
+      { kind: 'hanging', hangingKind: 'led-strip' },
+    ]);
+    expect([...stripPlaced]).toEqual(['uuid-led']);
+
+    const leavesPlaced = categoryIdsSatisfiedByPlacements(cats, [
+      { kind: 'hanging', hangingKind: 'leaves' },
+    ]);
+    expect([...leavesPlaced]).toEqual(['uuid-leaves']);
+  });
+
+  it('marks bedding checklist categories when bed layers are enabled', () => {
+    const beddingProduct = (
+      id: string,
+      categoryId: string,
+      slug: string,
+      placeBeddingKind: 'sheets' | 'comforter' | 'pillow',
+    ): CuratedProduct => ({
+      id,
+      categoryId,
+      slug,
+      name: slug,
+      description: '',
+      retailer: 'amazon',
+      affiliateUrl: '',
+      priceCents: null,
+      currency: 'USD',
+      imagePath: null,
+      imageUrl: null,
+      sortOrder: 1,
+      published: true,
+      lastVerifiedAt: null,
+      placeBuiltinKind: null,
+      placeCatalogKind: null,
+      placeHangingKind: null,
+      placeBeddingKind,
+      brand: null,
+      featureBullets: [],
+      dimensionsText: null,
+      rating: null,
+      reviewCount: null,
+      availability: null,
+    });
+
+    const cats: ChecklistCategoryWithProducts[] = [
+      {
+        id: 'uuid-sheets',
+        slug: 'bed-sheets',
+        name: 'Bed Sheets',
+        sortOrder: 1,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [beddingProduct('prod-sheets', 'uuid-sheets', 'bed-sheets', 'sheets')],
+      },
+      {
+        id: 'uuid-comforter',
+        slug: 'bed-comforter',
+        name: 'Bed comforter',
+        sortOrder: 2,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [
+          beddingProduct('prod-comforter', 'uuid-comforter', 'bed-comforter', 'comforter'),
+        ],
+      },
+      {
+        id: 'uuid-pillows',
+        slug: 'pillows',
+        name: 'Pillows',
+        sortOrder: 3,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [beddingProduct('prod-pillows', 'uuid-pillows', 'pillows', 'pillow')],
+      },
+    ];
+
+    const items: Record<string, import('./dormChecklist').ChecklistPlacementItem> = {
+      bed1: {
+        kind: 'bed',
+        beddingConfig: {
+          version: 1,
+          topper: { enabled: false },
+          sheets: { enabled: true, colorId: 'white', patternId: 'solid' },
+          comforter: { enabled: true, colorId: 'cream', patternId: 'solid' },
+          pillows: {
+            enabled: true,
+            items: [
+              {
+                id: 'pillow-1',
+                size: 'standard',
+                colorId: 'white',
+                patternId: 'solid',
+              },
+            ],
+          },
+        },
+      },
+    };
+
+    const refs = roomItemsToPlacementRefs(items, ['bed1']);
+    const placed = categoryIdsSatisfiedByPlacements(cats, refs);
+    expect([...placed].sort()).toEqual(['uuid-comforter', 'uuid-pillows', 'uuid-sheets']);
+
+    const sheetsOnly = roomItemsToPlacementRefs(
+      {
+        bed1: {
+          kind: 'bed',
+          beddingConfig: {
+            version: 1,
+            topper: { enabled: false },
+            sheets: { enabled: true, colorId: 'white', patternId: 'solid' },
+            comforter: { enabled: false, colorId: 'cream', patternId: 'solid' },
+            pillows: { enabled: false, items: [] },
+          },
+        },
+      },
+      ['bed1'],
+    );
+    expect([...categoryIdsSatisfiedByPlacements(cats, sheetsOnly)]).toEqual(['uuid-sheets']);
+  });
+
+  it('marks hanging categories via product slug when placeHangingKind is unset', () => {
+    const product: CuratedProduct = {
+      id: 'prod-fairy',
+      categoryId: 'uuid-fairy',
+      slug: 'fairlylights1',
+      name: 'Fairy lights',
+      description: '',
+      retailer: 'amazon',
+      affiliateUrl: '',
+      priceCents: null,
+      currency: 'USD',
+      imagePath: null,
+      imageUrl: null,
+      sortOrder: 1,
+      published: true,
+      lastVerifiedAt: null,
+      placeBuiltinKind: null,
+      placeCatalogKind: null,
+      placeHangingKind: null,
+      placeBeddingKind: null,
+      brand: null,
+      featureBullets: [],
+      dimensionsText: null,
+      rating: null,
+      reviewCount: null,
+      availability: null,
+    };
+    const cats: ChecklistCategoryWithProducts[] = [
+      {
+        id: 'uuid-fairy',
+        slug: 'fairy-lights',
+        name: 'Fairy lights',
+        sortOrder: 1,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [product],
+      },
+    ];
+    const placed = categoryIdsSatisfiedByPlacements(cats, [
+      { kind: 'hanging', hangingKind: 'lights' },
+    ]);
+    expect([...placed]).toEqual(['uuid-fairy']);
+  });
+
+  it('finds hanging room items for draw-mapped checklist products', () => {
+    const product: CuratedProduct = {
+      id: 'prod-fairy',
+      categoryId: 'uuid-fairy',
+      slug: 'fairlylights1',
+      name: 'Fairy lights',
+      description: '',
+      retailer: 'amazon',
+      affiliateUrl: '',
+      priceCents: null,
+      currency: 'USD',
+      imagePath: null,
+      imageUrl: null,
+      sortOrder: 1,
+      published: true,
+      lastVerifiedAt: null,
+      placeBuiltinKind: null,
+      placeCatalogKind: null,
+      placeHangingKind: 'lights',
+      placeBeddingKind: null,
+      brand: null,
+      featureBullets: [],
+      dimensionsText: null,
+      rating: null,
+      reviewCount: null,
+      availability: null,
+    };
+    const items = {
+      hang1: {
+        id: 'hang1',
+        kind: 'hanging',
+        label: 'String lights',
+        position: [0, 0, 0],
+        rotationY: 0,
+        size: [1, 1, 1],
+        hanging: { kind: 'lights' as const, version: 1, anchors: [], sag: 0.14, density: 6, seed: 1, palette: ['#fff'], lightIntensity: 1, lightRange: 1 },
+      },
+    } as unknown as Record<string, Item>;
+    expect(findRoomItemForProduct(product, items, ['hang1'])).toBe('hang1');
+    expect(countRoomPlacementsForProduct(product, items, ['hang1'])).toBe(1);
   });
 
   it('marks checklist categories from shopping list purchases', () => {
@@ -147,6 +446,8 @@ describe('shopping checklist helpers', () => {
             lastVerifiedAt: null,
             placeBuiltinKind: null,
             placeCatalogKind: null,
+            placeHangingKind: null,
+      placeBeddingKind: null,
             brand: null,
             featureBullets: [],
             dimensionsText: null,
@@ -183,6 +484,8 @@ describe('shopping checklist helpers', () => {
             lastVerifiedAt: null,
             placeBuiltinKind: 'lamp',
             placeCatalogKind: null,
+            placeHangingKind: null,
+      placeBeddingKind: null,
             brand: null,
             featureBullets: [],
             dimensionsText: null,
@@ -231,6 +534,8 @@ describe('shopping checklist helpers', () => {
         lastVerifiedAt: null,
         placeBuiltinKind: 'lamp',
         placeCatalogKind: null,
+        placeHangingKind: null,
+      placeBeddingKind: null,
         brand: null,
         featureBullets: [],
         dimensionsText: null,

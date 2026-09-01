@@ -3,6 +3,7 @@ import type { ChecklistCategoryWithProducts, CuratedProduct } from '../lib/dormC
 import {
   categoryCoverImageUrl,
   categoryProductCount,
+  checklistLineStatus,
   childCategories,
   leafCategories,
   topLevelCategories,
@@ -14,7 +15,8 @@ import { deleteCuratedProduct } from '../lib/shoppingCatalogAdmin';
 import { ProductDrawer } from './ProductDrawer';
 import { ChecklistProductModal } from './ChecklistProductModal';
 import { ChecklistCategoryModal } from './ChecklistCategoryModal';
-import { placeCuratedProduct } from '../lib/placeCuratedProduct';
+import { placeCuratedProduct, startChecklistDrawPlacement } from '../lib/placeCuratedProduct';
+import { getProductDrawKind } from '../lib/dormChecklist';
 import {
   Banner,
   Button,
@@ -27,6 +29,8 @@ import {
 } from './kit';
 import { FeedbackModal } from './FeedbackModal';
 import { ChecklistAdminPanel } from './ChecklistAdminPanel';
+import { ChecklistBudgetFoot } from './designer/ChecklistBudgetFoot';
+import { ChecklistCheckoutPanel } from './ChecklistCheckoutPanel';
 
 interface ChecklistPageProps {
   onBack: () => void;
@@ -56,11 +60,19 @@ export function ChecklistPage({
     addToList,
     refreshCatalog,
     list,
+    budgetSummary,
+    setMoveInBudget,
+    getResolution,
+    setResolution,
+    purchaseCartLines,
+    removeFromList,
+    placedCategoryIds,
   } = useShoppingCatalogContext();
   const { user } = useAuth();
   const [groupId, setGroupId] = useState<string | null>(null);
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [manageMode, setManageMode] = useState(false);
   const [adminCategories, setAdminCategories] = useState<ChecklistCategoryWithProducts[]>([]);
   const [productModalOpen, setProductModalOpen] = useState(false);
@@ -121,9 +133,15 @@ export function ChecklistPage({
   const placeProduct = useCallback(
     async (product: CuratedProduct) => {
       await addToList(product.id);
+      const drawKind = getProductDrawKind(product);
+      if (drawKind) {
+        startChecklistDrawPlacement(product);
+        onBack();
+        return;
+      }
       await placeCuratedProduct(product);
     },
-    [addToList],
+    [addToList, onBack],
   );
 
   const galleryItems = activeGroup ? subcategories : groups;
@@ -167,7 +185,7 @@ export function ChecklistPage({
         <SectionOpener
           level={4}
           title={activeGroup ? `${activeGroup.name}.` : 'The Toova checklist.'}
-          note={`${done} of ${total} packed`}
+          note={`${done} of ${total} categories resolved`}
           style={{ marginTop: 24 }}
         />
         <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', maxWidth: 'var(--measure-body)', margin: '16px 0 32px' }}>
@@ -178,6 +196,24 @@ export function ChecklistPage({
 
         {loading ? <Spinner label="Loading checklist…" /> : null}
         {error ? <Banner tone="error">{error}</Banner> : null}
+
+        {!loading && !error ? (
+          <div className="checklist-page-budget" style={{ marginBottom: 24, maxWidth: 420 }}>
+            <ChecklistBudgetFoot
+              budget={budgetSummary}
+              onSetBudget={(cents) => void setMoveInBudget(cents)}
+            />
+            <Button
+              size="sm"
+              variant="outline"
+              style={{ marginTop: 12, width: '100%' }}
+              disabled={purchaseCartLines.length === 0}
+              onClick={() => setCheckoutOpen(true)}
+            >
+              Checkout · {purchaseCartLines.length} item{purchaseCartLines.length === 1 ? '' : 's'}
+            </Button>
+          </div>
+        ) : null}
 
         {!loading && !error ? (
           <div className={manageMode ? 'checklist-page-manage-layout' : undefined}>
@@ -244,8 +280,10 @@ export function ChecklistPage({
           <div className="checklist-continue-bar__inner">
             <div className="checklist-continue-bar__copy">
               <MonoMeta size="sm" tone="dense" upper>
-                {done} of {total} packed
-                {list.length > 0 ? ` · ${list.length} on To Buy` : ''}
+                {done} of {total} categories resolved
+                {purchaseCartLines.length > 0
+                  ? ` · ${purchaseCartLines.length} to buy`
+                  : ''}
               </MonoMeta>
               <p className="checklist-continue-bar__hint">
                 Saved automatically on this device
@@ -271,12 +309,33 @@ export function ChecklistPage({
         pageSource="dashboard"
       />
 
+      {checkoutOpen ? (
+        <ChecklistCheckoutPanel
+          lines={purchaseCartLines}
+          onClose={() => setCheckoutOpen(false)}
+          onRemoveFromList={(productId) => void removeFromList(productId)}
+        />
+      ) : null}
+
       {drawerCategory ? (
         <ProductDrawer
           categoryName={drawerCategory.name}
           products={drawerCategory.products}
           canPlace={canPlace}
           adminMode={manageMode}
+          lineStatus={
+            openCategoryId
+              ? checklistLineStatus(
+                  placedCategoryIds.has(openCategoryId),
+                  getResolution(openCategoryId),
+                )
+              : undefined
+          }
+          onSetResolution={
+            openCategoryId && !manageMode
+              ? (resolution) => void setResolution(openCategoryId, resolution)
+              : undefined
+          }
           onClose={() => {
             setOpenCategoryId(null);
             setProductModalOpen(false);

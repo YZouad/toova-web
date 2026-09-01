@@ -3,24 +3,38 @@ import { useAuth } from './useAuth';
 import {
   CHECKLIST_PROGRESS_MERGED_KEY,
   categoryHasPurchasableProducts,
+  categoryIdsSatisfiedByPlacements,
   categoryIdsSatisfiedByPurchases,
+  computeChecklistBudgetSummary,
   loadCheckedIds,
+  loadLocalMoveInBudgetCents,
+  loadLocalResolutions,
   loadLocalShoppingList,
   remapCheckedSlugsToIds,
+  roomItemsToPlacementRefs,
   saveCheckedIds,
+  saveLocalMoveInBudgetCents,
+  saveLocalResolutions,
   saveLocalShoppingList,
+  spentCentsForRoom,
+  type CategoryResolution,
   type ChecklistCategoryWithProducts,
   type CuratedProduct,
   type ShoppingListEntry,
 } from '../lib/dormChecklist';
+import { buildPurchaseCartLines } from '../lib/purchaseCart';
 import {
   fetchPublishedShoppingCatalog,
   fetchUserChecklistProgress,
+  fetchUserChecklistResolutions,
+  fetchUserMoveInBudgetCents,
   fetchUserShoppingList,
   mergeLocalShoppingStateToAccount,
   removeShoppingListEntry,
   upsertChecklistProgress,
+  upsertChecklistResolution,
   upsertShoppingListEntry,
+  upsertUserMoveInBudgetCents,
 } from '../lib/shoppingCatalog';
 import { useStore } from '../store';
 
@@ -32,6 +46,12 @@ export function useShoppingCatalog() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(() => loadCheckedIds());
+  const [resolutions, setResolutions] = useState<Map<string, CategoryResolution>>(
+    () => loadLocalResolutions(),
+  );
+  const [moveInBudgetCents, setMoveInBudgetCents] = useState<number | null>(() =>
+    loadLocalMoveInBudgetCents(),
+  );
   const [list, setList] = useState<ShoppingListEntry[]>(() => loadLocalShoppingList());
   const [ready, setReady] = useState(false);
   /** Previous curated product IDs present in the room; used to drop To Buy on delete. */
@@ -51,33 +71,62 @@ export function useShoppingCatalog() {
     return map;
   }, [categories]);
 
+  const placedCategoryIds = useMemo(
+    () =>
+      categoryIdsSatisfiedByPlacements(categories, roomItemsToPlacementRefs(items, order)),
+    [categories, items, order],
+  );
+
   const satisfiedCategoryIds = useMemo(() => {
-    const placements = order
-      .map((id) => items[id])
-      .filter((item): item is NonNullable<typeof item> => item != null)
-      .map((item) => ({
-        kind: item.kind,
-        curatedProductId: item.curatedProductId,
-      }));
     return categoryIdsSatisfiedByPurchases(
       categories,
-      placements,
+      roomItemsToPlacementRefs(items, order),
       list.map((e) => e.productId),
     );
   }, [categories, items, order, list]);
 
+  const spentCents = useMemo(
+    () => spentCentsForRoom(categories, items, order, productsById),
+    [categories, items, order, productsById],
+  );
+
+  const budgetSummary = useMemo(
+    () => computeChecklistBudgetSummary(moveInBudgetCents, spentCents),
+    [moveInBudgetCents, spentCents],
+  );
+
+  const purchaseCartLines = useMemo(
+    () =>
+      buildPurchaseCartLines({
+        categories,
+        items,
+        order,
+        list,
+        productsById,
+        getResolution: (categoryId) => resolutions.get(categoryId),
+      }),
+    [categories, items, order, list, productsById, resolutions],
+  );
+
   /**
-   * Checklist rows with curated products follow To Buy / room coverage only.
+   * Checklist rows with curated products follow room / resolution coverage.
    * Sticky saved checks are ignored so removing a list item unchecks immediately.
    */
   const isCategoryDone = useCallback(
     (categoryId: string) => {
-      if (satisfiedCategoryIds.has(categoryId)) return true;
+      if (placedCategoryIds.has(categoryId)) return true;
+      const resolution = resolutions.get(categoryId);
+      if (resolution === 'have' || resolution === 'skip') return true;
       const cat = categoriesById[categoryId];
       if (cat && categoryHasPurchasableProducts(cat)) return false;
       return checked.has(categoryId);
     },
-    [satisfiedCategoryIds, categoriesById, checked],
+    [placedCategoryIds, resolutions, categoriesById, checked],
+  );
+
+  const getResolution = useCallback(
+    (categoryId: string): CategoryResolution | undefined => resolutions.get(categoryId),
+    [resolutions],
   );
 
   const refreshCatalog = useCallback(async () => {
@@ -109,6 +158,8 @@ export function useShoppingCatalog() {
       if (!user?.id) {
         if (!cancelled) {
           setChecked(loadCheckedIds());
+          setResolutions(loadLocalResolutions());
+          setMoveInBudgetCents(loadLocalMoveInBudgetCents());
           setList(loadLocalShoppingList());
           setReady(true);
         }
@@ -120,18 +171,26 @@ export function useShoppingCatalog() {
           await mergeLocalShoppingStateToAccount(user.id);
           sessionStorage.setItem(mergedKey, '1');
         }
-        const [remoteChecked, remoteList] = await Promise.all([
+        const [remoteChecked, remoteList, remoteResolutions, remoteBudget] = await Promise.all([
           fetchUserChecklistProgress(user.id),
           fetchUserShoppingList(user.id),
+          fetchUserChecklistResolutions(user.id),
+          fetchUserMoveInBudgetCents(user.id),
         ]);
         if (cancelled) return;
         setChecked(remoteChecked);
         saveCheckedIds(remoteChecked);
+        setResolutions(remoteResolutions);
+        saveLocalResolutions(remoteResolutions);
+        setMoveInBudgetCents(remoteBudget);
+        saveLocalMoveInBudgetCents(remoteBudget);
         setList(remoteList);
         saveLocalShoppingList(remoteList);
       } catch {
         if (!cancelled) {
           setChecked(loadCheckedIds());
+          setResolutions(loadLocalResolutions());
+          setMoveInBudgetCents(loadLocalMoveInBudgetCents());
           setList(loadLocalShoppingList());
         }
       } finally {
@@ -159,6 +218,38 @@ export function useShoppingCatalog() {
         }
         return next;
       });
+    },
+    [user?.id],
+  );
+
+  const setResolution = useCallback(
+    async (categoryId: string, resolution: CategoryResolution | null) => {
+      if (placedCategoryIds.has(categoryId) && resolution != null) return;
+      setResolutions((prev) => {
+        const current = prev.get(categoryId);
+        if (current === resolution || (current == null && resolution == null)) return prev;
+        const next = new Map(prev);
+        if (resolution == null) next.delete(categoryId);
+        else next.set(categoryId, resolution);
+        saveLocalResolutions(next);
+        if (user?.id) {
+          void upsertChecklistResolution(user.id, categoryId, resolution).catch(() => {});
+        }
+        return next;
+      });
+    },
+    [placedCategoryIds, user?.id],
+  );
+
+  const setMoveInBudget = useCallback(
+    async (budgetCents: number | null) => {
+      const normalized =
+        budgetCents == null ? null : Math.max(0, Math.round(budgetCents));
+      setMoveInBudgetCents(normalized);
+      saveLocalMoveInBudgetCents(normalized);
+      if (user?.id) {
+        void upsertUserMoveInBudgetCents(user.id, normalized).catch(() => {});
+      }
     },
     [user?.id],
   );
@@ -225,7 +316,6 @@ export function useShoppingCatalog() {
       const cat = categoriesById[categoryId];
       if (cat && categoryHasPurchasableProducts(cat)) {
         if (satisfiedCategoryIds.has(categoryId)) {
-          // Uncheck = remove this category's products from To Buy.
           for (const product of cat.products) {
             if (list.some((e) => e.productId === product.id)) {
               void removeFromList(product.id);
@@ -234,7 +324,6 @@ export function useShoppingCatalog() {
           void setCategoryChecked(categoryId, false);
           return;
         }
-        // Check = add the first curated pick to To Buy.
         const first = cat.products[0];
         if (first) void addToList(first.id);
         return;
@@ -264,6 +353,27 @@ export function useShoppingCatalog() {
       user?.id,
     ],
   );
+
+  // Placing in room clears have/skip for that category.
+  useEffect(() => {
+    if (!ready) return;
+    setResolutions((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const catId of placedCategoryIds) {
+        if (next.has(catId)) {
+          next.delete(catId);
+          changed = true;
+          if (user?.id) {
+            void upsertChecklistResolution(user.id, catId, null).catch(() => {});
+          }
+        }
+      }
+      if (!changed) return prev;
+      saveLocalResolutions(next);
+      return next;
+    });
+  }, [ready, placedCategoryIds, user?.id]);
 
   // When the last room copy of a curated product is deleted, drop it from To Buy.
   useEffect(() => {
@@ -319,8 +429,17 @@ export function useShoppingCatalog() {
     error,
     ready,
     checked,
+    resolutions,
+    placedCategoryIds,
     satisfiedCategoryIds,
     isCategoryDone,
+    getResolution,
+    setResolution,
+    moveInBudgetCents,
+    setMoveInBudget,
+    spentCents,
+    budgetSummary,
+    purchaseCartLines,
     list,
     toggleChecked,
     addToList,

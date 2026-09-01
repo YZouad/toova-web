@@ -10,6 +10,8 @@ import {
 } from '../../../lib/catalogCategories';
 import type { GallerySort, GallerySource } from '../../../lib/galleryCatalog';
 import type { CatalogModel } from '../chromeTypes';
+import type { HangingDecorKind } from '../../../store';
+import { IconHangingLeaves, IconHangingLights, IconLedStrip } from '../icons';
 import { placeFromCatalog } from '../placeCatalogModel';
 import { MobileSheet } from './MobileSheet';
 
@@ -31,7 +33,7 @@ export interface MobileLibrarySheetProps {
   onClose: () => void;
   onImport: () => void;
   onOpenModel: (model: CatalogModel) => void;
-  onStartDraw: (kind: 'lights' | 'leaves') => void;
+  onStartDraw: (kind: HangingDecorKind) => void;
   onAddLight: () => void;
 }
 
@@ -108,16 +110,32 @@ export function MobileLibrarySheet({
           className="dgm-action-btn is-dashed"
           onClick={() => onStartDraw('lights')}
         >
-          <span className="dgm-action-btn__dot" style={{ background: '#E8C27A' }} />
-          String lights
+          <span className="dgm-action-btn__dot" style={{ background: '#E8C27A', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
+            <IconHangingLights size={10} />
+          </span>
+          Fairy lights
         </button>
         <button
           type="button"
           className="dgm-action-btn is-dashed"
           onClick={() => onStartDraw('leaves')}
         >
-          <span className="dgm-action-btn__dot" style={{ background: '#7E8A60' }} />
+          <span className="dgm-action-btn__dot" style={{ background: '#7E8A60', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
+            <IconHangingLeaves size={10} />
+          </span>
           Leaves
+        </button>
+      </div>
+      <div className="dgm-action-row">
+        <button
+          type="button"
+          className="dgm-action-btn is-dashed is-full"
+          onClick={() => onStartDraw('led-strip')}
+        >
+          <span className="dgm-action-btn__dot" style={{ background: '#6EB5FF', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
+            <IconLedStrip size={10} />
+          </span>
+          LED strip
         </button>
       </div>
       <button type="button" className="dgm-action-btn is-outline is-full" onClick={onImport}>

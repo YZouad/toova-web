@@ -1,9 +1,12 @@
+import { resolvePlaceHangingKind, type CuratedProduct } from './dormChecklist';
+
 /** True when a curated product can be placed into the room designer. */
-export function productHasPlaceableModel(product: {
-  placeBuiltinKind: string | null;
-  placeCatalogKind: string | null;
-}): boolean {
-  return Boolean(product.placeBuiltinKind || product.placeCatalogKind);
+export function productHasPlaceableModel(
+  product: Pick<CuratedProduct, 'slug' | 'placeBuiltinKind' | 'placeCatalogKind' | 'placeHangingKind'>,
+): boolean {
+  return Boolean(
+    product.placeBuiltinKind || product.placeCatalogKind || resolvePlaceHangingKind(product),
+  );
 }
 
 export const CHECKLIST_RUG_MODEL_PATH = 'checklist-refs/glb/rug.glb';

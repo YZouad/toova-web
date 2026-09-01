@@ -63,6 +63,7 @@ import { profileInitials } from './lib/userDisplay';
 import {
   AppShell,
   type AppShellNavId,
+  Button,
   DisplayHeading,
   MonoMeta,
   Plate,
@@ -186,6 +187,7 @@ function AppContent() {
   const [pendingPublicRoom, setPendingPublicRoom] = useState<{ handle: string; roomId: string } | null>(null);
   const [pendingGalleryModel, setPendingGalleryModel] = useState<GalleryModel | null>(null);
   const [authReason, setAuthReason] = useState<string | null>(null);
+  const [authFromGuestStart, setAuthFromGuestStart] = useState(false);
   const [guestTemplateId, setGuestTemplateId] = useState<string | undefined>(undefined);
   const guestRestoreAttempted = useRef(false);
   const addItem = useStore((s) => s.addItem);
@@ -665,6 +667,11 @@ function AppContent() {
             setScreen('designer');
             return;
           }
+          if (authFromGuestStart) {
+            setAuthFromGuestStart(false);
+            setScreen('dashboard');
+            return;
+          }
           if (route.name === 'gallery') {
             setScreen('gallery');
             return;
@@ -1056,37 +1063,67 @@ isAdmin={isAdmin}
 
   // Guest dashboard: pick a starter on the page — no empty prompt + modal.
   if (screen === 'dashboard' || floorPlanDraft) {
+    const goAuth = (mode: 'signin' | 'signup') => {
+      setAuthReason(null);
+      setAuthFromGuestStart(true);
+      setAuthMode(mode);
+      setScreen('auth');
+    };
     return (
-      <div className="toova-page app-page tv-scroll">
+      <div className="toova-page app-page tv-scroll room-preset-split-page">
         <div className="toova-paper" aria-hidden />
-        <main className="room-preset-page">
-          <header className="room-preset-page__head">
-            <MonoMeta size="sm" tone="dense" upper style={{ display: 'block', marginBottom: 12 }}>
-              Design without an account
-            </MonoMeta>
-            <DisplayHeading level={4} style={{ marginBottom: 12 }}>
-              Start with a room that fits your space.
-            </DisplayHeading>
-            <p className="room-preset-page__lede">
-              Choose a furnished template or draw your floor plan. Sign in later when you want to save.
-            </p>
-            <button
-              type="button"
-              className="kit-btn kit-btn--mono kit-btn--sm"
-              onClick={() => setScreen('landing')}
-            >
-              ← Back to home
-            </button>
-          </header>
-          <RoomPresetPicker
-            variant="page"
-            creating={floorPlanBusy}
-            defaultName={floorPlanDraft?.name || 'My dorm'}
-            cancelLabel="Back to home"
-            onClose={() => setScreen('landing')}
-            onSelect={handlePresetPickerSelect}
-          />
-        </main>
+        <div className="room-preset-split">
+          <main className="room-preset-split__design">
+            <header className="room-preset-page__head">
+              <button
+                type="button"
+                className="kit-btn kit-btn--mono kit-btn--sm"
+                onClick={() => setScreen('landing')}
+              >
+                ← Back to home
+              </button>
+              <MonoMeta size="sm" tone="dense" upper style={{ display: 'block', marginTop: 28, marginBottom: 12 }}>
+                Design without an account
+              </MonoMeta>
+              <DisplayHeading level={4} style={{ marginBottom: 12 }}>
+                Start with a room that fits your space.
+              </DisplayHeading>
+              <p className="room-preset-page__lede">
+                Choose a rectangle, or draw your floor plan. You can sign in later when you want to save.
+              </p>
+            </header>
+            <RoomPresetPicker
+              variant="page"
+              guestSimple
+              creating={floorPlanBusy}
+              defaultName={floorPlanDraft?.name || 'My dorm'}
+              cancelLabel="Back to home"
+              onClose={() => setScreen('landing')}
+              onSelect={handlePresetPickerSelect}
+            />
+          </main>
+          <aside className="room-preset-split__auth">
+            <div className="room-preset-split__auth-inner">
+              <MonoMeta size="sm" tone="dense" upper style={{ display: 'block', marginBottom: 16 }}>
+                Already have an account?
+              </MonoMeta>
+              <DisplayHeading level={4} style={{ marginBottom: 14 }}>
+                Sign in to save your rooms.
+              </DisplayHeading>
+              <p className="room-preset-split__auth-lede">
+                Start as a guest, then create an account when you want this design on every device.
+              </p>
+              <div className="room-preset-split__auth-actions">
+                <Button size="md" full onClick={() => goAuth('signin')}>
+                  Sign in
+                </Button>
+                <Button size="md" full variant="outline" onClick={() => goAuth('signup')}>
+                  Create an account
+                </Button>
+              </div>
+            </div>
+          </aside>
+        </div>
       </div>
     );
   }

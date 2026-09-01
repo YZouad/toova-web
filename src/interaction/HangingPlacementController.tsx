@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useStore } from '../store';
+import { isHangingDesignerTool, useStore } from '../store';
 import {
   furnitureLocalFromWorld,
   wallAnchorFromWorldHit,
@@ -18,7 +18,7 @@ import { allWallSegments, getWallSegment, wallById } from '../lib/floorPlanGeome
 export function HangingPlacementController() {
   const { camera, gl, scene } = useThree();
   const tool = useStore((s) => s.designerTool);
-  const active = tool === 'hanging-leaves' || tool === 'hanging-lights';
+  const active = isHangingDesignerTool(tool);
   const lastClickRef = useRef(0);
   const pointerDownRef = useRef<{ x: number; y: number; t: number } | null>(null);
 

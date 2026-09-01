@@ -1,10 +1,16 @@
 import { describe, expect, it, beforeEach } from 'vitest';
 import {
   loadCheckedIds,
-  saveCheckedIds,
+  loadLocalMoveInBudgetCents,
+  loadLocalResolutions,
   loadLocalShoppingList,
+  saveCheckedIds,
+  saveLocalMoveInBudgetCents,
+  saveLocalResolutions,
   saveLocalShoppingList,
   CHECKLIST_CHECKED_KEY,
+  CHECKLIST_RESOLUTION_KEY,
+  MOVE_IN_BUDGET_KEY,
   SHOPPING_LIST_KEY,
 } from './dormChecklist';
 
@@ -40,6 +46,8 @@ describe('checklist local persistence', () => {
   beforeEach(() => {
     installMemoryLocalStorage();
     localStorage.removeItem(CHECKLIST_CHECKED_KEY);
+    localStorage.removeItem(CHECKLIST_RESOLUTION_KEY);
+    localStorage.removeItem(MOVE_IN_BUDGET_KEY);
     localStorage.removeItem(SHOPPING_LIST_KEY);
   });
 
@@ -55,5 +63,18 @@ describe('checklist local persistence', () => {
     expect(loadLocalShoppingList()).toEqual([
       { productId: 'prod-1', quantity: 2, reviewDone: false },
     ]);
+  });
+
+  it('keeps have/skip resolutions across reloads', () => {
+    saveLocalResolutions(new Map([['cat-a', 'have'], ['cat-b', 'skip']]));
+    expect(loadLocalResolutions().get('cat-a')).toBe('have');
+    expect(loadLocalResolutions().get('cat-b')).toBe('skip');
+  });
+
+  it('keeps move-in budget across reloads', () => {
+    saveLocalMoveInBudgetCents(100000);
+    expect(loadLocalMoveInBudgetCents()).toBe(100000);
+    saveLocalMoveInBudgetCents(null);
+    expect(loadLocalMoveInBudgetCents()).toBeNull();
   });
 });

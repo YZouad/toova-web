@@ -104,3 +104,55 @@ export function IconTrash() {
     </svg>
   );
 }
+
+export function IconHangingLights({ size = 14, stroke = 'currentColor' }: { size?: number; stroke?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 6h16" />
+      <path d="M7 6v2.5" />
+      <circle cx="7" cy="11" r="2" fill={stroke} stroke="none" />
+      <path d="M12 6v3.5" />
+      <circle cx="12" cy="12.5" r="2" fill={stroke} stroke="none" />
+      <path d="M17 6v2.5" />
+      <circle cx="17" cy="11" r="2" fill={stroke} stroke="none" />
+    </svg>
+  );
+}
+
+export function IconHangingLeaves({ size = 14, stroke = 'currentColor' }: { size?: number; stroke?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 6h16" />
+      <path d="M7 6v2" />
+      <path d="M7 8c-2.2 1.2-2.5 3.8-1 5.5 1.8-0.8 2.2-3.2 1-5.5" fill={stroke} stroke="none" />
+      <path d="M12 6v2.5" />
+      <path d="M12 8.5c-2.5 1.5-2.8 4.5-1.2 6.5 2-1 2.5-4 1.2-6.5" fill={stroke} stroke="none" />
+      <path d="M17 6v1.5" />
+      <path d="M17 7.5c2.2 1.2 2.5 3.8 1 5.5-1.8-0.8-2.2-3.2-1-5.5" fill={stroke} stroke="none" />
+    </svg>
+  );
+}
+
+export function IconLedStrip({ size = 14, stroke = 'currentColor' }: { size?: number; stroke?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 12h16" strokeWidth="2.5" />
+      <rect x="6" y="10.5" width="2.5" height="3" rx="0.5" fill={stroke} stroke="none" />
+      <rect x="10.75" y="10.5" width="2.5" height="3" rx="0.5" fill={stroke} stroke="none" />
+      <rect x="15.5" y="10.5" width="2.5" height="3" rx="0.5" fill={stroke} stroke="none" />
+      <circle cx="4" cy="12" r="1.25" fill={stroke} stroke="none" />
+      <circle cx="20" cy="12" r="1.25" fill={stroke} stroke="none" />
+    </svg>
+  );
+}
+
+export function IconFreeLight({ size = 14, stroke = 'currentColor' }: { size?: number; stroke?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <circle cx="12" cy="11" r="4.25" />
+      <path d="M9.5 15.2h5" />
+      <path d="M10.2 17h3.6" />
+      <path d="M12 4.5v1.5M8.2 6.2l1 1M15.8 6.2l-1 1" strokeWidth="1.4" />
+    </svg>
+  );
+}

@@ -6,7 +6,8 @@ import { SelectionOutline } from './SelectionOutline';
 import { EMITTER_LIGHT_POWER } from './ItemEmitter';
 import { resolveRenderQuality } from '../lib/renderQuality';
 import {
-  buildHangingPath,
+  buildPathForKind,
+  buildStraightPath,
   clusterLightAnchors,
   leafCountForPath,
   ledSpacingInches,
@@ -163,7 +164,7 @@ export function HangingDecoration({ item, selected, invalid }: Props) {
   const samplesPerSpan = tubeSegments(q.tier);
   const path = useMemo(() => {
     if (!config || worldPoints.length < 2) return [] as Vec3[];
-    return buildHangingPath(worldPoints, config.sag, samplesPerSpan);
+    return buildPathForKind(worldPoints, config.kind, config.sag, samplesPerSpan);
   }, [config, worldPoints, samplesPerSpan]);
 
   const bounds = useMemo(() => pathBounds(path), [path]);
@@ -278,11 +279,13 @@ function HangingVisual({
   );
 
   const curve = useMemo(() => {
+    if (config.kind === 'led-strip') return null;
     const pts = localPath.map((p) => new THREE.Vector3(...p));
     return new THREE.CatmullRomCurve3(pts, false, 'catmullrom', 0.15);
-  }, [localPath]);
+  }, [localPath, config.kind]);
 
   const tubeGeo = useMemo(() => {
+    if (config.kind === 'led-strip' || !curve) return null;
     const radial = qualityTier === 'low' ? 3 : 5;
     const tubular = Math.max(8, localPath.length * 2);
     const radius = config.kind === 'leaves' ? 0.12 : 0.06;
@@ -291,28 +294,43 @@ function HangingVisual({
 
   /** Slightly thicker invisible tube so thin strands stay clickable without an AABB hull. */
   const pickGeo = useMemo(() => {
+    if (config.kind === 'led-strip' || !curve) return null;
     const tubular = Math.max(8, localPath.length * 2);
     const radius = config.kind === 'leaves' ? 0.9 : 0.55;
     return new THREE.TubeGeometry(curve, tubular, radius, 5, false);
   }, [curve, localPath.length, config.kind]);
 
-  useEffect(() => () => tubeGeo.dispose(), [tubeGeo]);
-  useEffect(() => () => pickGeo.dispose(), [pickGeo]);
+  useEffect(() => () => tubeGeo?.dispose(), [tubeGeo]);
+  useEffect(() => () => pickGeo?.dispose(), [pickGeo]);
 
   const cableColor = config.kind === 'leaves' ? '#3a5c32' : '#1a1a1a';
 
   return (
     <group>
-      <mesh geometry={pickGeo} visible={false}>
-        <meshBasicMaterial />
-      </mesh>
-      <mesh geometry={tubeGeo} castShadow={false} receiveShadow={false}>
-        <meshStandardMaterial
-          color={cableColor}
-          roughness={config.kind === 'leaves' ? 0.95 : 0.92}
-          metalness={0.02}
+      {config.kind === 'led-strip' ? (
+        <LedStripSegments
+          anchors={localAnchors}
+          palette={config.palette}
+          lightIntensity={config.lightsEnabled === false ? 0 : config.lightIntensity}
+          lightRange={config.lightRange}
+          density={config.density}
+          qualityTier={qualityTier}
+          lightsOn={config.lightsEnabled !== false}
         />
-      </mesh>
+      ) : (
+        <>
+          <mesh geometry={pickGeo!} visible={false}>
+            <meshBasicMaterial />
+          </mesh>
+          <mesh geometry={tubeGeo!} castShadow={false} receiveShadow={false}>
+            <meshStandardMaterial
+              color={cableColor}
+              roughness={config.kind === 'leaves' ? 0.95 : 0.92}
+              metalness={0.02}
+            />
+          </mesh>
+        </>
+      )}
 
       {config.kind === 'leaves' ? (
         <LeafTextureGate
@@ -322,7 +340,7 @@ function HangingVisual({
           qualityTier={qualityTier}
           sway={sway}
         />
-      ) : (
+      ) : config.kind === 'lights' ? (
         <LedInstances
           path={localPath}
           density={config.density}
@@ -334,7 +352,7 @@ function HangingVisual({
           qualityTier={qualityTier}
           lightsOn={config.lightsEnabled !== false}
         />
-      )}
+      ) : null}
 
       {showAnchors
         ? localAnchors.map((p, i) => (
@@ -745,6 +763,111 @@ function LedInstances({
   );
 }
 
+/** Straight LED strip segments between anchor points. */
+function LedStripSegments({
+  anchors,
+  palette,
+  lightIntensity,
+  lightRange,
+  density,
+  qualityTier,
+  lightsOn,
+}: {
+  anchors: Vec3[];
+  palette: string[];
+  lightIntensity: number;
+  lightRange: number;
+  density: number;
+  qualityTier: string;
+  lightsOn: boolean;
+}) {
+  const exposure = useStore((s) => s.environment.exposure);
+  const segments = useMemo(() => {
+    const out: Array<{ mid: Vec3; length: number; quat: THREE.Quaternion }> = [];
+    for (let i = 0; i < anchors.length - 1; i++) {
+      const a = anchors[i]!;
+      const b = anchors[i + 1]!;
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const dz = b[2] - a[2];
+      const len = Math.hypot(dx, dy, dz);
+      if (len < 0.01) continue;
+      const dir = new THREE.Vector3(dx / len, dy / len, dz / len);
+      const quat = new THREE.Quaternion().setFromUnitVectors(UP, dir);
+      out.push({
+        mid: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2],
+        length: len,
+        quat,
+      });
+    }
+    return out;
+  }, [anchors]);
+
+  const stripPath = useMemo(
+    () => buildStraightPath(anchors, 8),
+    [anchors],
+  );
+
+  const ledSamples = useMemo(
+    () => sampleAlongPath(stripPath, ledSpacingInches(density)),
+    [stripPath, density],
+  );
+
+  const lightAnchors = useMemo(
+    () => clusterLightAnchors(ledSamples.map((s) => s.position), maxRealLights(qualityTier)),
+    [ledSamples, qualityTier],
+  );
+
+  const exposureMul = Math.max(0.15, exposure);
+  const glow = ledGlowFactor(lightIntensity);
+
+  return (
+    <group>
+      {segments.map((seg, i) => (
+        <mesh key={`seg-${i}`} position={seg.mid} quaternion={seg.quat}>
+          <boxGeometry args={[0.28, seg.length, 0.14]} />
+          <meshStandardMaterial
+            color="#111111"
+            emissive={lightsOn ? paletteColorAt(palette, i) : '#111111'}
+            emissiveIntensity={lightsOn ? glow * 0.35 : 0}
+            roughness={0.4}
+            metalness={0.1}
+            toneMapped={false}
+          />
+        </mesh>
+      ))}
+      {segments.map((seg, i) => (
+        <mesh key={`pick-${i}`} position={seg.mid} quaternion={seg.quat} visible={false}>
+          <boxGeometry args={[0.9, seg.length, 0.55]} />
+          <meshBasicMaterial />
+        </mesh>
+      ))}
+      {lightsOn
+        ? lightAnchors.map((anchor, i) => {
+            const col = paletteColorAt(palette, anchor.colorIndex);
+            const perLightIntensity =
+              (lightIntensity *
+                (qualityTier === 'low' ? 1.8 : 1.35) *
+                EMITTER_LIGHT_POWER *
+                exposureMul) /
+              Math.max(1, Math.sqrt(lightAnchors.length));
+            return (
+              <pointLight
+                key={i}
+                position={anchor.position}
+                color={col}
+                intensity={perLightIntensity}
+                distance={Math.max(1, lightRange)}
+                decay={1.35}
+                castShadow={false}
+              />
+            );
+          })
+        : null}
+    </group>
+  );
+}
+
 /** Draft preview path rendered in world space (not parented to an item). */
 export function HangingDraftPreview() {
   const draft = useStore((s) => s.hangingDraft);
@@ -774,9 +897,10 @@ export function HangingDraftPreview() {
   }, [draft, geom, furnitureMap]);
 
   const path = useMemo(() => {
-    if (points.length < 2) return [] as Vec3[];
-    return buildHangingPath(points, draft?.kind === 'lights' ? 0.14 : 0.18, 12);
-  }, [points, draft?.kind]);
+    if (points.length < 2 || !draft) return [] as Vec3[];
+    const sag = draft.kind === 'lights' ? 0.14 : draft.kind === 'leaves' ? 0.18 : 0;
+    return buildPathForKind(points, draft.kind, sag, 12);
+  }, [points, draft]);
 
   const lineGeo = useMemo(() => {
     if (path.length < 2) return null;

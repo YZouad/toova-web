@@ -11,11 +11,13 @@ import { useShoppingCatalogContext } from '../../context/ShoppingCatalogContext'
 import { useDesignerSearch } from '../../hooks/useDesignerSearch';
 import type { GalleryModel } from '../../hooks/useGalleryCatalog';
 import type { CuratedProduct } from '../../lib/dormChecklist';
-import { placeCuratedProduct } from '../../lib/placeCuratedProduct';
+import type { HangingDecorKind } from '../../store';
+import { getProductDrawKind } from '../../lib/dormChecklist';
 import { useStore } from '../../store';
 import { IconSearch } from './icons';
 import type { CommandPaletteCommand } from './commandPaletteCommands';
 import type { SearchResult } from './commandSearchTypes';
+import { placeCuratedProduct, startChecklistDrawPlacement } from '../../lib/placeCuratedProduct';
 import { placeFromCatalog } from './placeCatalogModel';
 
 export type { CommandPaletteCommand } from './commandPaletteCommands';
@@ -26,7 +28,7 @@ export interface CommandPaletteProps {
   commands: CommandPaletteCommand[];
   onPlaceModel?: (model: GalleryModel) => void;
   onPlaceAndEdit?: (model: GalleryModel) => void;
-  onStartDraw?: (kind: 'lights' | 'leaves') => void;
+  onStartDraw?: (kind: HangingDecorKind) => void;
   onAddLight?: () => void;
   onOpenInspector?: () => void;
   onOpenAddPanel?: () => void;
@@ -147,6 +149,13 @@ export function CommandPalette({
   };
 
   const placeProduct = async (product: CuratedProduct, andEdit?: boolean) => {
+    const drawKind = getProductDrawKind(product);
+    if (drawKind) {
+      startChecklistDrawPlacement(product);
+      onStartDraw?.(drawKind);
+      onClose();
+      return;
+    }
     const id = await placeCuratedProduct(product);
     if (id) {
       useStore.getState().select(id);

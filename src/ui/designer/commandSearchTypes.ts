@@ -77,7 +77,7 @@ export interface ActionResult extends SearchResultBase {
 
 export interface SyntheticToolResult extends SearchResultBase {
   type: 'syntheticTool';
-  tool: 'string-lights' | 'hanging-leaves' | 'free-light';
+  tool: 'string-lights' | 'hanging-leaves' | 'led-strip' | 'free-light';
   thumbColor?: string;
 }
 

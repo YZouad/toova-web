@@ -1,4 +1,11 @@
-import { useStore } from '../../store';
+import { hangingKindFromDesignerTool, isHangingDesignerTool, useStore } from '../../store';
+import type { HangingDecorKind } from '../../lib/hangingDecorGeometry';
+
+function drawTitle(kind: HangingDecorKind): string {
+  if (kind === 'leaves') return 'Drawing hanging leaves';
+  if (kind === 'led-strip') return 'Drawing LED strip';
+  return 'Drawing fairy lights';
+}
 
 export function DrawBanner() {
   const hangingDraft = useStore((s) => s.hangingDraft);
@@ -7,17 +14,12 @@ export function DrawBanner() {
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
   const finishHangingDraft = useStore((s) => s.finishHangingDraft);
 
-  const drawing =
-    hangingDraft != null ||
-    designerTool === 'hanging-leaves' ||
-    designerTool === 'hanging-lights';
+  const drawing = hangingDraft != null || isHangingDesignerTool(designerTool);
 
   if (!drawing) return null;
 
-  const kind =
-    hangingDraft?.kind ?? (designerTool === 'hanging-leaves' ? 'leaves' : 'lights');
-  const title =
-    kind === 'leaves' ? 'Drawing hanging leaves' : 'Drawing hanging lights';
+  const kind = hangingDraft?.kind ?? hangingKindFromDesignerTool(designerTool) ?? 'lights';
+  const title = drawTitle(kind);
   const count = hangingDraft?.anchors.length ?? 0;
   const canFinish = count >= 2;
   const canUndo = count > 0;

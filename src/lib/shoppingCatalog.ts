@@ -1,8 +1,13 @@
 import { supabase } from './supabase';
 import {
   loadCheckedIds,
+  loadLocalMoveInBudgetCents,
+  loadLocalResolutions,
   loadLocalShoppingList,
   productImagePublicUrl,
+  saveLocalMoveInBudgetCents,
+  saveLocalResolutions,
+  type CategoryResolution,
   type ChecklistCategory,
   type ChecklistCategoryWithProducts,
   type CuratedProduct,
@@ -77,6 +82,18 @@ function mapProduct(row: Record<string, unknown>): CuratedProduct {
       row.place_catalog_kind != null && String(row.place_catalog_kind).trim()
         ? String(row.place_catalog_kind)
         : null,
+    placeHangingKind:
+      row.place_hanging_kind === 'lights'
+      || row.place_hanging_kind === 'leaves'
+      || row.place_hanging_kind === 'led-strip'
+        ? row.place_hanging_kind
+        : null,
+    placeBeddingKind:
+      row.place_bedding_kind === 'sheets'
+      || row.place_bedding_kind === 'comforter'
+      || row.place_bedding_kind === 'pillow'
+        ? row.place_bedding_kind
+        : null,
     brand:
       row.brand != null && String(row.brand).trim()
         ? String(row.brand).trim()
@@ -97,9 +114,12 @@ function mapProduct(row: Record<string, unknown>): CuratedProduct {
 }
 
 const CURATED_PRODUCT_SELECT =
-  'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind,brand,feature_bullets,dimensions_text,rating,review_count,availability';
+  'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind,place_hanging_kind,place_bedding_kind,brand,feature_bullets,dimensions_text,rating,review_count,availability';
 
 const CURATED_PRODUCT_SELECT_LEGACY =
+  'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind,place_hanging_kind,place_bedding_kind';
+
+const CURATED_PRODUCT_SELECT_MINIMAL =
   'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind';
 
 async function fetchCuratedProductRows(publishedOnly: boolean) {
@@ -117,12 +137,23 @@ async function fetchCuratedProductRows(publishedOnly: boolean) {
     msg.includes('rating') ||
     msg.includes('review_count') ||
     msg.includes('availability') ||
+    msg.includes('place_hanging_kind') ||
+    msg.includes('place_bedding_kind') ||
     msg.includes('schema cache') ||
     msg.includes('column')
   ) {
     let legacy = supabase.from('curated_products').select(CURATED_PRODUCT_SELECT_LEGACY);
     if (publishedOnly) legacy = legacy.eq('published', true);
-    return legacy.order('sort_order', { ascending: true });
+    const legacyResult = await legacy.order('sort_order', { ascending: true });
+    if (!legacyResult.error) return legacyResult;
+
+    const legacyMsg = legacyResult.error.message.toLowerCase();
+    if (legacyMsg.includes('place_hanging_kind') || legacyMsg.includes('place_bedding_kind') || legacyMsg.includes('column')) {
+      let minimal = supabase.from('curated_products').select(CURATED_PRODUCT_SELECT_MINIMAL);
+      if (publishedOnly) minimal = minimal.eq('published', true);
+      return minimal.order('sort_order', { ascending: true });
+    }
+    return legacyResult;
   }
   return first;
 }
@@ -203,6 +234,87 @@ export async function fetchUserChecklistProgress(
   return new Set((data ?? []).map((r) => String(r.category_id)));
 }
 
+export async function fetchUserChecklistResolutions(
+  userId: string,
+): Promise<Map<string, CategoryResolution>> {
+  const { data, error } = await supabase
+    .from('user_checklist_progress')
+    .select('category_id,resolution')
+    .eq('user_id', userId)
+    .not('resolution', 'is', null);
+  if (error) throw new Error(error.message);
+  const map = new Map<string, CategoryResolution>();
+  for (const row of data ?? []) {
+    const resolution = row.resolution;
+    if (resolution === 'have' || resolution === 'skip') {
+      map.set(String(row.category_id), resolution);
+    }
+  }
+  return map;
+}
+
+export async function upsertChecklistResolution(
+  userId: string,
+  categoryId: string,
+  resolution: CategoryResolution | null,
+): Promise<void> {
+  if (resolution == null) {
+    const { error } = await supabase
+      .from('user_checklist_progress')
+      .delete()
+      .eq('user_id', userId)
+      .eq('category_id', categoryId);
+    if (error) throw new Error(error.message);
+    return;
+  }
+  const { error } = await supabase.from('user_checklist_progress').upsert(
+    {
+      user_id: userId,
+      category_id: categoryId,
+      checked: false,
+      resolution,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,category_id' },
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function fetchUserMoveInBudgetCents(userId: string): Promise<number | null> {
+  const { data, error } = await supabase
+    .from('user_move_in_budget')
+    .select('budget_cents')
+    .eq('user_id', userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  if (data?.budget_cents == null) return null;
+  const cents = Number(data.budget_cents);
+  return Number.isFinite(cents) && cents >= 0 ? Math.round(cents) : null;
+}
+
+export async function upsertUserMoveInBudgetCents(
+  userId: string,
+  budgetCents: number | null,
+): Promise<void> {
+  if (budgetCents == null) {
+    const { error } = await supabase
+      .from('user_move_in_budget')
+      .delete()
+      .eq('user_id', userId);
+    if (error) throw new Error(error.message);
+    return;
+  }
+  const { error } = await supabase.from('user_move_in_budget').upsert(
+    {
+      user_id: userId,
+      budget_cents: Math.max(0, Math.round(budgetCents)),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id' },
+  );
+  if (error) throw new Error(error.message);
+}
+
 export async function upsertChecklistProgress(
   userId: string,
   categoryId: string,
@@ -277,15 +389,33 @@ export async function removeShoppingListEntry(
 export async function mergeLocalShoppingStateToAccount(userId: string): Promise<void> {
   const localChecked = loadCheckedIds();
   const localList = loadLocalShoppingList();
+  const localResolutions = loadLocalResolutions();
+  const localBudget = loadLocalMoveInBudgetCents();
 
   const remoteChecked = await fetchUserChecklistProgress(userId);
   const remoteList = await fetchUserShoppingList(userId);
+  const remoteResolutions = await fetchUserChecklistResolutions(userId);
+  const remoteBudget = await fetchUserMoveInBudgetCents(userId);
 
   const mergedChecked = new Set([...remoteChecked, ...localChecked]);
   for (const categoryId of mergedChecked) {
     if (!remoteChecked.has(categoryId)) {
       await upsertChecklistProgress(userId, categoryId, true);
     }
+  }
+
+  const mergedResolutions = new Map(remoteResolutions);
+  for (const [categoryId, resolution] of localResolutions) {
+    if (!remoteResolutions.has(categoryId)) {
+      mergedResolutions.set(categoryId, resolution);
+      await upsertChecklistResolution(userId, categoryId, resolution);
+    }
+  }
+
+  if (localBudget != null && remoteBudget == null) {
+    await upsertUserMoveInBudgetCents(userId, localBudget);
+  } else if (localBudget != null && remoteBudget != null && localBudget !== remoteBudget) {
+    await upsertUserMoveInBudgetCents(userId, Math.max(localBudget, remoteBudget));
   }
 
   const byProduct = new Map(remoteList.map((e) => [e.productId, e]));

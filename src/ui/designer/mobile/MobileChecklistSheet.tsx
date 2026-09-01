@@ -6,41 +6,44 @@ import { productHasPlaceableModel } from '../../../lib/checklistPublicGlbs';
 import {
   categoryIdsSatisfiedByPlacements,
   formatPriceCents,
-  leafCategories,
+  getProductDrawKind,
+  roomItemsToPlacementRefs,
   type CuratedProduct,
 } from '../../../lib/dormChecklist';
+import {
+  buildChecklistGroups,
+  buildChecklistLines,
+  checklistLineStatusLabel,
+  filterChecklistLinesByTab,
+  type ChecklistLineModel,
+} from '../../../lib/checklistLines';
+import { checklistProgressCounts } from '../../../lib/checklistProgress';
 import { downloadCatalogModelByKind } from '../../../lib/modelStorage';
 import {
+  countRoomPlacementsForProduct,
   findRoomItemForProduct,
   placeCuratedProduct,
+  startChecklistDrawPlacement,
 } from '../../../lib/placeCuratedProduct';
-import { useStore } from '../../../store';
+import { useStore, type HangingDecorKind } from '../../../store';
+import {
+  ChecklistBudgetFoot,
+  ChecklistResolutionActions,
+} from '../ChecklistBudgetFoot';
+import { ChecklistCheckoutPanel } from '../../ChecklistCheckoutPanel';
 import { MobileSheet } from './MobileSheet';
 
 type ChecklistTab = 'todo' | 'placed' | 'all';
 type DetailSort = 'popular' | 'price';
 type PriceDir = 'asc' | 'desc';
 
-interface ChecklistLine {
-  categoryId: string;
-  name: string;
-  products: CuratedProduct[];
-  optionCount: number;
-  fromPriceCents: number | null;
-  currency: string;
-  quantity: number;
-  placed: boolean;
-  groupId: string;
-  groupName: string;
-  groupOrder: number;
-  sortOrder: number;
-}
+type ChecklistLine = ChecklistLineModel;
 
 interface ChecklistGroup {
   id: string;
   name: string;
   order: number;
-  placed: number;
+  resolved: number;
   total: number;
   lines: ChecklistLine[];
 }
@@ -50,6 +53,7 @@ export interface MobileChecklistSheetProps {
   itemId: string | null;
   onOpenItem: (id: string) => void;
   onCloseItem: () => void;
+  onStartDraw?: (kind: HangingDecorKind) => void;
 }
 
 function ProgressRing({ pct, size = 40 }: { pct: number; size?: number }) {
@@ -136,12 +140,13 @@ export function MobileChecklistSheet({
   itemId,
   onOpenItem,
   onCloseItem,
+  onStartDraw,
 }: MobileChecklistSheetProps) {
   const items = useStore((s) => s.items);
   const order = useStore((s) => s.order);
   const select = useStore((s) => s.select);
   const removeItem = useStore((s) => s.removeItem);
-  const { categories, categoriesById, list, addToList } = useShoppingCatalogContext();
+  const { categories, categoriesById, list, addToList, removeFromList, getResolution, setResolution, budgetSummary, setMoveInBudget, purchaseCartLines } = useShoppingCatalogContext();
   const { user } = useAuth();
   const canDownloadGlb = !!user?.id;
 
@@ -151,6 +156,7 @@ export function MobileChecklistSheet({
   const [placingId, setPlacingId] = useState<string | null>(null);
   const [downloadKind, setDownloadKind] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [checkoutOpen, setCheckoutOpen] = useState(false);
 
   const listQty = useMemo(() => {
     const map = new Map<string, number>();
@@ -159,86 +165,33 @@ export function MobileChecklistSheet({
   }, [list]);
 
   const placedCategoryIds = useMemo(() => {
-    const placements = order
-      .map((id) => items[id])
-      .filter((item): item is NonNullable<typeof item> => item != null)
-      .map((item) => ({
-        kind: item.kind,
-        curatedProductId: item.curatedProductId,
-      }));
-    return categoryIdsSatisfiedByPlacements(categories, placements);
+    return categoryIdsSatisfiedByPlacements(categories, roomItemsToPlacementRefs(items, order));
   }, [categories, items, order]);
 
-  const lines = useMemo((): ChecklistLine[] => {
-    const leaves = leafCategories(categories).filter((c) => c.published);
-    const out: ChecklistLine[] = [];
-    for (const cat of leaves) {
-      const parent = cat.parentId ? categoriesById[cat.parentId] : null;
-      const group = parent ?? cat;
-      const products = publishedProducts(cat.products);
-      let quantity = 1;
-      for (const p of products) {
-        const q = listQty.get(p.id);
-        if (q != null) {
-          quantity = q;
-          break;
-        }
-      }
-      out.push({
-        categoryId: cat.id,
-        name: cat.name,
-        products,
-        optionCount: products.length,
-        fromPriceCents: lowestPriceCents(products),
-        currency: products.find((p) => p.priceCents != null)?.currency ?? 'USD',
-        quantity,
-        placed: placedCategoryIds.has(cat.id),
-        groupId: group.id,
-        groupName: group.name,
-        groupOrder: group.sortOrder,
-        sortOrder: cat.sortOrder,
-      });
-    }
-    return out.sort(
-      (a, b) =>
-        a.groupOrder - b.groupOrder ||
-        a.groupName.localeCompare(b.groupName) ||
-        a.sortOrder - b.sortOrder ||
-        a.name.localeCompare(b.name),
-    );
-  }, [categories, categoriesById, listQty, placedCategoryIds]);
+  const lines = useMemo(
+    (): ChecklistLine[] =>
+      buildChecklistLines({
+        categories,
+        categoriesById,
+        placedCategoryIds,
+        getResolution,
+        listQty,
+      }),
+    [categories, categoriesById, listQty, placedCategoryIds, getResolution],
+  );
 
-  const placedCount = lines.filter((l) => l.placed).length;
-  const todoCount = lines.filter((l) => !l.placed).length;
-  const totalCount = lines.length;
-  const progressPct = totalCount === 0 ? 0 : Math.round((placedCount / totalCount) * 100);
+  const { placed: placedCount, todo: todoCount, total: totalCount, resolved: resolvedCount, progressPct } =
+    useMemo(() => checklistProgressCounts(lines), [lines]);
 
-  const visibleLines = useMemo(() => {
-    if (tab === 'todo') return lines.filter((l) => !l.placed);
-    if (tab === 'placed') return lines.filter((l) => l.placed);
-    return lines;
-  }, [lines, tab]);
+  const visibleLines = useMemo(
+    () => filterChecklistLinesByTab(lines, tab),
+    [lines, tab],
+  );
 
-  const groups = useMemo((): ChecklistGroup[] => {
-    const map = new Map<string, ChecklistGroup>();
-    for (const line of visibleLines) {
-      let g = map.get(line.groupId);
-      if (!g) {
-        const allInGroup = lines.filter((l) => l.groupId === line.groupId);
-        g = {
-          id: line.groupId,
-          name: line.groupName,
-          order: line.groupOrder,
-          placed: allInGroup.filter((l) => l.placed).length,
-          total: allInGroup.length,
-          lines: [],
-        };
-        map.set(line.groupId, g);
-      }
-      g.lines.push(line);
-    }
-    return Array.from(map.values()).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name));
-  }, [visibleLines, lines]);
+  const groups = useMemo(
+    (): ChecklistGroup[] => buildChecklistGroups(lines, visibleLines),
+    [visibleLines, lines],
+  );
 
   const activeLine = itemId ? lines.find((l) => l.categoryId === itemId) ?? null : null;
 
@@ -246,19 +199,7 @@ export function MobileChecklistSheet({
     const counts = new Map<string, number>();
     if (!activeLine) return counts;
     for (const product of activeLine.products) {
-      let n = 0;
-      for (const id of order) {
-        const it = items[id];
-        if (!it) continue;
-        if (it.curatedProductId === product.id) {
-          n += 1;
-          continue;
-        }
-        if (it.curatedProductId) continue;
-        if (product.placeBuiltinKind && it.kind === product.placeBuiltinKind) n += 1;
-        else if (product.placeCatalogKind && it.kind === product.placeCatalogKind) n += 1;
-      }
-      counts.set(product.id, n);
+      counts.set(product.id, countRoomPlacementsForProduct(product, items, order));
     }
     return counts;
   }, [activeLine, items, order]);
@@ -286,40 +227,19 @@ export function MobileChecklistSheet({
     return next;
   }, [activeLine, detailSort, priceDir, placementCountByProductId]);
 
-  const footer = useMemo(() => {
-    const sumCents = (subset: ChecklistLine[]) => {
-      let sum = 0;
-      let known = true;
-      for (const line of subset) {
-        if (line.fromPriceCents == null) {
-          known = false;
-          continue;
-        }
-        sum += line.fromPriceCents * line.quantity;
-      }
-      return { sum, known };
-    };
-
-    if (tab === 'todo') {
-      const { sum, known } = sumCents(lines.filter((l) => !l.placed));
-      const label = formatPriceCents(sum) ?? '$0';
-      return { eyebrow: 'Still to buy', value: known ? label : `${label}+` };
-    }
-    if (tab === 'placed') {
-      const { sum, known } = sumCents(lines.filter((l) => l.placed));
-      const label = formatPriceCents(sum) ?? '$0';
-      return { eyebrow: 'Spent so far', value: known ? label : `${label}+` };
-    }
-    const { sum, known } = sumCents(lines);
-    const label = formatPriceCents(sum) ?? '$0';
-    return { eyebrow: 'Room total', value: known ? label : `${label}+` };
-  }, [lines, tab]);
-
   const handlePlace = async (product: CuratedProduct) => {
     if (placingId) return;
     setActionError(null);
     setPlacingId(product.id);
     try {
+      const drawKind = getProductDrawKind(product);
+      if (drawKind) {
+        startChecklistDrawPlacement(product);
+        onStartDraw?.(drawKind);
+        onCloseItem();
+        onClose();
+        return;
+      }
       const id = await placeCuratedProduct(product);
       if (!id) setActionError('No 3D model linked for this option yet.');
       else select(id);
@@ -338,6 +258,14 @@ export function MobileChecklistSheet({
       for (const p of activeLine.products) {
         const existing = findRoomItemForProduct(p, items, order);
         if (existing) removeItem(existing);
+      }
+      const drawKind = getProductDrawKind(product);
+      if (drawKind) {
+        startChecklistDrawPlacement(product);
+        onStartDraw?.(drawKind);
+        onCloseItem();
+        onClose();
+        return;
       }
       const id = await placeCuratedProduct(product);
       if (!id) setActionError('No 3D model linked for this option yet.');
@@ -400,6 +328,13 @@ export function MobileChecklistSheet({
         </div>
 
         <div className="dgm-checklist-detail-toolbar">
+          <ChecklistResolutionActions
+            status={activeLine.status}
+            onHave={() => void setResolution(activeLine.categoryId, 'have')}
+            onSkip={() => void setResolution(activeLine.categoryId, 'skip')}
+            onUndo={() => void setResolution(activeLine.categoryId, null)}
+            className="dgm-checklist-resolution"
+          />
           <div className="dgm-sort-pills" role="group" aria-label="Sort options">
             <button
               type="button"
@@ -445,7 +380,11 @@ export function MobileChecklistSheet({
               const shopUrl = product.affiliateUrl?.trim();
               const roomId = findRoomItemForProduct(product, items, order);
               const inRoom = !!roomId;
-              const placeable = productHasPlaceableModel(product);
+                const placeable = productHasPlaceableModel(product);
+                const drawKind = getProductDrawKind(product);
+                const placeLabel = drawKind
+                  ? (placingId === product.id ? 'Starting…' : 'Draw in room')
+                  : (placingId === product.id ? 'Placing…' : 'Place in room');
               const badges = productBadges(product, activeLine.products, inRoom);
               const retailer = product.retailer?.trim() || 'shop';
 
@@ -526,14 +465,15 @@ export function MobileChecklistSheet({
                           onClick={() => void handlePlace(product)}
                           title={placeable ? undefined : 'No 3D model linked yet'}
                         >
-                          {placingId === product.id ? 'Placing…' : 'Place in room'}
+                          {placeLabel}
                         </button>
                         <button
                           type="button"
                           className="dgm-action-btn"
+                          disabled={list.some((e) => e.productId === product.id)}
                           onClick={() => void addToList(product.id)}
                         >
-                          Add to list
+                          {list.some((e) => e.productId === product.id) ? 'On list' : 'Add to list'}
                         </button>
                       </>
                     )}
@@ -569,10 +509,17 @@ export function MobileChecklistSheet({
         <ProgressRing pct={progressPct} />
         <div className="dgm-checklist-head__copy">
           <span className="dgm-checklist-head__title">
-            {placedCount} of {totalCount || '—'} placed
+            {placedCount} of {totalCount || '—'} categories placed
           </span>
           <span className="dgm-checklist-head__sub">
-            {footer.eyebrow} · {footer.value}
+            {budgetSummary.budgetCents != null
+              ? `${budgetSummary.remainingLabel} remaining`
+              : budgetSummary.spentCents > 0
+                ? `Spent ${budgetSummary.spentLabel} so far`
+                : 'Set a budget to track spending'}
+            {totalCount > 0
+              ? ` · ${todoCount} to place${resolvedCount > 0 ? ` · ${resolvedCount} resolved` : ''}`
+              : ''}
           </span>
         </div>
       </div>
@@ -582,7 +529,7 @@ export function MobileChecklistSheet({
           [
             { id: 'todo' as const, label: 'To place', count: todoCount },
             { id: 'placed' as const, label: 'Placed', count: placedCount },
-            { id: 'all' as const, label: 'All', count: null },
+            { id: 'all' as const, label: 'All', count: totalCount },
           ] as const
         ).map((t) => (
           <button
@@ -603,7 +550,11 @@ export function MobileChecklistSheet({
           <p className="dgm-empty__hint">Checklist items will show up here once the catalog loads.</p>
         ) : groups.length === 0 ? (
           <p className="dgm-empty__hint">
-            {tab === 'todo' ? 'Everything on your list is placed.' : 'Nothing placed yet.'}
+            {tab === 'todo'
+              ? 'Everything on your list is placed or resolved.'
+              : tab === 'placed'
+                ? 'Nothing placed yet.'
+                : 'No checklist items yet.'}
           </p>
         ) : (
           groups.map((group) => (
@@ -612,19 +563,21 @@ export function MobileChecklistSheet({
                 <span className="dgm-eyebrow">{group.name}</span>
                 <span className="dgm-checklist-group__rule" aria-hidden />
                 <span className="dgm-checklist-group__frac">
-                  {group.placed}/{group.total}
+                  {group.resolved}/{group.total}
                 </span>
               </div>
               <ul className="dgm-checklist-group__list">
-                {group.lines.map((line) => (
+                {group.lines.map((line) => {
+                  const statusChip = checklistLineStatusLabel(line.status);
+                  return (
                   <li key={line.categoryId}>
                     <button
                       type="button"
-                      className={`dgm-checklist-item${line.placed ? ' is-placed' : ''}`}
+                      className={`dgm-checklist-item${line.placed ? ' is-placed' : ''}${line.status === 'have' || line.status === 'skip' ? ' is-resolved' : ''}`}
                       onClick={() => onOpenItem(line.categoryId)}
                     >
-                      <span className={`dgm-checklist-item__check${line.placed ? ' is-on' : ''}`} aria-hidden>
-                        {line.placed ? '✓' : null}
+                      <span className={`dgm-checklist-item__check${line.placed ? ' is-on' : ''}${statusChip ? ' is-chip' : ''}`} aria-hidden>
+                        {line.placed ? '✓' : statusChip}
                       </span>
                       <span className="dgm-checklist-item__copy">
                         <span className="dgm-checklist-item__name">{line.name}</span>
@@ -635,7 +588,8 @@ export function MobileChecklistSheet({
                       <span className="dgm-checklist-item__cue">Shop ›</span>
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </section>
           ))
@@ -643,11 +597,31 @@ export function MobileChecklistSheet({
       </div>
 
       <div className="dgm-checklist-foot">
-        <div className="dgm-checklist-total">
-          <span className="dgm-checklist-total__eyebrow">{footer.eyebrow}</span>
-          <span className="dgm-checklist-total__value">{footer.value}</span>
-        </div>
+        <ChecklistBudgetFoot
+          budget={budgetSummary}
+          onSetBudget={(cents) => void setMoveInBudget(cents)}
+          totalClassName="dgm-checklist-total"
+          eyebrowClassName="dgm-checklist-total__eyebrow"
+          valueClassName="dgm-checklist-total__value"
+          subClassName="dgm-checklist-total__sub"
+          ctaClassName="dgm-checklist-set-budget"
+        />
+        <button
+          type="button"
+          className="dgm-checklist-checkout"
+          onClick={() => setCheckoutOpen(true)}
+          disabled={purchaseCartLines.length === 0}
+        >
+          Checkout · {purchaseCartLines.length} item{purchaseCartLines.length === 1 ? '' : 's'}
+        </button>
       </div>
+      {checkoutOpen ? (
+        <ChecklistCheckoutPanel
+          lines={purchaseCartLines}
+          onClose={() => setCheckoutOpen(false)}
+          onRemoveFromList={(productId) => void removeFromList(productId)}
+        />
+      ) : null}
     </MobileSheet>
   );
 }

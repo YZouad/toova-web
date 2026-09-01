@@ -1,13 +1,24 @@
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
 import { recordCatalogDownload } from './catalogEngagement';
 import type { CuratedProduct } from './dormChecklist';
+import { getProductDrawKind } from './dormChecklist';
 import { parseInchDims } from './importedItemSize';
 import { resolveBrowsableModelUrl } from './modelStorage';
 import { supabase } from './supabase';
 import { useStore } from '../store';
 
-/** Place a curated checklist product into the room (builtin or catalog GLB). */
+/** Start draw-mode placement for hanging checklist products (string lights / leaves). */
+export function startChecklistDrawPlacement(product: CuratedProduct): boolean {
+  const drawKind = getProductDrawKind(product);
+  if (!drawKind) return false;
+  useStore.getState().beginHangingDraft(drawKind);
+  return true;
+}
+
+/** Place a curated checklist product into the room (builtin, catalog GLB, or draw feature). */
 export async function placeCuratedProduct(product: CuratedProduct): Promise<string | null> {
+  if (startChecklistDrawPlacement(product)) return null;
+
   const { addItem } = useStore.getState();
 
   if (product.placeBuiltinKind && product.placeBuiltinKind in FURNITURE) {
@@ -47,6 +58,33 @@ export async function placeCuratedProduct(product: CuratedProduct): Promise<stri
   return id;
 }
 
+/** Count room items matching this checklist product. */
+export function countRoomPlacementsForProduct(
+  product: CuratedProduct,
+  items: ReturnType<typeof useStore.getState>['items'],
+  order: string[],
+): number {
+  let n = 0;
+  const drawKind = getProductDrawKind(product);
+  for (const id of order) {
+    const it = items[id];
+    if (!it) continue;
+    if (it.curatedProductId === product.id) {
+      n += 1;
+      continue;
+    }
+    if (it.curatedProductId) continue;
+    if (drawKind) {
+      if (it.kind === 'hanging' && it.hanging?.kind === drawKind) n += 1;
+    } else if (product.placeBuiltinKind && it.kind === product.placeBuiltinKind) {
+      n += 1;
+    } else if (product.placeCatalogKind && it.kind === product.placeCatalogKind) {
+      n += 1;
+    }
+  }
+  return n;
+}
+
 /** Room item id covering this product (by curated id or placeable kind). */
 export function findRoomItemForProduct(
   product: CuratedProduct,
@@ -57,6 +95,14 @@ export function findRoomItemForProduct(
     const it = items[id];
     if (!it) continue;
     if (it.curatedProductId === product.id) return id;
+  }
+  const drawKind = getProductDrawKind(product);
+  if (drawKind) {
+    for (const id of order) {
+      const it = items[id];
+      if (it?.kind === 'hanging' && it.hanging?.kind === drawKind) return id;
+    }
+    return null;
   }
   for (const id of order) {
     const it = items[id];

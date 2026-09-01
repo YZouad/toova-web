@@ -2,8 +2,8 @@ import { useMemo, type RefObject } from 'react';
 import { useShoppingCatalogContext } from '../../../context/ShoppingCatalogContext';
 import {
   categoryIdsSatisfiedByPlacements,
-  formatPriceCents,
   leafCategories,
+  roomItemsToPlacementRefs,
 } from '../../../lib/dormChecklist';
 import { useStore, type CameraPresetId } from '../../../store';
 import { VIEW_PRESETS, type CatalogModel } from '../chromeTypes';
@@ -91,40 +91,29 @@ export function MobileDesignerChrome({
   const mobile = useMobileDesignerChrome(chrome);
   const order = useStore((s) => s.order);
   const items = useStore((s) => s.items);
-  const { categories } = useShoppingCatalogContext();
+  const { categories, budgetSummary } = useShoppingCatalogContext();
 
   const checklistMeta = useMemo(() => {
     const leaves = leafCategories(categories).filter((c) => c.published);
-    const placements = order
-      .map((id) => items[id])
-      .filter((item): item is NonNullable<typeof item> => item != null)
-      .map((item) => ({
-        kind: item.kind,
-        curatedProductId: item.curatedProductId,
-      }));
-    const placedIds = categoryIdsSatisfiedByPlacements(categories, placements);
-    let placed = 0;
-    let budgetCents = 0;
-    let currency = 'USD';
-    for (const leaf of leaves) {
-      if (placedIds.has(leaf.id)) placed += 1;
-      const products = leaf.products ?? [];
-      const cheapest = products.reduce<number | null>((best, p) => {
-        if (p.priceCents == null) return best;
-        return best == null || p.priceCents < best ? p.priceCents : best;
-      }, null);
-      if (cheapest != null) budgetCents += cheapest;
-      const cur = products.find((p) => p.priceCents != null)?.currency;
-      if (cur) currency = cur;
-    }
+    const placedIds = categoryIdsSatisfiedByPlacements(
+      categories,
+      roomItemsToPlacementRefs(items, order),
+    );
+    const placed = leaves.filter((leaf) => placedIds.has(leaf.id)).length;
     const total = leaves.length;
+    const pillLabel =
+      budgetSummary.budgetCents != null
+        ? budgetSummary.remainingLabel
+        : budgetSummary.spentCents > 0
+          ? budgetSummary.spentLabel
+          : 'Set budget';
     return {
       placed,
       total,
-      budgetLabel: formatPriceCents(budgetCents, currency) ?? '$0',
+      pillLabel,
       progress: total === 0 ? 0 : placed / total,
     };
-  }, [categories, items, order]);
+  }, [categories, items, order, budgetSummary]);
 
   const viewIndex = Math.max(
     0,
@@ -310,7 +299,7 @@ export function MobileDesignerChrome({
             <span className="dgm-pill-progress" aria-hidden>
               <span style={{ width: `${Math.round(checklistMeta.progress * 100)}%` }} />
             </span>
-            <span>{checklistMeta.budgetLabel}</span>
+            <span>{checklistMeta.pillLabel}</span>
           </button>
         </div>
       ) : null}
@@ -397,6 +386,7 @@ export function MobileDesignerChrome({
           itemId={mobile.checklistItemId}
           onOpenItem={mobile.openChecklistItem}
           onCloseItem={mobile.closeChecklistItem}
+          onStartDraw={chrome.startDraw}
         />
       ) : null}
       {mobile.sheet === 'import' || chrome.importOpen ? (

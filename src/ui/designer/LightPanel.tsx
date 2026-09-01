@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { WEATHER_OPTIONS } from '../../lib/environment';
-import { useStore } from '../../store';
+import { useStore, type HangingDecorKind } from '../../store';
 import { PanelSection, PanelShell } from './PanelShell';
 
 /** Time-of-day chips live in Light (not Room look). */
@@ -27,7 +27,7 @@ function nearestTimePreset(hour: number): string {
 export interface LightPanelProps {
   compact?: boolean;
   onClose: () => void;
-  onStartDraw?: (kind: 'lights' | 'leaves') => void;
+  onStartDraw?: (kind: HangingDecorKind) => void;
   onAddLight?: () => void;
 }
 
@@ -194,6 +194,13 @@ export function LightPanel({ compact, onClose, onStartDraw, onAddLight }: LightP
               onClick={() => onStartDraw('leaves')}
             >
               Draw leaves
+            </button>
+            <button
+              type="button"
+              className="dg-footer-btn is-dashed is-grow"
+              onClick={() => onStartDraw('led-strip')}
+            >
+              Draw LED strip
             </button>
           </div>
         ) : null}
