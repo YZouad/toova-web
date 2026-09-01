@@ -15,6 +15,7 @@ import {
   IconPlus,
   IconRoomLook,
   IconSearch,
+  IconUpload,
 } from '../icons';
 import type { DesignerChrome } from '../useDesignerChrome';
 import { MobileChecklistSheet } from './MobileChecklistSheet';
@@ -184,6 +185,15 @@ export function MobileDesignerChrome({
             onClick={() => chrome.setOverlay('cmdk')}
           >
             <IconSearch />
+          </button>
+          <button
+            type="button"
+            className="dgm-icon-btn dgm-icon-btn--upload"
+            data-tour-id="topbar-upload"
+            aria-label="Upload or generate a model"
+            onClick={() => mobile.openImport(null)}
+          >
+            <IconUpload />
           </button>
           <div className="dgm-more">
             <button

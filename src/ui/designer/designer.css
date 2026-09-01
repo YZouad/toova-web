@@ -75,6 +75,7 @@
 .dg-page.is-present .dg-tour-layer,
 .dg-page.is-present .dg-tour,
 .dg-page.is-present .dg-topbar-search,
+.dg-page.is-present .dg-topbar-upload,
 .dg-page.is-present .dg-topbar-chrome { display: none !important; }
 
 @keyframes dgFade {
@@ -215,6 +216,13 @@
   display: flex; align-items: center; gap: 10px;
 }
 
+.dg-topbar-find {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .dg-topbar-search {
   display: flex; align-items: center; gap: 10px;
   width: min(340px, 32vw);
@@ -240,6 +248,26 @@
   color: var(--ink-6);
   flex: none;
 }
+
+.dg-topbar-upload {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  height: 38px;
+  padding: 0 13px;
+  border: 1px dashed var(--accent-line);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  border-radius: var(--dg-pill);
+  font: 600 13px/1 var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.dg-topbar-upload:hover {
+  background: rgba(176, 90, 60, 0.16);
+}
+.dg-topbar-upload svg { display: block; flex: none; }
 
 .dg-viewport {
   position: relative;
@@ -2079,6 +2107,7 @@
   }
   .dg-topbar > * { pointer-events: auto; }
   .dg-topbar-search,
+  .dg-topbar-upload,
   .dg-topbar-save,
   .dg-topbar-btn:not(.is-primary) { display: none; }
   .dg-topbar-icon {

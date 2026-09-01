@@ -2166,11 +2166,11 @@
   z-index: 40;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   padding: 8px var(--dgm-gutter);
 }
 
-.dg-page.is-phone .dgm-icon-btn {
+.dg-page.is-phone .dgm-topbar .dgm-icon-btn {
   width: 44px;
   height: 44px;
   display: grid;
@@ -2185,6 +2185,13 @@
   flex: none;
   padding: 0;
   font: 500 15px/1 var(--font-sans);
+}
+
+.dg-page.is-phone .dgm-icon-btn--upload {
+  border-style: dashed;
+  border-color: var(--accent-line);
+  background: var(--accent-bg);
+  color: var(--accent-text);
 }
 
 .dg-page.is-phone .dgm-save-btn {

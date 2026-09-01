@@ -46,6 +46,7 @@ import {
   IconReset,
   IconRoomLook,
   IconSearch,
+  IconUpload,
 } from './designer/icons';
 import { planBounds } from '../lib/roomGeometry';
 
@@ -505,17 +506,29 @@ export function Designer({
           </div>
 
           {!chrome.importOpen ? (
-            <button
-              type="button"
-              className="dg-topbar-search"
-              ref={searchTriggerRef}
-              onClick={() => chrome.setOverlay('cmdk')}
-              aria-label="Search anything"
-            >
-              <IconSearch />
-              <span className="dg-topbar-search__label">Search pieces, colors, actions</span>
-              <kbd className="dg-topbar-search__kbd">⌘K</kbd>
-            </button>
+            <div className="dg-topbar-find">
+              <button
+                type="button"
+                className="dg-topbar-search"
+                ref={searchTriggerRef}
+                onClick={() => chrome.setOverlay('cmdk')}
+                aria-label="Search anything"
+              >
+                <IconSearch />
+                <span className="dg-topbar-search__label">Search pieces, colors, actions</span>
+                <kbd className="dg-topbar-search__kbd">⌘K</kbd>
+              </button>
+              <button
+                type="button"
+                className="dg-topbar-upload"
+                data-tour-id="topbar-upload"
+                onClick={() => chrome.openImport(null)}
+                aria-label="Upload or generate a model"
+              >
+                <IconUpload />
+                <span>Upload</span>
+              </button>
+            </div>
           ) : null}
 
           <div className="dg-topbar-right dg-topbar-chrome">
