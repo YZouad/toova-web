@@ -266,6 +266,10 @@ interface StoreState {
   ) => void;
   setEmitterEnabled: (id: string, enabled: boolean) => void;
   setEmitterConfig: (id: string, patch: Partial<EmitterConfig>) => void;
+  /** Toggle recessed cans, procedural lamps, free lights, and string lights. */
+  toggleRoomFixtures: (on: boolean) => void;
+  /** Whether room fixtures are currently considered "on". */
+  roomFixturesLit: () => boolean;
   registerImportedNaturalSize: (id: string, natural: [number, number, number]) => void;
   setImportedSize: (id: string, size: [number, number, number]) => void;
   /**
@@ -661,6 +665,9 @@ export const useStore = create<StoreState>((set, get) => ({
             ? DEFAULT_RUG_COLOR
             : undefined),
       attachmentKey: newAttachmentKey(),
+      ...(kind === 'lamp'
+        ? { emitter: { ...DEFAULT_EMITTER, enabled: false, intensity: 1.8, range: 90 } }
+        : {}),
     };
     set((s) => ({
       items: { ...s.items, [id]: item },
@@ -980,6 +987,58 @@ export const useStore = create<StoreState>((set, get) => ({
         },
       };
     }),
+
+  toggleRoomFixtures: (on) => {
+    set((s) => {
+      const nextItems = { ...s.items };
+      for (const id of s.order) {
+        const it = nextItems[id];
+        if (!it) continue;
+        if (it.kind === 'light' || it.kind === 'lamp' || it.emitter) {
+          const base = it.emitter ?? {
+            ...DEFAULT_EMITTER,
+            enabled: false,
+            intensity: it.kind === 'lamp' ? 1.8 : DEFAULT_EMITTER.intensity,
+            range: it.kind === 'lamp' ? 90 : DEFAULT_EMITTER.range,
+          };
+          nextItems[id] = { ...it, emitter: { ...base, enabled: on } };
+        }
+        if (it.kind === 'hanging' && it.hanging?.kind === 'lights') {
+          nextItems[id] = {
+            ...it,
+            hanging: {
+              ...it.hanging,
+              lightsEnabled: on,
+              lightIntensity: on
+                ? Math.max(it.hanging.lightIntensity || DEFAULT_LIGHT_CONFIG.lightIntensity, 0.8)
+                : it.hanging.lightIntensity,
+            },
+          };
+        }
+      }
+      return {
+        items: nextItems,
+        environment: {
+          ...s.environment,
+          appearance: { ...s.environment.appearance, recessedLights: on },
+        },
+      };
+    });
+  },
+
+  roomFixturesLit: () => {
+    const s = get();
+    if (s.environment.appearance.recessedLights) return true;
+    for (const id of s.order) {
+      const it = s.items[id];
+      if (!it) continue;
+      if (it.emitter?.enabled) return true;
+      if (it.kind === 'hanging' && it.hanging?.kind === 'lights' && it.hanging.lightsEnabled !== false) {
+        return true;
+      }
+    }
+    return false;
+  },
 
   registerImportedNaturalSize: (id, natural) =>
     set((s) => {

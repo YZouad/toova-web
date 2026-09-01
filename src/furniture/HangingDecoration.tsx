@@ -327,9 +327,12 @@ function HangingVisual({
           path={localPath}
           density={config.density}
           palette={config.palette}
-          lightIntensity={config.lightIntensity}
+          lightIntensity={
+            config.lightsEnabled === false ? 0 : config.lightIntensity
+          }
           lightRange={config.lightRange}
           qualityTier={qualityTier}
+          lightsOn={config.lightsEnabled !== false}
         />
       )}
 
@@ -594,6 +597,7 @@ function LedInstances({
   lightIntensity,
   lightRange,
   qualityTier,
+  lightsOn = true,
 }: {
   path: Vec3[];
   density: number;
@@ -601,13 +605,15 @@ function LedInstances({
   lightIntensity: number;
   lightRange: number;
   qualityTier: string;
+  lightsOn?: boolean;
 }) {
   const exposure = useStore((s) => s.environment.exposure);
   const spacing = ledSpacingInches(density);
   const samples = useMemo(() => sampleAlongPath(path, spacing), [path, spacing]);
   const meshRef = useRef<THREE.InstancedMesh>(null!);
   const haloRef = useRef<THREE.InstancedMesh>(null!);
-  const glow = ledGlowFactor(lightIntensity);
+  const effectiveIntensity = lightsOn ? lightIntensity : 0;
+  const glow = ledGlowFactor(Math.max(0.05, effectiveIntensity));
 
   useEffect(() => {
     const mesh = meshRef.current;
@@ -713,23 +719,28 @@ function LedInstances({
         frustumCulled={false}
         renderOrder={2}
       />
-      {lightAnchors.map((anchor, i) => {
-        const col = paletteColorAt(palette, anchor.colorIndex);
-        const perLightIntensity =
-          (lightIntensity * (qualityTier === 'low' ? 1.8 : 1.35) * EMITTER_LIGHT_POWER * exposureMul) /
-          Math.max(1, Math.sqrt(lightAnchors.length));
-        return (
-          <pointLight
-            key={i}
-            position={anchor.position}
-            color={col}
-            intensity={perLightIntensity}
-            distance={Math.max(1, lightRange)}
-            decay={1.35}
-            castShadow={false}
-          />
-        );
-      })}
+      {lightsOn
+        ? lightAnchors.map((anchor, i) => {
+            const col = paletteColorAt(palette, anchor.colorIndex);
+            const perLightIntensity =
+              (effectiveIntensity *
+                (qualityTier === 'low' ? 1.8 : 1.35) *
+                EMITTER_LIGHT_POWER *
+                exposureMul) /
+              Math.max(1, Math.sqrt(lightAnchors.length));
+            return (
+              <pointLight
+                key={i}
+                position={anchor.position}
+                color={col}
+                intensity={perLightIntensity}
+                distance={Math.max(1, lightRange)}
+                decay={1.35}
+                castShadow={false}
+              />
+            );
+          })
+        : null}
     </>
   );
 }

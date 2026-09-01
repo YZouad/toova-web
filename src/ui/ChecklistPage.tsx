@@ -14,13 +14,7 @@ import { deleteCuratedProduct } from '../lib/shoppingCatalogAdmin';
 import { ProductDrawer } from './ProductDrawer';
 import { ChecklistProductModal } from './ChecklistProductModal';
 import { ChecklistCategoryModal } from './ChecklistCategoryModal';
-import { useStore } from '../store';
-import type { FurnitureKind } from '../furniture/registry';
-import { FURNITURE } from '../furniture/registry';
-import { resolveBrowsableModelUrl } from '../lib/modelStorage';
-import { parseInchDims } from '../lib/importedItemSize';
-import { supabase } from '../lib/supabase';
-import { recordCatalogDownload } from '../lib/catalogEngagement';
+import { placeCuratedProduct } from '../lib/placeCuratedProduct';
 import {
   Banner,
   Button,
@@ -64,7 +58,6 @@ export function ChecklistPage({
     list,
   } = useShoppingCatalogContext();
   const { user } = useAuth();
-  const addItem = useStore((s) => s.addItem);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -128,39 +121,9 @@ export function ChecklistPage({
   const placeProduct = useCallback(
     async (product: CuratedProduct) => {
       await addToList(product.id);
-      if (product.placeBuiltinKind && product.placeBuiltinKind in FURNITURE) {
-        addItem(product.placeBuiltinKind as Exclude<FurnitureKind, 'imported' | 'hanging' | 'light'>, {
-          label: product.name,
-          curatedProductId: product.id,
-        });
-        return;
-      }
-      if (product.placeCatalogKind) {
-        const { data, error: qErr } = await supabase
-          .from('furniture_catalog')
-          .select('kind,label,model_url,width_in,height_in,depth_in')
-          .eq('kind', product.placeCatalogKind)
-          .maybeSingle();
-        if (qErr || !data?.model_url) return;
-        const path = String(data.model_url).trim();
-        const signed = await resolveBrowsableModelUrl(path);
-        if (!signed) return;
-        const catalogSizeIn = parseInchDims(
-          Number(data.width_in),
-          Number(data.height_in),
-          Number(data.depth_in),
-        );
-        addItem('imported', {
-          url: signed,
-          storagePath: path,
-          label: product.name || String(data.label),
-          catalogSizeIn: catalogSizeIn ?? undefined,
-          curatedProductId: product.id,
-        });
-        void recordCatalogDownload(String(data.kind)).catch(() => {});
-      }
+      await placeCuratedProduct(product);
     },
-    [addItem, addToList],
+    [addToList],
   );
 
   const galleryItems = activeGroup ? subcategories : groups;

@@ -125,6 +125,59 @@ export async function fetchGalleryCatalog(
   return { rows, total };
 }
 
+export interface DesignerCatalogSearchHit extends GalleryCatalogRow {
+  source: 'toova' | 'community' | 'mine';
+  relevance: number;
+}
+
+/** Fuzzy multi-source catalog search for the designer command palette. */
+export async function searchDesignerCatalog(input: {
+  query: string;
+  terms?: string[];
+  limit?: number;
+  includeMine?: boolean;
+}): Promise<DesignerCatalogSearchHit[]> {
+  const q = input.query.trim();
+  if (!q) return [];
+
+  const { data, error } = await supabase.rpc('search_designer_catalog', {
+    p_query: q,
+    p_terms: input.terms?.length ? input.terms : null,
+    p_limit: input.limit ?? 12,
+    p_include_mine: input.includeMine !== false,
+  });
+
+  if (error) {
+    // Fallback: browse RPC Toova-only when migration not applied yet.
+    if (/could not find the function|schema cache|does not exist/i.test(error.message)) {
+      const fallback = await fetchGalleryCatalog({
+        source: 'toova',
+        query: q,
+        limit: input.limit ?? 12,
+        sort: 'hot',
+      });
+      return fallback.rows.map((row) => ({
+        ...row,
+        source: 'toova' as const,
+        relevance: 50,
+      }));
+    }
+    throw new Error(error.message);
+  }
+
+  return (data ?? []).map((r: Record<string, unknown>) => {
+    const base = mapRow({ ...r, total_count: 0 });
+    const srcRaw = String(r.source ?? 'community');
+    const source: DesignerCatalogSearchHit['source'] =
+      srcRaw === 'toova' || srcRaw === 'mine' ? srcRaw : 'community';
+    return {
+      ...base,
+      source,
+      relevance: typeof r.relevance === 'number' ? r.relevance : Number(r.relevance) || 0,
+    };
+  });
+}
+
 export async function updateCatalogModel(input: {
   kind: string;
   label?: string;

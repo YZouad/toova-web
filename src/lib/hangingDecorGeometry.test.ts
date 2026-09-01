@@ -145,7 +145,8 @@ describe('hangingDecorGeometry', () => {
       lightIntensity: 1.2,
       lightRange: 56,
     };
-    expect(parseHangingConfig(good)).toMatchObject({ kind: 'lights', version: 1 });
+    expect(parseHangingConfig(good)).toMatchObject({ kind: 'lights', version: 1, lightsEnabled: true });
+    expect(parseHangingConfig({ ...good, lightsEnabled: false })).toMatchObject({ lightsEnabled: false });
     expect(parseHangingConfig(null)).toBeNull();
     expect(parseHangingConfig({ version: 1, kind: 'lights', anchors: [] })).toBeNull();
     expect(parseHangingConfig({ ...good, version: 99 })).toBeNull();

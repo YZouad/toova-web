@@ -1,43 +1,54 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRoomWorkspace } from '../context/RoomWorkspaceContext';
 import { useAuth } from '../hooks/useAuth';
 import { useRoomSave } from '../hooks/useRoomLayout';
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
-import { recordCatalogDownload, shouldRecordCatalogDownload } from '../lib/catalogEngagement';
-import { proportionalSizesFromMaxSide } from '../lib/uniformItemSize';
-import { newPillowId } from '../lib/bedding/config';
 import { supabase } from '../lib/supabase';
-import { lampArmMaxForRoom, lampPartsFromSize, lampSizeFromArmHeight, LAMP_ARM_MIN } from '../furniture/lampGeometry';
-import { DEFAULT_SHELF_COLOR, SHELF_COLOR_SWATCHES, type FurnitureKind } from '../furniture/registry';
-import { galleryModelImportedSize, galleryModelPlacesAsImport, isProceduralBuiltinKind } from '../lib/placeGalleryModel';
 import { Scene, type SceneHandle } from '../scene/Scene';
 import { useStore, type Item, type CameraPresetId } from '../store';
-import { planBounds } from '../lib/roomGeometry';
 import { FeedbackModal } from './FeedbackModal';
-import { ImportModelModal } from './ImportModelModal';
-import { DesignerGalleryPanel, pushRecentKind } from './DesignerGalleryPanel';
-import { SceneCheckoutPanel } from './SceneCheckoutPanel';
-import { AtmosphereStrip } from './AtmosphereStrip';
-import { LookDrawer, PaintColorPicker } from './LookDrawer';
 import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
-import { HangingDecorToolRail } from './HangingDecorToolRail';
-import { HangingDecorPanel } from './HangingDecorPanel';
-import { BeddingPanel } from './BeddingPanel';
-import { LightDecorPanel } from './LightDecorPanel';
+import { ModelDetailModal } from './ModelDetailModal';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
-import { DEFAULT_RUG_COLOR, isChecklistRug } from '../lib/checklistPublicGlbs';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
-import { Button } from './kit/Button';
-import { Checkbox } from './kit/Checkbox';
-import { MonoMeta } from './kit/MonoMeta';
-import { RangeControl } from './kit/RangeControl';
-import { Rule } from './kit/Rule';
-import { Tabs } from './kit/Tabs';
+import './designer/designer.css';
+import './designer/mobile/mobile-designer.css';
+import { useDesignerChrome } from './designer/useDesignerChrome';
+import { VIEW_PRESETS } from './designer/chromeTypes';
+import type { CatalogModel } from './designer/chromeTypes';
+import { LibraryPanel } from './designer/LibraryPanel';
+import { LookPanel } from './designer/LookPanel';
+import { LightPanel } from './designer/LightPanel';
+import { PiecesPanel } from './designer/PiecesPanel';
+import { InspectorPanel } from './designer/InspectorPanel';
+import { ChecklistTicker } from './designer/ChecklistTicker';
+import { DrawBanner } from './designer/DrawBanner';
+import { CommandPalette } from './designer/CommandPalette';
+import { buildDesignerCommands } from './designer/commandPaletteCommands';
+import { KeysOverlay } from './designer/KeysOverlay';
+import { TourCard } from './designer/TourCard';
+import { ContextBar } from './designer/ContextBar';
+import { ImportFlow } from './designer/ImportFlow';
+import { MobileDesignerChrome } from './designer/mobile/MobileDesignerChrome';
+import { placeFromCatalog } from './designer/placeCatalogModel';
+import {
+  IconBack,
+  IconEye,
+  IconLight,
+  IconPieces,
+  IconPlay,
+  IconPlus,
+  IconReset,
+  IconRoomLook,
+  IconSearch,
+  IconUpload,
+} from './designer/icons';
+import { planBounds } from '../lib/roomGeometry';
 
 function roomDirtyFingerprint(name: string): string {
   const { items, order, environment, roomGeometry } = useStore.getState();
@@ -50,30 +61,11 @@ function roomDirtyFingerprint(name: string): string {
   });
 }
 
-const KIND_COLORS: Record<string, string> = {
-  bed: '#C9B391',
-  dresser: '#B08C5F',
-  bookshelf: '#A67C52',
-  shelf: '#B08968',
-  wardrobe: '#A88457',
-  desk: '#B5946C',
-  chair: '#CBB28F',
-  nightstand: '#C0A47A',
-  lamp: '#D4C4A0',
-  imported: '#7E8A60',
-  hanging: '#8A8478',
-  light: '#E8C27A',
-};
-
-function getBaseSize(
-  ref: MutableRefObject<Map<string, [number, number, number]>>,
-  id: string,
-  size: [number, number, number],
-): [number, number, number] {
-  if (!ref.current.has(id)) {
-    ref.current.set(id, [size[0], size[1], size[2]]);
-  }
-  return ref.current.get(id)!;
+function detailLabelFor(kind: string | undefined): string {
+  if (kind === 'bed') return 'Bedding & details';
+  if (kind === 'hanging') return 'Path & bulbs';
+  if (kind === 'light') return 'Light settings';
+  return 'Edit details';
 }
 
 interface DesignerProps {
@@ -85,69 +77,41 @@ interface DesignerProps {
   onRequestSaveAuth?: () => void;
 }
 
-export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = false, onRequestSaveAuth }: DesignerProps) {
-
+export function Designer({
+  onBack,
+  onEditFloorPlan,
+  onOpenChecklist,
+  isAdmin = false,
+  onRequestSaveAuth,
+}: DesignerProps) {
   const { user } = useAuth();
   const { workspace } = useRoomWorkspace();
   const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
   const sceneRef = useRef<SceneHandle>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
-  const baseSizeRef = useRef<Map<string, [number, number, number]>>(new Map());
-  const meshSizedRef = useRef<Set<string>>(new Set());
-  const [shareOpen, setShareOpen] = useState(false);
-
-  const selectedId = useStore((s) => s.selectedId);
-  const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
-  const addItem = useStore((s) => s.addItem);
-  const removeItem = useStore((s) => s.removeItem);
-  const updateRotation = useStore((s) => s.updateRotation);
-  const setItemSize = useStore((s) => s.setItemSize);
-  const setItemElevation = useStore((s) => s.setItemElevation);
-  const setWallMounted = useStore((s) => s.setWallMounted);
-  const setBedHeight = useStore((s) => s.setBedHeight);
-  const setBeddingConfig = useStore((s) => s.setBeddingConfig);
-  const setTintColor = useStore((s) => s.setTintColor);
-
-  const updatePosition = useStore((s) => s.updatePosition);
-
+  const pageRef = useRef<HTMLDivElement>(null);
+  const chrome = useDesignerChrome();
   const roomGeometry = useStore((s) => s.roomGeometry);
-  const roomBounds = planBounds(roomGeometry);
-  const maxItemFootprint = Math.max(roomBounds.width, roomBounds.depth, 200);
 
-  const [roomName, setRoomName] = useState(workspace?.name ?? '');
-  const [savedLabel, setSavedLabel] = useState('Saved');
-  const [forkMeta, setForkMeta] = useState<RoomAttributionPayload | null>(null);
-  const [paletteOpen, setPaletteOpen] = useState(false);
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [beddingOpen, setBeddingOpen] = useState(false);
-  const [importOpen, setImportOpen] = useState(false);
-  const [importTab, setImportTab] = useState<'upload' | 'generate' | 'poster'>('generate');
-  const [sizeMode, setSizeMode] = useState<'uniform' | 'axis'>('uniform');
-  const [lookOpen, setLookOpen] = useState(false);
-  const [envOpen, setEnvOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const dirtyBaselineRef = useRef('');
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [roomName, setRoomName] = useState(workspace?.name ?? '');
+  const [savedLabel, setSavedLabel] = useState('Saved');
+  const [forkMeta, setForkMeta] = useState<RoomAttributionPayload | null>(null);
+  const [cameraPreset, setCameraPreset] = useState<CameraPresetId>('corner');
+  const [detailModel, setDetailModel] = useState<GalleryModel | null>(null);
 
-  const [feedbackOpen, setFeedbackOpen] = useState(false);
-  const [galleryRefreshKey, setGalleryRefreshKey] = useState(0);
+  const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
+  const addLightSource = useStore((s) => s.addLightSource);
 
   useEffect(() => {
     setRoomName(workspace?.name ?? '');
   }, [workspace?.name]);
-
-  useEffect(() => {
-    if (item?.kind === 'bed') {
-      setBeddingOpen(true);
-      setAdvancedOpen(false);
-      setLookOpen(false);
-    } else {
-      setBeddingOpen(false);
-    }
-  }, [selectedId, item?.kind]);
 
   useEffect(() => {
     dirtyBaselineRef.current = roomDirtyFingerprint(workspace?.name ?? '');
@@ -182,68 +146,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
     };
   }, [workspace?.id]);
 
-  useEffect(() => {
-    if (!item || item.kind !== 'imported' || !item.importedNaturalSize) return;
-    if (meshSizedRef.current.has(item.id)) return;
-    meshSizedRef.current.add(item.id);
-    baseSizeRef.current.set(item.id, [item.size[0], item.size[1], item.size[2]]);
-  }, [item]);
-
-  useEffect(() => {
-    if (item?.kind === 'light' || item?.kind === 'shelf') setAdvancedOpen(true);
-  }, [selectedId, item?.kind]);
-
-  const addFromGallery = useCallback(
-    (model: GalleryModel) => {
-      if (isProceduralBuiltinKind(model.kind)) {
-        const id = addItem(model.kind as FurnitureKind);
-        const placed = useStore.getState().items[id];
-        if (placed) {
-          baseSizeRef.current.set(id, [...placed.size] as [number, number, number]);
-        }
-      } else if (galleryModelPlacesAsImport(model)) {
-        const dims = galleryModelImportedSize(model);
-        const id = addItem('imported', {
-          url: model.signedUrl ?? undefined,
-          storagePath: model.storagePath || undefined,
-          label: model.label,
-          size: dims,
-          catalogSizeIn: dims,
-        });
-        const placed = useStore.getState().items[id];
-        baseSizeRef.current.set(id, placed ? [...placed.size] as [number, number, number] : dims);
-        if (shouldRecordCatalogDownload(model, user?.id)) {
-          void recordCatalogDownload(model.kind).catch(() => {
-            /* best-effort */
-          });
-        }
-      }
-      pushRecentKind(model.kind);
-      setPaletteOpen(false);
-    },
-    [addItem, user?.id],
-  );
-
-  const uniformBase = item
-    ? getBaseSize(baseSizeRef, item.id, item.size)
-    : ([24, 24, 24] as [number, number, number]);
-
-  const uniformPct = item
-    ? Math.round(
-        (Math.max(item.size[0], item.size[1], item.size[2]) /
-          Math.max(...uniformBase)) *
-          100,
-      ) || 100
-    : 100;
-
-  const handleUniformChange = (pct: number) => {
-    if (!item) return;
-    const base = getBaseSize(baseSizeRef, item.id, item.size);
-    const maxBase = Math.max(base[0], base[1], base[2]);
-    const target = (maxBase * pct) / 100;
-    setItemSize(item.id, proportionalSizesFromMaxSide(base, target));
-  };
-
   const handleSave = useCallback(async () => {
     if (!workspace?.id) return;
     if (onRequestSaveAuth) {
@@ -259,7 +161,6 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
     setDirty(false);
     setSavedLabel('Saved just now');
 
-    // Best-effort OG thumbnail (floor-plan card) — never fail the save.
     if (user?.id) {
       try {
         const { items, order, roomGeometry } = useStore.getState();
@@ -320,7 +221,7 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
       setLeaveConfirmOpen(false);
       onBack();
     } catch {
-      // keep dialog open; saveError banner surfaces the failure
+      /* keep dialog open */
     } finally {
       setLeaveSaving(false);
     }
@@ -330,527 +231,677 @@ export function Designer({ onBack, onEditFloorPlan, onOpenChecklist, isAdmin = f
     if (!leaveSaving) setLeaveConfirmOpen(false);
   }, [leaveSaving]);
 
-  const duplicateSelected = () => {
-    if (!item) return;
-    const offset = 12;
-    let newId: string;
-    if (item.kind === 'imported') {
-      newId = addItem('imported', {
-        url: item.importedUrl ?? undefined,
-        storagePath: item.importedStoragePath,
-        label: item.label,
-        size: [...item.size] as [number, number, number],
-        catalogSizeIn: item.catalogSizeIn
-          ? ([...item.catalogSizeIn] as [number, number, number])
-          : ([...item.size] as [number, number, number]),
-        tintColor: item.tintColor,
-      });
-    } else {
-      newId = addItem(item.kind, {
-        tintColor: item.tintColor,
-      });
-      setItemSize(newId, [...item.size] as [number, number, number]);
-    }
-    updateRotation(newId, item.rotationY);
-    updatePosition(newId, [item.position[0] + offset, item.position[1], item.position[2] + offset]);
-    if (item.wallMounted) setWallMounted(newId, true);
-    if (item.kind === 'bed') {
-      if (item.bedLegHeight != null) setBedHeight(newId, item.bedLegHeight);
-      if (item.beddingConfig) {
-        setBeddingConfig(newId, {
-          topper: { ...item.beddingConfig.topper },
-          sheets: { ...item.beddingConfig.sheets },
-          comforter: { ...item.beddingConfig.comforter },
-          pillows: {
-            enabled: item.beddingConfig.pillows.enabled,
-            items: item.beddingConfig.pillows.items.map((p) => ({
-              ...p,
-              id: newPillowId(),
-            })),
-          },
-        });
-      }
-    }
-  };
+  const goPreset = useCallback((id: CameraPresetId) => {
+    setCameraPreset(id);
+    sceneRef.current?.goToPreset(id);
+  }, []);
 
-  const rotDeg = item ? Math.round(((item.rotationY * 180) / Math.PI) % 360) : 0;
-  const maxElevation = item ? Math.max(0, roomGeometry.height - item.size[1]) : 0;
-  const lampParts = item?.kind === 'lamp' ? lampPartsFromSize(item.size) : null;
-  const lampArmMax = item?.kind === 'lamp' ? lampArmMaxForRoom(item.size, roomGeometry.height) : LAMP_ARM_MIN;
+  const openModel = useCallback((model: CatalogModel) => {
+    setDetailModel(model);
+  }, []);
+
+  const placeModel = useCallback(
+    (model: GalleryModel) => {
+      placeFromCatalog(model, user?.id);
+      setDetailModel(null);
+      chrome.closePanels();
+    },
+    [user?.id, chrome],
+  );
+
+  const inspectorDetailLabel = detailLabelFor(chrome.selectedItem?.kind);
+  const searchTriggerRef = useRef<HTMLButtonElement>(null);
+  const fixturesEpoch = useStore(
+    (s) =>
+      `${s.environment.appearance.recessedLights}:${Object.values(s.items)
+        .map((it) => `${it.id}:${it.emitter?.enabled}:${it.hanging?.lightsEnabled}`)
+        .join(',')}`,
+  );
+
+  const commands = useMemo(
+    () =>
+      buildDesignerCommands({
+        setPanel: chrome.setPanel,
+        openInspector: chrome.openInspector,
+        openImport: () => chrome.openImport(null),
+        togglePresent: chrome.togglePresent,
+        startDraw: chrome.startDraw,
+        addLightSource: () => addLightSource(),
+        handleSave: () => void handleSave(),
+        onOpenChecklist,
+        onEditFloorPlan,
+        openShare: workspace?.isOwner ? () => setShareOpen(true) : undefined,
+        openExport: () => setExportOpen(true),
+        openFeedback: () => setFeedbackOpen(true),
+        openKeys: () => chrome.setOverlay('keys'),
+        restartTour: chrome.restartTour,
+        goPreset,
+        resetCamera: () => {
+          sceneRef.current?.resetCamera();
+          setCameraPreset('corner');
+        },
+        selectedId: chrome.selectedId,
+        saveLabel: onRequestSaveAuth ? 'Save design…' : 'Save room',
+        isOwner: !!workspace?.isOwner,
+      }),
+    [
+      chrome.setPanel,
+      chrome.openInspector,
+      chrome.openImport,
+      chrome.togglePresent,
+      chrome.startDraw,
+      chrome.setOverlay,
+      chrome.restartTour,
+      chrome.selectedId,
+      addLightSource,
+      handleSave,
+      onOpenChecklist,
+      onEditFloorPlan,
+      workspace?.isOwner,
+      goPreset,
+      onRequestSaveAuth,
+      fixturesEpoch,
+    ],
+  );
+
+  // Global shortcuts for designer chrome
+  useEffect(() => {
+    const isEditable = (t: EventTarget | null) => {
+      if (!(t instanceof HTMLElement)) return false;
+      if (t.isContentEditable) return true;
+      const tag = t.tagName;
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      const meta = e.metaKey || e.ctrlKey;
+      const key = e.key;
+      const lower = key.length === 1 ? key.toLowerCase() : key;
+      const editable = isEditable(e.target);
+
+      // ⌘K works even from fields (palette is search).
+      if (meta && lower === 'k') {
+        e.preventDefault();
+        if (chrome.present) return;
+        chrome.setOverlay(chrome.overlay === 'cmdk' ? null : 'cmdk');
+        return;
+      }
+
+      if (key === 'Escape') {
+        if (editable && e.target instanceof HTMLElement) e.target.blur();
+        if (chrome.importOpen) {
+          chrome.closeImport();
+          return;
+        }
+        if (chrome.overlay) {
+          chrome.setOverlay(null);
+          return;
+        }
+        if (chrome.present) {
+          chrome.setPresent(false);
+          return;
+        }
+        if (chrome.panel) {
+          chrome.closePanels();
+          return;
+        }
+        if (chrome.radialOpen) {
+          chrome.setRadialOpen(false);
+          return;
+        }
+        if (chrome.selectedId) {
+          chrome.clearSelection();
+          return;
+        }
+        if (chrome.hangingDraft) {
+          cancelHangingDraft();
+        }
+        return;
+      }
+
+      // Don't steal keystrokes from real text fields (including room rename).
+      if (editable) return;
+
+      if (chrome.present || chrome.importOpen || chrome.overlay === 'cmdk') return;
+      if (e.altKey) return;
+
+      // ? → shortcuts overlay
+      if (key === '?' || (e.code === 'Slash' && e.shiftKey)) {
+        e.preventDefault();
+        chrome.setOverlay(chrome.overlay === 'keys' ? null : 'keys');
+        return;
+      }
+
+      if (meta) return;
+
+      if (chrome.overlay === 'keys') return;
+
+      if (e.shiftKey && lower === 's') {
+        e.preventDefault();
+        if (workspace?.isOwner) {
+          chrome.setOverlay(null);
+          setShareOpen(true);
+        }
+        return;
+      }
+      if (e.shiftKey && lower === 'e') {
+        e.preventDefault();
+        chrome.setOverlay(null);
+        setExportOpen(true);
+        return;
+      }
+      if (e.shiftKey) return;
+
+      if (lower === 'a') {
+        e.preventDefault();
+        chrome.setPanel('add');
+        return;
+      }
+      if (lower === 'l') {
+        e.preventDefault();
+        const s = useStore.getState();
+        s.toggleRoomFixtures(!s.roomFixturesLit());
+        return;
+      }
+      if (lower === 'p') {
+        e.preventDefault();
+        chrome.togglePresent();
+        return;
+      }
+      if (lower === 'f' && onEditFloorPlan) {
+        e.preventDefault();
+        chrome.setOverlay(null);
+        onEditFloorPlan();
+        return;
+      }
+      if (key === 'Enter' && chrome.selectedId) {
+        e.preventDefault();
+        chrome.openInspector();
+        return;
+      }
+      if (key === '0') {
+        e.preventDefault();
+        sceneRef.current?.resetCamera();
+        setCameraPreset('corner');
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [cancelHangingDraft, chrome, onEditFloorPlan, workspace?.isOwner]);
+
+  // Clicking the viewport takes focus off the room-name field so shortcuts work.
+  useEffect(() => {
+    const el = canvasWrapRef.current;
+    if (!el) return;
+    const onPointerDown = () => {
+      const ae = document.activeElement;
+      if (ae instanceof HTMLElement && ae.classList.contains('dg-topbar-title__name')) {
+        ae.blur();
+      }
+    };
+    el.addEventListener('pointerdown', onPointerDown);
+    return () => el.removeEventListener('pointerdown', onPointerDown);
+  }, []);
+
+  const pageClass = [
+    'dg-page',
+    chrome.compact ? 'is-compact is-phone' : '',
+    chrome.present ? 'is-present' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  const isPhone = chrome.compact;
 
   return (
-    <div className="designer-page">
-      <header className="designer-topbar">
-        <div className="designer-topbar-start">
-          <button type="button" className="designer-topbar-btn" onClick={requestLeave}>← Rooms</button>
-          <div className="designer-topbar-divider" />
-          <div>
-            <input
-              className="designer-room-name"
-              value={roomName}
-              onChange={(e) => setRoomName(e.target.value)}
-              onBlur={() => void handleSave()}
-            />
-            {forkMeta?.attribution?.visible ? (
-              <div className="room-attribution" style={{ paddingLeft: 6 }}>
-                Forked from{' '}
-                <button
-                  type="button"
-                  className="share-handle-link"
-                  onClick={() => {
-                    const a = forkMeta.attribution!;
-                    if (a.owner_handle && a.room_id) {
-                      navigate(publicRoomPath(a.owner_handle, a.room_id));
-                    } else if (a.owner_handle) {
-                      navigate(profilePath(a.owner_handle));
-                    }
-                  }}
-                >
-                  {forkMeta.attribution.room_name}
-                </button>
-                {' '}by {forkMeta.attribution.owner_display}
-              </div>
-            ) : forkMeta?.forked_from ? (
-              <div className="room-attribution" style={{ paddingLeft: 6 }}>Copied room</div>
-            ) : null}
-          </div>
-        </div>
-        <div className="designer-topbar-end">
-          <div className="designer-topbar-end__desktop">
-            <Button size="sm" variant="outline" onClick={() => setFeedbackOpen(true)}>
-              Feedback
-            </Button>
-            {onEditFloorPlan ? (
-              <Button size="sm" variant="outline" onClick={onEditFloorPlan}>
-                Edit floor plan
-              </Button>
-            ) : null}
-            <Button size="sm" variant="outline" onClick={onOpenChecklist}>
-              Checklist
-            </Button>
-            {workspace?.isOwner ? (
-              <Button size="sm" variant="outline" onClick={() => setShareOpen(true)}>
-                Share
-              </Button>
-            ) : null}
-            <Button size="sm" variant="outline" onClick={() => sceneRef.current?.resetCamera()}>
-              Reset view
-            </Button>
-          </div>
-          <MonoMeta size="sm" tone="dense" className="designer-save-status">
-            {saving ? 'Saving…' : savedLabel}
-          </MonoMeta>
-          <Button size="sm" disabled={saving} onClick={() => void handleSave()}>
-            {onRequestSaveAuth ? 'Save design' : 'Save'}
-          </Button>
-          <div className="designer-topbar-more">
-            <button
-              type="button"
-              className="designer-topbar-btn designer-topbar-more__toggle"
-              aria-expanded={mobileMenuOpen}
-              aria-label={mobileMenuOpen ? 'Close actions' : 'More actions'}
-              onClick={() => setMobileMenuOpen((v) => !v)}
-            >
-              ···
+    <div className={pageClass} ref={pageRef}>
+      {!chrome.present && !isPhone ? (
+        <header className="dg-topbar">
+          <div className="dg-topbar-left">
+            <button type="button" className="dg-topbar-icon" onClick={requestLeave} aria-label="Back to rooms">
+              <IconBack />
             </button>
-            {mobileMenuOpen ? (
-              <>
-                <button
-                  type="button"
-                  className="designer-topbar-more__backdrop"
-                  aria-label="Close actions"
-                  onClick={() => setMobileMenuOpen(false)}
-                />
-                <div className="designer-topbar-more__menu" role="menu">
+            <div className="dg-rule--v" aria-hidden />
+            <div className="dg-topbar-title">
+              <input
+                className="dg-topbar-title__name"
+                value={roomName}
+                onChange={(e) => setRoomName(e.target.value)}
+                onBlur={() => void handleSave()}
+                aria-label="Room name"
+              />
+              {forkMeta?.attribution?.visible ? (
+                <div className="dg-topbar-title__meta">
+                  Forked from{' '}
                   <button
                     type="button"
-                    role="menuitem"
+                    className="dg-link"
                     onClick={() => {
-                      setFeedbackOpen(true);
-                      setMobileMenuOpen(false);
+                      const a = forkMeta.attribution!;
+                      if (a.owner_handle && a.room_id) {
+                        navigate(publicRoomPath(a.owner_handle, a.room_id));
+                      } else if (a.owner_handle) {
+                        navigate(profilePath(a.owner_handle));
+                      }
                     }}
                   >
-                    Feedback
+                    {forkMeta.attribution.room_name}
                   </button>
+                  {' '}by {forkMeta.attribution.owner_display}
+                </div>
+              ) : (
+                <div className="dg-topbar-title__meta">
+                  {(() => {
+                    const b = planBounds(roomGeometry);
+                    const fmt = (inches: number) => {
+                      const ft = Math.floor(inches / 12);
+                      const inn = Math.round(inches % 12);
+                      return `${ft}′${inn}″`;
+                    };
+                    return `${fmt(b.width)} × ${fmt(b.depth)} · room`;
+                  })()}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {!chrome.importOpen ? (
+            <div className="dg-topbar-find">
+              <button
+                type="button"
+                className="dg-topbar-search"
+                ref={searchTriggerRef}
+                onClick={() => chrome.setOverlay('cmdk')}
+                aria-label="Search anything"
+              >
+                <IconSearch />
+                <span className="dg-topbar-search__label">Search pieces, colors, actions</span>
+                <kbd className="dg-topbar-search__kbd">⌘K</kbd>
+              </button>
+              <button
+                type="button"
+                className="dg-topbar-upload"
+                data-tour-id="topbar-upload"
+                onClick={() => chrome.openImport(null)}
+                aria-label="Upload or generate a model"
+              >
+                <IconUpload />
+                <span>Upload</span>
+              </button>
+            </div>
+          ) : null}
+
+          <div className="dg-topbar-right dg-topbar-chrome">
+            <div className="dg-topbar-save-group" data-tour-id="topbar-save">
+              <span className="dg-topbar-save" aria-live="polite">
+                {saving ? 'Saving…' : savedLabel}
+              </span>
+              <button
+                type="button"
+                className="dg-topbar-btn"
+                disabled={saving}
+                onClick={() => void handleSave()}
+              >
+                {onRequestSaveAuth ? 'Save design' : 'Save'}
+              </button>
+              <button
+                type="button"
+                className="dg-topbar-btn is-primary"
+                onClick={() => chrome.togglePresent()}
+              >
+                <IconPlay />
+                Present
+              </button>
+            </div>
+            <div className="dg-rule--v" aria-hidden />
+            <div className="dg-more">
+              <button
+                type="button"
+                className="dg-topbar-icon"
+                aria-label="More actions"
+                aria-expanded={chrome.overlay === 'more'}
+                onClick={() => chrome.setOverlay(chrome.overlay === 'more' ? null : 'more')}
+              >
+                ···
+              </button>
+              {chrome.overlay === 'more' ? (
+                <div className="dg-more-menu" role="menu">
+                  <div className="dg-more-menu__section">Room</div>
                   {onEditFloorPlan ? (
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        onEditFloorPlan();
-                        setMobileMenuOpen(false);
-                      }}
-                    >
+                    <button type="button" className="dg-more-menu__item" role="menuitem" onClick={() => { onEditFloorPlan(); chrome.setOverlay(null); }}>
                       Edit floor plan
+                      <span className="dg-more-menu__kbd">F</span>
                     </button>
                   ) : null}
+                  {workspace?.isOwner ? (
+                    <button type="button" className="dg-more-menu__item" role="menuitem" onClick={() => { setShareOpen(true); chrome.setOverlay(null); }}>
+                      Share design
+                      <span className="dg-more-menu__kbd">⇧S</span>
+                    </button>
+                  ) : null}
+                  <button type="button" className="dg-more-menu__item" role="menuitem" onClick={() => { setExportOpen(true); chrome.setOverlay(null); }}>
+                    Export render
+                    <span className="dg-more-menu__kbd">⇧E</span>
+                  </button>
+                  <div className="dg-more-menu__rule" aria-hidden />
+                  <button type="button" className="dg-more-menu__item" role="menuitem" onClick={() => { chrome.setOverlay('cmdk'); }}>
+                    Search
+                    <span className="dg-more-menu__kbd">⌘K</span>
+                  </button>
+                  <button type="button" className="dg-more-menu__item" role="menuitem" onClick={() => { chrome.setOverlay('keys'); }}>
+                    Keyboard shortcuts
+                    <span className="dg-more-menu__kbd">?</span>
+                  </button>
+                  <button type="button" className="dg-more-menu__item" role="menuitem" onClick={() => { chrome.restartTour(); chrome.setOverlay(null); }}>
+                    Replay the walkthrough
+                  </button>
+                  <button type="button" className="dg-more-menu__item" role="menuitem" onClick={() => { onOpenChecklist(); chrome.setOverlay(null); }}>
+                    Full checklist
+                  </button>
+                  <button type="button" className="dg-more-menu__item" role="menuitem" onClick={() => { setFeedbackOpen(true); chrome.setOverlay(null); }}>
+                    Send feedback
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </header>
+      ) : null}
+
+      {saveError ? (
+        <div className="dg-banner is-error" role="alert">
+          Couldn’t save: {saveError}
+        </div>
+      ) : null}
+
+      <div className="dg-viewport" ref={canvasWrapRef} data-tour-id="viewport">
+        <div className="dg-canvas">
+          <Scene
+            ref={sceneRef}
+            orbitCssTargetRef={canvasWrapRef}
+            interactionMode={isPhone ? 'mobile' : 'desktop'}
+            selectionHud={{
+              radialOpen: chrome.radialOpen,
+              onToggleRadial: () => chrome.setRadialOpen(!chrome.radialOpen),
+              onOpenInspector: chrome.openInspector,
+              // Always pass an object so Scene uses SelectionHud (not ArcMenu).
+              // hidden:true in present/draw — SelectionHud / MobileSelectionHud no-ops.
+              hidden: chrome.present || chrome.drawing,
+            }}
+          />
+        </div>
+        <div className="dg-viewport-veil" aria-hidden />
+
+        {isPhone ? (
+          <MobileDesignerChrome
+            chrome={chrome}
+            roomName={roomName}
+            onRoomNameChange={setRoomName}
+            onRoomNameBlur={() => void handleSave()}
+            savedLabel={savedLabel}
+            saving={saving}
+            onBack={requestLeave}
+            onSave={() => void handleSave()}
+            saveLabel={onRequestSaveAuth ? 'Save design' : 'Save'}
+            onEditFloorPlan={onEditFloorPlan}
+            onOpenShare={workspace?.isOwner ? () => setShareOpen(true) : undefined}
+            onOpenExport={() => setExportOpen(true)}
+            onOpenFeedback={() => setFeedbackOpen(true)}
+            onOpenFullChecklist={onOpenChecklist}
+            goPreset={goPreset}
+            cameraPreset={cameraPreset}
+            addLightSource={addLightSource}
+            isAdmin={isAdmin}
+            onOpenModel={openModel}
+            onImportComplete={(model) => {
+              setDetailModel(model);
+            }}
+            searchTriggerRef={searchTriggerRef}
+          />
+        ) : (
+          <>
+            <DrawBanner />
+
+            {chrome.chromeOn ? (
+              <nav className="dg-rail" aria-label="Designer tools">
+                <div className="dg-rail-stack">
                   <button
                     type="button"
-                    role="menuitem"
+                    className={`dg-rail-btn is-primary${chrome.panel === 'add' ? ' is-active' : ''}`}
+                    data-tour-id="rail-add"
+                    onClick={() => chrome.setPanel('add')}
+                  >
+                    <IconPlus stroke="#F8F3EA" />
+                    <span>Add</span>
+                  </button>
+                  <div className="dg-rule" aria-hidden />
+                  <button
+                    type="button"
+                    className={`dg-rail-btn${chrome.panel === 'look' ? ' is-active' : ''}`}
+                    onClick={() => chrome.setPanel('look')}
+                  >
+                    <IconRoomLook />
+                    <span>Room look</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`dg-rail-btn${chrome.panel === 'light' ? ' is-active' : ''}`}
+                    onClick={() => chrome.setPanel('light')}
+                  >
+                    <IconLight />
+                    <span>Light</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`dg-rail-btn${chrome.panel === 'pieces' ? ' is-active' : ''}`}
+                    onClick={() => chrome.setPanel('pieces')}
+                  >
+                    <IconPieces />
+                    <span>Pieces</span>
+                  </button>
+                  <div className="dg-rule" aria-hidden />
+                  <button
+                    type="button"
+                    className="dg-rail-btn is-quiet"
+                    onClick={() => chrome.setOverlay('keys')}
+                  >
+                    <span aria-hidden style={{ font: '400 12px/1 var(--font-mono)' }}>?</span>
+                    <span>Help</span>
+                  </button>
+                </div>
+              </nav>
+            ) : null}
+
+            {chrome.tickerVisible ? (
+              <ChecklistTicker
+                open={chrome.tickerOpen}
+                onToggle={() => chrome.setTickerOpen(!chrome.tickerOpen)}
+                compact={false}
+                onOpenFull={onOpenChecklist}
+              />
+            ) : null}
+
+            {chrome.chromeOn ? (
+              <div className="dg-camera" data-tour-id="camera">
+                <div className="dg-camera-puck" role="group" aria-label="Camera presets">
+                  <span className="dg-camera-puck__icon" aria-hidden>
+                    <IconEye />
+                  </span>
+                  {VIEW_PRESETS.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      className={`dg-camera-btn${cameraPreset === p.id ? ' is-active' : ''}`}
+                      onClick={() => goPreset(p.id)}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                  <div className="dg-rule--v" aria-hidden />
+                  <button
+                    type="button"
+                    className="dg-camera-btn"
+                    aria-label="Reset camera"
                     onClick={() => {
-                      onOpenChecklist();
-                      setMobileMenuOpen(false);
+                      sceneRef.current?.resetCamera();
+                      setCameraPreset('corner');
                     }}
                   >
-                    Checklist
+                    <IconReset />
+                    Reset
                   </button>
-                  {workspace?.isOwner ? (
+                </div>
+              </div>
+            ) : null}
+
+            {chrome.showContextBar ? (
+              <ContextBar onEditDetails={chrome.openInspector} detailLabel={inspectorDetailLabel} />
+            ) : null}
+
+            {chrome.panel === 'add' ? (
+              <LibraryPanel
+                compact={false}
+                onClose={chrome.closePanels}
+                onImport={() => chrome.openImport(null)}
+                onOpenModel={openModel}
+                onStartDraw={chrome.startDraw}
+                onAddLight={() => {
+                  addLightSource();
+                  chrome.closePanels();
+                }}
+              />
+            ) : null}
+            {chrome.panel === 'look' ? (
+              <LookPanel compact={false} onClose={chrome.closePanels} />
+            ) : null}
+            {chrome.panel === 'light' ? (
+              <LightPanel
+                compact={false}
+                onClose={chrome.closePanels}
+                onStartDraw={chrome.startDraw}
+                onAddLight={() => addLightSource()}
+              />
+            ) : null}
+            {chrome.panel === 'pieces' ? (
+              <PiecesPanel compact={false} onClose={chrome.closePanels} />
+            ) : null}
+            {chrome.panel === 'inspect' ? (
+              <InspectorPanel
+                compact={false}
+                tab={chrome.inspectorTab}
+                onTab={chrome.setInspectorTab}
+                onClose={chrome.closePanels}
+              />
+            ) : null}
+
+            {chrome.present ? (
+              <div className="dg-present-bar">
+                <div className="dg-camera-puck" role="group" aria-label="Camera presets">
+                  {VIEW_PRESETS.map((p) => (
                     <button
+                      key={p.id}
                       type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setShareOpen(true);
-                        setMobileMenuOpen(false);
-                      }}
+                      className={`dg-camera-btn${cameraPreset === p.id ? ' is-active' : ''}`}
+                      onClick={() => goPreset(p.id)}
                     >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="dg-present-bar__actions">
+                  {workspace?.isOwner ? (
+                    <button type="button" className="dg-present-bar__btn is-ghost" onClick={() => setShareOpen(true)}>
                       Share
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      sceneRef.current?.resetCamera();
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    Reset view
+                  <button type="button" className="dg-present-bar__btn is-ghost" onClick={() => setExportOpen(true)}>
+                    Export
                   </button>
-                  <button
-                    type="button"
-                    role="menuitem"
-                    onClick={() => {
-                      setLookOpen(true);
-                      setMobileMenuOpen(false);
-                    }}
-                  >
-                    Room look
+                  <button type="button" className="dg-present-bar__btn is-primary" onClick={() => chrome.setPresent(false)}>
+                    Exit present
                   </button>
                 </div>
-              </>
-            ) : null}
-          </div>
-        </div>
-      </header>
-
-      {saveError ? (
-        <div className="tv-banner-error" style={{ margin: '0 20px', position: 'relative', zIndex: 25 }} role="alert">{saveError}</div>
-      ) : null}
-
-      <div className="designer-canvas-wrap" ref={canvasWrapRef}>
-        <div className="designer-canvas-full">
-          <Scene ref={sceneRef} orbitCssTargetRef={canvasWrapRef} />
-        </div>
-
-        <SceneCheckoutPanel onOpenChecklist={onOpenChecklist} />
-
-        <div className="designer-right-rail">
-          <AtmosphereStrip
-            lookOpen={lookOpen}
-            onToggleLook={() => {
-              setLookOpen((v) => !v);
-              if (!lookOpen) setAdvancedOpen(false);
-            }}
-            onCloseLook={() => setLookOpen(false)}
-            onEnvironmentOpenChange={setEnvOpen}
-            lookPanel={
-              <LookDrawer
-                open={lookOpen}
-                onClose={() => setLookOpen(false)}
-                onGoToPreset={(id: CameraPresetId) => sceneRef.current?.goToPreset(id)}
-                onOpenExport={() => setExportOpen(true)}
-              />
-            }
-          />
-          {lookOpen || envOpen ? null : <HangingDecorToolRail />}
-        </div>
-
-        {!selectedId ? (
-          <Button
-            size="lg"
-            className="designer-add-btn"
-            onClick={() => setPaletteOpen(true)}
-          >
-            Add furniture
-          </Button>
-        ) : item?.kind === 'hanging' || item?.kind === 'light' ? (
-          <div className="designer-quick-bar">
-            <span className="designer-quick-bar-label">{item.label}</span>
-            <div className="designer-quick-bar-divider" />
-            <button
-              type="button"
-              className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
-              aria-pressed={advancedOpen}
-              onClick={() => {
-                setAdvancedOpen((v) => !v);
-                if (!advancedOpen) setLookOpen(false);
-              }}
-            >
-              Customize
-            </button>
-          </div>
-        ) : item?.kind === 'bed' ? (
-          <div className="designer-quick-bar">
-            <span className="designer-quick-bar-label">{item.label}</span>
-            <div className="designer-quick-bar-divider" />
-            <button
-              type="button"
-              className={`designer-advanced-btn${beddingOpen ? ' active' : ''}`}
-              aria-pressed={beddingOpen}
-              onClick={() => {
-                setBeddingOpen((v) => !v);
-                if (!beddingOpen) {
-                  setLookOpen(false);
-                  setAdvancedOpen(false);
-                }
-              }}
-            >
-              Bedding
-            </button>
-            <button
-              type="button"
-              className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
-              aria-pressed={advancedOpen}
-              onClick={() => {
-                setAdvancedOpen((v) => !v);
-                if (!advancedOpen) {
-                  setLookOpen(false);
-                  setBeddingOpen(false);
-                }
-              }}
-            >
-              Advanced
-            </button>
-          </div>
-        ) : item ? (
-          <div className="designer-quick-bar">
-            <RangeControl
-              label="Size"
-              value={uniformPct}
-              min={40}
-              max={220}
-              step={5}
-              unit="%"
-              onChange={handleUniformChange}
-              style={{ width: 180, marginBottom: 0 }}
-            />
-            <div className="designer-quick-bar-divider" />
-            <button type="button" className="designer-quick-add-btn" title="Add another piece" onClick={() => setPaletteOpen(true)}>+</button>
-            <button
-              type="button"
-              className={`designer-advanced-btn${advancedOpen ? ' active' : ''}`}
-              aria-pressed={advancedOpen}
-              onClick={() => {
-                setAdvancedOpen((v) => !v);
-                if (!advancedOpen) setLookOpen(false);
-              }}
-            >
-              Advanced
-            </button>
-          </div>
-        ) : null}
-
-        <DesignerGalleryPanel
-          key={galleryRefreshKey}
-          open={paletteOpen}
-          currentUserId={user?.id ?? null}
-          onClose={() => setPaletteOpen(false)}
-          onPlace={addFromGallery}
-          onOpenImport={(tab) => {
-            setImportTab(tab);
-            setImportOpen(true);
-          }}
-        />
-
-        {item?.kind === 'bed' ? (
-          <BeddingPanel open={beddingOpen} onClose={() => setBeddingOpen(false)} />
-        ) : null}
-
-        {advancedOpen && item?.kind === 'hanging' ? (
-          <HangingDecorPanel onClose={() => setAdvancedOpen(false)} />
-        ) : null}
-
-        {advancedOpen && item?.kind === 'light' ? (
-          <LightDecorPanel onClose={() => setAdvancedOpen(false)} />
-        ) : null}
-
-        {advancedOpen &&
-        item &&
-        item.kind !== 'hanging' &&
-        item.kind !== 'light' &&
-        !(item.kind === 'bed' && beddingOpen) ? (
-          <aside className="designer-advanced tv-scroll">
-            <div className="designer-advanced-head">
-              <span className="designer-advanced-eyebrow">Advanced · selected piece</span>
-              <button type="button" className="designer-advanced-close" onClick={() => setAdvancedOpen(false)} aria-label="Close">×</button>
-            </div>
-
-            <div className="designer-advanced-item-card">
-              <div className="designer-advanced-swatch" style={{ background: KIND_COLORS[item.kind] ?? '#CBB28F' }} />
-              <div>
-                <div className="designer-advanced-item-title">{item.label}</div>
-                <div className="designer-advanced-item-meta">{item.kind}</div>
               </div>
-            </div>
+            ) : null}
 
-            <Tabs
-              active={sizeMode}
-              onChange={(id) => setSizeMode(id as 'uniform' | 'axis')}
-              style={{ marginBottom: 16 }}
-              tabs={[
-                { id: 'uniform', label: 'Uniform' },
-                { id: 'axis', label: 'Size (in)' },
-              ]}
+            <ImportFlow
+              open={chrome.importOpen}
+              route={chrome.importRoute}
+              onRoute={chrome.setImportRoute}
+              onClose={chrome.closeImport}
+              isAdmin={isAdmin}
+              compact={false}
+              onComplete={(model) => {
+                chrome.closeImport();
+                setDetailModel(model);
+              }}
             />
-
-            <div className="designer-advanced-section">
-              {item.kind === 'lamp' && lampParts ? (
-                <RangeControl
-                  label="Lamp neck height"
-                  value={Math.round(lampParts.stemH)}
-                  min={LAMP_ARM_MIN}
-                  max={lampArmMax}
-                  step={1}
-                  unit="″"
-                  onChange={(v) => setItemSize(item.id, lampSizeFromArmHeight(item.size, v))}
-                />
-              ) : null}
-
-              {sizeMode === 'uniform' ? (
-                <RangeControl
-                  label="Scale"
-                  value={uniformPct}
-                  min={40}
-                  max={220}
-                  step={5}
-                  unit="%"
-                  onChange={handleUniformChange}
-                />
-              ) : (
-                (item.kind === 'shelf'
-                  ? (['Width', 'Thickness', 'Depth'] as const)
-                  : (['Width', 'Height', 'Depth'] as const)
-                ).map((label, i) => {
-                  if (item.kind === 'lamp' && label === 'Height') return null;
-                  return (
-                    <RangeControl
-                      key={label}
-                      label={label}
-                      value={Math.round(item.size[i])}
-                      min={1}
-                      max={maxItemFootprint}
-                      step={1}
-                      unit="″"
-                      onChange={(v) => {
-                        const next = [...item.size] as [number, number, number];
-                        next[i] = v;
-                        setItemSize(item.id, next);
-                      }}
-                    />
-                  );
-                })
-              )}
-
-              <RangeControl
-                label="Rotation"
-                value={rotDeg}
-                min={0}
-                max={360}
-                step={15}
-                unit="°"
-                onChange={(v) => updateRotation(item.id, (v * Math.PI) / 180)}
-              />
-
-              {item.kind !== 'bed' ? (
-                <RangeControl
-                  label="Height off floor"
-                  value={Math.round(item.position[1])}
-                  min={0}
-                  max={maxElevation}
-                  step={2}
-                  unit="″"
-                  onChange={(v) => setItemElevation(item.id, v)}
-                />
-              ) : null}
-
-              {isChecklistRug(item) ? (
-                <div style={{ margin: '12px 0 8px' }}>
-                  <PaintColorPicker
-                    label="Rug color"
-                    value={item.tintColor ?? DEFAULT_RUG_COLOR}
-                    onChange={(color) => setTintColor(item.id, color)}
-                  />
-                </div>
-              ) : item.kind === 'shelf' ? (
-                <div style={{ margin: '12px 0 8px' }}>
-                  <PaintColorPicker
-                    label="Shelf color"
-                    value={item.tintColor ?? DEFAULT_SHELF_COLOR}
-                    onChange={(color) => setTintColor(item.id, color)}
-                    swatches={SHELF_COLOR_SWATCHES}
-                  />
-                </div>
-              ) : null}
-
-              {item.kind === 'bed' ? (
-                <RangeControl
-                  label="Leg height"
-                  value={item.bedLegHeight ?? 8}
-                  min={4}
-                  max={36}
-                  step={1}
-                  unit="″"
-                  onChange={(v) => setBedHeight(item.id, v)}
-                />
-              ) : null}
-            </div>
-
-            <Rule weight="hair" spacing={16} />
-
-            <button type="button" className="designer-advanced-toggle-row" onClick={() => setWallMounted(item.id, !item.wallMounted)}>
-              Wall mounted
-              <MonoMeta size="sm" tone="dense">{item.wallMounted ? 'On' : 'Off'}</MonoMeta>
-            </button>
-
-            <div className="designer-advanced-actions">
-              <Button size="sm" variant="outline" full onClick={duplicateSelected}>Duplicate</Button>
-              <Button size="sm" variant="outline" full onClick={() => { removeItem(item.id); setAdvancedOpen(false); }} style={{ color: 'var(--danger)', borderColor: 'var(--danger)', background: 'var(--danger-bg)' }}>Delete piece</Button>
-            </div>
-          </aside>
-        ) : null}
+          </>
+        )}
       </div>
 
-      {user?.id ? (
-        <ImportModelModal
-          userId={user.id}
-          open={importOpen}
-          initialTab={importTab}
-          isAdmin={isAdmin}
-          onClose={() => setImportOpen(false)}
-          onAdded={() => {
-            setGalleryRefreshKey((k) => k + 1);
-            setImportOpen(false);
-          }}
+      {chrome.tourOn && chrome.chromeOn ? (
+        <TourCard
+          step={chrome.tourStep}
+          onNext={chrome.tourNext}
+          onPrev={chrome.tourPrev}
+          onSkip={chrome.endTour}
+          compact={chrome.compact}
+          rootRef={pageRef}
         />
       ) : null}
 
-      <FeedbackModal
-        open={feedbackOpen}
-        onClose={() => setFeedbackOpen(false)}
-        pageSource="designer"
-        defaultEmail={user?.email ?? ''}
+      <CommandPalette
+        open={chrome.overlay === 'cmdk'}
+        onClose={() => chrome.setOverlay(null)}
+        commands={commands}
         userId={user?.id ?? null}
+        restoreFocusRef={searchTriggerRef}
+        onStartDraw={chrome.startDraw}
+        onAddLight={() => addLightSource()}
+        onOpenInspector={chrome.openInspector}
+        onOpenAddPanel={() => chrome.setPanel('add')}
+        onPlaceModel={(model) => {
+          placeFromCatalog(model, user?.id);
+          chrome.setOverlay(null);
+          chrome.closePanels();
+        }}
+        onPlaceAndEdit={(model) => {
+          const id = placeFromCatalog(model, user?.id);
+          chrome.setOverlay(null);
+          chrome.closePanels();
+          if (id) {
+            useStore.getState().select(id);
+            chrome.openInspector();
+          }
+        }}
       />
+      <KeysOverlay open={chrome.overlay === 'keys'} onClose={() => chrome.setOverlay(null)} />
+
+      {detailModel ? (
+        <ModelDetailModal
+          model={detailModel}
+          currentUserId={user?.id ?? null}
+          onClose={() => setDetailModel(null)}
+          onPlace={placeModel}
+          onModelPatched={(kind, patch) => {
+            setDetailModel((m) => (m && m.kind === kind ? { ...m, ...patch } : m));
+          }}
+          onModelDeleted={() => setDetailModel(null)}
+        />
+      ) : null}
+
+      {shareOpen && workspace && user?.id ? (
+        <ShareModal roomId={workspace.id} userId={user.id} onClose={() => setShareOpen(false)} />
+      ) : null}
       {exportOpen ? (
         <ExportRenderDialog sceneRef={sceneRef} onClose={() => setExportOpen(false)} />
       ) : null}
-      {shareOpen && workspace?.id && user?.id && workspace.isOwner ? (
-        <ShareModal
-          roomId={workspace.id}
-          userId={user.id}
-          onClose={() => setShareOpen(false)}
-        />
-      ) : null}
+      <FeedbackModal
+        open={feedbackOpen}
+        pageSource="designer"
+        onClose={() => setFeedbackOpen(false)}
+      />
       <UnsavedLeaveModal
         open={leaveConfirmOpen}
         saving={leaveSaving}

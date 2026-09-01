@@ -17,10 +17,14 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { Room } from './Room';
 import { ItemsLayer } from '../furniture/ItemsLayer';
 import { DragController } from '../interaction/DragController';
+import { MobileObjectGestureController } from '../interaction/MobileObjectGestureController';
 import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
 import { HangingPlacementController } from '../interaction/HangingPlacementController';
 import { ArcMenu } from './ArcMenu';
 import { ObjectGizmo } from './ObjectGizmo';
+import { SelectionHud, type SelectionHudProps } from './SelectionHud';
+import { LongPressLift } from './LongPressLift';
+import { MobileSelectionHud } from './MobileSelectionHud';
 import { HangingDraftPreview } from '../furniture/HangingDecoration';
 import { useStore, type CameraPresetId } from '../store';
 import { applyWeather, isDaytime, sampleSun, indoorHorizonFill, grazingSunIndoor } from '../lib/environment';
@@ -541,6 +545,9 @@ function SceneInner({
   readOnly,
   autoRotate,
   orbitCssTargetRef,
+  selectionHud,
+  interactionMode,
+  onMobileLiftInchesChange,
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
   apiRef: MutableRefObject<CaptureApi | null>;
@@ -551,6 +558,9 @@ function SceneInner({
   readOnly: boolean;
   autoRotate: boolean;
   orbitCssTargetRef?: RefObject<HTMLElement | null>;
+  selectionHud?: SelectionHudProps | null;
+  interactionMode: 'desktop' | 'mobile';
+  onMobileLiftInchesChange?: (inches: number | null) => void;
 }) {
   const deselect = useStore((s) => s.select);
   const skyMode = useStore((s) => s.environment.skyMode);
@@ -632,10 +642,29 @@ function SceneInner({
       ) : null}
       {showChrome && !hangingTool ? (
         <>
-          <ObjectGizmo />
-          <ArcMenu />
-          <DragController />
-          <KeyboardShortcuts />
+          {/*
+            Mobile: in-scene Html pills + touch gesture controller.
+            Desktop: SelectionHud / LongPressLift / DragController (or ArcMenu harness).
+          */}
+          {interactionMode === 'mobile' ? (
+            <>
+              <MobileSelectionHud hidden={!!selectionHud?.hidden} />
+              <MobileObjectGestureController onLiftInchesChange={onMobileLiftInchesChange} />
+            </>
+          ) : selectionHud ? (
+            <>
+              <SelectionHud {...selectionHud} />
+              <LongPressLift />
+              <DragController />
+            </>
+          ) : (
+            <>
+              <ObjectGizmo />
+              <ArcMenu />
+              <DragController />
+            </>
+          )}
+          {interactionMode === 'desktop' ? <KeyboardShortcuts /> : null}
         </>
       ) : null}
       <WindowLightShafts />
@@ -663,10 +692,15 @@ function SceneInner({
         // View-only rooms still need orbit navigation (pinch/scroll zoom + pan).
         enableZoom
         enablePan
+        screenSpacePanning
         mouseButtons={{
           LEFT: THREE.MOUSE.ROTATE,
           MIDDLE: THREE.MOUSE.DOLLY,
           RIGHT: THREE.MOUSE.PAN,
+        }}
+        touches={{
+          ONE: THREE.TOUCH.ROTATE,
+          TWO: THREE.TOUCH.DOLLY_PAN,
         }}
       />
     </Canvas>
@@ -679,10 +713,27 @@ export interface SceneProps {
   autoRotate?: boolean;
   /** Host element for camera-orbit CSS vars (bedding sidebar tilt). */
   orbitCssTargetRef?: RefObject<HTMLElement | null>;
+  /**
+   * Designer overhaul selection chrome. When provided (always an object from Designer,
+   * including `{ hidden: true }` in present/draw), replaces ArcMenu + ObjectGizmo —
+   * SelectionHud itself no-ops when hidden. Harnesses that omit this (null/undefined)
+   * keep the old ArcMenu + ObjectGizmo chrome.
+   */
+  selectionHud?: SelectionHudProps | null;
+  /** Desktop keeps mouse drag + long-press bump; mobile uses coordinated touch controller. */
+  interactionMode?: 'desktop' | 'mobile';
+  onMobileLiftInchesChange?: (inches: number | null) => void;
 }
 
 export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
-  { readOnly = false, autoRotate = false, orbitCssTargetRef },
+  {
+    readOnly = false,
+    autoRotate = false,
+    orbitCssTargetRef,
+    selectionHud = null,
+    interactionMode = 'desktop',
+    onMobileLiftInchesChange,
+  },
   ref,
 ) {
   const controlsRef = useRef<OrbitControlsType>(null);
@@ -734,6 +785,9 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
       readOnly={readOnly}
       autoRotate={autoRotate}
       orbitCssTargetRef={orbitCssTargetRef}
+      selectionHud={selectionHud}
+      interactionMode={interactionMode}
+      onMobileLiftInchesChange={onMobileLiftInchesChange}
     />
   );
 });

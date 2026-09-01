@@ -1,14 +1,8 @@
-import {
-  createContext,
-  useContext,
-  type ReactNode,
-} from 'react';
-import {
-  useShoppingCatalog,
-  type ShoppingCatalogApi,
-} from '../hooks/useShoppingCatalog';
+import { type ReactNode } from 'react';
+import { useShoppingCatalog } from '../hooks/useShoppingCatalog';
+import { ShoppingCatalogContext } from './shoppingCatalogState';
 
-const ShoppingCatalogContext = createContext<ShoppingCatalogApi | null>(null);
+export { useShoppingCatalogContext } from './shoppingCatalogState';
 
 export function ShoppingCatalogProvider({ children }: { children: ReactNode }) {
   const api = useShoppingCatalog();
@@ -17,12 +11,4 @@ export function ShoppingCatalogProvider({ children }: { children: ReactNode }) {
       {children}
     </ShoppingCatalogContext.Provider>
   );
-}
-
-export function useShoppingCatalogContext(): ShoppingCatalogApi {
-  const ctx = useContext(ShoppingCatalogContext);
-  if (!ctx) {
-    throw new Error('useShoppingCatalogContext must be used within ShoppingCatalogProvider');
-  }
-  return ctx;
 }

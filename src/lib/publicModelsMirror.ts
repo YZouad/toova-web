@@ -23,14 +23,30 @@ function alreadyExists(message: string): boolean {
   return /already exists|duplicate|409/i.test(message);
 }
 
+function pathOwnedByUser(path: string, userId: string): boolean {
+  const folder = path.split('/').find(Boolean);
+  return folder === userId;
+}
+
 /** Copy private-bucket objects into public-models so CDN URLs resolve. */
 export async function mirrorToPublicModels(
   paths: Array<string | null | undefined>,
   sourceBucket: string = MODEL_FILES_BUCKET,
 ): Promise<void> {
   const unique = storageObjectPaths(paths);
+  if (unique.length === 0) return;
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  // Storage RLS only allows INSERT into public-models/{auth.uid()}/…
+  // Community / Toova-bank paths are mirrored by their publishers — skip here.
+  const ownPaths = user?.id
+    ? unique.filter((path) => pathOwnedByUser(path, user.id))
+    : [];
+
   await Promise.all(
-    unique.map(async (path) => {
+    ownPaths.map(async (path) => {
       const { error } = await supabase.storage.from(sourceBucket).copy(path, path, {
         destinationBucket: PUBLIC_MODELS_BUCKET,
       });
@@ -40,7 +56,10 @@ export async function mirrorToPublicModels(
   );
   const r2Bucket =
     sourceBucket === ROOM_THUMBNAILS_BUCKET ? 'room-thumbnails' : 'model-files';
-  await ingestPublicR2(unique.map((path) => ({ bucket: r2Bucket, path })));
+  // R2 ingest is authenticated server-side; only request copies we are allowed
+  // to read from private storage (own folder). Public catalog assets are
+  // ingested when their owner publishes.
+  await ingestPublicR2(ownPaths.map((path) => ({ bucket: r2Bucket, path })));
 }
 
 export async function mirrorRoomThumbnailsToPublic(

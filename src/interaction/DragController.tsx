@@ -4,6 +4,9 @@ import * as THREE from 'three';
 import { useStore } from '../store';
 import { validatePlacement, clampToRoom, settleGravity, itemPinsElevation, resolveGroupDragDelta, type DragMover } from './collision';
 
+/** Movement before a press becomes an XZ drag (lets long-press lift fire). */
+const DRAG_START_PX = 8;
+
 /**
  * Left-drag moves the selected item(s) in XZ while keeping each item's height.
  * When multiple items are selected, dragging any one moves the whole set by the
@@ -12,10 +15,21 @@ import { validatePlacement, clampToRoom, settleGravity, itemPinsElevation, resol
  *
  * Wall mount (+ touching wall): release keeps height; only invalid XZ snaps back.
  * Otherwise: gravity on release — settles on floor or top of nearest support below.
+ *
+ * Drag only starts after DRAG_START_PX of movement so a stationary long-press
+ * can raise elevation without being undone by settle-on-release.
  */
 export function DragController() {
   const { camera, gl, scene } = useThree();
   const controls = useThree((s) => s.controls) as any;
+
+  const pendingRef = useRef<{
+    pointerId: number;
+    startX: number;
+    startY: number;
+    primaryId: string;
+    movableIds: string[];
+  } | null>(null);
 
   const draggingRef = useRef<{
     ids: string[];
@@ -40,6 +54,34 @@ export function DragController() {
       raycaster.setFromCamera(ndc, camera);
       dragPlane.constant = -planeY;
       return raycaster.ray.intersectPlane(dragPlane, hit) ? hit.clone() : null;
+    };
+
+    const beginDrag = (e: PointerEvent, primaryId: string, movableIds: string[]) => {
+      const { items } = useStore.getState();
+      const primary = items[primaryId];
+      if (!primary) return;
+
+      const start = screenToPlane(e.clientX, e.clientY, primary.position[1]);
+      if (!start) return;
+
+      const startPositions: Record<string, [number, number, number]> = {};
+      for (const id of movableIds) {
+        const it = items[id];
+        if (it) startPositions[id] = [...it.position];
+      }
+
+      draggingRef.current = {
+        ids: movableIds,
+        primaryId,
+        grabOffset: new THREE.Vector3(primary.position[0] - start.x, 0, primary.position[2] - start.z),
+        baseY: primary.position[1],
+        startPositions,
+        lastValid: { ...startPositions },
+      };
+
+      if (controls) controls.enabled = false;
+      canvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
     };
 
     const handlePointerDown = (e: PointerEvent) => {
@@ -75,30 +117,26 @@ export function DragController() {
       });
       if (!movableIds.includes(hitItemId)) return;
 
-      const start = screenToPlane(e.clientX, e.clientY, primary.position[1]);
-      if (!start) return;
-
-      const startPositions: Record<string, [number, number, number]> = {};
-      for (const id of movableIds) {
-        const it = items[id];
-        if (it) startPositions[id] = [...it.position];
-      }
-
-      draggingRef.current = {
-        ids: movableIds,
+      pendingRef.current = {
+        pointerId: e.pointerId,
+        startX: e.clientX,
+        startY: e.clientY,
         primaryId: hitItemId,
-        grabOffset: new THREE.Vector3(primary.position[0] - start.x, 0, primary.position[2] - start.z),
-        baseY: primary.position[1],
-        startPositions,
-        lastValid: { ...startPositions },
+        movableIds,
       };
-
-      if (controls) controls.enabled = false;
-      canvas.setPointerCapture(e.pointerId);
-      e.preventDefault();
     };
 
     const handlePointerMove = (e: PointerEvent) => {
+      const pending = pendingRef.current;
+      if (pending && pending.pointerId === e.pointerId && !draggingRef.current) {
+        const dx = e.clientX - pending.startX;
+        const dy = e.clientY - pending.startY;
+        if (dx * dx + dy * dy > DRAG_START_PX * DRAG_START_PX) {
+          pendingRef.current = null;
+          beginDrag(e, pending.primaryId, pending.movableIds);
+        }
+      }
+
       const drag = draggingRef.current;
       if (!drag) return;
 
@@ -154,6 +192,10 @@ export function DragController() {
     };
 
     const handlePointerUp = (e: PointerEvent) => {
+      if (pendingRef.current?.pointerId === e.pointerId) {
+        pendingRef.current = null;
+      }
+
       const drag = draggingRef.current;
       if (!drag) return;
 

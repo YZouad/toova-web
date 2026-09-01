@@ -18,6 +18,17 @@ function TransparentClear() {
   return null;
 }
 
+/** Release the WebGL context when leaving the landing page (mobile context budget). */
+function DisposeGlOnUnmount() {
+  const { gl } = useThree();
+  useEffect(() => {
+    return () => {
+      gl.dispose();
+    };
+  }, [gl]);
+  return null;
+}
+
 function ShowcaseModel({ url, compact = false }: { url: string; compact?: boolean }) {
   const { scene } = useGLTF(url) as { scene: THREE.Object3D };
 
@@ -86,13 +97,20 @@ export function MarketingObjectTurntable({
               ? { position: [50, 23, 58], fov: 32 }
               : { position: [38, 24, 44], fov: 30 }
           }
-          gl={{ antialias: true, alpha: true, premultipliedAlpha: false }}
+          dpr={[1, 1.5]}
+          gl={{
+            antialias: true,
+            alpha: true,
+            premultipliedAlpha: false,
+            powerPreference: 'low-power',
+          }}
           style={{ background: 'transparent', width: '100%', height: '100%' }}
           onCreated={({ gl }) => {
             gl.setClearColor(0x000000, 0);
           }}
         >
           <TransparentClear />
+          <DisposeGlOnUnmount />
           <ambientLight intensity={0.55} />
           <directionalLight position={[36, 48, 24]} intensity={1.05} />
           <directionalLight position={[-28, 18, -16]} intensity={0.35} color="#B05A3C" />
