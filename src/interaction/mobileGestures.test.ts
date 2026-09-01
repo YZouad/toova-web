@@ -31,11 +31,20 @@ function elevationFromDrag(baseY: number, startClientY: number, clientY: number)
   return Math.max(0, baseY + (startClientY - clientY) / LIFT_PX_PER_INCH);
 }
 
+function isTapSelect(dx: number, dy: number, threshold = MOVE_START_PX) {
+  return dx * dx + dy * dy < threshold * threshold;
+}
+
 describe('mobile object gesture thresholds', () => {
   it('taps stay pending under move threshold', () => {
+    expect(isTapSelect(3, 2)).toBe(true);
     expect(
       classifyMove({ mode: 'pending', heldMs: 100, dx: 3, dy: 2, secondPointer: false }),
     ).toBe('pending');
+  });
+
+  it('camera drags cancel tap-select', () => {
+    expect(isTapSelect(12, 0)).toBe(false);
   });
 
   it('early movement starts XZ drag', () => {

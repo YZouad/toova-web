@@ -6,6 +6,7 @@ import {
   DisplayHeading,
   Eyebrow,
   MarketingNav,
+  MarketingNavAuthActions,
   MonoMeta,
   RuledList,
   SiteFooter,
@@ -115,16 +116,11 @@ export function TimelinePage({
 
       <MarketingNav
         cta={
-          <>
-            {!loggedIn ? (
-              <Button size="sm" variant="mono" onClick={secondaryAction}>
-                Log in
-              </Button>
-            ) : null}
-            <Button size="sm" onClick={primaryAction}>
-              {loggedIn ? 'Go to dashboard' : 'Start designing, free'}
-            </Button>
-          </>
+          <MarketingNavAuthActions
+            loggedIn={loggedIn}
+            onLogin={secondaryAction}
+            onPrimary={primaryAction}
+          />
         }
       />
 

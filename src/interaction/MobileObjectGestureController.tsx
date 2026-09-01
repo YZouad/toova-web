@@ -15,6 +15,27 @@ const LONG_PRESS_MS = 450;
 const MOVE_START_PX = 8;
 const LIFT_PX_PER_INCH = 10;
 const PAN_SPEED = 1.15;
+const TAP_SELECT_PX = 8;
+
+type PendingTap = {
+  kind: 'tap';
+  pointerId: number;
+  startX: number;
+  startY: number;
+  itemId: string | null;
+};
+
+type PendingObject = {
+  kind: 'object';
+  pointerId: number;
+  startX: number;
+  startY: number;
+  primaryId: string;
+  movableIds: string[];
+  timer: ReturnType<typeof setTimeout>;
+};
+
+type PendingGesture = PendingTap | PendingObject;
 
 type OrbitLike = {
   enabled: boolean;
@@ -31,7 +52,8 @@ export interface MobileObjectGestureControllerProps {
 
 /**
  * Phone pointer ownership:
- * - 1 finger on empty room → OrbitControls orbit
+ * - 1 finger drag → OrbitControls orbit (selection waits for a short tap)
+ * - 1 finger tap → select / deselect item
  * - 2 fingers → our pan + pinch zoom (R3F capture breaks OrbitControls DOLLY_PAN)
  * - 1 finger on selected item → XZ drag / long-press lift
  */
@@ -45,14 +67,7 @@ export function MobileObjectGestureController({
   const captureMode = useStore((s) => s.captureMode);
   const designerTool = useStore((s) => s.designerTool);
 
-  const pendingRef = useRef<{
-    pointerId: number;
-    startX: number;
-    startY: number;
-    primaryId: string;
-    movableIds: string[];
-    timer: ReturnType<typeof setTimeout>;
-  } | null>(null);
+  const pendingRef = useRef<PendingGesture | null>(null);
 
   const dragRef = useRef<{
     pointerId: number;
@@ -109,7 +124,7 @@ export function MobileObjectGestureController({
     const clearPending = () => {
       const p = pendingRef.current;
       if (!p) return;
-      clearTimeout(p.timer);
+      if (p.kind === 'object') clearTimeout(p.timer);
       pendingRef.current = null;
     };
 
@@ -293,6 +308,27 @@ export function MobileObjectGestureController({
       return null;
     };
 
+    const hitAnyItemId = (clientX: number, clientY: number): string | null => {
+      const { items } = useStore.getState();
+      const rect = canvas.getBoundingClientRect();
+      ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      const intersections = raycaster.intersectObjects(scene.children, true);
+      for (const ix of intersections) {
+        let obj: THREE.Object3D | null = ix.object;
+        while (obj) {
+          const id = obj.userData?.itemId as string | undefined;
+          if (id && items[id]) return id;
+          obj = obj.parent;
+        }
+      }
+      return null;
+    };
+
+    const isTapMovement = (dx: number, dy: number) =>
+      dx * dx + dy * dy < TAP_SELECT_PX * TAP_SELECT_PX;
+
     const beginDrag = (e: PointerEvent, primaryId: string, movableIds: string[]) => {
       if (pointersRef.current.size > 1) return;
       const { items } = useStore.getState();
@@ -343,33 +379,43 @@ export function MobileObjectGestureController({
         return;
       }
 
-      if (!selectedId) return;
-      const itemId = hitSelectedItemId(e.clientX, e.clientY);
-      if (!itemId) return;
-
-      const { selectedIds, items } = useStore.getState();
-      const movableIds = selectedIds.filter((id) => {
-        const it = items[id];
-        return !!it && it.kind !== 'hanging';
-      });
-      if (!movableIds.includes(itemId)) return;
-
       clearPending();
-      const timer = setTimeout(() => {
-        const pending = pendingRef.current;
-        if (!pending || pending.pointerId !== e.pointerId) return;
-        if (pointersRef.current.size > 1) return;
-        pendingRef.current = null;
-        beginLift(pending.pointerId, pending.startY, pending.primaryId);
-      }, LONG_PRESS_MS);
+
+      const selectedItemId = hitSelectedItemId(e.clientX, e.clientY);
+      if (selectedItemId) {
+        const { selectedIds, items } = useStore.getState();
+        const movableIds = selectedIds.filter((id) => {
+          const it = items[id];
+          return !!it && it.kind !== 'hanging';
+        });
+        if (!movableIds.includes(selectedItemId)) return;
+
+        const timer = setTimeout(() => {
+          const pending = pendingRef.current;
+          if (!pending || pending.kind !== 'object' || pending.pointerId !== e.pointerId) return;
+          if (pointersRef.current.size > 1) return;
+          pendingRef.current = null;
+          beginLift(pending.pointerId, pending.startY, pending.primaryId);
+        }, LONG_PRESS_MS);
+
+        pendingRef.current = {
+          kind: 'object',
+          pointerId: e.pointerId,
+          startX: e.clientX,
+          startY: e.clientY,
+          primaryId: selectedItemId,
+          movableIds,
+          timer,
+        };
+        return;
+      }
 
       pendingRef.current = {
+        kind: 'tap',
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
-        primaryId: itemId,
-        movableIds,
-        timer,
+        itemId: hitAnyItemId(e.clientX, e.clientY),
       };
     };
 
@@ -465,7 +511,18 @@ export function MobileObjectGestureController({
       }
 
       const pending = pendingRef.current;
-      if (!pending || pending.pointerId !== e.pointerId) return;
+      if (pending?.kind === 'tap' && pending.pointerId === e.pointerId) {
+        if (pointersRef.current.size > 1) {
+          clearPending();
+          return;
+        }
+        const dx = e.clientX - pending.startX;
+        const dy = e.clientY - pending.startY;
+        if (!isTapMovement(dx, dy)) clearPending();
+        return;
+      }
+
+      if (!pending || pending.kind !== 'object' || pending.pointerId !== e.pointerId) return;
       if (pointersRef.current.size > 1) {
         clearPending();
         return;
@@ -477,9 +534,28 @@ export function MobileObjectGestureController({
       beginDrag(e, pending.primaryId, pending.movableIds);
     };
 
+    const commitTapSelection = (e: PointerEvent) => {
+      const pending = pendingRef.current;
+      if (!pending || pending.kind !== 'tap' || pending.pointerId !== e.pointerId) return;
+      const dx = e.clientX - pending.startX;
+      const dy = e.clientY - pending.startY;
+      clearPending();
+      if (!isTapMovement(dx, dy)) return;
+      if (pending.itemId) {
+        useStore.getState().select(pending.itemId);
+      } else {
+        useStore.getState().select(null);
+      }
+    };
+
     const onPointerUp = (e: PointerEvent) => {
       pointersRef.current.delete(e.pointerId);
-      if (pendingRef.current?.pointerId === e.pointerId) clearPending();
+
+      commitTapSelection(e);
+
+      if (pendingRef.current?.kind === 'object' && pendingRef.current.pointerId === e.pointerId) {
+        clearPending();
+      }
 
       if (liftRef.current?.pointerId === e.pointerId) {
         endLift();
@@ -497,7 +573,8 @@ export function MobileObjectGestureController({
     const onPointerCancel = (e: PointerEvent) => {
       pointersRef.current.delete(e.pointerId);
       if (
-        pendingRef.current?.pointerId === e.pointerId ||
+        (pendingRef.current?.kind === 'object' && pendingRef.current.pointerId === e.pointerId) ||
+        (pendingRef.current?.kind === 'tap' && pendingRef.current.pointerId === e.pointerId) ||
         dragRef.current?.pointerId === e.pointerId ||
         liftRef.current?.pointerId === e.pointerId
       ) {

@@ -18,7 +18,7 @@ import {
   Button,
   Input,
   MarketingNav,
-  MonoMeta,
+  MarketingNavAuthActions,
   SiteFooter,
   Tabs,
 } from './kit';
@@ -187,6 +187,7 @@ export function GalleryPage({
       <Button
         size="sm"
         variant="outline"
+        className="gallery-action-use-in-room"
         onClick={() => {
           setShellTab('models');
           openBrowse('models');
@@ -335,28 +336,22 @@ export function GalleryPage({
         <MarketingNav
           brandOnClick={onGoHome}
           links={[
+            { label: 'Log in', onClick: () => onRequestAuth('signin') },
             { label: 'Home', onClick: onGoHome },
             { label: 'Gallery', active: true },
             { label: 'Contact', onClick: onContact },
           ]}
           cta={
-            <>
-              <Button size="sm" variant="mono" onClick={() => onRequestAuth('signin')}>
-                Log in
-              </Button>
-              <Button size="sm" onClick={() => onRequestAuth('signup')}>
-                Start designing, free
-              </Button>
-            </>
+            <MarketingNavAuthActions
+              onLogin={() => onRequestAuth('signin')}
+              onPrimary={() => onRequestAuth('signup')}
+            />
           }
         />
         <div className="toova-frame gallery-public-page">
           <div className="gallery-public-page__head">
-            <div>
+            <div className="gallery-public-page__head-title">
               <h1 className="kit-app-shell__title">Gallery</h1>
-              <MonoMeta size="sm" upper tone="subtle" style={{ display: 'block', marginTop: 6 }}>
-                Discover rooms & models
-              </MonoMeta>
             </div>
             <div className="kit-app-shell__actions">{actions}</div>
           </div>
@@ -376,7 +371,6 @@ export function GalleryPage({
     <AppShell
       active="gallery"
       title="Gallery"
-      meta="Discover rooms & models"
       showAdmin={showAdmin}
       profileInitials={profileInitials(profile, user?.email)}
       onNavigate={onNavigate}

@@ -53,7 +53,6 @@ export function CreationsPage({
     <AppShell
       active="models"
       title="Models"
-      meta="Your models"
       showAdmin={showAdmin}
       profileInitials={profileInitials(profile, user.email)}
       onNavigate={onNavigate}

@@ -15,12 +15,14 @@ import {
   Footer,
   KeyValueRow,
   MarketingNav,
+  MarketingNavAuthActions,
   NumberedStep,
   PriceColumn,
   RuledList,
   SectionOpener,
   Spinner,
   StatRow,
+  usePhoneNav,
 } from './kit';
 
 interface LandingPageProps {
@@ -121,6 +123,7 @@ export function LandingPage({
   loggedIn,
   onGoDashboard,
 }: LandingPageProps) {
+  const phone = usePhoneNav();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const { rooms: featuredRooms, loading: roomsLoading } = useGalleryRooms({
     enabled: true,
@@ -171,23 +174,23 @@ export function LandingPage({
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} pageSource="landing" />
 
       <MarketingNav
-        links={[
-          { label: 'How it works', onClick: () => scrollTo(howRef) },
-          { label: 'Gallery', onClick: openGallery },
-          { label: 'Pricing', onClick: () => scrollTo(pricingRef) },
-          { label: 'Contact', onClick: onContact },
-        ]}
+        links={
+          phone
+            ? undefined
+            : [
+                ...(!loggedIn ? [{ label: 'Log in', onClick: secondaryAction }] : []),
+                { label: 'How it works', onClick: () => scrollTo(howRef) },
+                { label: 'Gallery', onClick: openGallery },
+                { label: 'Pricing', onClick: () => scrollTo(pricingRef) },
+                { label: 'Contact', onClick: onContact },
+              ]
+        }
         cta={
-          <>
-            {!loggedIn ? (
-              <Button size="sm" variant="mono" onClick={secondaryAction}>
-                Log in
-              </Button>
-            ) : null}
-            <Button size="sm" onClick={primaryAction}>
-              {loggedIn ? 'Go to dashboard' : 'Start designing, free'}
-            </Button>
-          </>
+          <MarketingNavAuthActions
+            loggedIn={loggedIn}
+            onLogin={secondaryAction}
+            onPrimary={primaryAction}
+          />
         }
       />
 
