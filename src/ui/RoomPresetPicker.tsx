@@ -64,7 +64,6 @@ export function RoomPresetPicker({
   const active = isPage || open;
   const [roomName, setRoomName] = useState(defaultName);
   const [goal, setGoal] = useState<RoomStarterGoal>('bedroom');
-  const [selectedStarterId, setSelectedStarterId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gallerySort, setGallerySort] = useState<RoomGallerySortParam>('hot');
@@ -74,7 +73,6 @@ export function RoomPresetPicker({
     if (!active) return;
     setRoomName(defaultName);
     setGoal('bedroom');
-    setSelectedStarterId(null);
     setBusy(false);
     setError(null);
     setGallerySort('hot');
@@ -98,7 +96,6 @@ export function RoomPresetPicker({
   }, [guestSimple]);
 
   const disabled = creating || busy;
-  const selectedStarter = starterPreviews.find((p) => p.template.id === selectedStarterId);
   const resolvedName = roomName.trim() || defaultName;
 
   const runSelect = async (selection: RoomPresetPickerSelection) => {
@@ -114,9 +111,8 @@ export function RoomPresetPicker({
     }
   };
 
-  const handleCreateStarter = () => {
-    if (!selectedStarter) return;
-    void runSelect({ kind: 'starter', template: selectedStarter.template });
+  const handleStarter = (template: RoomStarterTemplate) => {
+    void runSelect({ kind: 'starter', template });
   };
 
   const handleBlank = (preset: BlankPlanPreset) => {
@@ -141,22 +137,12 @@ export function RoomPresetPicker({
 
   const handleGoalChange = (id: string) => {
     setGoal(id as RoomStarterGoal);
-    setSelectedStarterId(null);
   };
 
   const actions = (
-    <>
-      <Button size="sm" variant="outline" disabled={disabled} onClick={onClose}>
-        {cancelLabel}
-      </Button>
-      <Button
-        size="sm"
-        disabled={disabled || !selectedStarter}
-        onClick={handleCreateStarter}
-      >
-        {busy || creating ? 'Creating…' : 'Create room'}
-      </Button>
-    </>
+    <Button size="sm" variant="outline" disabled={disabled} onClick={onClose}>
+      {cancelLabel}
+    </Button>
   );
 
   const form = (
@@ -198,9 +184,8 @@ export function RoomPresetPicker({
                   </span>
                 ))}
               </div>
-              <div className="room-preset-grid room-preset-grid--tiers" role="listbox" aria-label="Furnishing tier">
+              <div className="room-preset-grid room-preset-grid--tiers" role="list" aria-label="Furnishing tier">
                 {starterPreviews.map(({ template, plan }) => {
-                  const selected = selectedStarterId === template.id;
                   const pieces = starterPieceCount(template);
                   return (
                     <div
@@ -209,21 +194,18 @@ export function RoomPresetPicker({
                         'kit-plate-card',
                         'kit-plate-card--interactive',
                         'room-preset-card',
-                        selected ? 'room-preset-card--selected' : '',
                         disabled ? 'room-preset-card--disabled' : '',
                       ]
                         .filter(Boolean)
                         .join(' ')}
-                      role="option"
-                      aria-selected={selected}
+                      role="listitem"
                     >
                       <button
                         type="button"
                         className="room-preset-card-btn"
                         disabled={disabled}
-                        aria-pressed={selected}
                         aria-label={`${template.label}: ${template.description}`}
-                        onClick={() => setSelectedStarterId(template.id)}
+                        onClick={() => handleStarter(template)}
                       >
                         <Plate height={148} topCaption={`${template.tier}.plan`}>
                           <div className="app-ledger-plate-preview room-preset-preview">
@@ -405,6 +387,11 @@ export function RoomPresetPicker({
             {gallery}
           </>
         )}
+        {busy || creating ? (
+          <p className="room-preset-busy" aria-live="polite">
+            Creating your room…
+          </p>
+        ) : null}
       </div>
     );
   }

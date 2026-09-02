@@ -248,6 +248,9 @@ body.nav-drawer-open {
   background: var(--bg-page);
   min-height: 100%;
   isolation: isolate;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 .toova-paper {
   position: absolute;
@@ -2752,6 +2755,72 @@ button.landing-nav-brand { cursor: pointer; }
   cursor: default;
 }
 
+/* ── Guest import auth prompt ── */
+.guest-import-auth-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(43, 38, 32, 0.45);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.guest-import-auth-dialog {
+  width: min(400px, 100%);
+}
+.guest-import-auth-inner {
+  padding: 26px 26px 22px;
+}
+.guest-import-auth-eyebrow {
+  margin: 0 0 8px;
+}
+.guest-import-auth-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.15;
+}
+.guest-import-auth-hint {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.guest-import-auth-actions {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.guest-import-auth-actions .kit-btn {
+  width: 100%;
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.guest-import-auth-dismiss {
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 14px;
+  line-height: 1.2;
+}
+.guest-import-auth-dismiss:hover {
+  color: var(--text);
+}
+
 /* ── Checklist modal teaser ── */
 .checklist-modal-backdrop {
   position: fixed;
@@ -4113,6 +4182,12 @@ button.landing-nav-brand { cursor: pointer; }
   margin: 0;
   font: var(--type-body-sm, 13px/1.4 system-ui);
   color: var(--danger, #b33);
+}
+.room-preset-busy {
+  margin: 0;
+  font: var(--type-mono-sm);
+  color: var(--ink-3);
+  text-align: center;
 }
 
 @media (max-width: 860px) {
@@ -7109,6 +7184,9 @@ button.landing-nav-brand { cursor: pointer; }
   background: var(--bg-raised);
   padding-top: var(--safe-top);
   transform: translateZ(0);
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
   @media (hover: hover) and (pointer: fine) {
@@ -7129,6 +7207,57 @@ button.landing-nav-brand { cursor: pointer; }
   gap: 24px;
   position: relative;
   z-index: 2;
+  width: 100%;
+  box-sizing: border-box;
+}
+.kit-marketing-nav__mark { display: none; }
+.kit-marketing-nav.is-phone .kit-marketing-nav__mark {
+  display: inline-flex;
+}
+.kit-marketing-nav.is-phone .kit-marketing-nav__wordmark {
+  display: none;
+}
+.kit-marketing-nav.is-phone .kit-marketing-nav__inner {
+  padding: 10px max(12px, var(--page-gutter));
+  gap: 8px;
+  overflow: hidden;
+}
+.kit-marketing-nav.is-phone .kit-marketing-nav__brand {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+.kit-marketing-nav.is-phone .kit-marketing-nav__end {
+  gap: 6px;
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-end;
+  overflow: hidden;
+}
+.kit-marketing-nav.is-phone .kit-marketing-nav__cta {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+  gap: 6px;
+}
+.kit-marketing-nav.is-phone .kit-marketing-nav__cta .kit-btn--mono {
+  padding: 8px 10px;
+  font-size: 13px;
+  min-height: 40px;
+}
+.kit-marketing-nav.is-phone .kit-marketing-nav__cta-primary {
+  max-width: 100%;
+}
+.kit-marketing-nav.is-phone .kit-marketing-nav__toggle {
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  min-height: 40px;
+  flex-shrink: 0;
+}
+.kit-marketing-nav.is-phone .kit-marketing-nav__cta .kit-btn--sm {
+  padding: 8px 12px;
+  font-size: 14px;
+  min-height: 40px;
 }
 .kit-marketing-nav__brand {
   display: inline-flex;
@@ -7182,7 +7311,10 @@ button.landing-nav-brand { cursor: pointer; }
   align-items: center;
   gap: 10px;
   flex: none;
+  min-width: 0;
 }
+.kit-marketing-nav__cta-long { display: inline; }
+.kit-marketing-nav__cta-short { display: none; }
 .kit-marketing-nav__link {
   font: var(--type-mono-sm);
   letter-spacing: var(--tracking-nav);
@@ -7202,8 +7334,17 @@ button.landing-nav-brand { cursor: pointer; }
 .kit-marketing-nav__link:hover { color: var(--accent-h); }
 .kit-marketing-nav__link--active { color: var(--accent); }
 
-@media (max-width: 900px) {
-  .kit-marketing-nav__mark { display: none; }
+@media (max-width: 960px) {
+  .kit-marketing-nav__inner {
+    padding: 12px var(--page-gutter);
+    gap: 12px;
+  }
+  .kit-marketing-nav__end {
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-end;
+  }
   .kit-marketing-nav__toggle { display: inline-flex; }
   .kit-marketing-nav__backdrop {
     display: block;
@@ -7243,6 +7384,7 @@ button.landing-nav-brand { cursor: pointer; }
   }
   .kit-marketing-nav__cta .kit-btn {
     white-space: nowrap;
+    max-width: 100%;
   }
 }
 
@@ -7835,8 +7977,8 @@ button.landing-nav-brand { cursor: pointer; }
   border-bottom: 1px solid var(--rule-soft);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 24px;
+  justify-content: flex-start;
+  gap: 18px;
   background: var(--bg-raised);
   position: sticky;
   top: 0;
@@ -7844,22 +7986,18 @@ button.landing-nav-brand { cursor: pointer; }
   /* Own layer without backdrop-filter — reduces sticky scroll jitter on phones. */
   transform: translateZ(0);
 }
-.kit-app-shell__title-row {
-  display: flex;
-  align-items: baseline;
-  gap: 18px;
-  min-width: 0;
-}
 .kit-app-shell__title {
   font: var(--type-h5);
   letter-spacing: var(--tracking-h-tight);
   color: var(--text-heading);
+  min-width: 0;
 }
 .kit-app-shell__actions {
   display: flex;
   align-items: center;
   gap: 18px;
   flex: none;
+  margin-left: auto;
 }
 .kit-app-shell__main {
   padding: 40px;
@@ -8181,6 +8319,14 @@ button.landing-nav-brand { cursor: pointer; }
   padding: 48px var(--page-gutter) 64px;
   display: flex;
   flex-direction: column;
+}
+.auth-poster__copy {
+  margin-top: auto;
+}
+.auth-poster__stats {
+  margin-top: 44px;
+  padding-top: 22px;
+  border-top: 1px solid var(--rule-heavy);
 }
 .auth-form-side {
   position: relative;
@@ -8762,7 +8908,20 @@ button.landing-nav-brand { cursor: pointer; }
 @media (max-width: 768px) {
   .auth-page { grid-template-columns: 1fr; }
   .auth-form-side { border-left: none; border-top: 1px solid var(--rule-heavy); }
-  .auth-poster { padding-bottom: 32px; }
+  .auth-poster {
+    padding: 28px var(--page-gutter) 20px;
+  }
+  .auth-poster__copy {
+    margin-top: 20px;
+  }
+  .auth-poster__tagline {
+    margin-bottom: 0 !important;
+  }
+  .auth-poster__headline,
+  .auth-poster__stats,
+  .auth-form-footer__card-note {
+    display: none;
+  }
   .kit-app-rail--desktop,
   .kit-app-rail--overlay.kit-app-rail--desktop { display: none; }
   .kit-app-rail-pad { padding-left: 0; }
@@ -8907,15 +9066,38 @@ button.landing-nav-brand { cursor: pointer; }
   .kit-app-shell__header {
     height: auto;
     min-height: var(--app-header);
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
     padding: 12px 16px;
     padding-top: calc(12px + var(--safe-top));
+    gap: 10px;
+  }
+  .kit-app-shell__menu-btn {
+    flex: none;
+  }
+  .kit-app-shell__title {
+    display: none;
+  }
+  .kit-app-shell__meta {
+    display: none;
   }
   .kit-app-shell__actions {
-    width: 100%;
-    flex-wrap: wrap;
-    justify-content: flex-start;
-    gap: 10px;
+    width: auto;
+    flex: 1;
+    flex-wrap: nowrap;
+    justify-content: flex-end;
+    gap: 8px;
+    min-width: 0;
+    margin-left: 0;
+  }
+  .kit-app-shell__actions .kit-btn--sm {
+    padding: 8px 12px;
+    font-size: 13px;
+    min-height: 40px;
+    white-space: nowrap;
+  }
+  .kit-app-shell__actions .kit-btn--mono {
+    font-size: 13px;
+    white-space: nowrap;
   }
   .kit-app-shell__main { padding: 24px 16px; }
   .kit-app-shell__site-footer { padding: 0 16px 28px; }
@@ -9235,6 +9417,9 @@ button.landing-nav-brand { cursor: pointer; }
     width: 100% !important;
     max-width: none;
   }
+  .gallery-action-use-in-room {
+    display: none;
+  }
   .checklist-page-topbar,
   .gallery-page-topbar {
     padding-left: 16px;
@@ -9277,7 +9462,7 @@ button.landing-nav-brand { cursor: pointer; }
     max-width: 100%;
   }
   .kit-app-shell__title,
-  .kit-app-shell__title-row .kit-mono-meta {
+  .kit-app-shell__meta {
     white-space: nowrap;
   }
   .landing-hero-slogan__object {

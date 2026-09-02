@@ -99,22 +99,11 @@ test.describe('mobile designer phone states', () => {
     const own = page.getByRole('button', { name: /Bring in your own piece/i });
     await expect(own).toBeVisible();
     await own.click();
-    await expect(page.locator('.dgm-import-routes, .dgm-sheet--import').first()).toBeVisible({
-      timeout: 10_000,
-    });
-    await expect(page.getByRole('button', { name: /Take a photo/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Make a poster/i })).toBeVisible();
-    await expect(page.getByRole('button', { name: /Upload a \.glb/i })).toBeVisible();
-
-    await page.getByRole('button', { name: /Take a photo/i }).click();
-    await expect(page.getByText(/photo|camera|library|frame/i).first()).toBeVisible({ timeout: 8_000 });
-    await page.getByRole('button', { name: /Back|Close/i }).first().click();
-
-    // Re-open import if needed and check poster route
-    if (await page.getByRole('button', { name: /Make a poster/i }).isVisible().catch(() => false)) {
-      await page.getByRole('button', { name: /Make a poster/i }).click();
-      await expect(page.getByText(/print|size|poster|crop/i).first()).toBeVisible({ timeout: 8_000 });
-    }
+    await expect(page.getByRole('dialog', { name: /Sign up to bring in your own pieces/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Create free account/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Log in/i })).toBeVisible();
+    await page.getByRole('button', { name: /Not now/i }).click();
+    await expect(page.getByRole('dialog', { name: /Sign up to bring in your own pieces/i })).toHaveCount(0);
   });
 
   test('draw chrome from light sheet', async ({ page }) => {

@@ -324,7 +324,9 @@ function DprCap() {
   useEffect(() => {
     const cap = resolveRenderQuality(quality).dprCap;
     const device = typeof window !== 'undefined' ? window.devicePixelRatio : 1;
-    setDpr(Math.min(device, cap));
+    const coarse =
+      typeof window !== 'undefined' && window.matchMedia('(pointer: coarse)').matches;
+    setDpr(Math.min(device, cap, coarse ? 1 : cap));
   }, [quality, setDpr]);
   return null;
 }
@@ -617,7 +619,13 @@ function SceneInner({
         gl.shadowMap.enabled = true;
         gl.shadowMap.type = THREE.PCFShadowMap;
         gl.shadowMap.autoUpdate = true;
-        gl.domElement.addEventListener('webglcontextlost', (e) => e.preventDefault(), false);
+        const canvas = gl.domElement;
+        const onLost = (e: Event) => e.preventDefault();
+        const onRestored = () => {
+          gl.resetState();
+        };
+        canvas.addEventListener('webglcontextlost', onLost, false);
+        canvas.addEventListener('webglcontextrestored', onRestored, false);
       }}
       style={{ width: '100%', height: '100%', background: backdrop }}
     >

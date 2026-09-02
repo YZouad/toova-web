@@ -59,6 +59,7 @@ export interface MobileDesignerChromeProps {
   isAdmin?: boolean;
   onOpenModel: (model: CatalogModel) => void;
   onImportComplete: (model: CatalogModel) => void;
+  onOpenImport: () => void;
   searchTriggerRef: RefObject<HTMLButtonElement | null>;
 }
 
@@ -86,6 +87,7 @@ export function MobileDesignerChrome({
   isAdmin,
   onOpenModel,
   onImportComplete,
+  onOpenImport,
   searchTriggerRef,
 }: MobileDesignerChromeProps) {
   const mobile = useMobileDesignerChrome(chrome);
@@ -180,7 +182,7 @@ export function MobileDesignerChrome({
             className="dgm-icon-btn dgm-icon-btn--upload"
             data-tour-id="topbar-upload"
             aria-label="Upload or generate a model"
-            onClick={() => mobile.openImport(null)}
+            onClick={onOpenImport}
           >
             <IconUpload />
           </button>
@@ -355,7 +357,7 @@ export function MobileDesignerChrome({
       {mobile.sheet === 'add' ? (
         <MobileLibrarySheet
           onClose={mobile.closeSheet}
-          onImport={() => mobile.openImport(null)}
+          onImport={onOpenImport}
           onOpenModel={onOpenModel}
           onStartDraw={chrome.startDraw}
           onAddLight={() => {
