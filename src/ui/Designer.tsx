@@ -10,8 +10,10 @@ import { FeedbackModal } from './FeedbackModal';
 import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
+import { GuestImportAuthModal } from './GuestImportAuthModal';
 import { ModelDetailModal } from './ModelDetailModal';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
+import { isGuestWorkspaceId } from '../lib/guestDesignSnapshot';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
@@ -20,7 +22,7 @@ import './designer/designer.css';
 import './designer/mobile/mobile-designer.css';
 import { useDesignerChrome } from './designer/useDesignerChrome';
 import { VIEW_PRESETS } from './designer/chromeTypes';
-import type { CatalogModel } from './designer/chromeTypes';
+import type { CatalogModel, ImportRoute } from './designer/chromeTypes';
 import { LibraryPanel } from './designer/LibraryPanel';
 import { LookPanel } from './designer/LookPanel';
 import { LightPanel } from './designer/LightPanel';
@@ -75,6 +77,8 @@ interface DesignerProps {
   isAdmin?: boolean;
   /** Guest rooms call this instead of persisting to Supabase. */
   onRequestSaveAuth?: () => void;
+  /** Guest upload / import — opens auth after modal confirm. */
+  onRequestImportAuth?: (mode?: 'signin' | 'signup') => void;
 }
 
 export function Designer({
@@ -83,6 +87,7 @@ export function Designer({
   onOpenChecklist,
   isAdmin = false,
   onRequestSaveAuth,
+  onRequestImportAuth,
 }: DesignerProps) {
   const { user } = useAuth();
   const { workspace } = useRoomWorkspace();
@@ -97,6 +102,7 @@ export function Designer({
   const [exportOpen, setExportOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
+  const [importAuthOpen, setImportAuthOpen] = useState(false);
   const [leaveSaving, setLeaveSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const dirtyBaselineRef = useRef('');
@@ -108,6 +114,17 @@ export function Designer({
 
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
   const addLightSource = useStore((s) => s.addLightSource);
+
+  const openImportOrAuth = useCallback(
+    (route: ImportRoute = null) => {
+      if (onRequestImportAuth) {
+        setImportAuthOpen(true);
+        return;
+      }
+      chrome.openImport(route);
+    },
+    [onRequestImportAuth, chrome],
+  );
 
   useEffect(() => {
     setRoomName(workspace?.name ?? '');
@@ -129,7 +146,7 @@ export function Designer({
 
   useEffect(() => {
     let cancelled = false;
-    if (!workspace?.id) {
+    if (!workspace?.id || isGuestWorkspaceId(workspace.id)) {
       setForkMeta(null);
       return;
     }
@@ -263,7 +280,7 @@ export function Designer({
       buildDesignerCommands({
         setPanel: chrome.setPanel,
         openInspector: chrome.openInspector,
-        openImport: () => chrome.openImport(null),
+        openImport: () => openImportOrAuth(null),
         togglePresent: chrome.togglePresent,
         startDraw: chrome.startDraw,
         addLightSource: () => addLightSource(),
@@ -288,6 +305,7 @@ export function Designer({
       chrome.setPanel,
       chrome.openInspector,
       chrome.openImport,
+      openImportOrAuth,
       chrome.togglePresent,
       chrome.startDraw,
       chrome.setOverlay,
@@ -300,6 +318,7 @@ export function Designer({
       workspace?.isOwner,
       goPreset,
       onRequestSaveAuth,
+      onRequestImportAuth,
       fixturesEpoch,
     ],
   );
@@ -522,7 +541,7 @@ export function Designer({
                 type="button"
                 className="dg-topbar-upload"
                 data-tour-id="topbar-upload"
-                onClick={() => chrome.openImport(null)}
+                onClick={() => openImportOrAuth(null)}
                 aria-label="Upload or generate a model"
               >
                 <IconUpload />
@@ -656,6 +675,7 @@ export function Designer({
             onImportComplete={(model) => {
               setDetailModel(model);
             }}
+            onOpenImport={() => openImportOrAuth(null)}
             searchTriggerRef={searchTriggerRef}
           />
         ) : (
@@ -762,9 +782,8 @@ export function Designer({
               <LibraryPanel
                 compact={false}
                 onClose={chrome.closePanels}
-                onImport={() => chrome.openImport(null)}
+                onImport={() => openImportOrAuth(null)}
                 onOpenModel={openModel}
-                onStartDraw={chrome.startDraw}
                 onAddLight={() => {
                   addLightSource();
                   chrome.closePanels();
@@ -908,6 +927,18 @@ export function Designer({
         onStay={stayInRoom}
         onLeave={confirmLeaveWithoutSaving}
         onSaveAndLeave={() => void confirmSaveAndLeave()}
+      />
+      <GuestImportAuthModal
+        open={importAuthOpen}
+        onClose={() => setImportAuthOpen(false)}
+        onSignUp={() => {
+          setImportAuthOpen(false);
+          onRequestImportAuth?.('signup');
+        }}
+        onSignIn={() => {
+          setImportAuthOpen(false);
+          onRequestImportAuth?.('signin');
+        }}
       />
     </div>
   );

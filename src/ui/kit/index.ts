@@ -28,7 +28,7 @@ export {
   TOOVA_LOGO_SQUARE_SRC,
   type LogoProps,
 } from './Logo';
-export { MarketingNav, type MarketingNavLink, type MarketingNavProps } from './MarketingNav';
+export { MarketingNav, MarketingNavAuthActions, NavCtaLabel, usePhoneNav, usePhoneLayout, type MarketingNavAuthActionsProps, type MarketingNavLink, type MarketingNavProps } from './MarketingNav';
 export { Modal, type ModalProps } from './Modal';
 export { MonoMeta, type MonoMetaProps, type MonoMetaSize, type MonoMetaTone } from './MonoMeta';
 export { NumberStepper, type NumberStepperProps } from './NumberStepper';

@@ -189,25 +189,23 @@ export function AppShell({
 
         <div className="kit-app-shell__body">
           <header className="kit-app-shell__header">
-            <div className="kit-app-shell__title-row">
-              <button
-                ref={toggleRef}
-                type="button"
-                className="kit-app-shell__menu-btn"
-                aria-expanded={menuOpen}
-                aria-controls={menuId}
-                aria-label={menuOpen ? 'Close menu' : 'Open menu'}
-                onClick={() => setMenuOpen((v) => !v)}
-              >
-                <span aria-hidden>☰</span>
-              </button>
-              <span className="kit-app-shell__title">{title}</span>
-              {meta ? (
-                <MonoMeta size="sm" upper tone="subtle">
-                  {meta}
-                </MonoMeta>
-              ) : null}
-            </div>
+            <button
+              ref={toggleRef}
+              type="button"
+              className="kit-app-shell__menu-btn"
+              aria-expanded={menuOpen}
+              aria-controls={menuId}
+              aria-label={menuOpen ? 'Close menu' : 'Open menu'}
+              onClick={() => setMenuOpen((v) => !v)}
+            >
+              <span aria-hidden>☰</span>
+            </button>
+            <span className="kit-app-shell__title">{title}</span>
+            {meta ? (
+              <MonoMeta size="sm" upper tone="subtle" className="kit-app-shell__meta">
+                {meta}
+              </MonoMeta>
+            ) : null}
             {actions ? (
               <div className="kit-app-shell__actions">{actions}</div>
             ) : null}

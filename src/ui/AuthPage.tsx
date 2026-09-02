@@ -143,18 +143,18 @@ export function AuthPage({
 
         <div className="auth-poster">
           <Logo size={21} onClick={onBack} />
-          <div style={{ marginTop: 'auto' }}>
-            <Eyebrow level="page" style={{ marginBottom: 32 }}>
+          <div className="auth-poster__copy">
+            <Eyebrow level="page" className="auth-poster__tagline" style={{ marginBottom: 32 }}>
               Toova — a room planner
             </Eyebrow>
-            <DisplayHeading level={3}>
+            <DisplayHeading level={3} className="auth-poster__headline">
               Own it
               <br />
               before you
               <br />
               <DisplayEm>buy</DisplayEm> it.
             </DisplayHeading>
-            <div style={{ marginTop: 44, paddingTop: 22, borderTop: '1px solid var(--rule-heavy)' }}>
+            <div className="auth-poster__stats">
               <StatRow items={['Photo → 3D in 32.4s', '18 categories', 'Free for five rooms']} />
             </div>
           </div>
@@ -253,7 +253,7 @@ export function AuthPage({
                 <Button variant="mono" type="button">
                   Forgot password →
                 </Button>
-                <MonoMeta size="sm" tone="subtle" upper>
+                <MonoMeta size="sm" tone="subtle" upper className="auth-form-footer__card-note">
                   No card until you buy
                 </MonoMeta>
               </div>

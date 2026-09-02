@@ -570,7 +570,6 @@ export function Dashboard({
     <AppShell
       active="rooms"
       title="Rooms"
-      meta={`${rooms.length} of ${MAX_ROOMS} used · free plan`}
       showAdmin={showAdmin}
       profileInitials={profileInitials(profile, user.email)}
       onNavigate={onNavigate}

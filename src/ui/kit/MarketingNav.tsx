@@ -8,7 +8,11 @@ import {
   type MouseEventHandler,
   type ReactNode,
 } from 'react';
+import { Button } from './Button';
 import { Logo } from './Logo';
+import { usePhoneNav } from './usePhoneNav';
+
+export { usePhoneNav, usePhoneLayout, PHONE_NAV_MQ, PHONE_LAYOUT_MQ } from './usePhoneNav';
 
 export interface MarketingNavLink {
   label: string;
@@ -25,6 +29,59 @@ export interface MarketingNavProps {
   style?: CSSProperties;
 }
 
+/** Long + short label pair for nav CTAs that must fit narrow phone headers. */
+export function NavCtaLabel({ long, short }: { long: string; short: string }) {
+  return (
+    <>
+      <span className="kit-marketing-nav__cta-long">{long}</span>
+      <span className="kit-marketing-nav__cta-short">{short}</span>
+    </>
+  );
+}
+
+export interface MarketingNavAuthActionsProps {
+  loggedIn?: boolean;
+  onLogin?: () => void;
+  onPrimary: () => void;
+  primaryLong?: string;
+  primaryShort?: string;
+  loggedInPrimaryLong?: string;
+  loggedInPrimaryShort?: string;
+}
+
+/** Standard sign-up / dashboard actions sized for phone headers. */
+export function MarketingNavAuthActions({
+  loggedIn = false,
+  onLogin,
+  onPrimary,
+  primaryLong = 'Start designing, free',
+  primaryShort = 'Start free',
+  loggedInPrimaryLong = 'Go to dashboard',
+  loggedInPrimaryShort = 'Dashboard',
+}: MarketingNavAuthActionsProps) {
+  const phone = usePhoneNav();
+  const label = loggedIn
+    ? phone
+      ? loggedInPrimaryShort
+      : loggedInPrimaryLong
+    : phone
+      ? primaryShort
+      : primaryLong;
+
+  return (
+    <>
+      {!loggedIn && onLogin ? (
+        <Button size="sm" variant="mono" onClick={onLogin}>
+          Log in
+        </Button>
+      ) : null}
+      <Button size="sm" className="kit-marketing-nav__cta-primary" onClick={onPrimary}>
+        {label}
+      </Button>
+    </>
+  );
+}
+
 export function MarketingNav({
   links = [],
   cta,
@@ -32,6 +89,7 @@ export function MarketingNav({
   className,
   style,
 }: MarketingNavProps) {
+  const phone = usePhoneNav();
   const [open, setOpen] = useState(false);
   const menuId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -115,7 +173,10 @@ export function MarketingNav({
   };
 
   return (
-    <nav className={['kit-marketing-nav', className].filter(Boolean).join(' ')} style={style}>
+    <nav
+      className={['kit-marketing-nav', phone ? 'is-phone' : '', className].filter(Boolean).join(' ')}
+      style={style}
+    >
       <div className="kit-marketing-nav__inner">
         <BrandTag
           className={[
@@ -135,9 +196,14 @@ export function MarketingNav({
               }
             : {})}
         >
-          <Logo size={34} wordmark={false} alt="" className="kit-marketing-nav__mark" />
           <Logo
-            size={28}
+            size={phone ? 30 : 34}
+            wordmark={false}
+            alt=""
+            className="kit-marketing-nav__mark"
+          />
+          <Logo
+            size={phone ? 22 : 28}
             alt={brandInteractive ? '' : 'Toova'}
             className="kit-marketing-nav__wordmark"
           />

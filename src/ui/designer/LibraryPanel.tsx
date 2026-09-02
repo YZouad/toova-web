@@ -32,7 +32,6 @@ export interface LibraryPanelProps {
   onClose: () => void;
   onImport: () => void;
   onOpenModel: (model: CatalogModel) => void;
-  onStartDraw: (kind: 'lights' | 'leaves') => void;
   onAddLight: () => void;
 }
 
@@ -41,7 +40,6 @@ export function LibraryPanel({
   onClose,
   onImport,
   onOpenModel,
-  onStartDraw,
   onAddLight,
 }: LibraryPanelProps) {
   const { user } = useAuth();
@@ -96,8 +94,6 @@ export function LibraryPanel({
         </span>
         {(
           [
-            { label: 'Draw hanging lights', meta: 'click a path', color: '#E8C27A', run: () => onStartDraw('lights') },
-            { label: 'Draw hanging leaves', meta: 'click a path', color: '#7E8A60', run: () => onStartDraw('leaves') },
             { label: 'Place a free light', meta: 'drops in, then lift', color: '#F0DCA8', run: onAddLight },
           ] as const
         ).map((row) => (
@@ -133,7 +129,7 @@ export function LibraryPanel({
         ))}
       </div>
     ),
-    [onAddLight, onStartDraw],
+    [onAddLight],
   );
 
   const list = (

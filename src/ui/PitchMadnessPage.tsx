@@ -7,6 +7,7 @@ import {
   Eyebrow,
   Footer,
   MarketingNav,
+  MarketingNavAuthActions,
   MonoMeta,
   RuledList,
   SectionOpener,
@@ -81,16 +82,13 @@ export function PitchMadnessPage({
       <MarketingNav
         brandOnClick={onGoHome}
         cta={
-          <>
-            {!loggedIn ? (
-              <Button size="sm" variant="mono" onClick={secondaryAction}>
-                Log in
-              </Button>
-            ) : null}
-            <Button size="sm" onClick={primaryAction}>
-              {primaryLabel}
-            </Button>
-          </>
+          <MarketingNavAuthActions
+            loggedIn={loggedIn}
+            onLogin={secondaryAction}
+            onPrimary={primaryAction}
+            primaryLong="Try Toova"
+            primaryShort="Try free"
+          />
         }
       />
 
