@@ -68,6 +68,7 @@ export function Sidebar() {
                   label: entry.label,
                   size: [entry.width_in, entry.height_in, entry.depth_in],
                   catalogSizeIn: [entry.width_in, entry.height_in, entry.depth_in],
+                  catalogKind: entry.kind,
                 });
                 if (shouldRecordCatalogDownload(entry, user?.id)) {
                   void recordCatalogDownload(entry.kind).catch(() => {

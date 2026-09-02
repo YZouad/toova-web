@@ -14,7 +14,7 @@ import {
 import type { BeddingConfigPatch } from '../../../lib/bedding/types';
 import { DEFAULT_SHELF_COLOR, SHELF_COLOR_SWATCHES } from '../../../furniture/registry';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from '../../../lib/checklistPublicGlbs';
-import { LED_PALETTE_PRESETS } from '../../../lib/hangingDecorGeometry';
+import { LED_PALETTE_PRESETS, palettePresetBackground } from '../../../lib/hangingDecorGeometry';
 import { proportionalSizesFromMaxSide } from '../../../lib/uniformItemSize';
 import { planBounds } from '../../../lib/roomGeometry';
 import { DEFAULT_EMITTER, useStore } from '../../../store';
@@ -75,7 +75,8 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
   const canEditSize = item.kind !== 'imported' || !!item.importedNaturalSize;
   const emitter = item.emitter ?? DEFAULT_EMITTER;
   const hang = item.hanging;
-  const bulbTabLabel = hang?.kind === 'leaves' ? 'Leaves' : 'Bulbs';
+  const bulbTabLabel =
+    hang?.kind === 'leaves' ? 'Leaves' : hang?.kind === 'led-strip' ? 'Colors' : 'Bulbs';
 
   return (
     <MobileSheet
@@ -266,31 +267,35 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
                 Redraw
               </button>
             </div>
-            <section className="dgm-section">
-              <div className="dgm-section-head">
-                <h3 className="dgm-section-title">Sag</h3>
-                <span className="dgm-section-meta">{Math.round(hang.sag * 100)}%</span>
-              </div>
-              <input
-                type="range"
-                className="dgm-range"
-                min={0}
-                max={45}
-                step={1}
-                value={Math.round(hang.sag * 100)}
-                onChange={(e) => setHangingConfig(item.id, { sag: Number(e.target.value) / 100 })}
-                aria-label="Sag"
-              />
-            </section>
+            {hang.kind !== 'led-strip' ? (
+              <section className="dgm-section">
+                <div className="dgm-section-head">
+                  <h3 className="dgm-section-title">Sag</h3>
+                  <span className="dgm-section-meta">{Math.round(hang.sag * 100)}%</span>
+                </div>
+                <input
+                  type="range"
+                  className="dgm-range"
+                  min={0}
+                  max={45}
+                  step={1}
+                  value={Math.round(hang.sag * 100)}
+                  onChange={(e) => setHangingConfig(item.id, { sag: Number(e.target.value) / 100 })}
+                  aria-label="Sag"
+                />
+              </section>
+            ) : null}
           </div>
         ) : null}
 
         {tab === 'bulbs' && isHanging && hang ? (
-          hang.kind === 'lights' ? (
+          hang.kind === 'lights' || hang.kind === 'led-strip' ? (
             <div className="dgm-stack">
               <section className="dgm-section">
                 <div className="dgm-section-head">
-                  <h3 className="dgm-section-title">Bulb spacing</h3>
+                  <h3 className="dgm-section-title">
+                    {hang.kind === 'led-strip' ? 'LED spacing' : 'Bulb spacing'}
+                  </h3>
                   <span className="dgm-section-meta">{hang.density.toFixed(1)}″</span>
                 </div>
                 <input
@@ -331,12 +336,10 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
                       type="button"
                       className="dgm-palette-btn"
                       title={p.label}
+                      aria-label={p.label}
+                      style={{ background: palettePresetBackground(p.colors) }}
                       onClick={() => setHangingConfig(item.id, { palette: [...p.colors] })}
-                    >
-                      {p.colors.map((c) => (
-                        <span key={c} style={{ background: c }} />
-                      ))}
-                    </button>
+                    />
                   ))}
                 </div>
               </section>

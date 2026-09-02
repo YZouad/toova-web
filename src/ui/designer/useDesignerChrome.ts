@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useStore } from '../../store';
+import { useStore, type HangingDecorKind } from '../../store';
 import {
   COMPACT_MQ,
   TOUR_STEPS,
@@ -57,7 +57,9 @@ export function useDesignerChrome() {
     return () => mq.removeEventListener('change', sync);
   }, []);
 
-  const drawing = designerTool === 'hanging-leaves' || designerTool === 'hanging-lights';
+  const drawing = designerTool === 'hanging-leaves'
+    || designerTool === 'hanging-lights'
+    || designerTool === 'hanging-led-strip';
 
   const setPanel = useCallback((next: DesignerPanel) => {
     setPanelRaw((cur) => (cur === next ? null : next));
@@ -175,7 +177,7 @@ export function useDesignerChrome() {
     setImportRoute(null);
   }, []);
 
-  const startDraw = useCallback((kind: 'lights' | 'leaves') => {
+  const startDraw = useCallback((kind: HangingDecorKind) => {
     useStore.getState().beginHangingDraft(kind);
     setPanelRaw(null);
     setOverlay(null);

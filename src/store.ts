@@ -38,6 +38,7 @@ import type {
 import {
   createHangingSeed,
   DEFAULT_LEAF_CONFIG,
+  DEFAULT_LED_STRIP_CONFIG,
   DEFAULT_LIGHT_CONFIG,
   hangingReferencesAttachmentKey,
 } from './lib/hangingDecorGeometry';
@@ -55,7 +56,29 @@ export type {
   HangingDecorationConfig,
 } from './lib/hangingDecorGeometry';
 
-export type DesignerTool = 'select' | 'hanging-leaves' | 'hanging-lights' | 'place-light';
+export type DesignerTool =
+  | 'select'
+  | 'hanging-leaves'
+  | 'hanging-lights'
+  | 'hanging-led-strip'
+  | 'place-light';
+
+export function designerToolForHangingKind(kind: HangingDecorKind): DesignerTool {
+  if (kind === 'lights') return 'hanging-lights';
+  if (kind === 'led-strip') return 'hanging-led-strip';
+  return 'hanging-leaves';
+}
+
+export function isHangingDesignerTool(tool: DesignerTool): boolean {
+  return tool === 'hanging-leaves' || tool === 'hanging-lights' || tool === 'hanging-led-strip';
+}
+
+export function hangingKindFromDesignerTool(tool: DesignerTool): HangingDecorKind | null {
+  if (tool === 'hanging-lights') return 'lights';
+  if (tool === 'hanging-led-strip') return 'led-strip';
+  if (tool === 'hanging-leaves') return 'leaves';
+  return null;
+}
 
 export interface HangingDraft {
   kind: HangingDecorKind;
@@ -148,6 +171,8 @@ export interface Item {
   importedNaturalSize?: [number, number, number];
   /** Catalog inch dimensions (community models); used to recover size after mesh load. */
   catalogSizeIn?: [number, number, number];
+  /** furniture_catalog.kind for imported GLBs (checklist + gallery placement). */
+  catalogKind?: string;
   label: string;
   /** Gravity off on drag only when checked AND touching a wall; height slider ignores this flag. */
   wallMounted?: boolean;
@@ -239,6 +264,7 @@ interface StoreState {
       label?: string;
       size?: [number, number, number];
       catalogSizeIn?: [number, number, number];
+      catalogKind?: string;
       curatedProductId?: string;
       tintColor?: string;
     },
@@ -325,7 +351,19 @@ function bumpNextIdFromExistingIds(ids: string[]) {
 }
 
 function hangingLabel(kind: HangingDecorKind): string {
-  return kind === 'lights' ? 'String lights' : 'Hanging leaves';
+  if (kind === 'lights') return 'String lights';
+  if (kind === 'led-strip') return 'LED strip';
+  return 'Hanging leaves';
+}
+
+function defaultConfigForHangingKind(kind: HangingDecorKind) {
+  if (kind === 'lights') return DEFAULT_LIGHT_CONFIG;
+  if (kind === 'led-strip') return DEFAULT_LED_STRIP_CONFIG;
+  return DEFAULT_LEAF_CONFIG;
+}
+
+function isLitHangingKind(kind: HangingDecorKind): boolean {
+  return kind === 'lights' || kind === 'led-strip';
 }
 
 function cascadeRemoveHangingForAttachment(
@@ -442,7 +480,8 @@ export const useStore = create<StoreState>((set, get) => ({
         // Spawn is handled by addLightSource; keep tool as select.
         return { designerTool: 'select', hangingDraft: null };
       }
-      const kind: HangingDecorKind = tool === 'hanging-lights' ? 'lights' : 'leaves';
+      const kind = hangingKindFromDesignerTool(tool);
+      if (!kind) return { designerTool: tool, hangingDraft: null };
       return {
         designerTool: tool,
         ...selectionOf([]),
@@ -452,7 +491,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
   beginHangingDraft: (kind) =>
     set({
-      designerTool: kind === 'lights' ? 'hanging-lights' : 'hanging-leaves',
+      designerTool: designerToolForHangingKind(kind),
       ...selectionOf([]),
       hangingDraft: { kind, anchors: [], cursorWorld: null },
     }),
@@ -490,12 +529,12 @@ export const useStore = create<StoreState>((set, get) => ({
   finishHangingDraft: () => {
     const draft = get().hangingDraft;
     if (!draft || draft.anchors.length < 2) return null;
-    const base = draft.kind === 'lights' ? DEFAULT_LIGHT_CONFIG : DEFAULT_LEAF_CONFIG;
+    const base = defaultConfigForHangingKind(draft.kind);
     const config: HangingDecorationConfig = {
       ...base,
       anchors: draft.anchors,
       seed: createHangingSeed(),
-      palette: draft.kind === 'lights' ? [...base.palette] : [],
+      palette: isLitHangingKind(draft.kind) ? [...base.palette] : [],
     };
     const id = get().addHangingDecoration(config);
     set({ hangingDraft: null, designerTool: 'select' });
@@ -653,6 +692,7 @@ export const useStore = create<StoreState>((set, get) => ({
       importedUrl: opts?.url,
       importedStoragePath: opts?.storagePath,
       catalogSizeIn,
+      catalogKind: opts?.catalogKind,
       label,
       curatedProductId: opts?.curatedProductId,
       wallMounted: isWallShelfKind(kind) ? true : undefined,
@@ -1003,14 +1043,18 @@ export const useStore = create<StoreState>((set, get) => ({
           };
           nextItems[id] = { ...it, emitter: { ...base, enabled: on } };
         }
-        if (it.kind === 'hanging' && it.hanging?.kind === 'lights') {
+        if (it.kind === 'hanging' && it.hanging && isLitHangingKind(it.hanging.kind)) {
+          const defaultIntensity =
+            it.hanging.kind === 'led-strip'
+              ? DEFAULT_LED_STRIP_CONFIG.lightIntensity
+              : DEFAULT_LIGHT_CONFIG.lightIntensity;
           nextItems[id] = {
             ...it,
             hanging: {
               ...it.hanging,
               lightsEnabled: on,
               lightIntensity: on
-                ? Math.max(it.hanging.lightIntensity || DEFAULT_LIGHT_CONFIG.lightIntensity, 0.8)
+                ? Math.max(it.hanging.lightIntensity || defaultIntensity, 0.8)
                 : it.hanging.lightIntensity,
             },
           };
@@ -1033,7 +1077,12 @@ export const useStore = create<StoreState>((set, get) => ({
       const it = s.items[id];
       if (!it) continue;
       if (it.emitter?.enabled) return true;
-      if (it.kind === 'hanging' && it.hanging?.kind === 'lights' && it.hanging.lightsEnabled !== false) {
+      if (
+        it.kind === 'hanging'
+        && it.hanging
+        && isLitHangingKind(it.hanging.kind)
+        && it.hanging.lightsEnabled !== false
+      ) {
         return true;
       }
     }

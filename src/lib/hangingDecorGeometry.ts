@@ -9,7 +9,7 @@ import { ROOM } from '../units';
 
 export const HANGING_CONFIG_VERSION = 1 as const;
 
-export type HangingDecorKind = 'leaves' | 'lights';
+export type HangingDecorKind = 'leaves' | 'lights' | 'led-strip';
 
 export interface WallAnchor {
   surface: 'wall';
@@ -75,13 +75,35 @@ export const DEFAULT_LIGHT_CONFIG: Omit<HangingDecorationConfig, 'anchors' | 'se
   lightsEnabled: true,
 };
 
+export const DEFAULT_LED_STRIP_CONFIG: Omit<HangingDecorationConfig, 'anchors' | 'seed'> = {
+  version: HANGING_CONFIG_VERSION,
+  kind: 'led-strip',
+  sag: 0,
+  density: 4, // inches between LED emitters along strip
+  palette: ['#6bcb77', '#4d96ff', '#ff6bcb'],
+  lightIntensity: 1.4,
+  lightRange: 64,
+  lightsEnabled: true,
+};
+
 export const LED_PALETTE_PRESETS: { label: string; colors: string[] }[] = [
   { label: 'Warm white', colors: ['#fff4e0'] },
   { label: 'Cool white', colors: ['#e8f0ff'] },
   { label: 'Fairy multi', colors: ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ff6bcb'] },
   { label: 'Sunset', colors: ['#ff8c42', '#ff6b6b', '#c44dff'] },
   { label: 'Ocean', colors: ['#4ecdc4', '#45b7d1', '#96ceb4'] },
+  { label: 'RGB strip', colors: ['#ff3366', '#33ff99', '#3399ff'] },
 ];
+
+/** Fill for palette preset swatches (single color or horizontal gradient). */
+export function palettePresetBackground(colors: string[]): string {
+  if (colors.length === 0) return 'transparent';
+  if (colors.length === 1) return colors[0]!;
+  const stops = colors
+    .map((color, index) => `${color} ${(index / (colors.length - 1)) * 100}%`)
+    .join(', ');
+  return `linear-gradient(to right, ${stops})`;
+}
 
 export type Vec3 = [number, number, number];
 
@@ -345,6 +367,22 @@ export function saggedSpan(
   return out;
 }
 
+/** Build a straight polyline through anchor points (no sag). */
+export function buildStraightPath(points: Vec3[], samplesPerSpan = 2): Vec3[] {
+  return buildHangingPath(points, 0, Math.max(2, samplesPerSpan));
+}
+
+/** Path builder chosen by hanging decor kind. */
+export function buildPathForKind(
+  points: Vec3[],
+  kind: HangingDecorKind,
+  sag: number,
+  samplesPerSpan = 16,
+): Vec3[] {
+  if (kind === 'led-strip') return buildStraightPath(points, 2);
+  return buildHangingPath(points, sag, samplesPerSpan);
+}
+
 /** Build a multi-span path through resolved anchors. */
 export function buildHangingPath(
   points: Vec3[],
@@ -481,7 +519,7 @@ export function parseHangingConfig(raw: unknown): HangingDecorationConfig | null
   if (!raw || typeof raw !== 'object') return null;
   const o = raw as Record<string, unknown>;
   if (o.version !== HANGING_CONFIG_VERSION) return null;
-  if (o.kind !== 'leaves' && o.kind !== 'lights') return null;
+  if (o.kind !== 'leaves' && o.kind !== 'lights' && o.kind !== 'led-strip') return null;
   if (!Array.isArray(o.anchors) || o.anchors.length < 2) return null;
 
   const anchors: HangingAnchor[] = [];
@@ -516,20 +554,29 @@ export function parseHangingConfig(raw: unknown): HangingDecorationConfig | null
     }
   }
 
-  const sag = typeof o.sag === 'number' && Number.isFinite(o.sag) ? clamp(o.sag, 0, 0.5) : 0.18;
+  const sag =
+    typeof o.sag === 'number' && Number.isFinite(o.sag)
+      ? clamp(o.sag, 0, 0.5)
+      : o.kind === 'led-strip'
+        ? 0
+        : 0.18;
   const density =
     typeof o.density === 'number' && Number.isFinite(o.density)
       ? o.density
-      : o.kind === 'lights'
-        ? 6
-        : 1;
+      : o.kind === 'led-strip'
+        ? 4
+        : o.kind === 'lights'
+          ? 6
+          : 1;
   const seed =
     typeof o.seed === 'number' && Number.isFinite(o.seed) ? (o.seed >>> 0) : createHangingSeed();
   const palette = Array.isArray(o.palette)
     ? o.palette.filter((c): c is string => typeof c === 'string' && /^#[0-9a-fA-F]{6}$/.test(c))
-    : o.kind === 'lights'
-      ? ['#fff4e0']
-      : [];
+    : o.kind === 'leaves'
+      ? []
+      : o.kind === 'led-strip'
+        ? ['#6bcb77', '#4d96ff', '#ff6bcb']
+        : ['#fff4e0'];
   const lightIntensity =
     typeof o.lightIntensity === 'number' && Number.isFinite(o.lightIntensity)
       ? clamp(o.lightIntensity, 0.1, 5)

@@ -1,8 +1,14 @@
-import { useStore } from '../../../store';
+import { hangingKindFromDesignerTool, isHangingDesignerTool, useStore } from '../../../store';
+import type { HangingDecorKind } from '../../../lib/hangingDecorGeometry';
+
+function drawMeta(kind: HangingDecorKind): { title: string; swatch: string } {
+  if (kind === 'leaves') return { title: 'Drawing hanging leaves', swatch: '#8A8478' };
+  if (kind === 'led-strip') return { title: 'Drawing LED strip', swatch: '#4d96ff' };
+  return { title: 'Drawing fairy lights', swatch: '#E8C27A' };
+}
 
 /**
  * Phone draw mode — top instruction card + bottom Cancel / Undo / Finish bar (52px).
- * Hidden when not drawing hanging lights or leaves.
  */
 export function MobileDrawChrome() {
   const hangingDraft = useStore((s) => s.hangingDraft);
@@ -11,18 +17,12 @@ export function MobileDrawChrome() {
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
   const finishHangingDraft = useStore((s) => s.finishHangingDraft);
 
-  const drawing =
-    hangingDraft != null ||
-    designerTool === 'hanging-leaves' ||
-    designerTool === 'hanging-lights';
+  const drawing = hangingDraft != null || isHangingDesignerTool(designerTool);
 
   if (!drawing) return null;
 
-  const kind =
-    hangingDraft?.kind ?? (designerTool === 'hanging-leaves' ? 'leaves' : 'lights');
-  const title =
-    kind === 'leaves' ? 'Drawing hanging leaves' : 'Drawing hanging lights';
-  const swatch = kind === 'leaves' ? '#8A8478' : '#E8C27A';
+  const kind = hangingDraft?.kind ?? hangingKindFromDesignerTool(designerTool) ?? 'lights';
+  const { title, swatch } = drawMeta(kind);
   const count = hangingDraft?.anchors.length ?? 0;
   const canFinish = count >= 2;
   const canUndo = count > 0;

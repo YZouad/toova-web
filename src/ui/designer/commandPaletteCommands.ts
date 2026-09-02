@@ -1,5 +1,6 @@
 import type { CameraPresetId } from '../../lib/renderQuality';
 import { WALL_COLOR_SWATCHES } from '../../lib/roomAppearance';
+import type { HangingDecorKind } from '../../store';
 import { useStore } from '../../store';
 import { pushRecentCommand } from '../../lib/recentCatalogKinds';
 export interface CommandPaletteCommand {
@@ -14,7 +15,7 @@ export interface BuildCommandsInput {
   openInspector: () => void;
   openImport: () => void;
   togglePresent: () => void;
-  startDraw: (kind: 'lights' | 'leaves') => void;
+  startDraw: (kind: HangingDecorKind) => void;
   addLightSource: () => void;
   handleSave: () => void;
   onOpenChecklist: () => void;
@@ -94,6 +95,11 @@ export function buildDesignerCommands(input: BuildCommandsInput): CommandPalette
       id: 'draw-lights',
       label: 'Draw string lights',
       run: wrap('draw-lights', () => input.startDraw('lights')),
+    },
+    {
+      id: 'draw-led-strip',
+      label: 'Draw LED strip',
+      run: wrap('draw-led-strip', () => input.startDraw('led-strip')),
     },
     {
       id: 'draw-leaves',

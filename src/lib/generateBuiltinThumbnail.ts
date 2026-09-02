@@ -261,6 +261,23 @@ function buildLampGroup(): THREE.Group {
   return group;
 }
 
+function buildRugGroup(): THREE.Group {
+  const w = 48;
+  const h = 0.5;
+  const d = 70.8;
+  const group = new THREE.Group();
+  const body = box(w, h, d, '#d6ccbc', { roughness: 0.88 });
+  body.position.y = h / 2;
+  group.add(body);
+  const border = box(w - 3, h + 0.05, d - 3, '#b8aa96', { roughness: 0.85 });
+  border.position.y = h / 2 + 0.02;
+  group.add(border);
+  const inner = box(w - 8, h + 0.08, d - 8, '#c9bda8', { roughness: 0.9 });
+  inner.position.y = h / 2 + 0.04;
+  group.add(inner);
+  return group;
+}
+
 const BUILDERS: Record<BuiltinKind, () => THREE.Group> = {
   bed: buildBedGroup,
   dresser: buildDresserGroup,
@@ -280,6 +297,21 @@ export async function generateBuiltinThumbnail(
   const build = BUILDERS[kind];
   if (!build) return null;
   const group = build();
+  try {
+    return await renderObjectToJpeg(group);
+  } finally {
+    group.traverse((obj) => {
+      if (obj instanceof THREE.Mesh) {
+        obj.geometry?.dispose();
+        (obj.material as THREE.Material)?.dispose();
+      }
+    });
+  }
+}
+
+/** Render a checklist rug to a JPEG palette thumbnail. */
+export async function generateRugThumbnail(): Promise<Blob | null> {
+  const group = buildRugGroup();
   try {
     return await renderObjectToJpeg(group);
   } finally {

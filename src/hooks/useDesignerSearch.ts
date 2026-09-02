@@ -12,6 +12,10 @@ import {
   softRoomFit,
 } from '../lib/designerSearch';
 import type { CuratedProduct } from '../lib/dormChecklist';
+import { getProductDrawKind } from '../lib/dormChecklist';
+import type { HangingDecorKind } from '../store';
+import { productHasPlaceableModel } from '../lib/checklistPublicGlbs';
+import { findRoomItemForProduct } from '../lib/placeCuratedProduct';
 import {
   searchDesignerCatalog,
   type DesignerCatalogSearchHit,
@@ -22,6 +26,7 @@ import {
   loadRecentCommands,
   pushRecentQuery,
 } from '../lib/recentCatalogKinds';
+import { getBuiltinPreviewUrl } from './useBuiltinPreviews';
 import { resolveBrowsableModelUrl } from '../lib/modelStorage';
 import { useStore } from '../store';
 import type { GalleryModel } from './useGalleryCatalog';
@@ -48,7 +53,7 @@ export interface UseDesignerSearchInput {
   checklistKinds: Set<string>;
   onPlaceModel: (model: GalleryModel, andEdit?: boolean) => void;
   onPlaceProduct: (product: CuratedProduct, andEdit?: boolean) => void;
-  onStartDraw: (kind: 'lights' | 'leaves') => void;
+  onStartDraw: (kind: HangingDecorKind) => void;
   onAddLight: () => void;
   onSelectItem: (id: string) => void;
   onEditItem: (id: string) => void;
@@ -196,6 +201,9 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
               const access = hit.visibility === 'public' || hit.is_builtin ? 'public' : 'private';
               previewUrl = await resolveBrowsableModelUrl(thumb, { access });
             }
+            if (!previewUrl && hit.is_builtin) {
+              previewUrl = getBuiltinPreviewUrl(hit.kind) ?? null;
+            }
             return {
               model: hitToModel(hit, previewUrl),
               source: hit.source,
@@ -246,7 +254,7 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
     const synth: Array<{
       id: string;
       label: string;
-      tool: 'string-lights' | 'hanging-leaves' | 'free-light';
+      tool: 'string-lights' | 'hanging-leaves' | 'led-strip' | 'free-light';
       searchable: string[];
       thumbColor: string;
       run: () => void;
@@ -266,6 +274,14 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
         searchable: ['leaves', 'garland', 'vines', 'hanging'],
         thumbColor: '#6b7f6a',
         run: () => onStartDraw('leaves'),
+      },
+      {
+        id: 'synth-led-strip',
+        label: 'LED strip',
+        tool: 'led-strip',
+        searchable: ['led strip', 'led strips', 'strip lights', 'rgb', 'neon'],
+        thumbColor: '#6EB5FF',
+        run: () => onStartDraw('led-strip'),
       },
       {
         id: 'synth-free-light',
@@ -333,7 +349,7 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
         hotScore: 0,
         storagePath: '',
         signedUrl: null,
-        previewUrl: null,
+        previewUrl: getBuiltinPreviewUrl(c.kind!) ?? null,
       };
       resultMap.set(c.id, {
         type: 'catalogModel',
@@ -343,6 +359,7 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
         source: 'toova',
         score: 0,
         model,
+        previewUrl: model.previewUrl,
         onChecklist: checklistKinds.has(c.kind!),
         alreadyInRoom: placedKinds.has(c.kind!),
         meta: checklistKinds.has(c.kind!)
@@ -359,17 +376,10 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
     // --- Checklist products ---
     for (const product of checklistProducts) {
       if (!product.published) continue;
-      const placeable = !!(product.placeBuiltinKind || product.placeCatalogKind);
-      if (!placeable) continue;
+      if (!productHasPlaceableModel(product)) continue;
       const id = `checklist-${product.id}`;
-      const placed = [...order].some((itemId) => {
-        const it = items[itemId];
-        if (!it) return false;
-        if (it.curatedProductId === product.id) return true;
-        if (product.placeBuiltinKind && it.kind === product.placeBuiltinKind) return true;
-        if (product.placeCatalogKind && it.kind === product.placeCatalogKind) return true;
-        return false;
-      });
+      const placed = !!findRoomItemForProduct(product, items, order);
+      const drawKind = getProductDrawKind(product);
       const onList = checklistProductIds.has(product.id);
       candidates.push({
         id,
@@ -380,10 +390,11 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
           product.slug,
           product.placeBuiltinKind ?? '',
           product.placeCatalogKind ?? '',
+          product.placeHangingKind ?? '',
         ],
         section: 'add',
         source: 'checklist',
-        kind: product.placeCatalogKind ?? product.placeBuiltinKind ?? product.slug,
+        kind: product.placeCatalogKind ?? product.placeBuiltinKind ?? product.placeHangingKind ?? product.slug,
         onChecklist: onList,
         alreadyInRoom: placed,
       });
@@ -398,8 +409,14 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
         previewUrl: product.imageUrl,
         placed,
         meta: placed ? 'already in room' : 'on your checklist',
-        run: () => onPlaceProduct(product, false),
-        runAndEdit: () => onPlaceProduct(product, true),
+        run: () => {
+          if (drawKind) onStartDraw(drawKind);
+          else onPlaceProduct(product, false);
+        },
+        runAndEdit: () => {
+          if (drawKind) onStartDraw(drawKind);
+          else onPlaceProduct(product, true);
+        },
       });
     }
 

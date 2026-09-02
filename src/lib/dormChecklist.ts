@@ -1,5 +1,12 @@
 /** Shopping checklist / curated product types and localStorage helpers. */
 
+import { resolveBeddingConfig } from './bedding/config';
+import type { BeddingConfig } from './bedding/types';
+import type { HangingDecorKind } from './hangingDecorGeometry';
+
+/** Bed inspector layers linked to checklist categories. */
+export type BeddingPlacementKind = 'sheets' | 'comforter' | 'pillow';
+
 export interface ChecklistCategory {
   id: string;
   slug: string;
@@ -31,6 +38,10 @@ export interface CuratedProduct {
   lastVerifiedAt: string | null;
   placeBuiltinKind: string | null;
   placeCatalogKind: string | null;
+  /** Procedural hanging draw feature (string lights / leaves). */
+  placeHangingKind: HangingDecorKind | null;
+  /** Bed inspector layer (sheets / comforter / pillow). */
+  placeBeddingKind: BeddingPlacementKind | null;
   /** Optional brand shown above the product title. */
   brand: string | null;
   /** Short highlight bullets for the product drawer. */
@@ -57,8 +68,67 @@ export interface ShoppingListEntry {
 
 export const PRODUCT_IMAGES_BUCKET = 'product-images';
 export const CHECKLIST_CHECKED_KEY = 'toova-checklist-checked';
+export const CHECKLIST_RESOLUTION_KEY = 'toova-checklist-resolution';
+export const MOVE_IN_BUDGET_KEY = 'toova-move-in-budget';
 export const SHOPPING_LIST_KEY = 'toova-shopping-list';
 export const CHECKLIST_PROGRESS_MERGED_KEY = 'toova-checklist-progress-merged';
+export const ACTIVE_CHECKLIST_ROOM_KEY = 'toova-active-checklist-room';
+export const CHECKLIST_LEGACY_MIGRATED_KEY = 'toova-checklist-legacy-migrated';
+
+export function checklistScopedKey(baseKey: string, roomId: string): string {
+  return `${baseKey}:${roomId}`;
+}
+
+export function getActiveChecklistRoomId(): string | null {
+  try {
+    const id = sessionStorage.getItem(ACTIVE_CHECKLIST_ROOM_KEY);
+    return id?.trim() ? id.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveChecklistRoomId(roomId: string | null): void {
+  try {
+    if (roomId?.trim()) sessionStorage.setItem(ACTIVE_CHECKLIST_ROOM_KEY, roomId.trim());
+    else sessionStorage.removeItem(ACTIVE_CHECKLIST_ROOM_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function migrateLegacyChecklistStateToRoom(roomId: string): void {
+  try {
+    if (localStorage.getItem(CHECKLIST_LEGACY_MIGRATED_KEY)) return;
+    const pairs: Array<[string, string]> = [
+      [CHECKLIST_CHECKED_KEY, checklistScopedKey(CHECKLIST_CHECKED_KEY, roomId)],
+      [CHECKLIST_RESOLUTION_KEY, checklistScopedKey(CHECKLIST_RESOLUTION_KEY, roomId)],
+      [MOVE_IN_BUDGET_KEY, checklistScopedKey(MOVE_IN_BUDGET_KEY, roomId)],
+      [SHOPPING_LIST_KEY, checklistScopedKey(SHOPPING_LIST_KEY, roomId)],
+    ];
+    for (const [legacyKey, scopedKey] of pairs) {
+      const legacy = localStorage.getItem(legacyKey);
+      if (legacy != null && localStorage.getItem(scopedKey) == null) {
+        localStorage.setItem(scopedKey, legacy);
+      }
+    }
+    localStorage.setItem(CHECKLIST_LEGACY_MIGRATED_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+function requireRoomScopedKey(baseKey: string, roomId: string | null | undefined): string | null {
+  const id = roomId?.trim();
+  if (!id) return null;
+  migrateLegacyChecklistStateToRoom(id);
+  return checklistScopedKey(baseKey, id);
+}
+
+/** User marked a suggested leaf as already owned or not needed. */
+export type CategoryResolution = 'have' | 'skip';
+
+export type ChecklistLineStatus = 'placed' | 'have' | 'skip' | 'open';
 
 /** @deprecated Prefer ChecklistCategoryWithProducts from the shopping catalog. */
 export interface ChecklistLink {
@@ -101,9 +171,11 @@ export function formatPriceCents(
   }
 }
 
-export function loadCheckedIds(): Set<string> {
+export function loadCheckedIds(roomId?: string | null): Set<string> {
   try {
-    const raw = localStorage.getItem(CHECKLIST_CHECKED_KEY);
+    const key = requireRoomScopedKey(CHECKLIST_CHECKED_KEY, roomId);
+    if (!key) return new Set();
+    const raw = localStorage.getItem(key);
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return new Set();
@@ -113,17 +185,200 @@ export function loadCheckedIds(): Set<string> {
   }
 }
 
-export function saveCheckedIds(ids: Set<string>) {
+export function saveCheckedIds(ids: Set<string>, roomId?: string | null) {
   try {
-    localStorage.setItem(CHECKLIST_CHECKED_KEY, JSON.stringify([...ids]));
+    const key = requireRoomScopedKey(CHECKLIST_CHECKED_KEY, roomId);
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify([...ids]));
   } catch {
     /* ignore quota / private mode */
   }
 }
 
-export function loadLocalShoppingList(): ShoppingListEntry[] {
+export function loadLocalResolutions(roomId?: string | null): Map<string, CategoryResolution> {
   try {
-    const raw = localStorage.getItem(SHOPPING_LIST_KEY);
+    const key = requireRoomScopedKey(CHECKLIST_RESOLUTION_KEY, roomId);
+    if (!key) return new Map();
+    const raw = localStorage.getItem(key);
+    if (!raw) return new Map();
+    const parsed = JSON.parse(raw) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return new Map();
+    const map = new Map<string, CategoryResolution>();
+    for (const [entryKey, value] of Object.entries(parsed)) {
+      if (value === 'have' || value === 'skip') map.set(entryKey, value);
+    }
+    return map;
+  } catch {
+    return new Map();
+  }
+}
+
+export function saveLocalResolutions(
+  resolutions: Map<string, CategoryResolution>,
+  roomId?: string | null,
+) {
+  try {
+    const key = requireRoomScopedKey(CHECKLIST_RESOLUTION_KEY, roomId);
+    if (!key) return;
+    const obj: Record<string, CategoryResolution> = {};
+    for (const [entryKey, value] of resolutions) obj[entryKey] = value;
+    localStorage.setItem(key, JSON.stringify(obj));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function loadLocalMoveInBudgetCents(roomId?: string | null): number | null {
+  try {
+    const key = requireRoomScopedKey(MOVE_IN_BUDGET_KEY, roomId);
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
+    if (raw == null || raw === '') return null;
+    const cents = Number(raw);
+    if (!Number.isFinite(cents) || cents < 0) return null;
+    return Math.round(cents);
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocalMoveInBudgetCents(cents: number | null, roomId?: string | null) {
+  try {
+    const key = requireRoomScopedKey(MOVE_IN_BUDGET_KEY, roomId);
+    if (!key) return;
+    if (cents == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, String(Math.max(0, Math.round(cents))));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function checklistLineStatus(
+  placed: boolean,
+  resolution: CategoryResolution | undefined,
+): ChecklistLineStatus {
+  if (placed) return 'placed';
+  if (resolution === 'have') return 'have';
+  if (resolution === 'skip') return 'skip';
+  return 'open';
+}
+
+export function isChecklistToPlace(status: ChecklistLineStatus): boolean {
+  return status === 'open';
+}
+
+export function isChecklistResolved(status: ChecklistLineStatus): boolean {
+  return status !== 'open';
+}
+
+export function lowestPriceCentsForProducts(
+  products: Pick<CuratedProduct, 'priceCents'>[],
+): number | null {
+  let min: number | null = null;
+  for (const p of products) {
+    if (p.priceCents == null) continue;
+    if (min == null || p.priceCents < min) min = p.priceCents;
+  }
+  return min;
+}
+
+/** Price attributed to a single room item for budget spent. */
+export function priceCentsForRoomItem(
+  item: ChecklistPlacementItem,
+  categories: ChecklistCategoryWithProducts[],
+  productsById: Record<string, CuratedProduct>,
+): number | null {
+  const curatedId = item.curatedProductId?.trim();
+  if (curatedId) {
+    const product = productsById[curatedId];
+    return product?.priceCents ?? null;
+  }
+  const ref: ChecklistPlacementRef = {
+    kind: item.kind,
+    curatedProductId: item.curatedProductId,
+    hangingKind: item.kind === 'hanging' ? item.hanging?.kind : undefined,
+  };
+  const satisfied = categoryIdsSatisfiedByPlacements(categories, [ref]);
+  if (satisfied.size === 0) return null;
+  for (const catId of satisfied) {
+    const cat = categories.find((c) => c.id === catId);
+    if (!cat) continue;
+    const cheapest = lowestPriceCentsForProducts(cat.products);
+    if (cheapest != null) return cheapest;
+  }
+  return null;
+}
+
+/** Sum of prices for items currently in the room (skips items with no known price). */
+export function spentCentsForRoom(
+  categories: ChecklistCategoryWithProducts[],
+  items: Record<string, ChecklistPlacementItem | undefined>,
+  order: string[],
+  productsById: Record<string, CuratedProduct>,
+): number {
+  let sum = 0;
+  for (const id of order) {
+    const item = items[id];
+    if (!item) continue;
+    const price = priceCentsForRoomItem(item, categories, productsById);
+    if (price != null) sum += price;
+  }
+  return sum;
+}
+
+export function remainingCents(budgetCents: number, spentCents: number): number {
+  return budgetCents - spentCents;
+}
+
+export function formatBudgetRemaining(
+  remainingCentsValue: number,
+  currency = 'USD',
+): string {
+  if (remainingCentsValue < 0) {
+    const over = formatPriceCents(-remainingCentsValue, currency);
+    return over ? `${over} over` : 'Over budget';
+  }
+  return formatPriceCents(remainingCentsValue, currency) ?? '$0';
+}
+
+export interface ChecklistBudgetSummary {
+  budgetCents: number | null;
+  spentCents: number;
+  remainingCents: number | null;
+  remainingLabel: string;
+  spentLabel: string;
+  spentOfCapLabel: string | null;
+}
+
+export function computeChecklistBudgetSummary(
+  budgetCents: number | null,
+  spentCentsValue: number,
+  currency = 'USD',
+): ChecklistBudgetSummary {
+  const spentLabel = formatPriceCents(spentCentsValue, currency) ?? '$0';
+  const remaining =
+    budgetCents != null ? remainingCents(budgetCents, spentCentsValue) : null;
+  const remainingLabel =
+    remaining != null ? formatBudgetRemaining(remaining, currency) : '';
+  const spentOfCapLabel =
+    budgetCents != null
+      ? `Spent ${spentLabel} of ${formatPriceCents(budgetCents, currency) ?? '$0'}`
+      : null;
+  return {
+    budgetCents,
+    spentCents: spentCentsValue,
+    remainingCents: remaining,
+    remainingLabel,
+    spentLabel,
+    spentOfCapLabel,
+  };
+}
+
+export function loadLocalShoppingList(roomId?: string | null): ShoppingListEntry[] {
+  try {
+    const key = requireRoomScopedKey(SHOPPING_LIST_KEY, roomId);
+    if (!key) return [];
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -145,9 +400,11 @@ export function loadLocalShoppingList(): ShoppingListEntry[] {
   }
 }
 
-export function saveLocalShoppingList(entries: ShoppingListEntry[]) {
+export function saveLocalShoppingList(entries: ShoppingListEntry[], roomId?: string | null) {
   try {
-    localStorage.setItem(SHOPPING_LIST_KEY, JSON.stringify(entries));
+    const key = requireRoomScopedKey(SHOPPING_LIST_KEY, roomId);
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify(entries));
   } catch {
     /* ignore */
   }
@@ -175,11 +432,112 @@ export function remapCheckedSlugsToIds(
 export interface ChecklistPlacementRef {
   kind: string;
   curatedProductId?: string | null;
+  /** furniture_catalog.kind when the room item is an imported GLB. */
+  catalogKind?: string | null;
+  /** Set when kind === 'hanging'. */
+  hangingKind?: HangingDecorKind | null;
+  /** Set when kind === 'bedding'. */
+  beddingKind?: BeddingPlacementKind | null;
+}
+
+/** Minimal room item shape for building placement refs. */
+export interface ChecklistPlacementItem {
+  kind: string;
+  curatedProductId?: string | null;
+  catalogKind?: string | null;
+  hanging?: { kind: HangingDecorKind } | null;
+  beddingConfig?: BeddingConfig;
+  beddingEnabled?: boolean;
+  blanketColor?: string;
+}
+
+/** True when a room item matches a curated product's place_catalog_kind. */
+export function itemMatchesPlaceCatalogKind(
+  item: Pick<ChecklistPlacementItem, 'kind' | 'catalogKind'>,
+  placeCatalogKind: string,
+): boolean {
+  if (item.catalogKind === placeCatalogKind) return true;
+  return item.kind === placeCatalogKind;
+}
+
+function beddingPlacementRefsForBed(item: ChecklistPlacementItem): ChecklistPlacementRef[] {
+  const config = resolveBeddingConfig(item);
+  const refs: ChecklistPlacementRef[] = [];
+  if (config.sheets.enabled) refs.push({ kind: 'bedding', beddingKind: 'sheets' });
+  if (config.comforter.enabled) refs.push({ kind: 'bedding', beddingKind: 'comforter' });
+  if (config.pillows.enabled && config.pillows.items.length > 0) {
+    refs.push({ kind: 'bedding', beddingKind: 'pillow' });
+  }
+  return refs;
+}
+
+/** Map room store items to checklist placement refs. */
+export function roomItemsToPlacementRefs(
+  items: Record<string, ChecklistPlacementItem | undefined>,
+  order: string[],
+): ChecklistPlacementRef[] {
+  const refs: ChecklistPlacementRef[] = [];
+  for (const id of order) {
+    const item = items[id];
+    if (!item) continue;
+    refs.push({
+      kind: item.kind,
+      curatedProductId: item.curatedProductId,
+      catalogKind: item.catalogKind,
+      hangingKind: item.kind === 'hanging' ? item.hanging?.kind : undefined,
+    });
+    if (item.kind === 'bed') refs.push(...beddingPlacementRefsForBed(item));
+  }
+  return refs;
+}
+
+/** Known checklist products mapped to hanging draw features (fallback when DB column unset). */
+const PRODUCT_SLUG_HANGING_KIND: Record<string, HangingDecorKind> = {
+  fairlylights1: 'lights',
+  led1: 'led-strip',
+  leaves: 'leaves',
+};
+
+/** Known checklist products mapped to bed bedding layers (fallback when DB column unset). */
+const PRODUCT_SLUG_BEDDING_KIND: Record<string, BeddingPlacementKind> = {
+  'bed-sheets': 'sheets',
+  'bed-comforter': 'comforter',
+  pillows: 'pillow',
+};
+
+/** Checklist category slugs for bed bedding layers. */
+const CATEGORY_SLUG_BEDDING_KIND: Record<string, BeddingPlacementKind> = {
+  'bed-sheets': 'sheets',
+  'bed-comforter': 'comforter',
+  pillows: 'pillow',
+};
+
+/** Resolve hanging draw kind from product DB field or known slug. */
+export function resolvePlaceHangingKind(
+  product: Pick<CuratedProduct, 'slug' | 'placeHangingKind'>,
+): HangingDecorKind | null {
+  if (product.placeHangingKind) return product.placeHangingKind;
+  return PRODUCT_SLUG_HANGING_KIND[product.slug] ?? null;
+}
+
+/** Draw feature kind for checklist products mapped to hanging decor. */
+export function getProductDrawKind(
+  product: Pick<CuratedProduct, 'slug' | 'placeHangingKind'>,
+): HangingDecorKind | null {
+  return resolvePlaceHangingKind(product);
+}
+
+/** Resolve bed bedding layer from product DB field or known slug. */
+export function resolvePlaceBeddingKind(
+  product: Pick<CuratedProduct, 'slug' | 'placeBeddingKind'>,
+): BeddingPlacementKind | null {
+  if (product.placeBeddingKind) return product.placeBeddingKind;
+  return PRODUCT_SLUG_BEDDING_KIND[product.slug] ?? null;
 }
 
 /**
  * Category IDs covered by room placements: curated product category,
- * matching place_builtin / place_catalog kind, or category slug === item kind.
+ * matching place_builtin / place_catalog / place_hanging kind, or category slug === item kind.
  */
 export function categoryIdsSatisfiedByPlacements(
   categories: ChecklistCategoryWithProducts[],
@@ -187,18 +545,52 @@ export function categoryIdsSatisfiedByPlacements(
 ): Set<string> {
   const productsById = new Map<string, CuratedProduct>();
   const byBuiltinKind = new Map<string, string>();
-  const byCatalogKind = new Map<string, string>();
+  const byCatalogKind = new Map<string, Set<string>>();
+  const byHangingKind = new Map<HangingDecorKind, Set<string>>();
+  const byBeddingKind = new Map<BeddingPlacementKind, Set<string>>();
   const bySlug = new Map<string, string>();
 
   for (const cat of categories) {
     bySlug.set(cat.slug, cat.id);
+    const categoryBeddingKind = CATEGORY_SLUG_BEDDING_KIND[cat.slug];
+    if (categoryBeddingKind) {
+      let ids = byBeddingKind.get(categoryBeddingKind);
+      if (!ids) {
+        ids = new Set<string>();
+        byBeddingKind.set(categoryBeddingKind, ids);
+      }
+      ids.add(cat.id);
+    }
     for (const product of cat.products) {
       productsById.set(product.id, product);
       if (product.placeBuiltinKind) {
         byBuiltinKind.set(product.placeBuiltinKind, cat.id);
       }
       if (product.placeCatalogKind) {
-        byCatalogKind.set(product.placeCatalogKind, cat.id);
+        let ids = byCatalogKind.get(product.placeCatalogKind);
+        if (!ids) {
+          ids = new Set<string>();
+          byCatalogKind.set(product.placeCatalogKind, ids);
+        }
+        ids.add(cat.id);
+      }
+      const hangingKind = resolvePlaceHangingKind(product);
+      if (hangingKind) {
+        let ids = byHangingKind.get(hangingKind);
+        if (!ids) {
+          ids = new Set<string>();
+          byHangingKind.set(hangingKind, ids);
+        }
+        ids.add(cat.id);
+      }
+      const beddingKind = resolvePlaceBeddingKind(product);
+      if (beddingKind) {
+        let ids = byBeddingKind.get(beddingKind);
+        if (!ids) {
+          ids = new Set<string>();
+          byBeddingKind.set(beddingKind, ids);
+        }
+        ids.add(cat.id);
       }
     }
   }
@@ -212,10 +604,25 @@ export function categoryIdsSatisfiedByPlacements(
     }
     const byBuiltin = byBuiltinKind.get(item.kind);
     if (byBuiltin) satisfied.add(byBuiltin);
-    const byCatalog = byCatalogKind.get(item.kind);
-    if (byCatalog) satisfied.add(byCatalog);
+    const catalogKey = item.catalogKind ?? item.kind;
+    const byCatalog = byCatalogKind.get(catalogKey);
+    if (byCatalog) {
+      for (const catId of byCatalog) satisfied.add(catId);
+    }
     const byKindSlug = bySlug.get(item.kind);
     if (byKindSlug) satisfied.add(byKindSlug);
+    if (item.kind === 'hanging' && item.hangingKind) {
+      const catIds = byHangingKind.get(item.hangingKind);
+      if (catIds) {
+        for (const catId of catIds) satisfied.add(catId);
+      }
+    }
+    if (item.beddingKind) {
+      const catIds = byBeddingKind.get(item.beddingKind);
+      if (catIds) {
+        for (const catId of catIds) satisfied.add(catId);
+      }
+    }
   }
   return satisfied;
 }

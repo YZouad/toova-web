@@ -8,14 +8,17 @@ import {
   type RefObject,
 } from 'react';
 import { useShoppingCatalogContext } from '../../context/ShoppingCatalogContext';
+import { getBuiltinPreviewUrl, useBuiltinPreviews } from '../../hooks/useBuiltinPreviews';
 import { useDesignerSearch } from '../../hooks/useDesignerSearch';
 import type { GalleryModel } from '../../hooks/useGalleryCatalog';
 import type { CuratedProduct } from '../../lib/dormChecklist';
-import { placeCuratedProduct } from '../../lib/placeCuratedProduct';
+import type { HangingDecorKind } from '../../store';
+import { getProductDrawKind } from '../../lib/dormChecklist';
 import { useStore } from '../../store';
 import { IconSearch } from './icons';
 import type { CommandPaletteCommand } from './commandPaletteCommands';
 import type { SearchResult } from './commandSearchTypes';
+import { placeCuratedProduct, startChecklistDrawPlacement } from '../../lib/placeCuratedProduct';
 import { placeFromCatalog } from './placeCatalogModel';
 
 export type { CommandPaletteCommand } from './commandPaletteCommands';
@@ -26,7 +29,7 @@ export interface CommandPaletteProps {
   commands: CommandPaletteCommand[];
   onPlaceModel?: (model: GalleryModel) => void;
   onPlaceAndEdit?: (model: GalleryModel) => void;
-  onStartDraw?: (kind: 'lights' | 'leaves') => void;
+  onStartDraw?: (kind: HangingDecorKind) => void;
   onAddLight?: () => void;
   onOpenInspector?: () => void;
   onOpenAddPanel?: () => void;
@@ -95,6 +98,7 @@ export function CommandPalette({
   const listRef = useRef<HTMLDivElement>(null);
   const optionIdPrefix = useId();
   const { list, productsById, categories } = useShoppingCatalogContext();
+  const builtinPreviews = useBuiltinPreviews();
 
   const checklistProducts = useMemo(() => {
     const out: CuratedProduct[] = [];
@@ -147,6 +151,13 @@ export function CommandPalette({
   };
 
   const placeProduct = async (product: CuratedProduct, andEdit?: boolean) => {
+    const drawKind = getProductDrawKind(product);
+    if (drawKind) {
+      startChecklistDrawPlacement(product);
+      onStartDraw?.(drawKind);
+      onClose();
+      return;
+    }
     const id = await placeCuratedProduct(product);
     if (id) {
       useStore.getState().select(id);
@@ -378,6 +389,13 @@ export function CommandPalette({
                   const index = flatIndex;
                   const optionId = `${optionIdPrefix}-opt-${item.id}`;
                   const letter = (item.label.trim()[0] ?? '?').toUpperCase();
+                  const catalogThumb =
+                    item.type === 'catalogModel' || item.type === 'checklistProduct'
+                      ? item.previewUrl ??
+                        (item.type === 'catalogModel' && item.model.isBuiltin
+                          ? getBuiltinPreviewUrl(item.model.kind, builtinPreviews)
+                          : undefined)
+                      : undefined;
                   return (
                     <button
                       key={item.id}
@@ -401,16 +419,8 @@ export function CommandPalette({
                     >
                       {item.type === 'catalogModel' || item.type === 'checklistProduct' ? (
                         <span className="dg-cmdk-item__thumb" aria-hidden>
-                          {(item.type === 'catalogModel' ? item.previewUrl : item.previewUrl) ? (
-                            <img
-                              src={
-                                (item.type === 'catalogModel'
-                                  ? item.previewUrl
-                                  : item.previewUrl) ?? undefined
-                              }
-                              alt=""
-                              draggable={false}
-                            />
+                          {catalogThumb ? (
+                            <img src={catalogThumb} alt="" draggable={false} />
                           ) : item.type === 'catalogModel' && item.thumbColor ? (
                             <span
                               className="dg-cmdk-item__swatch"

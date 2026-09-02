@@ -22,6 +22,11 @@ import { removePublicModelMirrors } from '../lib/publicModelsMirror';
 import { supabase } from '../lib/supabase';
 import { formatRelativeTime } from '../lib/userDisplay';
 import { profilePath, navigate } from '../hooks/useRoute';
+import {
+  getBuiltinPreviewUrl,
+  requestBuiltinPreview,
+  useBuiltinPreviews,
+} from '../hooks/useBuiltinPreviews';
 import './model-detail.css';
 
 export interface ModelDetailModalProps {
@@ -188,7 +193,12 @@ export function ModelDetailModal({
   );
   const downloadExt = downloadFilename.split('.').pop()?.toUpperCase() ?? 'GLB';
 
-  const previewUrl = model.previewUrl ?? builtinPreviewUrl ?? null;
+  const generatedPreviews = useBuiltinPreviews();
+  const previewUrl =
+    model.previewUrl ??
+    builtinPreviewUrl ??
+    (model.isBuiltin ? getBuiltinPreviewUrl(model.kind, generatedPreviews) : null) ??
+    null;
   const showPreviewImg = !!previewUrl && !imgBroken;
   const dims = formatDims(model.width_in, model.height_in, model.depth_in);
   const sourceChip = isOwner
@@ -225,6 +235,14 @@ export function ModelDetailModal({
       restoreFocusRef.current?.focus?.();
     };
   }, []);
+
+  useEffect(() => {
+    if (model.isBuiltin) requestBuiltinPreview(model.kind);
+  }, [model.isBuiltin, model.kind]);
+
+  useEffect(() => {
+    setImgBroken(false);
+  }, [previewUrl]);
 
   useEffect(() => {
     setReported(hasReportedCatalogKind(model.kind));

@@ -4,8 +4,14 @@ import { ShoppingCatalogContext } from './shoppingCatalogState';
 
 export { useShoppingCatalogContext } from './shoppingCatalogState';
 
-export function ShoppingCatalogProvider({ children }: { children: ReactNode }) {
-  const api = useShoppingCatalog();
+export function ShoppingCatalogProvider({
+  roomId,
+  children,
+}: {
+  roomId: string | null;
+  children: ReactNode;
+}) {
+  const api = useShoppingCatalog(roomId);
   return (
     <ShoppingCatalogContext.Provider value={api}>
       {children}

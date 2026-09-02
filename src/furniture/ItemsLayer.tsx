@@ -1,4 +1,4 @@
-import { useStore, Item } from '../store';
+import { isHangingDesignerTool, useStore, Item } from '../store';
 import { Selectable } from './Selectable';
 import { Bed } from './Bed';
 import { Dresser } from './Dresser';
@@ -21,7 +21,7 @@ export function ItemsLayer() {
   const selectedIds = useStore((s) => s.selectedIds);
   const invalid = useStore((s) => s.invalid);
   const designerTool = useStore((s) => s.designerTool);
-  const placing = designerTool === 'hanging-leaves' || designerTool === 'hanging-lights';
+  const placing = isHangingDesignerTool(designerTool);
 
   return (
     <>

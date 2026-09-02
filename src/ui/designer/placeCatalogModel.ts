@@ -24,6 +24,7 @@ export function placeFromCatalog(model: GalleryModel, userId?: string | null): s
       label: model.label,
       size: dims,
       catalogSizeIn: dims,
+      catalogKind: model.kind,
     });
     if (shouldRecordCatalogDownload(model, userId ?? null)) {
       void recordCatalogDownload(model.kind).catch(() => {

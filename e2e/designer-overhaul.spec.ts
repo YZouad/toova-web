@@ -20,8 +20,7 @@ async function enterGuestDesigner(page: Page) {
   await page.getByRole('button', { name: /Start designing, free/i }).first().click();
   await expect(page.getByText(/Start with a room/i)).toBeVisible({ timeout: 15_000 });
 
-  const firstStarter = page.locator('.room-preset-grid--tiers .room-preset-card-btn').first();
-  await firstStarter.click();
+  await page.getByRole('button', { name: /Rectangle/i }).click();
   await expect(page.locator('.dg-page')).toBeVisible({ timeout: 60_000 });
   // Dismiss tour if present so chrome is clickable
   const skip = page.getByRole('button', { name: 'Skip' });

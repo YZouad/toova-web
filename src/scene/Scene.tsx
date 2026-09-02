@@ -26,7 +26,7 @@ import { SelectionHud, type SelectionHudProps } from './SelectionHud';
 import { LongPressLift } from './LongPressLift';
 import { MobileSelectionHud } from './MobileSelectionHud';
 import { HangingDraftPreview } from '../furniture/HangingDecoration';
-import { useStore, type CameraPresetId } from '../store';
+import { isHangingDesignerTool, useStore, type CameraPresetId } from '../store';
 import { applyWeather, isDaytime, sampleSun, indoorHorizonFill, grazingSunIndoor } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
 import { WindowLightShafts } from './WindowLightShafts';
@@ -587,8 +587,7 @@ function SceneInner({
   const showWeatherFx = q.envDetail === 'full';
   const cheapGpu = q.tier === 'low' || q.tier === 'balanced';
   const designerTool = useStore((s) => s.designerTool);
-  const hangingTool =
-    !readOnly && !capturing && (designerTool === 'hanging-leaves' || designerTool === 'hanging-lights');
+  const hangingTool = !readOnly && !capturing && isHangingDesignerTool(designerTool);
 
   return (
     <Canvas

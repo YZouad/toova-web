@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useStore } from '../../../store';
+import { useStore, type HangingDecorKind } from '../../../store';
 import { TIME_PRESETS } from '../LightPanel';
 import { MobileSheet } from './MobileSheet';
 
@@ -18,7 +18,7 @@ function nearestTimePreset(hour: number): string {
 
 export interface MobileLightSheetProps {
   onClose: () => void;
-  onStartDraw?: (kind: 'lights' | 'leaves') => void;
+  onStartDraw?: (kind: HangingDecorKind) => void;
   onAddLight?: () => void;
 }
 
@@ -190,6 +190,13 @@ export function MobileLightSheet({ onClose, onStartDraw, onAddLight }: MobileLig
               onClick={() => onStartDraw('leaves')}
             >
               Draw leaves
+            </button>
+            <button
+              type="button"
+              className="dgm-action-btn is-dashed is-full"
+              onClick={() => onStartDraw('led-strip')}
+            >
+              Draw LED strip
             </button>
           </div>
         ) : null}

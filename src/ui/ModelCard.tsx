@@ -1,4 +1,9 @@
 import { useEffect, useState } from 'react';
+import {
+  getBuiltinPreviewUrl,
+  requestBuiltinPreview,
+  useBuiltinPreviews,
+} from '../hooks/useBuiltinPreviews';
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import { catalogCategoryLabel } from '../lib/catalogCategories';
 import { MonoMeta, Plate } from './kit';
@@ -31,9 +36,18 @@ export function ModelCard({
   onOpen,
   onEdit,
 }: ModelCardProps) {
-  const previewUrl = model.previewUrl ?? builtinPreviewUrl ?? null;
+  const generatedPreviews = useBuiltinPreviews();
+  const previewUrl =
+    model.previewUrl ??
+    builtinPreviewUrl ??
+    (model.isBuiltin ? getBuiltinPreviewUrl(model.kind, generatedPreviews) : null) ??
+    null;
   const [imgBroken, setImgBroken] = useState(false);
   const showImg = !!previewUrl && !imgBroken;
+
+  useEffect(() => {
+    if (model.isBuiltin) requestBuiltinPreview(model.kind);
+  }, [model.isBuiltin, model.kind]);
 
   useEffect(() => {
     setImgBroken(false);

@@ -131,6 +131,7 @@ export interface CreateProductInput {
   published?: boolean;
   placeBuiltinKind?: string | null;
   placeCatalogKind?: string | null;
+  placeHangingKind?: string | null;
   imagePath?: string | null;
   sortOrder?: number;
 }
@@ -157,6 +158,7 @@ export async function createCuratedProduct(
       last_verified_at: new Date().toISOString(),
       place_builtin_kind: input.placeBuiltinKind || null,
       place_catalog_kind: input.placeCatalogKind || null,
+      place_hanging_kind: input.placeHangingKind || null,
       image_path: input.imagePath ?? null,
       sort_order: sortOrder,
     })
@@ -176,6 +178,7 @@ export interface UpdateProductInput {
   published?: boolean;
   placeBuiltinKind?: string | null;
   placeCatalogKind?: string | null;
+  placeHangingKind?: string | null;
   imagePath?: string | null;
   categoryId?: string;
   sortOrder?: number;
@@ -202,6 +205,9 @@ export async function updateCuratedProduct(
   }
   if (input.placeCatalogKind !== undefined) {
     patch.place_catalog_kind = input.placeCatalogKind || null;
+  }
+  if (input.placeHangingKind !== undefined) {
+    patch.place_hanging_kind = input.placeHangingKind || null;
   }
   if (input.imagePath !== undefined) patch.image_path = input.imagePath;
   if (input.categoryId != null) patch.category_id = input.categoryId;

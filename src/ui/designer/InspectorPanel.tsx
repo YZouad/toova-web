@@ -14,7 +14,7 @@ import {
 import type { BeddingConfigPatch } from '../../lib/bedding/types';
 import { DEFAULT_SHELF_COLOR, SHELF_COLOR_SWATCHES } from '../../furniture/registry';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from '../../lib/checklistPublicGlbs';
-import { LED_PALETTE_PRESETS } from '../../lib/hangingDecorGeometry';
+import { LED_PALETTE_PRESETS, palettePresetBackground } from '../../lib/hangingDecorGeometry';
 import { proportionalSizesFromMaxSide } from '../../lib/uniformItemSize';
 import { planBounds } from '../../lib/roomGeometry';
 import { DEFAULT_EMITTER, useStore } from '../../store';
@@ -146,7 +146,13 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
               <TabBtn active={tab === 'path'} label="Path & sag" onClick={() => onTab('path')} />
               <TabBtn
                 active={tab === 'bulbs'}
-                label={hang?.kind === 'leaves' ? 'Leaves' : 'Bulbs'}
+                label={
+                  hang?.kind === 'leaves'
+                    ? 'Leaves'
+                    : hang?.kind === 'led-strip'
+                      ? 'Colors'
+                      : 'Bulbs'
+                }
                 onClick={() => onTab('bulbs')}
               />
             </>
@@ -321,24 +327,29 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
                   Redraw
                 </button>
               </div>
-              <PanelSection title="Sag" meta={`${Math.round(hang.sag * 100)}%`}>
-                <input
-                  type="range"
-                  min={0}
-                  max={45}
-                  step={1}
-                  value={Math.round(hang.sag * 100)}
-                  onChange={(e) => setHangingConfig(item.id, { sag: Number(e.target.value) / 100 })}
-                  style={{ width: '100%', accentColor: 'var(--accent)' }}
-                />
-              </PanelSection>
+              {hang.kind !== 'led-strip' ? (
+                <PanelSection title="Sag" meta={`${Math.round(hang.sag * 100)}%`}>
+                  <input
+                    type="range"
+                    min={0}
+                    max={45}
+                    step={1}
+                    value={Math.round(hang.sag * 100)}
+                    onChange={(e) => setHangingConfig(item.id, { sag: Number(e.target.value) / 100 })}
+                    style={{ width: '100%', accentColor: 'var(--accent)' }}
+                  />
+                </PanelSection>
+              ) : null}
             </div>
           ) : null}
 
           {tab === 'bulbs' && isHanging && hang ? (
-            hang.kind === 'lights' ? (
+            hang.kind === 'lights' || hang.kind === 'led-strip' ? (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-                <PanelSection title="Bulb spacing" meta={`${hang.density.toFixed(1)}″`}>
+                <PanelSection
+                  title={hang.kind === 'led-strip' ? 'LED spacing' : 'Bulb spacing'}
+                  meta={`${hang.density.toFixed(1)}″`}
+                >
                   <input
                     type="range"
                     min={2}
@@ -363,29 +374,25 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
                   />
                 </PanelSection>
                 <PanelSection title="Colors">
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                     {LED_PALETTE_PRESETS.map((p) => (
                       <button
                         key={p.label}
                         type="button"
                         title={p.label}
+                        aria-label={p.label}
                         onClick={() => setHangingConfig(item.id, { palette: [...p.colors] })}
                         style={{
-                          flex: 1,
-                          display: 'flex',
+                          flex: '1 1 72px',
                           height: 30,
                           border: '1px solid var(--rule-hair)',
                           borderRadius: 7,
                           overflow: 'hidden',
                           padding: 0,
                           cursor: 'pointer',
-                          background: 'transparent',
+                          background: palettePresetBackground(p.colors),
                         }}
-                      >
-                        {p.colors.map((c) => (
-                          <span key={c} style={{ flex: 1, background: c }} />
-                        ))}
-                      </button>
+                      />
                     ))}
                   </div>
                 </PanelSection>

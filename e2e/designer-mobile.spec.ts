@@ -19,8 +19,7 @@ async function enterGuestDesigner(page: Page) {
   await dismissBlockingModals(page);
   await page.getByRole('button', { name: /Start designing, free/i }).first().click();
   await expect(page.getByText(/Start with a room/i)).toBeVisible({ timeout: 15_000 });
-  const firstStarter = page.locator('.room-preset-grid--tiers .room-preset-card-btn').first();
-  await firstStarter.click();
+  await page.getByRole('button', { name: /Rectangle/i }).click();
   await expect(page.locator('.dg-page.is-phone')).toBeVisible({ timeout: 60_000 });
   const skip = page.getByRole('button', { name: 'Skip' });
   if (await skip.isVisible().catch(() => false)) {
@@ -86,6 +85,7 @@ test.describe('mobile designer phone states', () => {
 
     await page.locator('[data-tour-id="ticker"]').click();
     await expect(page.locator('.dgm-sheet--checklist')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Set a budget' })).toBeVisible();
     await page.keyboard.press('Escape');
   });
 

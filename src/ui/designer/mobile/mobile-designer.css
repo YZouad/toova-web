@@ -1716,18 +1716,12 @@
 
 .dg-page.is-phone .dgm-palette-btn {
   flex: 1;
-  display: flex;
   height: 30px;
   border: 1px solid var(--rule-hair);
   border-radius: 7px;
   overflow: hidden;
   padding: 0;
   cursor: pointer;
-  background: transparent;
-}
-
-.dg-page.is-phone .dgm-palette-btn span {
-  flex: 1;
 }
 
 .dg-page.is-phone .dgm-color-input {
@@ -1920,8 +1914,60 @@
 }
 
 .dg-page.is-phone .dgm-checklist-total__value {
-  font: 500 21px/1 var(--font-serif);
+  font: 500 22px/1 var(--font-serif);
   color: var(--ink-0);
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+}
+.dg-page.is-phone .dgm-checklist-total__sub {
+  display: block;
+  font: var(--type-mono-xs);
+  color: var(--ink-5);
+  margin-top: 4px;
+}
+.dg-page.is-phone .dgm-checklist-set-budget {
+  width: 100%;
+  font: 600 13px/1 var(--font-sans);
+  padding: 12px 10px;
+  border: 1px solid var(--ink-0);
+  border-radius: 10px;
+  background: var(--paper-0);
+}
+.dg-page.is-phone .dgm-checklist-item__check.is-chip {
+  font: 600 9px/1 var(--font-sans);
+  text-transform: uppercase;
+  color: var(--ink-5);
+  background: var(--paper-3);
+}
+.dg-page.is-phone .dgm-checklist-resolution {
+  margin-bottom: 10px;
+}
+.dg-page.is-phone .dgm-checklist-detail-toolbar {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+}
+.dg-page.is-phone .dgm-checklist-checkout {
+  width: 100%;
+  margin-top: 10px;
+  font: 600 13px/1 var(--font-sans);
+  padding: 12px 10px;
+  border: 1px solid var(--ink-0);
+  border-radius: 10px;
+  background: var(--ink-0);
+  color: var(--paper-0);
+}
+.dg-page.is-phone .dgm-checklist-total,
+.dg-page.is-phone .checklist-budget-foot {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+}
+
+.dg-page.is-phone .dgm-checklist-checkout:disabled {
+  opacity: 0.45;
 }
 
 .dg-page.is-phone .dgm-checklist-detail-head {

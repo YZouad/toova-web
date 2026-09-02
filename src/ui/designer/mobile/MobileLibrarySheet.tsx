@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGalleryCatalog } from '../../../hooks/useGalleryCatalog';
-import { getBuiltinPreviewUrl, useBuiltinPreviews } from '../../../hooks/useBuiltinPreviews';
+import {
+  getBuiltinPreviewUrl,
+  requestBuiltinPreview,
+  useBuiltinPreviews,
+  withBuiltinPreview,
+} from '../../../hooks/useBuiltinPreviews';
 import {
   CATALOG_CATEGORY_DEFS,
   MAX_CATALOG_CATEGORIES,
@@ -10,6 +15,8 @@ import {
 } from '../../../lib/catalogCategories';
 import type { GallerySort, GallerySource } from '../../../lib/galleryCatalog';
 import type { CatalogModel } from '../chromeTypes';
+import type { HangingDecorKind } from '../../../store';
+import { IconHangingLeaves, IconHangingLights, IconLedStrip } from '../icons';
 import { placeFromCatalog } from '../placeCatalogModel';
 import { MobileSheet } from './MobileSheet';
 
@@ -31,6 +38,7 @@ export interface MobileLibrarySheetProps {
   onClose: () => void;
   onImport: () => void;
   onOpenModel: (model: CatalogModel) => void;
+  onStartDraw: (kind: HangingDecorKind) => void;
   onAddLight: () => void;
 }
 
@@ -38,6 +46,7 @@ export function MobileLibrarySheet({
   onClose,
   onImport,
   onOpenModel,
+  onStartDraw,
   onAddLight,
 }: MobileLibrarySheetProps) {
   const { user } = useAuth();
@@ -100,6 +109,40 @@ export function MobileLibrarySheet({
 
   const footer = (
     <div className="dgm-library-footer">
+      <div className="dgm-action-row">
+        <button
+          type="button"
+          className="dgm-action-btn is-dashed"
+          onClick={() => onStartDraw('lights')}
+        >
+          <span className="dgm-action-btn__dot" style={{ background: '#E8C27A', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
+            <IconHangingLights size={10} />
+          </span>
+          Fairy lights
+        </button>
+        <button
+          type="button"
+          className="dgm-action-btn is-dashed"
+          onClick={() => onStartDraw('leaves')}
+        >
+          <span className="dgm-action-btn__dot" style={{ background: '#7E8A60', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
+            <IconHangingLeaves size={10} />
+          </span>
+          Leaves
+        </button>
+      </div>
+      <div className="dgm-action-row">
+        <button
+          type="button"
+          className="dgm-action-btn is-dashed is-full"
+          onClick={() => onStartDraw('led-strip')}
+        >
+          <span className="dgm-action-btn__dot" style={{ background: '#6EB5FF', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
+            <IconLedStrip size={10} />
+          </span>
+          LED strip
+        </button>
+      </div>
       <button type="button" className="dgm-action-btn is-outline is-full" onClick={onImport}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
           <path d="M12 16V4M8 8l4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />
@@ -243,7 +286,14 @@ export function MobileLibrarySheet({
             const letter = (m.label?.trim()?.[0] ?? '?').toUpperCase();
             return (
               <div key={m.kind} className="dgm-catalog-row">
-                <button type="button" className="dgm-catalog-row__main" onClick={() => onOpenModel(m)}>
+                <button
+                  type="button"
+                  className="dgm-catalog-row__main"
+                  onClick={() => {
+                    if (m.isBuiltin) requestBuiltinPreview(m.kind);
+                    onOpenModel(withBuiltinPreview(m, builtinPreviews));
+                  }}
+                >
                   <span className="dgm-catalog-row__thumb">
                     {thumb ? (
                       <img src={thumb} alt="" draggable={false} />
