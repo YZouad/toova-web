@@ -2755,6 +2755,72 @@ button.landing-nav-brand { cursor: pointer; }
   cursor: default;
 }
 
+/* ── Guest import auth prompt ── */
+.guest-import-auth-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: rgba(43, 38, 32, 0.45);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.guest-import-auth-dialog {
+  width: min(400px, 100%);
+}
+.guest-import-auth-inner {
+  padding: 26px 26px 22px;
+}
+.guest-import-auth-eyebrow {
+  margin: 0 0 8px;
+}
+.guest-import-auth-title {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 500;
+  color: var(--text);
+  line-height: 1.15;
+}
+.guest-import-auth-hint {
+  margin: 10px 0 0;
+  font-size: 14px;
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+.guest-import-auth-actions {
+  margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.guest-import-auth-actions .kit-btn {
+  width: 100%;
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.2;
+}
+.guest-import-auth-dismiss {
+  cursor: pointer;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 10px 14px;
+  line-height: 1.2;
+}
+.guest-import-auth-dismiss:hover {
+  color: var(--text);
+}
+
 /* ── Checklist modal teaser ── */
 .checklist-modal-backdrop {
   position: fixed;
@@ -4073,6 +4139,12 @@ button.landing-nav-brand { cursor: pointer; }
   margin: 0;
   font: var(--type-body-sm, 13px/1.4 system-ui);
   color: var(--danger, #b33);
+}
+.room-preset-busy {
+  margin: 0;
+  font: var(--type-mono-sm);
+  color: var(--ink-3);
+  text-align: center;
 }
 
 @media (max-width: 860px) {

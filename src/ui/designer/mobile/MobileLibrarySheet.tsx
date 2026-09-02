@@ -31,7 +31,6 @@ export interface MobileLibrarySheetProps {
   onClose: () => void;
   onImport: () => void;
   onOpenModel: (model: CatalogModel) => void;
-  onStartDraw: (kind: 'lights' | 'leaves') => void;
   onAddLight: () => void;
 }
 
@@ -39,7 +38,6 @@ export function MobileLibrarySheet({
   onClose,
   onImport,
   onOpenModel,
-  onStartDraw,
   onAddLight,
 }: MobileLibrarySheetProps) {
   const { user } = useAuth();
@@ -102,24 +100,6 @@ export function MobileLibrarySheet({
 
   const footer = (
     <div className="dgm-library-footer">
-      <div className="dgm-action-row">
-        <button
-          type="button"
-          className="dgm-action-btn is-dashed"
-          onClick={() => onStartDraw('lights')}
-        >
-          <span className="dgm-action-btn__dot" style={{ background: '#E8C27A' }} />
-          String lights
-        </button>
-        <button
-          type="button"
-          className="dgm-action-btn is-dashed"
-          onClick={() => onStartDraw('leaves')}
-        >
-          <span className="dgm-action-btn__dot" style={{ background: '#7E8A60' }} />
-          Leaves
-        </button>
-      </div>
       <button type="button" className="dgm-action-btn is-outline is-full" onClick={onImport}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" aria-hidden>
           <path d="M12 16V4M8 8l4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" />

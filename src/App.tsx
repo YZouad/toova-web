@@ -597,23 +597,40 @@ function AppContent() {
     setScreen('checklist');
   }, []);
 
+  const requestGuestAuth = useCallback(
+    (mode: 'signin' | 'signup', reason: string) => {
+      if (!workspace) return;
+      const state = useStore.getState();
+      const snapshot = buildGuestSnapshot({
+        name: workspace.name,
+        templateId: guestTemplateId as GuestDesignSnapshot['templateId'],
+        items: state.items,
+        order: state.order,
+        environment: state.environment,
+        roomGeometry: state.roomGeometry,
+      });
+      saveGuestDesignSnapshot(snapshot);
+      setGuestAuthIntent('save-design');
+      setAuthReason(reason);
+      setAuthMode(mode);
+      setScreen('auth');
+    },
+    [workspace, guestTemplateId],
+  );
+
   const requestSaveAuth = useCallback(() => {
-    if (!workspace) return;
-    const state = useStore.getState();
-    const snapshot = buildGuestSnapshot({
-      name: workspace.name,
-      templateId: guestTemplateId as GuestDesignSnapshot["templateId"],
-      items: state.items,
-      order: state.order,
-      environment: state.environment,
-      roomGeometry: state.roomGeometry,
-    });
-    saveGuestDesignSnapshot(snapshot);
-    setGuestAuthIntent('save-design');
-    setAuthReason('Sign in to save this room to your account. Your design is kept on this device until then.');
-    setAuthMode('signup');
-    setScreen('auth');
-  }, [workspace, guestTemplateId]);
+    requestGuestAuth('signup', 'Sign in to save this room to your account. Your design is kept on this device until then.');
+  }, [requestGuestAuth]);
+
+  const requestImportAuth = useCallback(
+    (mode: 'signin' | 'signup' = 'signup') => {
+      requestGuestAuth(
+        mode,
+        'Create a free account to upload photos and bring your own pieces into the room.',
+      );
+    },
+    [requestGuestAuth],
+  );
 
   const landingCallbacks = {
     loggedIn: !!user,
@@ -964,6 +981,9 @@ function AppContent() {
 isAdmin={isAdmin}
           onRequestSaveAuth={
             isGuestWorkspaceId(workspace.id) ? requestSaveAuth : undefined
+          }
+          onRequestImportAuth={
+            isGuestWorkspaceId(workspace.id) ? requestImportAuth : undefined
           }
         />
       </RoomWorkspaceProvider>
