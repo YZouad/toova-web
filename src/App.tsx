@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
-import { ShoppingCatalogProvider } from './context/ShoppingCatalogContext';
+import { ChecklistRoomProvider, useChecklistRoomScope } from './context/ChecklistRoomContext';
+import { getActiveChecklistRoomId } from './lib/dormChecklist';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
 import { createRoomWithGeometry, saveRoomLayout, useRoomLoad } from './hooks/useRoomLayout';
@@ -166,14 +167,15 @@ function ARPage() {
 
 export default function App() {
   return (
-    <ShoppingCatalogProvider>
+    <ChecklistRoomProvider>
       <AppContent />
-    </ShoppingCatalogProvider>
+    </ChecklistRoomProvider>
   );
 }
 
 function AppContent() {
   const { loading, user, logout, refreshProfile, profile, avatarUrl } = useAuth();
+  const { setRoomId } = useChecklistRoomScope();
   const route = useRoute();
   const [screen, setScreen] = useState<Screen>('landing');
   const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
@@ -195,6 +197,10 @@ function AppContent() {
   const hydrateLayout = useStore((s) => s.hydrateLayout);
   const hydrateRoomSettings = useStore((s) => s.hydrateRoomSettings);
   const { load, loading: layoutLoading } = useRoomLoad();
+
+  useEffect(() => {
+    setRoomId(workspace?.id ?? getActiveChecklistRoomId());
+  }, [workspace?.id, setRoomId]);
 
   const routeIsPublic =
     route.name === 'shared' ||
@@ -345,6 +351,7 @@ function AppContent() {
           label: model.label,
           size: dims,
           catalogSizeIn: dims,
+          catalogKind: model.kind,
         });
         if (shouldRecordCatalogDownload(model, user?.id)) {
           void recordCatalogDownload(model.kind).catch(() => {});

@@ -1,7 +1,12 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useGalleryCatalog } from '../../hooks/useGalleryCatalog';
-import { getBuiltinPreviewUrl, useBuiltinPreviews } from '../../hooks/useBuiltinPreviews';
+import {
+  getBuiltinPreviewUrl,
+  requestBuiltinPreview,
+  useBuiltinPreviews,
+  withBuiltinPreview,
+} from '../../hooks/useBuiltinPreviews';
 import {
   CATALOG_CATEGORY_DEFS,
   MAX_CATALOG_CATEGORIES,
@@ -243,7 +248,10 @@ export function LibraryPanel({
               >
                 <button
                   type="button"
-                  onClick={() => onOpenModel(m)}
+                  onClick={() => {
+                    if (m.isBuiltin) requestBuiltinPreview(m.kind);
+                    onOpenModel(withBuiltinPreview(m, builtinPreviews));
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

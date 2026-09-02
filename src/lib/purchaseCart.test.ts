@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ChecklistCategoryWithProducts, CuratedProduct } from './dormChecklist';
-import { buildPurchaseCartLines } from './purchaseCart';
+import { buildPurchaseCartLines, purchaseCartTotalCents } from './purchaseCart';
 import { checklistProgressCounts } from './checklistProgress';
 import type { ChecklistLineModel } from './checklistLines';
 
@@ -111,6 +111,99 @@ describe('buildPurchaseCartLines', () => {
       getResolution: (id) => (id === 'cat-a' ? 'have' : undefined),
     });
     expect(lines).toHaveLength(0);
+  });
+});
+
+describe('purchaseCartTotalCents', () => {
+  const pencilProduct: CuratedProduct = {
+    ...productA,
+    id: 'prod-pencil',
+    categoryId: 'cat-pencil',
+    slug: 'pencils',
+    name: 'Wood pencils',
+    priceCents: 431,
+    placeBuiltinKind: null,
+  };
+
+  const unpricedProduct: CuratedProduct = {
+    ...productA,
+    id: 'prod-pillow',
+    categoryId: 'cat-pillow',
+    slug: 'pillow',
+    name: 'Work in bed pillow',
+    priceCents: null,
+    placeBuiltinKind: null,
+  };
+
+  const pencilCategories: ChecklistCategoryWithProducts[] = [
+    {
+      id: 'cat-pencil',
+      slug: 'pencils',
+      name: 'Pencils',
+      sortOrder: 0,
+      published: true,
+      parentId: null,
+      imagePath: null,
+      imageUrl: null,
+      products: [pencilProduct],
+    },
+    {
+      id: 'cat-pillow',
+      slug: 'pillow',
+      name: 'Pillow',
+      sortOrder: 1,
+      published: true,
+      parentId: null,
+      imagePath: null,
+      imageUrl: null,
+      products: [unpricedProduct],
+    },
+  ];
+
+  const pencilProductsById = {
+    [pencilProduct.id]: pencilProduct,
+    [unpricedProduct.id]: unpricedProduct,
+  };
+
+  it('counts list-only priced items toward the total', () => {
+    const lines = buildPurchaseCartLines({
+      categories: pencilCategories,
+      items: {},
+      order: [],
+      list: [{ productId: pencilProduct.id, quantity: 1, reviewDone: false }],
+      productsById: pencilProductsById,
+      getResolution: () => undefined,
+    });
+    expect(purchaseCartTotalCents(lines)).toEqual({ sum: 431, known: true });
+  });
+
+  it('does not double-count when the same product is on list and in room', () => {
+    const lines = buildPurchaseCartLines({
+      categories,
+      items: {
+        room1: { kind: 'lamp', curatedProductId: productA.id },
+      },
+      order: ['room1'],
+      list: [{ productId: productA.id, quantity: 2, reviewDone: false }],
+      productsById,
+      getResolution: () => undefined,
+    });
+    expect(purchaseCartTotalCents(lines)).toEqual({ sum: 4000, known: true });
+  });
+
+  it('skips unpriced lines in the sum but marks total as incomplete', () => {
+    const lines = buildPurchaseCartLines({
+      categories: pencilCategories,
+      items: {},
+      order: [],
+      list: [
+        { productId: pencilProduct.id, quantity: 1, reviewDone: false },
+        { productId: unpricedProduct.id, quantity: 1, reviewDone: false },
+      ],
+      productsById: pencilProductsById,
+      getResolution: () => undefined,
+    });
+    expect(purchaseCartTotalCents(lines)).toEqual({ sum: 431, known: false });
   });
 });
 

@@ -8,6 +8,11 @@ import {
 } from './importedItemSize';
 import type { Item } from '../store';
 
+export interface CatalogRowByPath {
+  kind: string;
+  dims: InchSize;
+}
+
 /** Apply catalog inch dimensions and fix sizes corrupted by mesh-unit copy. */
 export function applyCatalogSizes(
   items: Item[],
@@ -29,29 +34,51 @@ export function applyCatalogSizes(
   }
 }
 
-export async function fetchCatalogDims(
+/** Backfill furniture_catalog.kind on imported items from model_url. */
+export function applyCatalogKinds(
+  items: Item[],
+  kindByPath: Map<string, string>,
+): void {
+  for (const it of items) {
+    if (it.kind !== 'imported' || !it.importedStoragePath || it.catalogKind) continue;
+    const kind = kindByPath.get(it.importedStoragePath);
+    if (kind) it.catalogKind = kind;
+  }
+}
+
+export async function fetchCatalogByModelPath(
   paths: string[],
-): Promise<Map<string, InchSize>> {
+): Promise<Map<string, CatalogRowByPath>> {
   const unique = [...new Set(paths.map((p) => p.trim()).filter(Boolean))];
-  const byPath = new Map<string, InchSize>();
+  const byPath = new Map<string, CatalogRowByPath>();
   if (unique.length === 0) return byPath;
 
   const { data, error } = await supabase
     .from('furniture_catalog')
-    .select('model_url,width_in,height_in,depth_in')
+    .select('kind,model_url,width_in,height_in,depth_in')
     .in('model_url', unique);
 
   if (error || !data) return byPath;
 
   for (const row of data) {
     const path = String(row.model_url ?? '').trim();
+    const kind = String(row.kind ?? '').trim();
     const dims = parseInchDims(row.width_in, row.height_in, row.depth_in);
-    if (path && dims) byPath.set(path, dims);
+    if (path && kind && dims) byPath.set(path, { kind, dims });
   }
   return byPath;
 }
 
-/** Attach catalog inch dimensions and fix sizes corrupted by mesh-unit copy. */
+export async function fetchCatalogDims(
+  paths: string[],
+): Promise<Map<string, InchSize>> {
+  const byPath = await fetchCatalogByModelPath(paths);
+  const dimsOnly = new Map<string, InchSize>();
+  for (const [path, row] of byPath) dimsOnly.set(path, row.dims);
+  return dimsOnly;
+}
+
+/** Attach catalog inch dimensions, kinds, and fix sizes corrupted by mesh-unit copy. */
 export async function patchImportedItemsFromCatalog(items: Item[]): Promise<void> {
   const paths = [
     ...new Set(
@@ -61,8 +88,15 @@ export async function patchImportedItemsFromCatalog(items: Item[]): Promise<void
     ),
   ];
   if (paths.length === 0) return;
-  const byPath = await fetchCatalogDims(paths);
-  applyCatalogSizes(items, byPath);
+  const byPath = await fetchCatalogByModelPath(paths);
+  const dimsByPath = new Map<string, InchSize>();
+  const kindByPath = new Map<string, string>();
+  for (const [path, row] of byPath) {
+    dimsByPath.set(path, row.dims);
+    kindByPath.set(path, row.kind);
+  }
+  applyCatalogSizes(items, dimsByPath);
+  applyCatalogKinds(items, kindByPath);
 }
 
 export function catalogDimsFromRpc(

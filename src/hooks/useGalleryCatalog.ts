@@ -10,6 +10,7 @@ import {
   type GallerySort,
   type GallerySource,
 } from '../lib/galleryCatalog';
+import { getBuiltinPreviewUrl } from './useBuiltinPreviews';
 import { resolveBrowsableModelUrl } from '../lib/modelStorage';
 import type { CatalogVisibility } from '../lib/catalogEngagement';
 import type { CatalogCategorySlug } from '../lib/catalogCategories';
@@ -102,6 +103,9 @@ async function resolveUrls(row: GalleryCatalogRow): Promise<{
   }
   if (!previewUrl) {
     previewUrl = getSessionCatalogPreview(row.kind) ?? null;
+  }
+  if (!previewUrl && row.is_builtin) {
+    previewUrl = getBuiltinPreviewUrl(row.kind) ?? null;
   }
 
   if (row.is_builtin && !signedUrl) {

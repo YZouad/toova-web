@@ -72,6 +72,58 @@ export const CHECKLIST_RESOLUTION_KEY = 'toova-checklist-resolution';
 export const MOVE_IN_BUDGET_KEY = 'toova-move-in-budget';
 export const SHOPPING_LIST_KEY = 'toova-shopping-list';
 export const CHECKLIST_PROGRESS_MERGED_KEY = 'toova-checklist-progress-merged';
+export const ACTIVE_CHECKLIST_ROOM_KEY = 'toova-active-checklist-room';
+export const CHECKLIST_LEGACY_MIGRATED_KEY = 'toova-checklist-legacy-migrated';
+
+export function checklistScopedKey(baseKey: string, roomId: string): string {
+  return `${baseKey}:${roomId}`;
+}
+
+export function getActiveChecklistRoomId(): string | null {
+  try {
+    const id = sessionStorage.getItem(ACTIVE_CHECKLIST_ROOM_KEY);
+    return id?.trim() ? id.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setActiveChecklistRoomId(roomId: string | null): void {
+  try {
+    if (roomId?.trim()) sessionStorage.setItem(ACTIVE_CHECKLIST_ROOM_KEY, roomId.trim());
+    else sessionStorage.removeItem(ACTIVE_CHECKLIST_ROOM_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function migrateLegacyChecklistStateToRoom(roomId: string): void {
+  try {
+    if (localStorage.getItem(CHECKLIST_LEGACY_MIGRATED_KEY)) return;
+    const pairs: Array<[string, string]> = [
+      [CHECKLIST_CHECKED_KEY, checklistScopedKey(CHECKLIST_CHECKED_KEY, roomId)],
+      [CHECKLIST_RESOLUTION_KEY, checklistScopedKey(CHECKLIST_RESOLUTION_KEY, roomId)],
+      [MOVE_IN_BUDGET_KEY, checklistScopedKey(MOVE_IN_BUDGET_KEY, roomId)],
+      [SHOPPING_LIST_KEY, checklistScopedKey(SHOPPING_LIST_KEY, roomId)],
+    ];
+    for (const [legacyKey, scopedKey] of pairs) {
+      const legacy = localStorage.getItem(legacyKey);
+      if (legacy != null && localStorage.getItem(scopedKey) == null) {
+        localStorage.setItem(scopedKey, legacy);
+      }
+    }
+    localStorage.setItem(CHECKLIST_LEGACY_MIGRATED_KEY, '1');
+  } catch {
+    /* ignore */
+  }
+}
+
+function requireRoomScopedKey(baseKey: string, roomId: string | null | undefined): string | null {
+  const id = roomId?.trim();
+  if (!id) return null;
+  migrateLegacyChecklistStateToRoom(id);
+  return checklistScopedKey(baseKey, id);
+}
 
 /** User marked a suggested leaf as already owned or not needed. */
 export type CategoryResolution = 'have' | 'skip';
@@ -119,9 +171,11 @@ export function formatPriceCents(
   }
 }
 
-export function loadCheckedIds(): Set<string> {
+export function loadCheckedIds(roomId?: string | null): Set<string> {
   try {
-    const raw = localStorage.getItem(CHECKLIST_CHECKED_KEY);
+    const key = requireRoomScopedKey(CHECKLIST_CHECKED_KEY, roomId);
+    if (!key) return new Set();
+    const raw = localStorage.getItem(key);
     if (!raw) return new Set();
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return new Set();
@@ -131,23 +185,27 @@ export function loadCheckedIds(): Set<string> {
   }
 }
 
-export function saveCheckedIds(ids: Set<string>) {
+export function saveCheckedIds(ids: Set<string>, roomId?: string | null) {
   try {
-    localStorage.setItem(CHECKLIST_CHECKED_KEY, JSON.stringify([...ids]));
+    const key = requireRoomScopedKey(CHECKLIST_CHECKED_KEY, roomId);
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify([...ids]));
   } catch {
     /* ignore quota / private mode */
   }
 }
 
-export function loadLocalResolutions(): Map<string, CategoryResolution> {
+export function loadLocalResolutions(roomId?: string | null): Map<string, CategoryResolution> {
   try {
-    const raw = localStorage.getItem(CHECKLIST_RESOLUTION_KEY);
+    const key = requireRoomScopedKey(CHECKLIST_RESOLUTION_KEY, roomId);
+    if (!key) return new Map();
+    const raw = localStorage.getItem(key);
     if (!raw) return new Map();
     const parsed = JSON.parse(raw) as unknown;
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return new Map();
     const map = new Map<string, CategoryResolution>();
-    for (const [key, value] of Object.entries(parsed)) {
-      if (value === 'have' || value === 'skip') map.set(key, value);
+    for (const [entryKey, value] of Object.entries(parsed)) {
+      if (value === 'have' || value === 'skip') map.set(entryKey, value);
     }
     return map;
   } catch {
@@ -155,19 +213,26 @@ export function loadLocalResolutions(): Map<string, CategoryResolution> {
   }
 }
 
-export function saveLocalResolutions(resolutions: Map<string, CategoryResolution>) {
+export function saveLocalResolutions(
+  resolutions: Map<string, CategoryResolution>,
+  roomId?: string | null,
+) {
   try {
+    const key = requireRoomScopedKey(CHECKLIST_RESOLUTION_KEY, roomId);
+    if (!key) return;
     const obj: Record<string, CategoryResolution> = {};
-    for (const [key, value] of resolutions) obj[key] = value;
-    localStorage.setItem(CHECKLIST_RESOLUTION_KEY, JSON.stringify(obj));
+    for (const [entryKey, value] of resolutions) obj[entryKey] = value;
+    localStorage.setItem(key, JSON.stringify(obj));
   } catch {
     /* ignore */
   }
 }
 
-export function loadLocalMoveInBudgetCents(): number | null {
+export function loadLocalMoveInBudgetCents(roomId?: string | null): number | null {
   try {
-    const raw = localStorage.getItem(MOVE_IN_BUDGET_KEY);
+    const key = requireRoomScopedKey(MOVE_IN_BUDGET_KEY, roomId);
+    if (!key) return null;
+    const raw = localStorage.getItem(key);
     if (raw == null || raw === '') return null;
     const cents = Number(raw);
     if (!Number.isFinite(cents) || cents < 0) return null;
@@ -177,10 +242,12 @@ export function loadLocalMoveInBudgetCents(): number | null {
   }
 }
 
-export function saveLocalMoveInBudgetCents(cents: number | null) {
+export function saveLocalMoveInBudgetCents(cents: number | null, roomId?: string | null) {
   try {
-    if (cents == null) localStorage.removeItem(MOVE_IN_BUDGET_KEY);
-    else localStorage.setItem(MOVE_IN_BUDGET_KEY, String(Math.max(0, Math.round(cents))));
+    const key = requireRoomScopedKey(MOVE_IN_BUDGET_KEY, roomId);
+    if (!key) return;
+    if (cents == null) localStorage.removeItem(key);
+    else localStorage.setItem(key, String(Math.max(0, Math.round(cents))));
   } catch {
     /* ignore */
   }
@@ -307,9 +374,11 @@ export function computeChecklistBudgetSummary(
   };
 }
 
-export function loadLocalShoppingList(): ShoppingListEntry[] {
+export function loadLocalShoppingList(roomId?: string | null): ShoppingListEntry[] {
   try {
-    const raw = localStorage.getItem(SHOPPING_LIST_KEY);
+    const key = requireRoomScopedKey(SHOPPING_LIST_KEY, roomId);
+    if (!key) return [];
+    const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
@@ -331,9 +400,11 @@ export function loadLocalShoppingList(): ShoppingListEntry[] {
   }
 }
 
-export function saveLocalShoppingList(entries: ShoppingListEntry[]) {
+export function saveLocalShoppingList(entries: ShoppingListEntry[], roomId?: string | null) {
   try {
-    localStorage.setItem(SHOPPING_LIST_KEY, JSON.stringify(entries));
+    const key = requireRoomScopedKey(SHOPPING_LIST_KEY, roomId);
+    if (!key) return;
+    localStorage.setItem(key, JSON.stringify(entries));
   } catch {
     /* ignore */
   }
@@ -361,6 +432,8 @@ export function remapCheckedSlugsToIds(
 export interface ChecklistPlacementRef {
   kind: string;
   curatedProductId?: string | null;
+  /** furniture_catalog.kind when the room item is an imported GLB. */
+  catalogKind?: string | null;
   /** Set when kind === 'hanging'. */
   hangingKind?: HangingDecorKind | null;
   /** Set when kind === 'bedding'. */
@@ -371,10 +444,20 @@ export interface ChecklistPlacementRef {
 export interface ChecklistPlacementItem {
   kind: string;
   curatedProductId?: string | null;
+  catalogKind?: string | null;
   hanging?: { kind: HangingDecorKind } | null;
   beddingConfig?: BeddingConfig;
   beddingEnabled?: boolean;
   blanketColor?: string;
+}
+
+/** True when a room item matches a curated product's place_catalog_kind. */
+export function itemMatchesPlaceCatalogKind(
+  item: Pick<ChecklistPlacementItem, 'kind' | 'catalogKind'>,
+  placeCatalogKind: string,
+): boolean {
+  if (item.catalogKind === placeCatalogKind) return true;
+  return item.kind === placeCatalogKind;
 }
 
 function beddingPlacementRefsForBed(item: ChecklistPlacementItem): ChecklistPlacementRef[] {
@@ -400,6 +483,7 @@ export function roomItemsToPlacementRefs(
     refs.push({
       kind: item.kind,
       curatedProductId: item.curatedProductId,
+      catalogKind: item.catalogKind,
       hangingKind: item.kind === 'hanging' ? item.hanging?.kind : undefined,
     });
     if (item.kind === 'bed') refs.push(...beddingPlacementRefsForBed(item));
@@ -461,7 +545,7 @@ export function categoryIdsSatisfiedByPlacements(
 ): Set<string> {
   const productsById = new Map<string, CuratedProduct>();
   const byBuiltinKind = new Map<string, string>();
-  const byCatalogKind = new Map<string, string>();
+  const byCatalogKind = new Map<string, Set<string>>();
   const byHangingKind = new Map<HangingDecorKind, Set<string>>();
   const byBeddingKind = new Map<BeddingPlacementKind, Set<string>>();
   const bySlug = new Map<string, string>();
@@ -483,7 +567,12 @@ export function categoryIdsSatisfiedByPlacements(
         byBuiltinKind.set(product.placeBuiltinKind, cat.id);
       }
       if (product.placeCatalogKind) {
-        byCatalogKind.set(product.placeCatalogKind, cat.id);
+        let ids = byCatalogKind.get(product.placeCatalogKind);
+        if (!ids) {
+          ids = new Set<string>();
+          byCatalogKind.set(product.placeCatalogKind, ids);
+        }
+        ids.add(cat.id);
       }
       const hangingKind = resolvePlaceHangingKind(product);
       if (hangingKind) {
@@ -515,8 +604,11 @@ export function categoryIdsSatisfiedByPlacements(
     }
     const byBuiltin = byBuiltinKind.get(item.kind);
     if (byBuiltin) satisfied.add(byBuiltin);
-    const byCatalog = byCatalogKind.get(item.kind);
-    if (byCatalog) satisfied.add(byCatalog);
+    const catalogKey = item.catalogKind ?? item.kind;
+    const byCatalog = byCatalogKind.get(catalogKey);
+    if (byCatalog) {
+      for (const catId of byCatalog) satisfied.add(catId);
+    }
     const byKindSlug = bySlug.get(item.kind);
     if (byKindSlug) satisfied.add(byKindSlug);
     if (item.kind === 'hanging' && item.hangingKind) {

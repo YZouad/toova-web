@@ -5,7 +5,7 @@ import type {
   CuratedProduct,
   ShoppingListEntry,
 } from './dormChecklist';
-import { getProductDrawKind } from './dormChecklist';
+import { getProductDrawKind, itemMatchesPlaceCatalogKind } from './dormChecklist';
 
 export type PurchaseCartSource = 'list' | 'room' | 'both';
 
@@ -28,7 +28,7 @@ function matchesRoomItemToProduct(
   const drawKind = getProductDrawKind(product);
   if (drawKind && item.kind === 'hanging' && item.hanging?.kind === drawKind) return true;
   if (product.placeBuiltinKind && item.kind === product.placeBuiltinKind) return true;
-  if (product.placeCatalogKind && item.kind === product.placeCatalogKind) return true;
+  if (product.placeCatalogKind && itemMatchesPlaceCatalogKind(item, product.placeCatalogKind)) return true;
   return false;
 }
 

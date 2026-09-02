@@ -12,6 +12,7 @@ import type { CatalogCategorySlug } from '../lib/catalogCategories';
 import type { CatalogVisibility } from '../lib/catalogEngagement';
 import { resolveBrowsableModelUrl } from '../lib/modelStorage';
 import { getSessionCatalogPreview } from '../lib/catalogThumbnailBackfill';
+import { getBuiltinPreviewUrl } from './useBuiltinPreviews';
 
 function n(v: unknown): number {
   const x = typeof v === 'number' ? v : Number(v);
@@ -76,6 +77,9 @@ async function hydrateModel(row: Record<string, unknown>): Promise<GalleryModel 
   }
   if (!previewUrl) {
     previewUrl = getSessionCatalogPreview(kind) ?? null;
+  }
+  if (!previewUrl && isBuiltin) {
+    previewUrl = getBuiltinPreviewUrl(kind) ?? null;
   }
 
   return {

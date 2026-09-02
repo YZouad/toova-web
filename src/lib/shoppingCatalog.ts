@@ -224,11 +224,13 @@ export async function fetchAdminShoppingCatalog(): Promise<ChecklistCategoryWith
 
 export async function fetchUserChecklistProgress(
   userId: string,
+  roomId: string,
 ): Promise<Set<string>> {
   const { data, error } = await supabase
     .from('user_checklist_progress')
     .select('category_id,checked')
     .eq('user_id', userId)
+    .eq('room_id', roomId)
     .eq('checked', true);
   if (error) throw new Error(error.message);
   return new Set((data ?? []).map((r) => String(r.category_id)));
@@ -236,11 +238,13 @@ export async function fetchUserChecklistProgress(
 
 export async function fetchUserChecklistResolutions(
   userId: string,
+  roomId: string,
 ): Promise<Map<string, CategoryResolution>> {
   const { data, error } = await supabase
     .from('user_checklist_progress')
     .select('category_id,resolution')
     .eq('user_id', userId)
+    .eq('room_id', roomId)
     .not('resolution', 'is', null);
   if (error) throw new Error(error.message);
   const map = new Map<string, CategoryResolution>();
@@ -255,6 +259,7 @@ export async function fetchUserChecklistResolutions(
 
 export async function upsertChecklistResolution(
   userId: string,
+  roomId: string,
   categoryId: string,
   resolution: CategoryResolution | null,
 ): Promise<void> {
@@ -263,6 +268,7 @@ export async function upsertChecklistResolution(
       .from('user_checklist_progress')
       .delete()
       .eq('user_id', userId)
+      .eq('room_id', roomId)
       .eq('category_id', categoryId);
     if (error) throw new Error(error.message);
     return;
@@ -270,21 +276,26 @@ export async function upsertChecklistResolution(
   const { error } = await supabase.from('user_checklist_progress').upsert(
     {
       user_id: userId,
+      room_id: roomId,
       category_id: categoryId,
       checked: false,
       resolution,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: 'user_id,category_id' },
+    { onConflict: 'user_id,room_id,category_id' },
   );
   if (error) throw new Error(error.message);
 }
 
-export async function fetchUserMoveInBudgetCents(userId: string): Promise<number | null> {
+export async function fetchUserMoveInBudgetCents(
+  userId: string,
+  roomId: string,
+): Promise<number | null> {
   const { data, error } = await supabase
     .from('user_move_in_budget')
     .select('budget_cents')
     .eq('user_id', userId)
+    .eq('room_id', roomId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (data?.budget_cents == null) return null;
@@ -294,29 +305,33 @@ export async function fetchUserMoveInBudgetCents(userId: string): Promise<number
 
 export async function upsertUserMoveInBudgetCents(
   userId: string,
+  roomId: string,
   budgetCents: number | null,
 ): Promise<void> {
   if (budgetCents == null) {
     const { error } = await supabase
       .from('user_move_in_budget')
       .delete()
-      .eq('user_id', userId);
+      .eq('user_id', userId)
+      .eq('room_id', roomId);
     if (error) throw new Error(error.message);
     return;
   }
   const { error } = await supabase.from('user_move_in_budget').upsert(
     {
       user_id: userId,
+      room_id: roomId,
       budget_cents: Math.max(0, Math.round(budgetCents)),
       updated_at: new Date().toISOString(),
     },
-    { onConflict: 'user_id' },
+    { onConflict: 'user_id,room_id' },
   );
   if (error) throw new Error(error.message);
 }
 
 export async function upsertChecklistProgress(
   userId: string,
+  roomId: string,
   categoryId: string,
   checked: boolean,
 ): Promise<void> {
@@ -325,6 +340,7 @@ export async function upsertChecklistProgress(
       .from('user_checklist_progress')
       .delete()
       .eq('user_id', userId)
+      .eq('room_id', roomId)
       .eq('category_id', categoryId);
     if (error) throw new Error(error.message);
     return;
@@ -332,22 +348,25 @@ export async function upsertChecklistProgress(
   const { error } = await supabase.from('user_checklist_progress').upsert(
     {
       user_id: userId,
+      room_id: roomId,
       category_id: categoryId,
       checked: true,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: 'user_id,category_id' },
+    { onConflict: 'user_id,room_id,category_id' },
   );
   if (error) throw new Error(error.message);
 }
 
 export async function fetchUserShoppingList(
   userId: string,
+  roomId: string,
 ): Promise<ShoppingListEntry[]> {
   const { data, error } = await supabase
     .from('user_shopping_list')
     .select('product_id,quantity,review_done')
-    .eq('user_id', userId);
+    .eq('user_id', userId)
+    .eq('room_id', roomId);
   if (error) throw new Error(error.message);
   return (data ?? []).map((r) => ({
     productId: String(r.product_id),
@@ -358,49 +377,56 @@ export async function fetchUserShoppingList(
 
 export async function upsertShoppingListEntry(
   userId: string,
+  roomId: string,
   entry: ShoppingListEntry,
 ): Promise<void> {
   const { error } = await supabase.from('user_shopping_list').upsert(
     {
       user_id: userId,
+      room_id: roomId,
       product_id: entry.productId,
       quantity: entry.quantity,
       review_done: entry.reviewDone,
       updated_at: new Date().toISOString(),
     },
-    { onConflict: 'user_id,product_id' },
+    { onConflict: 'user_id,room_id,product_id' },
   );
   if (error) throw new Error(error.message);
 }
 
 export async function removeShoppingListEntry(
   userId: string,
+  roomId: string,
   productId: string,
 ): Promise<void> {
   const { error } = await supabase
     .from('user_shopping_list')
     .delete()
     .eq('user_id', userId)
+    .eq('room_id', roomId)
     .eq('product_id', productId);
   if (error) throw new Error(error.message);
 }
 
-/** Merge local progress/list into account (local wins on conflicts for checked / qty). */
-export async function mergeLocalShoppingStateToAccount(userId: string): Promise<void> {
-  const localChecked = loadCheckedIds();
-  const localList = loadLocalShoppingList();
-  const localResolutions = loadLocalResolutions();
-  const localBudget = loadLocalMoveInBudgetCents();
+/** Merge local progress/list into account for one room (local wins on conflicts for checked / qty). */
+export async function mergeLocalShoppingStateToAccount(
+  userId: string,
+  roomId: string,
+): Promise<void> {
+  const localChecked = loadCheckedIds(roomId);
+  const localList = loadLocalShoppingList(roomId);
+  const localResolutions = loadLocalResolutions(roomId);
+  const localBudget = loadLocalMoveInBudgetCents(roomId);
 
-  const remoteChecked = await fetchUserChecklistProgress(userId);
-  const remoteList = await fetchUserShoppingList(userId);
-  const remoteResolutions = await fetchUserChecklistResolutions(userId);
-  const remoteBudget = await fetchUserMoveInBudgetCents(userId);
+  const remoteChecked = await fetchUserChecklistProgress(userId, roomId);
+  const remoteList = await fetchUserShoppingList(userId, roomId);
+  const remoteResolutions = await fetchUserChecklistResolutions(userId, roomId);
+  const remoteBudget = await fetchUserMoveInBudgetCents(userId, roomId);
 
   const mergedChecked = new Set([...remoteChecked, ...localChecked]);
   for (const categoryId of mergedChecked) {
     if (!remoteChecked.has(categoryId)) {
-      await upsertChecklistProgress(userId, categoryId, true);
+      await upsertChecklistProgress(userId, roomId, categoryId, true);
     }
   }
 
@@ -408,14 +434,14 @@ export async function mergeLocalShoppingStateToAccount(userId: string): Promise<
   for (const [categoryId, resolution] of localResolutions) {
     if (!remoteResolutions.has(categoryId)) {
       mergedResolutions.set(categoryId, resolution);
-      await upsertChecklistResolution(userId, categoryId, resolution);
+      await upsertChecklistResolution(userId, roomId, categoryId, resolution);
     }
   }
 
   if (localBudget != null && remoteBudget == null) {
-    await upsertUserMoveInBudgetCents(userId, localBudget);
+    await upsertUserMoveInBudgetCents(userId, roomId, localBudget);
   } else if (localBudget != null && remoteBudget != null && localBudget !== remoteBudget) {
-    await upsertUserMoveInBudgetCents(userId, Math.max(localBudget, remoteBudget));
+    await upsertUserMoveInBudgetCents(userId, roomId, Math.max(localBudget, remoteBudget));
   }
 
   const byProduct = new Map(remoteList.map((e) => [e.productId, e]));
@@ -423,7 +449,7 @@ export async function mergeLocalShoppingStateToAccount(userId: string): Promise<
     const existing = byProduct.get(entry.productId);
     if (!existing) {
       byProduct.set(entry.productId, entry);
-      await upsertShoppingListEntry(userId, entry);
+      await upsertShoppingListEntry(userId, roomId, entry);
     } else {
       const next: ShoppingListEntry = {
         productId: entry.productId,
@@ -431,7 +457,7 @@ export async function mergeLocalShoppingStateToAccount(userId: string): Promise<
         reviewDone: existing.reviewDone || entry.reviewDone,
       };
       byProduct.set(entry.productId, next);
-      await upsertShoppingListEntry(userId, next);
+      await upsertShoppingListEntry(userId, roomId, next);
     }
   }
 }

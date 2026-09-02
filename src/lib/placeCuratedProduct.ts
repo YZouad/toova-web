@@ -1,7 +1,7 @@
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
 import { recordCatalogDownload } from './catalogEngagement';
 import type { CuratedProduct } from './dormChecklist';
-import { getProductDrawKind } from './dormChecklist';
+import { getProductDrawKind, itemMatchesPlaceCatalogKind } from './dormChecklist';
 import { parseInchDims } from './importedItemSize';
 import { resolveBrowsableModelUrl } from './modelStorage';
 import { supabase } from './supabase';
@@ -52,6 +52,7 @@ export async function placeCuratedProduct(product: CuratedProduct): Promise<stri
     storagePath: path,
     label: product.name || String(data.label),
     catalogSizeIn: catalogSizeIn ?? undefined,
+    catalogKind: product.placeCatalogKind,
     curatedProductId: product.id,
   });
   void recordCatalogDownload(String(data.kind)).catch(() => {});
@@ -78,7 +79,7 @@ export function countRoomPlacementsForProduct(
       if (it.kind === 'hanging' && it.hanging?.kind === drawKind) n += 1;
     } else if (product.placeBuiltinKind && it.kind === product.placeBuiltinKind) {
       n += 1;
-    } else if (product.placeCatalogKind && it.kind === product.placeCatalogKind) {
+    } else if (product.placeCatalogKind && itemMatchesPlaceCatalogKind(it, product.placeCatalogKind)) {
       n += 1;
     }
   }
@@ -108,7 +109,7 @@ export function findRoomItemForProduct(
     const it = items[id];
     if (!it) continue;
     if (product.placeBuiltinKind && it.kind === product.placeBuiltinKind) return id;
-    if (product.placeCatalogKind && it.kind === product.placeCatalogKind) return id;
+    if (product.placeCatalogKind && itemMatchesPlaceCatalogKind(it, product.placeCatalogKind)) return id;
   }
   return null;
 }

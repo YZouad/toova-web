@@ -171,6 +171,8 @@ export interface Item {
   importedNaturalSize?: [number, number, number];
   /** Catalog inch dimensions (community models); used to recover size after mesh load. */
   catalogSizeIn?: [number, number, number];
+  /** furniture_catalog.kind for imported GLBs (checklist + gallery placement). */
+  catalogKind?: string;
   label: string;
   /** Gravity off on drag only when checked AND touching a wall; height slider ignores this flag. */
   wallMounted?: boolean;
@@ -262,6 +264,7 @@ interface StoreState {
       label?: string;
       size?: [number, number, number];
       catalogSizeIn?: [number, number, number];
+      catalogKind?: string;
       curatedProductId?: string;
       tintColor?: string;
     },
@@ -689,6 +692,7 @@ export const useStore = create<StoreState>((set, get) => ({
       importedUrl: opts?.url,
       importedStoragePath: opts?.storagePath,
       catalogSizeIn,
+      catalogKind: opts?.catalogKind,
       label,
       curatedProductId: opts?.curatedProductId,
       wallMounted: isWallShelfKind(kind) ? true : undefined,

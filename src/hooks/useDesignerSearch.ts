@@ -26,6 +26,7 @@ import {
   loadRecentCommands,
   pushRecentQuery,
 } from '../lib/recentCatalogKinds';
+import { getBuiltinPreviewUrl } from './useBuiltinPreviews';
 import { resolveBrowsableModelUrl } from '../lib/modelStorage';
 import { useStore } from '../store';
 import type { GalleryModel } from './useGalleryCatalog';
@@ -200,6 +201,9 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
               const access = hit.visibility === 'public' || hit.is_builtin ? 'public' : 'private';
               previewUrl = await resolveBrowsableModelUrl(thumb, { access });
             }
+            if (!previewUrl && hit.is_builtin) {
+              previewUrl = getBuiltinPreviewUrl(hit.kind) ?? null;
+            }
             return {
               model: hitToModel(hit, previewUrl),
               source: hit.source,
@@ -345,7 +349,7 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
         hotScore: 0,
         storagePath: '',
         signedUrl: null,
-        previewUrl: null,
+        previewUrl: getBuiltinPreviewUrl(c.kind!) ?? null,
       };
       resultMap.set(c.id, {
         type: 'catalogModel',
@@ -355,6 +359,7 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
         source: 'toova',
         score: 0,
         model,
+        previewUrl: model.previewUrl,
         onChecklist: checklistKinds.has(c.kind!),
         alreadyInRoom: placedKinds.has(c.kind!),
         meta: checklistKinds.has(c.kind!)

@@ -11,6 +11,11 @@ import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
 import { ModelDetailModal } from './ModelDetailModal';
+import {
+  getBuiltinPreviewUrl,
+  requestBuiltinPreview,
+  useBuiltinPreviews,
+} from '../hooks/useBuiltinPreviews';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
@@ -105,6 +110,7 @@ export function Designer({
   const [forkMeta, setForkMeta] = useState<RoomAttributionPayload | null>(null);
   const [cameraPreset, setCameraPreset] = useState<CameraPresetId>('corner');
   const [detailModel, setDetailModel] = useState<GalleryModel | null>(null);
+  const builtinPreviews = useBuiltinPreviews();
 
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
   const addLightSource = useStore((s) => s.addLightSource);
@@ -237,6 +243,7 @@ export function Designer({
   }, []);
 
   const openModel = useCallback((model: CatalogModel) => {
+    if (model.isBuiltin) requestBuiltinPreview(model.kind);
     setDetailModel(model);
   }, []);
 
@@ -882,6 +889,11 @@ export function Designer({
       {detailModel ? (
         <ModelDetailModal
           model={detailModel}
+          builtinPreviewUrl={
+            detailModel.isBuiltin
+              ? getBuiltinPreviewUrl(detailModel.kind, builtinPreviews)
+              : null
+          }
           currentUserId={user?.id ?? null}
           onClose={() => setDetailModel(null)}
           onPlace={placeModel}

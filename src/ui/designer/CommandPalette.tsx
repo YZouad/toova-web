@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import { useShoppingCatalogContext } from '../../context/ShoppingCatalogContext';
+import { getBuiltinPreviewUrl, useBuiltinPreviews } from '../../hooks/useBuiltinPreviews';
 import { useDesignerSearch } from '../../hooks/useDesignerSearch';
 import type { GalleryModel } from '../../hooks/useGalleryCatalog';
 import type { CuratedProduct } from '../../lib/dormChecklist';
@@ -97,6 +98,7 @@ export function CommandPalette({
   const listRef = useRef<HTMLDivElement>(null);
   const optionIdPrefix = useId();
   const { list, productsById, categories } = useShoppingCatalogContext();
+  const builtinPreviews = useBuiltinPreviews();
 
   const checklistProducts = useMemo(() => {
     const out: CuratedProduct[] = [];
@@ -387,6 +389,13 @@ export function CommandPalette({
                   const index = flatIndex;
                   const optionId = `${optionIdPrefix}-opt-${item.id}`;
                   const letter = (item.label.trim()[0] ?? '?').toUpperCase();
+                  const catalogThumb =
+                    item.type === 'catalogModel' || item.type === 'checklistProduct'
+                      ? item.previewUrl ??
+                        (item.type === 'catalogModel' && item.model.isBuiltin
+                          ? getBuiltinPreviewUrl(item.model.kind, builtinPreviews)
+                          : undefined)
+                      : undefined;
                   return (
                     <button
                       key={item.id}
@@ -410,16 +419,8 @@ export function CommandPalette({
                     >
                       {item.type === 'catalogModel' || item.type === 'checklistProduct' ? (
                         <span className="dg-cmdk-item__thumb" aria-hidden>
-                          {(item.type === 'catalogModel' ? item.previewUrl : item.previewUrl) ? (
-                            <img
-                              src={
-                                (item.type === 'catalogModel'
-                                  ? item.previewUrl
-                                  : item.previewUrl) ?? undefined
-                              }
-                              alt=""
-                              draggable={false}
-                            />
+                          {catalogThumb ? (
+                            <img src={catalogThumb} alt="" draggable={false} />
                           ) : item.type === 'catalogModel' && item.thumbColor ? (
                             <span
                               className="dg-cmdk-item__swatch"

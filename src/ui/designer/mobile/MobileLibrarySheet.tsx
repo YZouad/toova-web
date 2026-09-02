@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGalleryCatalog } from '../../../hooks/useGalleryCatalog';
-import { getBuiltinPreviewUrl, useBuiltinPreviews } from '../../../hooks/useBuiltinPreviews';
+import {
+  getBuiltinPreviewUrl,
+  requestBuiltinPreview,
+  useBuiltinPreviews,
+  withBuiltinPreview,
+} from '../../../hooks/useBuiltinPreviews';
 import {
   CATALOG_CATEGORY_DEFS,
   MAX_CATALOG_CATEGORIES,
@@ -281,7 +286,14 @@ export function MobileLibrarySheet({
             const letter = (m.label?.trim()?.[0] ?? '?').toUpperCase();
             return (
               <div key={m.kind} className="dgm-catalog-row">
-                <button type="button" className="dgm-catalog-row__main" onClick={() => onOpenModel(m)}>
+                <button
+                  type="button"
+                  className="dgm-catalog-row__main"
+                  onClick={() => {
+                    if (m.isBuiltin) requestBuiltinPreview(m.kind);
+                    onOpenModel(withBuiltinPreview(m, builtinPreviews));
+                  }}
+                >
                   <span className="dgm-catalog-row__thumb">
                     {thumb ? (
                       <img src={thumb} alt="" draggable={false} />

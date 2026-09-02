@@ -563,4 +563,213 @@ describe('shopping checklist helpers', () => {
     expect(offers[0].label).toContain('Shop similar');
     expect(offers[0].url).toContain('amazon.com/s');
   });
+
+  it('does not match storage bins to dresser or bookshelf furniture', () => {
+    const bins: CuratedProduct = {
+      id: 'prod-bins',
+      categoryId: 'uuid-storage',
+      slug: 'storage-1',
+      name: 'Storage bins',
+      description: '',
+      retailer: 'amazon',
+      affiliateUrl: '',
+      priceCents: 2999,
+      currency: 'USD',
+      imagePath: null,
+      imageUrl: null,
+      sortOrder: 10,
+      published: true,
+      lastVerifiedAt: null,
+      placeBuiltinKind: null,
+      placeCatalogKind: null,
+      placeHangingKind: null,
+      placeBeddingKind: null,
+      brand: null,
+      featureBullets: [],
+      dimensionsText: null,
+      rating: null,
+      reviewCount: null,
+      availability: null,
+    };
+    const items = {
+      dresser1: {
+        id: 'dresser1',
+        kind: 'dresser',
+        label: 'Dresser',
+        position: [0, 0, 0],
+        rotationY: 0,
+        size: [30, 32, 18],
+      },
+      shelf1: {
+        id: 'shelf1',
+        kind: 'bookshelf',
+        label: 'Bookshelf',
+        position: [0, 0, 0],
+        rotationY: 0,
+        size: [30, 32, 18],
+      },
+    } as unknown as Record<string, Item>;
+    expect(findRoomItemForProduct(bins, items, ['dresser1', 'shelf1'])).toBeNull();
+  });
+
+  it('matches cube storage to bookshelf only', () => {
+    const cube: CuratedProduct = {
+      id: 'prod-cube',
+      categoryId: 'uuid-storage',
+      slug: 'storage-2',
+      name: 'Cube storage',
+      description: '',
+      retailer: 'amazon',
+      affiliateUrl: '',
+      priceCents: 3999,
+      currency: 'USD',
+      imagePath: null,
+      imageUrl: null,
+      sortOrder: 20,
+      published: true,
+      lastVerifiedAt: null,
+      placeBuiltinKind: 'bookshelf',
+      placeCatalogKind: null,
+      placeHangingKind: null,
+      placeBeddingKind: null,
+      brand: null,
+      featureBullets: [],
+      dimensionsText: null,
+      rating: null,
+      reviewCount: null,
+      availability: null,
+    };
+    const items = {
+      dresser1: {
+        id: 'dresser1',
+        kind: 'dresser',
+        label: 'Dresser',
+        position: [0, 0, 0],
+        rotationY: 0,
+        size: [30, 32, 18],
+      },
+      shelf1: {
+        id: 'shelf1',
+        kind: 'bookshelf',
+        label: 'Bookshelf',
+        position: [0, 0, 0],
+        rotationY: 0,
+        size: [30, 32, 18],
+      },
+    } as unknown as Record<string, Item>;
+    expect(findRoomItemForProduct(cube, items, ['dresser1', 'shelf1'])).toBe('shelf1');
+  });
+
+  it('marks checklist categories from imported GLBs via catalogKind', () => {
+    const laptopProduct = (
+      id: string,
+      categoryId: string,
+    ): CuratedProduct => ({
+      id,
+      categoryId,
+      slug: 'laptop',
+      name: 'Laptop',
+      description: '',
+      retailer: 'amazon',
+      affiliateUrl: '',
+      priceCents: null,
+      currency: 'USD',
+      imagePath: null,
+      imageUrl: null,
+      sortOrder: 1,
+      published: true,
+      lastVerifiedAt: null,
+      placeBuiltinKind: null,
+      placeCatalogKind: 'custom-laptop',
+      placeHangingKind: null,
+      placeBeddingKind: null,
+      brand: null,
+      featureBullets: [],
+      dimensionsText: null,
+      rating: null,
+      reviewCount: null,
+      availability: null,
+    });
+
+    const cats: ChecklistCategoryWithProducts[] = [
+      {
+        id: 'uuid-laptop',
+        slug: 'laptop',
+        name: 'Laptop',
+        sortOrder: 1,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [laptopProduct('prod-laptop', 'uuid-laptop')],
+      },
+    ];
+
+    const withCatalogKind = categoryIdsSatisfiedByPlacements(cats, [
+      { kind: 'imported', catalogKind: 'custom-laptop' },
+    ]);
+    expect([...withCatalogKind]).toEqual(['uuid-laptop']);
+
+    const bareImported = categoryIdsSatisfiedByPlacements(cats, [{ kind: 'imported' }]);
+    expect([...bareImported]).toEqual([]);
+  });
+
+  it('marks every category that shares a catalog GLB kind', () => {
+    const mirrorProduct = (id: string, categoryId: string, slug: string): CuratedProduct => ({
+      id,
+      categoryId,
+      slug,
+      name: 'Mirror',
+      description: '',
+      retailer: 'amazon',
+      affiliateUrl: '',
+      priceCents: null,
+      currency: 'USD',
+      imagePath: null,
+      imageUrl: null,
+      sortOrder: 1,
+      published: true,
+      lastVerifiedAt: null,
+      placeBuiltinKind: null,
+      placeCatalogKind: 'checklist-mirror',
+      placeHangingKind: null,
+      placeBeddingKind: null,
+      brand: null,
+      featureBullets: [],
+      dimensionsText: null,
+      rating: null,
+      reviewCount: null,
+      availability: null,
+    });
+
+    const cats: ChecklistCategoryWithProducts[] = [
+      {
+        id: 'uuid-misc-mirror',
+        slug: 'misc-mirror',
+        name: 'Mirror',
+        sortOrder: 1,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [mirrorProduct('prod-misc-mirror', 'uuid-misc-mirror', 'mirror')],
+      },
+      {
+        id: 'uuid-wall-mirror',
+        slug: 'mirror',
+        name: 'Mirror',
+        sortOrder: 2,
+        published: true,
+        parentId: 'uuid-wall',
+        imagePath: null,
+        imageUrl: null,
+        products: [mirrorProduct('prod-wall-mirror', 'uuid-wall-mirror', 'wallmirror')],
+      },
+    ];
+
+    const placed = categoryIdsSatisfiedByPlacements(cats, [
+      { kind: 'imported', catalogKind: 'checklist-mirror' },
+    ]);
+    expect([...placed].sort()).toEqual(['uuid-misc-mirror', 'uuid-wall-mirror']);
+  });
 });
