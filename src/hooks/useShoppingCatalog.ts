@@ -23,6 +23,7 @@ import {
   type ShoppingListEntry,
 } from '../lib/dormChecklist';
 import { isGuestWorkspaceId } from '../lib/guestDesignSnapshot';
+import { trackChecklistItemAdded } from '../lib/analytics';
 import { buildPurchaseCartLines, purchaseCartTotalCents } from '../lib/purchaseCart';
 import {
   fetchPublishedShoppingCatalog,
@@ -287,6 +288,16 @@ export function useShoppingCatalog(roomId: string | null) {
   const addToList = useCallback(
     async (productId: string, quantity = 1) => {
       if (!persistRoomId) return;
+      const isNewEntry = !list.some((e) => e.productId === productId);
+      if (isNewEntry) {
+        const product = productsById[productId];
+        trackChecklistItemAdded({
+          room_id: persistRoomId,
+          product_id: productId,
+          category: (product ? categoriesById[product.categoryId]?.slug : undefined) ?? 'unknown',
+          is_curated: true, // every product addable here comes from the admin-curated catalog
+        });
+      }
       setList((prev) => {
         const existing = prev.find((e) => e.productId === productId);
         let next: ShoppingListEntry[];
@@ -307,7 +318,7 @@ export function useShoppingCatalog(roomId: string | null) {
         return next;
       });
     },
-    [canSyncRemote, persistRoomId, user],
+    [canSyncRemote, categoriesById, list, persistRoomId, productsById, user],
   );
 
   const setQuantity = useCallback(

@@ -8,9 +8,10 @@ import {
   type ReactNode,
 } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { trackLogin, trackSignUp } from '../lib/analytics';
+import { trackLoggedIn, trackSignedUp, type AuthMethod } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { clearSignedUrlCache } from '../lib/signedUrlCache';
+import { loadGuestDesignSnapshot } from '../lib/guestDesignSnapshot';
 import {
   fetchOwnProfile,
   signAvatarPath,
@@ -73,12 +74,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Email auth is tracked in AuthPage; OAuth completes after redirect.
       if (event === 'SIGNED_IN' && next) {
-        const provider = String(next.app_metadata?.provider ?? '');
-        if (provider && provider !== 'email') {
+        const rawProvider = String(next.app_metadata?.provider ?? '');
+        if (rawProvider && rawProvider !== 'email') {
+          const method: AuthMethod = rawProvider === 'google' ? 'google' : rawProvider === 'facebook' ? 'facebook' : 'email';
           const createdAt = new Date(next.created_at).getTime();
           const isNew = Number.isFinite(createdAt) && Date.now() - createdAt < 60_000;
-          if (isNew) trackSignUp(provider);
-          else trackLogin(provider);
+          if (isNew) {
+            trackSignedUp({
+              user_id: next.id,
+              method,
+              converted_from_guest: loadGuestDesignSnapshot() != null,
+            });
+          } else {
+            trackLoggedIn({ user_id: next.id, method });
+          }
         }
       }
     });

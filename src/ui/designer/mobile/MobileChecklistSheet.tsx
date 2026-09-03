@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useShoppingCatalogContext } from '../../../context/ShoppingCatalogContext';
 import { useAuth } from '../../../hooks/useAuth';
-import { trackAffiliateClick } from '../../../lib/analytics';
+import { trackAffiliateClicked } from '../../../lib/analytics';
 import { productHasPlaceableModel } from '../../../lib/checklistPublicGlbs';
 import {
   categoryIdsSatisfiedByPlacements,
@@ -293,10 +293,10 @@ export function MobileChecklistSheet({
   const shopProduct = (product: CuratedProduct) => {
     const url = product.affiliateUrl?.trim();
     if (!url) return;
-    trackAffiliateClick({
+    trackAffiliateClicked({
       retailer: product.retailer,
       product_id: product.id,
-      approximate: false,
+      is_price_approximate: false,
       source: 'designer_checklist_mobile',
     });
     window.open(url, '_blank', 'noopener,noreferrer');
@@ -425,10 +425,10 @@ export function MobileChecklistSheet({
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() =>
-                        trackAffiliateClick({
+                        trackAffiliateClicked({
                           retailer: product.retailer,
                           product_id: product.id,
-                          approximate: false,
+                          is_price_approximate: false,
                           source: 'designer_checklist_mobile',
                         })
                       }

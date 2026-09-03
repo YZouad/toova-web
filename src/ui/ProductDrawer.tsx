@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { trackAffiliateClick } from '../lib/analytics';
+import { trackAffiliateClicked } from '../lib/analytics';
 import { useAuth } from '../hooks/useAuth';
 import type { ChecklistLineStatus, CuratedProduct } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
@@ -226,10 +226,10 @@ export function ProductDrawer({
                               target="_blank"
                               rel="noopener noreferrer"
                               onClick={() =>
-                                trackAffiliateClick({
+                                trackAffiliateClicked({
                                   retailer: product.retailer,
                                   product_id: product.id,
-                                  approximate: false,
+                                  is_price_approximate: false,
                                   source: 'product_drawer',
                                 })
                               }

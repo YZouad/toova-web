@@ -1,0 +1,105 @@
+# Current State: Toova (toova-web)
+# Scanned: 2026-09-03
+# SDK: generic (custom gtag.js wrapper — no analytics SDK package in package.json; GA4 loaded via a dynamically-inserted <script> tag, not an npm dependency)
+
+events:
+  - name: page_view
+    status: LIVE
+    function: trackPageView
+    locations:
+      - src/App.tsx:219
+    properties: [page_path, page_title, page_location]
+    category: lifecycle (inferred)
+    trigger: fires from a useEffect keyed on [route, screen] — every SPA route/screen change
+
+  - name: login
+    status: LIVE
+    function: trackLogin
+    locations:
+      - src/hooks/useAuth.tsx:81
+      - src/ui/AuthPage.tsx:118
+    properties: [method]
+    category: lifecycle (inferred)
+    trigger: two call sites — OAuth sign-in (useAuth.tsx, method = OAuth provider name) and email sign-in (AuthPage.tsx, method = "email")
+
+  - name: sign_up
+    status: LIVE
+    function: trackSignUp
+    locations:
+      - src/hooks/useAuth.tsx:80
+      - src/ui/AuthPage.tsx:126
+    properties: [method]
+    category: lifecycle (inferred)
+    trigger: two call sites — OAuth new-user creation (useAuth.tsx) and email sign-up (AuthPage.tsx)
+
+  - name: create_room
+    status: LIVE
+    function: trackCreateRoom
+    locations:
+      - src/hooks/useRoomLayout.ts:363 (inside createRoomWithGeometry)
+    properties: [template_id, guest_restore]
+    category: core_value (inferred)
+    note: >
+      CORRECTED 2026-09-03: the original audit pass missed src/hooks/useRoomLayout.ts and
+      called this ORPHANED — it is not. createRoomWithGeometry() calls trackCreateRoom()
+      with zero arguments on every authenticated room creation (both a fresh room via
+      App.tsx's handleCreateWithPlan, and a guest-session room being converted to an owned
+      room on signup). The real gap is narrower than "never fires": (1) it always fires with
+      empty properties — template_id and guest_restore are defined on the function but never
+      populated at the one call site; (2) it does not fire at all for a guest who starts
+      designing but never signs up — that path (App.tsx's guest branch of
+      handleCreateWithPlan) never reaches createRoomWithGeometry, so a pure guest session
+      that never converts produces zero create_room events.
+
+  - name: add_to_design
+    status: LIVE
+    function: trackAddToDesign
+    locations:
+      - src/store.ts:607 (kind hardcoded to "hanging")
+      - src/store.ts:717 (kind = the item's kind, e.g. imported/lamp/furniture piece; curated_product_id passed when the item originated from the curated catalog)
+    properties: [kind, source, curated_product_id]
+    category: core_value (inferred)
+    note: "The `source` property is defined in the function signature but not observed being populated at either call site — only kind and curated_product_id are ever set."
+
+  - name: share_room
+    status: LIVE
+    function: trackShareRoom
+    locations:
+      - src/ui/ShareModal.tsx:76
+    properties: [role]
+    category: engagement (inferred)
+    trigger: creating/copying a room share link; role = the share role selected (e.g. viewer/editor)
+
+  - name: click_affiliate
+    status: LIVE
+    function: trackAffiliateClick
+    locations:
+      - src/ui/ChecklistCheckoutPanel.tsx:131 (source = "checklist_checkout")
+      - src/ui/ProductDrawer.tsx:229 (source = "product_drawer")
+      - src/ui/PurchaseReviewPanel.tsx:95 (source = "purchase_review")
+      - src/ui/SharedToBuyPanel.tsx:135 (source = "shared_tobuy")
+    properties: [retailer, product_id, approximate, source]
+    category: core_value (inferred — the primary revenue signal in the codebase)
+    trigger: four distinct surfaces where a user clicks through to a retailer to buy a product
+
+identity:
+  identify_calls: []
+  group_calls: []
+  note: >
+    No identify-equivalent call exists anywhere. GA4 is configured once with a static
+    measurement ID and no user ID or traits (window.gtag('config', GA_ID, {...}) never
+    passes a user_id). Every event above is anonymous/session-scoped — none can be joined
+    to a specific Supabase user id, and there is no way to distinguish a guest session from
+    a signed-in one in GA4 itself.
+
+patterns:
+  naming_style: "Event names (the strings sent to GA4) are snake_case: page_view, login, sign_up, create_room, add_to_design, share_room, click_affiliate. Wrapper function names are camelCase: trackPageView, trackLogin, etc. Consistent split, no mixing observed."
+  centralized: true
+  centralization_note: "Every call funnels through a single internal trackEvent() in src/lib/analytics.ts. No direct window.gtag() or window.dataLayer calls exist anywhere outside that one file — all 9 files that report events (App.tsx, useAuth.tsx, AuthPage.tsx, store.ts, ShareModal.tsx, ChecklistCheckoutPanel.tsx, ProductDrawer.tsx, PurchaseReviewPanel.tsx, SharedToBuyPanel.tsx) import one of the 7 named wrapper functions rather than calling trackEvent or gtag directly."
+  orphan_rate: "0 of 7 exported track* functions are orphaned (corrected 2026-09-03 — trackCreateRoom is live, see the create_room event note above)."
+  other_observations:
+    - "Engagement signals (likes/views on rooms and catalog items — src/lib/catalogEngagement.ts, src/lib/roomEngagement.ts) are written directly to Supabase tables and do not go through analytics.ts — they do not appear in GA4 at all."
+    - "The AI 3D-generation pipeline (src/lib/trellisApi.ts, src/lib/trellisGenerate.ts, the conversion_jobs table, and the wake/status/generate calls through the Render BFF) has no analytics calls at any stage."
+    - "The shopping checklist flow itself — checklist creation, adding/removing checklist items, budget changes (src/lib/dormChecklist.ts, src/lib/checklistLines.ts, src/lib/checklistBudget.ts) — has no analytics calls. Only the four click_affiliate sites are tracked, which sit at the very end of that flow."
+    - "Guest-to-account conversion (src/lib/guestDesignSnapshot.ts, src/ui/GuestImportAuthModal.tsx) has no dedicated event; it would currently only show up as a generic sign_up."
+    - "No server-side or edge-function tracking exists — supabase/functions/ (glb-to-usdz, request-unfurl-deploy, sign-share-assets) contains no analytics calls; all tracking is client-only."

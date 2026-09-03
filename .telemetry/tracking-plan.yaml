@@ -1,0 +1,382 @@
+meta:
+  product: "Toova"
+  version: 2
+  created: 2026-09-03
+  updated: 2026-09-03
+  owner: "Yanis / Toova"
+  destinations: [ga4]
+  pii_policy: none   # CHANGED 2026-09-03 (v1→v2): was traits_only for PostHog; GA4's gtag/Measurement Protocol
+                      # terms prohibit sending PII (email, name) as event params OR user properties, full stop.
+                      # No email, no display_name, anywhere in this plan.
+  internal_user_policy: exclude_by_role   # admin-role users are excluded from product analytics at the tracking layer, not filtered post-hoc
+  naming_convention: >
+    object_action, snake_case (e.g. room_created). Conceptually the same object.action
+    convention as v1, but GA4 event names may only contain letters/digits/underscores
+    (no periods, ≤40 chars) — every event name below is the dotted name from v1 with the
+    period flattened to an underscore. See delta.md for the full rename list.
+  notes: >
+    v2 (2026-09-03): PostHog was implemented and then reverted the same day — the
+    founder's call was to stay on GA4 rather than add another analytics vendor to an
+    already-multi-tool stack (Cloudflare, Supabase, AWS). The event catalog and property
+    design below are unchanged from v1; only the destination, pii_policy, and event-name
+    formatting changed. GA4 is the sole analytics destination — there is no second
+    "marketing" GA4 install to reconcile with.
+
+entities:
+  user:
+    id_property: user_id
+    id_format: "Supabase auth UUID"
+    traits:
+      - name: email
+        type: string
+        pii: true
+        required: false
+        update_pattern: n/a
+        note: "REMOVED 2026-09-03 (v1→v2): dropped entirely under GA4's pii_policy: none. Never sent to GA4 as a trait/user property or an event param. Kept in this table only as a record that it was considered and rejected — do not re-add without a destination that supports PII-in-traits (e.g. PostHog)."
+      - name: display_name
+        type: string
+        pii: false
+        required: false
+        update_pattern: n/a
+        note: "REMOVED 2026-09-03 (v1→v2): free-text and occasionally a real name in practice, so dropped alongside email rather than risk it under GA4's no-PII terms. Not sent."
+      - name: auth_method
+        type: string
+        enum: [email, google, facebook]
+        required: true
+        note: "CORRECTED 2026-09-03: AuthPage.tsx offers Facebook OAuth in addition to Google — the original design pass missed this and only enumerated [email, google]. Sent to GA4 as a user property."
+        update_pattern: one-time
+      - name: role
+        type: string
+        enum: [user, admin]
+        required: true
+        update_pattern: on-change
+        note: "Drives the internal-user exclusion guard — events are not sent to GA4 while role = admin. Not itself sent as a GA4 user property (every user GA4 sees already has role = user, by construction of the guard, so the field would carry no signal)."
+      - name: is_guest
+        type: boolean
+        required: true
+        update_pattern: one-time
+        note: "True until the guest session converts to a real account via account.signed_up."
+      - name: subscription_tier
+        type: string
+        enum: [free, pro]
+        required: false
+        update_pattern: on-change
+        note: "Roadmap — no billing system exists yet. Defaults to free for every user until the Pro tier ships. Include now so no rework is needed at launch."
+      - name: created_at
+        type: datetime
+        pii: false
+        required: true
+        update_pattern: one-time
+      - name: last_active_at
+        type: datetime
+        required: true
+        update_pattern: on-change (updated on session start)
+      - name: rooms_created_count
+        type: integer
+        required: true
+        update_pattern: scheduled
+      - name: ai_generations_used_count
+        type: integer
+        required: true
+        update_pattern: scheduled
+        note: "Roadmap-relevant: this is the counter a future Pro-tier generation limit would check against."
+      - name: affiliate_clicks_count
+        type: integer
+        required: false
+        update_pattern: scheduled
+        note: "A proxy for purchase intent, not confirmed revenue — Toova has no way to confirm an affiliate click became a sale (no retailer webhook)."
+
+groups: []
+# No group hierarchy — Toova is B2C with no accounts/organizations/workspaces.
+# All tracking is user-level. Revisit only if a future subscription tier introduces
+# shared/family plans.
+
+snapshot_sync:
+  cadence: daily
+  traits:
+    - entity: user
+      trait: rooms_created_count
+      source: "COUNT of rows in `rooms` per user"
+    - entity: user
+      trait: ai_generations_used_count
+      source: "COUNT of succeeded rows in `conversion_jobs` per user"
+    - entity: user
+      trait: affiliate_clicks_count
+      source: "COUNT of product.affiliate_clicked events per user (all-time)"
+    - entity: user
+      trait: subscription_tier
+      source: "From billing system once it exists; free for all users until then"
+
+events:
+  # -- Lifecycle --
+  - name: account_signed_up
+    category: lifecycle
+    group_level: user
+    description: "A guest or new visitor creates a Toova account (renamed from sign_up)."
+    properties:
+      - name: user_id
+        type: string
+        required: true
+      - name: method
+        type: string
+        enum: [email, google, facebook]
+        required: true
+      - name: converted_from_guest
+        type: boolean
+        required: true
+        note: "New property — true when this signup follows a guest design session (guestDesignSnapshot). Not observable in the current implementation; this is the fix for that gap."
+    expected_frequency: low
+
+  - name: account_logged_in
+    category: lifecycle
+    group_level: user
+    description: "An existing user signs in (renamed from login)."
+    properties:
+      - name: user_id
+        type: string
+        required: true
+      - name: method
+        type: string
+        enum: [email, google, facebook]
+        required: true
+    expected_frequency: medium
+
+  # -- Core Value --
+  - name: room_created
+    category: core_value
+    group_level: user
+    description: >
+      A user creates a new room (floor plan). This is the primary value action —
+      currently defined in code (trackCreateRoom) but never called anywhere. Wiring
+      this up is the single highest-priority item in the delta.
+    properties:
+      - name: room_id
+        type: string
+        required: true
+      - name: template_id
+        type: string
+        required: false
+        note: "Set when the room started from a starter template (roomStarterTemplates.ts); null for a blank room."
+      - name: is_guest
+        type: boolean
+        required: true
+        note: "Renamed from guest_restore for clarity — true when created in a guest (pre-signup) session."
+    expected_frequency: medium
+
+  - name: design_item_added
+    category: core_value
+    group_level: user
+    description: "A furniture/decor item is placed into a room (renamed from add_to_design)."
+    properties:
+      - name: room_id
+        type: string
+        required: true
+        note: "New — not captured today, needed to analyze design activity per room."
+      - name: kind
+        type: string
+        required: true
+        note: "Item kind (e.g. imported, lamp, hanging, curated furniture piece)."
+      - name: source
+        type: string
+        enum: [library, ai_import, curated_product, hanging_decor]
+        required: true
+        note: "Currently defined but never populated in code — this fixes that gap."
+      - name: curated_product_id
+        type: string
+        required: false
+    expected_frequency: high
+
+  - name: model_generation_started
+    category: core_value
+    group_level: user
+    description: "A user kicks off an AI 3D model generation (Trellis pipeline: wake → status → generate). New — this pipeline has zero tracking today."
+    properties:
+      - name: job_id
+        type: string
+        required: true
+      - name: source_type
+        type: string
+        enum: [photo, text_prompt, product_link]
+        required: true
+    expected_frequency: medium
+
+  - name: model_generation_succeeded
+    category: core_value
+    group_level: user
+    description: "An AI 3D model generation completes and is available to place. New."
+    properties:
+      - name: job_id
+        type: string
+        required: true
+      - name: duration_ms
+        type: integer
+        required: true
+    expected_frequency: medium
+
+  - name: model_generation_failed
+    category: core_value
+    group_level: user
+    description: "An AI 3D model generation fails or times out (including EC2 wake failures). New — this is currently invisible; failures in an idle-stopped EC2 pipeline are exactly the kind of thing that goes unnoticed without tracking."
+    properties:
+      - name: job_id
+        type: string
+        required: true
+      - name: failure_reason
+        type: string
+        enum: [wake_timeout, generation_error, upload_error, unknown]
+        required: true
+    expected_frequency: low
+
+  - name: checklist_item_added
+    category: core_value
+    group_level: user
+    description: "A product is added to a room's shopping checklist. New — the checklist itself has no tracking today; only the affiliate click at the end of the flow does."
+    properties:
+      - name: room_id
+        type: string
+        required: true
+      - name: product_id
+        type: string
+        required: false
+      - name: category
+        type: string
+        required: true
+        note: "Checklist category, e.g. bedding, storage, lighting."
+      - name: is_curated
+        type: boolean
+        required: true
+    expected_frequency: high
+
+  - name: product_affiliate_clicked
+    category: core_value
+    group_level: user
+    description: >
+      A user clicks through to a retailer to buy a product — the primary revenue
+      signal in the codebase today (renamed from click_affiliate). This is a proxy
+      for purchase intent, not a confirmed sale.
+    properties:
+      - name: retailer
+        type: string
+        required: true
+      - name: product_id
+        type: string
+        required: false
+        note: >
+          Optional as of 2026-09-03: SharedToBuyPanel's "approximate" offers resolve to a
+          generic retailer search link, not a specific catalog product, so there's no
+          product_id to attach at that call site.
+      - name: is_price_approximate
+        type: boolean
+        required: true
+        note: "Renamed from `approximate`."
+      - name: source
+        type: string
+        enum:
+          [
+            checklist_checkout,
+            product_drawer,
+            purchase_review,
+            shared_tobuy,
+            designer_checklist_ticker,
+            designer_checklist_mobile,
+          ]
+        required: true
+        note: >
+          Populated correctly at all 6 call sites. Corrected from an earlier "4 call sites"
+          count as of 2026-09-03 — ChecklistTicker.tsx and MobileChecklistSheet.tsx were
+          missed in the original audit; both are now confirmed live and use the two
+          designer_checklist_* values above.
+    expected_frequency: medium
+
+  # -- Collaboration (B2C social layer) --
+  - name: room_shared
+    category: collaboration
+    group_level: user
+    description: "A user creates/copies a share link for a room (renamed from share_room)."
+    properties:
+      - name: room_id
+        type: string
+        required: true
+        note: "New — not captured today."
+      - name: role
+        type: string
+        enum: [viewer, editor]
+        required: true
+    expected_frequency: low
+
+  - name: room_liked
+    category: collaboration
+    group_level: user
+    description: "A user likes a room in the public gallery. New — gallery engagement (catalogEngagement.ts, roomEngagement.ts) is currently written straight to Supabase with no analytics signal."
+    properties:
+      - name: room_id
+        type: string
+        required: true
+    expected_frequency: medium
+
+  # -- Navigation (kept sparse, per anti-pattern guidance) --
+  - name: catalog_searched
+    category: navigation
+    group_level: user
+    description: >
+      A user searches the furniture/product catalog. Included despite the general
+      "keep navigation sparse" rule because search feeds directly into the two core
+      revenue loops (design.item_added and product.affiliate_clicked) — knowing what
+      people search for and don't find is high-signal, not page-view noise.
+    properties:
+      - name: query
+        type: string
+        required: true
+      - name: results_count
+        type: integer
+        required: true
+      - name: context
+        type: string
+        enum: [designer_library, gallery, checklist]
+        required: true
+    expected_frequency: high
+
+  # -- Billing (roadmap — no billing system exists yet; included now so the schema
+  #    is ready when the Pro tier ships, per the user's stated roadmap) --
+  - name: plan_upgraded
+    category: billing
+    group_level: user
+    description: "A user upgrades to a paid tier. Not yet implementable — no billing integration exists in the codebase today."
+    properties:
+      - name: from_plan
+        type: string
+        enum: [free, pro]
+        required: true
+      - name: to_plan
+        type: string
+        enum: [free, pro]
+        required: true
+    expected_frequency: low
+
+  - name: plan_cancelled
+    category: billing
+    group_level: user
+    description: "A user cancels a paid subscription. Not yet implementable."
+    properties:
+      - name: from_plan
+        type: string
+        enum: [pro]
+        required: true
+      - name: reason
+        type: string
+        required: false
+    expected_frequency: low
+
+  - name: limit_reached
+    category: billing
+    group_level: user
+    description: >
+      A free-tier user hits a usage limit (e.g. AI generations per month, render
+      quality cap). Not yet implementable — no tiering exists today — but this is
+      the event that will drive the upgrade funnel once the Pro tier ships.
+    properties:
+      - name: limit_type
+        type: string
+        enum: [ai_generations, render_quality]
+        required: true
+    expected_frequency: low

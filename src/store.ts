@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { lampMinHeight } from './furniture/lampGeometry';
 import { DEFAULT_SHELF_COLOR, FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE, isWallShelfKind } from './furniture/registry';
 import { defaultWallShelfPose, findValidElevation, resolveValidXZ, settleGravity, validatePlacement } from './interaction/collision';
-import { trackAddToDesign } from './lib/analytics';
+import { trackDesignItemAdded } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
 import { shouldStandImportedUpright, standUpFlatBounds } from './lib/importedUpright';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './lib/checklistPublicGlbs';
@@ -604,7 +604,7 @@ export const useStore = create<StoreState>((set, get) => ({
       designerTool: 'select',
       hangingDraft: null,
     }));
-    trackAddToDesign({ kind: 'hanging' });
+    trackDesignItemAdded({ kind: 'hanging', source: 'hanging_decor' });
     return id;
   },
 
@@ -714,8 +714,9 @@ export const useStore = create<StoreState>((set, get) => ({
       order: [...s.order, id],
       ...selectionOf([id]),
     }));
-    trackAddToDesign({
+    trackDesignItemAdded({
       kind,
+      source: opts?.curatedProductId ? 'curated_product' : kind === 'imported' ? 'ai_import' : 'library',
       ...(opts?.curatedProductId ? { curated_product_id: opts.curatedProductId } : {}),
     });
     return id;
