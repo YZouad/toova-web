@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
-import { trackLogin, trackSignUp } from '../lib/analytics';
+import { trackLoggedIn, trackSignedUp } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
+import { loadGuestDesignSnapshot } from '../lib/guestDesignSnapshot';
 import {
   Banner,
   Button,
@@ -113,17 +114,21 @@ export function AuthPage({
     setLoading(true);
     try {
       if (mode === 'signin') {
-        const { error: err } = await supabase.auth.signInWithPassword({ email: emailTrimmed, password });
+        const { data, error: err } = await supabase.auth.signInWithPassword({ email: emailTrimmed, password });
         if (err) throw err;
-        trackLogin('email');
+        trackLoggedIn({ user_id: data.user?.id ?? '', method: 'email' });
       } else {
-        const { error: err } = await supabase.auth.signUp({
+        const { data, error: err } = await supabase.auth.signUp({
           email: emailTrimmed,
           password,
           options: name.trim() ? { data: { full_name: name.trim() } } : undefined,
         });
         if (err) throw err;
-        trackSignUp('email');
+        trackSignedUp({
+          user_id: data.user?.id ?? '',
+          method: 'email',
+          converted_from_guest: loadGuestDesignSnapshot() != null,
+        });
         setInfo('Check your email for a confirmation link, then sign in.');
         setMode('signin');
       }

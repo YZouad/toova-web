@@ -21,6 +21,7 @@ import {
   type DesignerCatalogSearchHit,
 } from '../lib/galleryCatalog';
 import { planBounds } from '../lib/roomGeometry';
+import { trackCatalogSearched } from '../lib/analytics';
 import {
   loadRecent,
   loadRecentCommands,
@@ -216,6 +217,7 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
         setHasMore(hits.length >= REMOTE_LIMIT);
         setStatus('success');
         pushRecentQuery(q);
+        trackCatalogSearched({ query: q, results_count: hits.length, context: 'designer_library' });
       } catch (e) {
         if (cancelled || reqId !== requestIdRef.current) return;
         setError(e instanceof Error ? e.message : 'Search failed');

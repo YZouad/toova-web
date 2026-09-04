@@ -17,6 +17,7 @@ import type { CatalogCategorySlug } from '../lib/catalogCategories';
 import { BUILTIN_CATEGORIES } from '../lib/catalogCategories';
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
 import { supabase } from '../lib/supabase';
+import { trackCatalogSearched } from '../lib/analytics';
 
 export interface GalleryModel {
   kind: string;
@@ -183,6 +184,10 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
   const [error, setError] = useState<string | null>(null);
   const offsetRef = useRef(0);
   const currentUserIdRef = useRef<string | null>(null);
+  // Debounces the catalog_searched analytics event only — query isn't debounced
+  // upstream (GalleryPage.tsx updates it on every keystroke), so without this the
+  // event would fire once per character typed instead of once per search.
+  const searchTrackTimerRef = useRef<number | null>(null);
 
   const patchPreview = useCallback((kind: string, previewUrl: string) => {
     setModels((prev) =>
@@ -289,6 +294,16 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
         setTotal(totalCount);
         setModels((prev) => (append ? [...prev, ...out] : out));
         offsetRef.current = offset + rows.length;
+
+        if (!append) {
+          const q = query.trim();
+          if (searchTrackTimerRef.current) window.clearTimeout(searchTrackTimerRef.current);
+          if (q) {
+            searchTrackTimerRef.current = window.setTimeout(() => {
+              trackCatalogSearched({ query: q, results_count: totalCount, context: 'gallery' });
+            }, 500);
+          }
+        }
 
         const backfillJobs = out
           .filter((e) => !e.isBuiltin && e.signedUrl)

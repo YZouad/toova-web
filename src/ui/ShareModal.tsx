@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { trackShareRoom } from '../lib/analytics';
+import { trackRoomShared } from '../lib/analytics';
 import { buildShareUrl } from '../lib/shareLinks';
 import {
   createRoomShare,
@@ -73,7 +73,7 @@ export function ShareModal({ roomId, userId, onClose }: ShareModalProps) {
         role: newRole,
         allowCopy,
       });
-      trackShareRoom({ role: newRole });
+      trackRoomShared({ room_id: roomId, role: newRole });
       await navigator.clipboard.writeText(url);
       setCopiedToken(token);
       await refresh();

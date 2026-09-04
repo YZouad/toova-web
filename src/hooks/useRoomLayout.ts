@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { trackCreateRoom } from '../lib/analytics';
+import { trackRoomCreated } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { parseEnvironment } from '../lib/environmentPersist';
 import { parseFloorPlan, serializeFloorPlan, DEFAULT_ROOM_GEOMETRY, type RoomGeometry } from '../lib/roomGeometry';
@@ -348,6 +348,7 @@ export async function createRoomWithGeometry(
   name: string,
   roomGeometry: RoomGeometry,
   environment = DEFAULT_ENVIRONMENT,
+  options?: { templateId?: string; isGuestOrigin?: boolean },
 ): Promise<{ id: string; name: string }> {
   const { data, error } = await supabase
     .from('rooms')
@@ -360,7 +361,11 @@ export async function createRoomWithGeometry(
     .select('id,name')
     .single();
   if (error) throw new Error(formatRoomDbError(error.message));
-  trackCreateRoom();
+  trackRoomCreated({
+    room_id: data.id,
+    template_id: options?.templateId,
+    is_guest: options?.isGuestOrigin ?? false,
+  });
   return { id: data.id, name: data.name ?? name };
 }
 

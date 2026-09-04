@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { trackRoomLiked } from './analytics';
 
 const VIEWED_SESSION_KEY = 'toova-room-viewed';
 const VIEWER_TOKEN_KEY = 'toova-room-viewer-token';
@@ -57,8 +58,15 @@ export async function toggleRoomLike(
     typeof data === 'string'
       ? (JSON.parse(data) as { liked?: boolean; likes_count?: number })
       : (data as { liked?: boolean; likes_count?: number } | null);
+  const liked = Boolean(row?.liked);
+  // room_liked tracks the "like" transition only, not "unlike" — there's no room_unliked
+  // event in the tracking plan (see .telemetry/tracking-plan.yaml).
+  // Note: as of 2026-09-03 no UI calls toggleRoomLike anywhere in the codebase — this
+  // fires correctly the moment a like button is wired up, following the same pattern as
+  // trackRoomCreated inside createRoomWithGeometry.
+  if (liked) trackRoomLiked({ room_id: roomId });
   return {
-    liked: Boolean(row?.liked),
+    liked,
     likes_count: Number(row?.likes_count ?? 0),
   };
 }

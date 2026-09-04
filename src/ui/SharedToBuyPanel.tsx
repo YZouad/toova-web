@@ -3,7 +3,7 @@ import { useStore, type Item } from '../store';
 import type { CuratedProduct } from '../lib/dormChecklist';
 import { formatPriceCents } from '../lib/dormChecklist';
 import { resolveAffiliateForItem } from '../lib/affiliateLinks';
-import { trackAffiliateClick } from '../lib/analytics';
+import { trackAffiliateClicked } from '../lib/analytics';
 import { useShoppingCatalogContext } from '../context/ShoppingCatalogContext';
 import { Badge, Button, DisplayHeading, MonoMeta } from './kit';
 
@@ -132,10 +132,10 @@ export function SharedToBuyPanel({ productsById }: SharedToBuyPanelProps) {
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={() =>
-                      trackAffiliateClick({
+                      trackAffiliateClicked({
                         retailer: offer.retailer,
                         product_id: offer.productId,
-                        approximate: offer.approximate,
+                        is_price_approximate: offer.approximate,
                         source: 'shared_tobuy',
                       })
                     }

@@ -13,6 +13,12 @@ import {
 import { generateGlbFromPhoto } from '../lib/trellisGenerate';
 import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { validateCatalogText } from '../lib/bannedWords';
+import { classifyGenerationFailure } from './designer/importLogic';
+import {
+  trackModelGenerationStarted,
+  trackModelGenerationSucceeded,
+  trackModelGenerationFailed,
+} from '../lib/analytics';
 import {
   CATALOG_CATEGORY_DEFS,
   MAX_CATALOG_CATEGORIES,
@@ -285,6 +291,8 @@ export function ImportModelModal({
       label: imageFile.name || 'Image → 3D',
     });
     activeJobIdRef.current = jobId;
+    const startedAt = Date.now();
+    if (jobId) trackModelGenerationStarted({ job_id: jobId, source_type: 'photo' });
 
     try {
       const glbFile = await generateGlbFromPhoto(
@@ -304,6 +312,7 @@ export function ImportModelModal({
           status: 'completed',
           label: imageFile.name || 'Image → 3D',
         });
+        trackModelGenerationSucceeded({ job_id: jobId, duration_ms: Date.now() - startedAt });
       }
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
@@ -323,6 +332,7 @@ export function ImportModelModal({
           status: 'failed',
           error: message,
         });
+        trackModelGenerationFailed({ job_id: jobId, failure_reason: classifyGenerationFailure(message) });
       }
     } finally {
       setGenerating(false);

@@ -1,5 +1,5 @@
 import { useEffect, useMemo } from 'react';
-import { trackAffiliateClick } from '../lib/analytics';
+import { trackAffiliateClicked } from '../lib/analytics';
 import { formatPriceCents } from '../lib/dormChecklist';
 import type { PurchaseCartLine } from '../lib/purchaseCart';
 import { purchaseCartTotalCents } from '../lib/purchaseCart';
@@ -128,10 +128,10 @@ export function ChecklistCheckoutPanel({
                           target="_blank"
                           rel="noopener noreferrer"
                           onClick={() =>
-                            trackAffiliateClick({
+                            trackAffiliateClicked({
                               retailer: line.product.retailer,
                               product_id: line.product.id,
-                              approximate: line.approximate,
+                              is_price_approximate: line.approximate,
                               source: 'checklist_checkout',
                             })
                           }

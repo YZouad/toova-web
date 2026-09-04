@@ -9,7 +9,20 @@ import {
 import { validateCatalogText } from '../../lib/bannedWords';
 import type { CatalogCategorySlug } from '../../lib/catalogCategories';
 import { generateGlbFromPhoto } from '../../lib/trellisGenerate';
+import {
+  trackModelGenerationStarted,
+  trackModelGenerationSucceeded,
+  trackModelGenerationFailed,
+} from '../../lib/analytics';
 import type { CatalogModel } from './chromeTypes';
+
+/** Buckets a raw error message into the tracking plan's model_generation_failed reason enum. */
+export function classifyGenerationFailure(message: string): 'wake_timeout' | 'generation_error' | 'unknown' {
+  const m = message.toLowerCase();
+  if (/wake|timed? ?out|timeout/.test(m)) return 'wake_timeout';
+  if (/generat/.test(m)) return 'generation_error';
+  return 'unknown';
+}
 
 export type GeneratePhase = 'idle' | 'generating' | 'downloading';
 
@@ -59,6 +72,8 @@ export async function runPhotoGenerate(
     status: 'processing',
     label: imageFile.name || 'Image → 3D',
   });
+  const startedAt = Date.now();
+  if (jobId) trackModelGenerationStarted({ job_id: jobId, source_type: 'photo' });
 
   try {
     const glbFile = await generateGlbFromPhoto(imageFile, signal, onStatus);
@@ -67,6 +82,7 @@ export async function runPhotoGenerate(
         status: 'completed',
         label: imageFile.name || 'Image → 3D',
       });
+      trackModelGenerationSucceeded({ job_id: jobId, duration_ms: Date.now() - startedAt });
     }
     return { glbFile, jobId };
   } catch (err) {
@@ -79,6 +95,7 @@ export async function runPhotoGenerate(
     const message = err instanceof Error ? err.message : 'Generation failed';
     if (jobId) {
       await updateConversionJob(jobId, { status: 'failed', error: message });
+      trackModelGenerationFailed({ job_id: jobId, failure_reason: classifyGenerationFailure(message) });
     }
     throw err;
   }

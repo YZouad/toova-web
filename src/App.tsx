@@ -56,7 +56,7 @@ import { CreationsPage } from './ui/CreationsPage';
 import { AppRailChrome } from './ui/AppRailChrome';
 import type { GalleryModel } from './hooks/useGalleryCatalog';
 import { recordCatalogDownload, shouldRecordCatalogDownload } from './lib/catalogEngagement';
-import { trackPageView } from './lib/analytics';
+import { identifyUser, resetIdentity, setCurrentRoom, setInternalUser, type AuthMethod } from './lib/analytics';
 import { buildGallerySearchParams } from './lib/galleryCatalog';
 import type { FurnitureKind } from './furniture/registry';
 import { galleryModelImportedSize, galleryModelPlacesAsImport, isProceduralBuiltinKind } from './lib/placeGalleryModel';
@@ -200,6 +200,7 @@ function AppContent() {
 
   useEffect(() => {
     setRoomId(workspace?.id ?? getActiveChecklistRoomId());
+    setCurrentRoom(workspace?.id ?? null);
   }, [workspace?.id, setRoomId]);
 
   const routeIsPublic =
@@ -208,16 +209,6 @@ function AppContent() {
     route.name === 'publicRoom' ||
     route.name === 'gallery' ||
     route.name === 'timeline';
-
-  useEffect(() => {
-    let path: string;
-    if (route.name === 'shared') path = `/r/${route.token}`;
-    else if (route.name === 'profile') path = `/u/${route.handle}`;
-    else if (route.name === 'publicRoom') path = `/u/${route.handle}/r/${route.roomId}`;
-    else if (route.name === 'gallery' || screen === 'gallery') path = '/gallery';
-    else path = `/${screen}`;
-    trackPageView(path);
-  }, [route, screen]);
 
   const {
     isAdmin,
@@ -230,6 +221,25 @@ function AppContent() {
     jobs: adminConversionJobs,
     refetch: refetchAdminInventory,
   } = useAdminStats(user?.id);
+
+  useEffect(() => {
+    if (adminStatsLoading) return;
+    if (!user) {
+      setInternalUser(false);
+      resetIdentity();
+      return;
+    }
+    const provider = String(user.app_metadata?.provider ?? 'email');
+    const authMethod: AuthMethod =
+      provider === 'google' ? 'google' : provider === 'facebook' ? 'facebook' : 'email';
+    identifyUser(user.id, {
+      auth_method: authMethod,
+      role: isAdmin ? 'admin' : 'user',
+      is_guest: false,
+      subscription_tier: 'free',
+      created_at: user.created_at,
+    });
+  }, [user, isAdmin, adminStatsLoading]);
 
   useEffect(() => {
     if (!user) {
@@ -265,6 +275,7 @@ function AppContent() {
               snapshot.name,
               snapshot.roomGeometry,
               snapshot.environment,
+              { templateId: snapshot.templateId, isGuestOrigin: true },
             );
             const byId = Object.fromEntries(snapshot.items.map((it) => [it.id, it]));
             if (snapshot.items.length > 0) {
@@ -427,7 +438,10 @@ function AppContent() {
 
       setFloorPlanBusy(true);
       try {
-        const room = await createRoomWithGeometry(user.id, name, plan, environment);
+        const room = await createRoomWithGeometry(user.id, name, plan, environment, {
+          templateId: options?.starterId,
+          isGuestOrigin: false,
+        });
         resetLayout();
         hydrateLayout(seedItems, seedOrder);
         hydrateRoomSettings(environment, plan);
