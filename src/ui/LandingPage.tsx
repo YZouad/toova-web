@@ -466,8 +466,9 @@ export function LandingPage({
           { label: 'Contact', onClick: onContact },
           { label: 'Pitch Madness', onClick: onPitchMadness },
           { label: 'Feedback', onClick: () => setFeedbackOpen(true) },
-          { label: 'Privacy' },
-          { label: 'Terms' },
+          { label: 'Privacy', href: '/privacy' },
+          { label: 'Terms', href: '/terms' },
+          { label: 'Child Safety', href: '/safety' },
           ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
         ]}
       />

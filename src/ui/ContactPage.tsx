@@ -131,8 +131,9 @@ export function ContactPage({
       <Footer
         links={[
           { label: 'Contact' },
-          { label: 'Privacy' },
-          { label: 'Terms' },
+          { label: 'Privacy', href: '/privacy' },
+          { label: 'Terms', href: '/terms' },
+          { label: 'Child Safety', href: '/safety' },
           ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
         ]}
       />

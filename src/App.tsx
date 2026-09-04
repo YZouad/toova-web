@@ -54,6 +54,9 @@ import { PublicRoomPage } from './ui/PublicRoomPage';
 import { GalleryPage } from './ui/GalleryPage';
 import { CreationsPage } from './ui/CreationsPage';
 import { AppRailChrome } from './ui/AppRailChrome';
+import { LegalPage } from './ui/LegalPage';
+import { SafetyReportForm } from './ui/SafetyReportForm';
+import { getLegalDocument } from './legal';
 import type { GalleryModel } from './hooks/useGalleryCatalog';
 import { recordCatalogDownload, shouldRecordCatalogDownload } from './lib/catalogEngagement';
 import { identifyUser, resetIdentity, setCurrentRoom, setInternalUser, type AuthMethod } from './lib/analytics';
@@ -208,7 +211,10 @@ function AppContent() {
     route.name === 'profile' ||
     route.name === 'publicRoom' ||
     route.name === 'gallery' ||
-    route.name === 'timeline';
+    route.name === 'timeline' ||
+    route.name === 'terms' ||
+    route.name === 'privacy' ||
+    route.name === 'safety';
 
   const {
     isAdmin,
@@ -718,6 +724,36 @@ function AppContent() {
           if (routeIsPublic) navigate('/', true);
         }}
       />
+    );
+  }
+
+  if (route.name === 'terms' || route.name === 'privacy' || route.name === 'safety') {
+    const doc = getLegalDocument(
+      route.name === 'terms' ? 'terms' : route.name === 'privacy' ? 'privacy' : 'child-safety',
+    );
+    return (
+      <LegalPage
+        document={doc}
+        loggedIn={Boolean(user)}
+        onGoHome={() => {
+          navigate('/');
+          setScreen(user ? 'dashboard' : 'landing');
+        }}
+        onGetStarted={() => {
+          setAuthMode('signup');
+          setScreen('auth');
+        }}
+        onLogin={() => {
+          setAuthMode('signin');
+          setScreen('auth');
+        }}
+        onGoDashboard={user ? () => setScreen('dashboard') : undefined}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
+        onAdmin={landingCallbacks.onAdmin}
+      >
+        {route.name === 'safety' ? <SafetyReportForm /> : null}
+      </LegalPage>
     );
   }
 

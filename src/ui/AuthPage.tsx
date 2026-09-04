@@ -2,6 +2,12 @@ import { type FormEvent, useState } from 'react';
 import { trackLoggedIn, trackSignedUp } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { loadGuestDesignSnapshot } from '../lib/guestDesignSnapshot';
+import { isAtLeast13, parseDobInput } from '../lib/ageGate';
+import {
+  acceptLegalTerms,
+  stashPendingLegalAcceptance,
+} from '../lib/legalAcceptance';
+import { PRIVACY_VERSION, TERMS_VERSION } from '../legal';
 import {
   Banner,
   Button,
@@ -62,6 +68,9 @@ function describeAuthFailure(err: unknown, mode: Mode): string {
       ? 'Wrong password for this email, or no account uses this email.'
       : rawMsg || 'Something went wrong. Please try again.';
   }
+  if (msg.includes('at least 13')) {
+    return 'You must be at least 13 years old to use Toova.';
+  }
   return rawMsg || 'Something went wrong. Please try again.';
 }
 
@@ -80,14 +89,36 @@ export function AuthPage({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [dob, setDob] = useState('');
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [oauthBusy, setOauthBusy] = useState<'google' | 'facebook' | null>(null);
 
+  function validateSignupLegal(): string | null {
+    if (!agreed) {
+      return 'Check the box to agree to the Terms and Privacy Policy.';
+    }
+    const parsed = parseDobInput(dob);
+    if (!parsed) return 'Enter a valid date of birth.';
+    if (!isAtLeast13(parsed)) {
+      return 'You must be at least 13 years old to use Toova.';
+    }
+    return null;
+  }
+
   async function handleOAuth(provider: 'google' | 'facebook') {
     setError(null);
     setInfo(null);
+    if (mode === 'signup') {
+      const legalErr = validateSignupLegal();
+      if (legalErr) {
+        setError(legalErr);
+        return;
+      }
+      stashPendingLegalAcceptance(dob, 'signup_oauth');
+    }
     setOauthBusy(provider);
     try {
       const { error: err } = await supabase.auth.signInWithOAuth({
@@ -111,6 +142,11 @@ export function AuthPage({
     const clientErr = validateFields(emailTrimmed, password, mode);
     if (clientErr) { setError(clientErr); return; }
 
+    if (mode === 'signup') {
+      const legalErr = validateSignupLegal();
+      if (legalErr) { setError(legalErr); return; }
+    }
+
     setLoading(true);
     try {
       if (mode === 'signin') {
@@ -129,6 +165,17 @@ export function AuthPage({
           method: 'email',
           converted_from_guest: loadGuestDesignSnapshot() != null,
         });
+        // Session may be null when email confirmation is required — stash for gate / next sign-in.
+        if (data.session && data.user) {
+          try {
+            await acceptLegalTerms({ dob, method: 'signup_email' });
+          } catch (acceptErr) {
+            stashPendingLegalAcceptance(dob, 'signup_email');
+            throw acceptErr;
+          }
+        } else {
+          stashPendingLegalAcceptance(dob, 'signup_email');
+        }
         setInfo('Check your email for a confirmation link, then sign in.');
         setMode('signin');
       }
@@ -140,6 +187,7 @@ export function AuthPage({
   }
 
   const busy = loading || oauthBusy !== null;
+  const signupBlocked = mode === 'signup' && (!agreed || !dob);
 
   return (
     <div className="auth-page-wrap toova-page">
@@ -195,7 +243,7 @@ export function AuthPage({
               full
               variant="outline"
               type="button"
-              disabled={busy}
+              disabled={busy || signupBlocked}
               onClick={() => void handleOAuth('google')}
             >
               {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
@@ -205,7 +253,7 @@ export function AuthPage({
               full
               variant="outline"
               type="button"
-              disabled={busy}
+              disabled={busy || signupBlocked}
               onClick={() => void handleOAuth('facebook')}
             >
               {oauthBusy === 'facebook' ? 'Redirecting…' : 'Continue with Facebook'}
@@ -251,7 +299,40 @@ export function AuthPage({
                   placeholder="••••••••"
                 />
               </Field>
-              <Button size="md" full type="submit" disabled={busy}>
+              {mode === 'signup' ? (
+                <>
+                  <Field label="Date of birth" hint="You must be at least 13." htmlFor="auth-dob">
+                    <Input
+                      id="auth-dob"
+                      type="date"
+                      autoComplete="bday"
+                      value={dob}
+                      onChange={(e) => setDob(e.target.value)}
+                      max={new Date().toISOString().slice(0, 10)}
+                      required
+                    />
+                  </Field>
+                  <label className="auth-legal-check">
+                    <input
+                      type="checkbox"
+                      checked={agreed}
+                      onChange={(e) => setAgreed(e.target.checked)}
+                    />
+                    <span>
+                      I agree to the{' '}
+                      <a href="/terms" target="_blank" rel="noopener noreferrer">
+                        Terms of Service
+                      </a>
+                      {' '}(v{TERMS_VERSION}) and{' '}
+                      <a href="/privacy" target="_blank" rel="noopener noreferrer">
+                        Privacy Policy
+                      </a>
+                      {' '}(v{PRIVACY_VERSION}).
+                    </span>
+                  </label>
+                </>
+              ) : null}
+              <Button size="md" full type="submit" disabled={busy || signupBlocked}>
                 {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in with email' : 'Create account'}
               </Button>
               <div className="auth-form-footer">

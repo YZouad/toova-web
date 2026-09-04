@@ -6,6 +6,7 @@ import { recordRoomView, toggleRoomLike } from '../lib/roomEngagement';
 import { useStore } from '../store';
 import { Scene } from '../scene/Scene';
 import { UserAvatar } from './UserAvatar';
+import { ReportDialog } from './ReportDialog';
 import { Button, DisplayHeading, Logo, MonoMeta, Splash } from './kit';
 
 interface PublicRoomPageProps {
@@ -73,6 +74,7 @@ export function PublicRoomPage({
   const [likeBusy, setLikeBusy] = useState(false);
   const [attribution, setAttribution] = useState<PublicAttribution | null>(null);
   const [busy, setBusy] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showAuthWall, setShowAuthWall] = useState(false);
   const [resumeCopy, setResumeCopy] = useState(false);
@@ -249,11 +251,23 @@ export function PublicRoomPage({
           >
             {likedByMe ? '♥ Liked' : '♡ Like'}
           </Button>
+          <Button size="sm" variant="outline" onClick={() => setReportOpen(true)}>
+            Report
+          </Button>
           <Button size="sm" disabled={busy} onClick={requireAuthThenCopy}>
             Make a copy
           </Button>
         </div>
       </header>
+
+      <ReportDialog
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        targetType="room"
+        targetId={roomId}
+        targetLabel={roomName}
+        allowAnonymousEmail={!userId}
+      />
 
       {actionError ? (
         <div className="tv-banner-error" style={{ margin: '0 20px', position: 'relative', zIndex: 2 }} role="alert">

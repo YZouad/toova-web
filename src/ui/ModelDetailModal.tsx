@@ -4,12 +4,12 @@ import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import {
   hasReportedCatalogKind,
   recordCatalogView,
-  reportCatalogModel,
   setCatalogVisibility,
   toggleCatalogLike,
-  type CatalogReportReason,
   type CatalogVisibility,
 } from '../lib/catalogEngagement';
+import { hasReportedTarget } from '../lib/contentReports';
+import { ReportDialog } from './ReportDialog';
 import { catalogCategoryLabel } from '../lib/catalogCategories';
 import { deleteCatalogModel, updateCatalogModel } from '../lib/galleryCatalog';
 import {
@@ -43,13 +43,6 @@ export interface ModelDetailModalProps {
 }
 
 const COMPACT_MQ = '(max-width: 1023px)';
-
-const REPORT_REASONS: { value: CatalogReportReason; label: string }[] = [
-  { value: 'inappropriate', label: 'Inappropriate' },
-  { value: 'spam', label: 'Spam' },
-  { value: 'stolen', label: 'Stolen' },
-  { value: 'other', label: 'Other' },
-];
 
 const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
@@ -159,11 +152,7 @@ export function ModelDetailModal({
   const isOwner =
     !!currentUserId && !!model.userId && currentUserId === model.userId && !model.isBuiltin;
   const canLike = model.visibility === 'public' && !isOwner && !model.isBuiltin;
-  const canReport =
-    !!currentUserId &&
-    !isOwner &&
-    !model.isBuiltin &&
-    model.visibility === 'public';
+  const canReport = !isOwner && !model.isBuiltin && model.visibility === 'public';
 
   const [compact, setCompact] = useState(
     () => typeof window !== 'undefined' && window.matchMedia(COMPACT_MQ).matches,
@@ -176,9 +165,9 @@ export function ModelDetailModal({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [likeBusy, setLikeBusy] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
-  const [reportReason, setReportReason] = useState<CatalogReportReason>('inappropriate');
-  const [reportBusy, setReportBusy] = useState(false);
-  const [reported, setReported] = useState(() => hasReportedCatalogKind(model.kind));
+  const [reported, setReported] = useState(
+    () => hasReportedCatalogKind(model.kind) || hasReportedTarget('catalog_model', model.kind),
+  );
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [imgBroken, setImgBroken] = useState(false);
 
@@ -245,7 +234,9 @@ export function ModelDetailModal({
   }, [previewUrl]);
 
   useEffect(() => {
-    setReported(hasReportedCatalogKind(model.kind));
+    setReported(
+      hasReportedCatalogKind(model.kind) || hasReportedTarget('catalog_model', model.kind),
+    );
     setReportOpen(false);
     setImgBroken(false);
     setLabel(model.label);
@@ -321,21 +312,6 @@ export function ModelDetailModal({
       setError(e instanceof Error ? e.message : 'Could not update like');
     } finally {
       setLikeBusy(false);
-    }
-  }
-
-  async function handleReport() {
-    if (!canReport || reported) return;
-    setError(null);
-    setReportBusy(true);
-    try {
-      await reportCatalogModel(model.kind, reportReason);
-      setReported(true);
-      setReportOpen(false);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not send report');
-    } finally {
-      setReportBusy(false);
     }
   }
 
@@ -484,43 +460,18 @@ export function ModelDetailModal({
             Report this model
           </button>
         ) : (
-          <div className="md-report-panel">
-            <span className="md-report-title">What&apos;s wrong with it?</span>
-            <div className="md-report-reasons" role="group" aria-label="Report reason">
-              {REPORT_REASONS.map((r) => (
-                <button
-                  key={r.value}
-                  type="button"
-                  className={`md-report-chip${reportReason === r.value ? ' is-active' : ''}`}
-                  disabled={reportBusy}
-                  onClick={() => setReportReason(r.value)}
-                >
-                  {r.label}
-                </button>
-              ))}
-            </div>
-            <div className="md-report-actions">
-              <button
-                type="button"
-                className="md-report-send"
-                disabled={reportBusy}
-                onClick={() => void handleReport()}
-              >
-                {reportBusy ? 'Sending…' : 'Send report'}
-              </button>
-              <button
-                type="button"
-                className="md-report-link"
-                disabled={reportBusy}
-                onClick={() => setReportOpen(false)}
-              >
-                Cancel
-              </button>
-              {!compact ? (
-                <span className="md-report-hint">Goes to a human, not the creator.</span>
-              ) : null}
-            </div>
-          </div>
+          <ReportDialog
+            open
+            inline
+            onClose={() => setReportOpen(false)}
+            targetType="catalog_model"
+            targetId={model.kind}
+            targetLabel={model.label}
+            onSubmitted={() => {
+              setReported(true);
+              setReportOpen(false);
+            }}
+          />
         )}
       </div>
     ) : null;

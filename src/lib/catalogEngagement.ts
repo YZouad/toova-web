@@ -86,6 +86,20 @@ export async function reportCatalogModel(
   reason: CatalogReportReason,
   details?: string | null,
 ): Promise<void> {
+  // Prefer Edge Function so safety@ is alerted; falls back to RPC shim if invoke fails.
+  try {
+    const { submitContentReport } = await import('./contentReports');
+    await submitContentReport({
+      targetType: 'catalog_model',
+      targetId: kind,
+      reason,
+      details,
+    });
+    markReportedCatalogKind(kind);
+    return;
+  } catch {
+    /* fall through to RPC shim */
+  }
   const { error } = await supabase.rpc('report_catalog_model', {
     p_kind: kind,
     p_reason: reason,

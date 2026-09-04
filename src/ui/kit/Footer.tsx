@@ -4,6 +4,8 @@ import { Logo } from './Logo';
 export interface FooterLink {
   label: string;
   onClick?: () => void;
+  /** Prefer a real href for legal links (enforceable clickwrap). */
+  href?: string;
 }
 
 export interface FooterProps {
@@ -25,7 +27,16 @@ export function Footer({
         <Logo size={18} alt="Toova" />
         <div className="kit-footer__links">
           {links.map((link) =>
-            link.onClick ? (
+            link.href ? (
+              <a
+                key={link.label}
+                className="kit-footer__link"
+                href={link.href}
+                onClick={link.onClick}
+              >
+                {link.label}
+              </a>
+            ) : link.onClick ? (
               <button
                 key={link.label}
                 type="button"

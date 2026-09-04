@@ -271,8 +271,9 @@ export function PitchMadnessPage({
       <Footer
         links={[
           { label: 'Contact', onClick: onContact },
-          { label: 'Privacy' },
-          { label: 'Terms' },
+          { label: 'Privacy', href: '/privacy' },
+          { label: 'Terms', href: '/terms' },
+          { label: 'Child Safety', href: '/safety' },
           ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
         ]}
       />

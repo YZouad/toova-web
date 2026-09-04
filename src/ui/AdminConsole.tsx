@@ -9,6 +9,7 @@ import {
 } from '../hooks/useAdminStats';
 import { formatRelativeTime, shortenId } from '../lib/userDisplay';
 import { AdminShoppingPanel } from './AdminShoppingPanel';
+import { AdminReportsPanel } from './AdminReportsPanel';
 import {
   Badge,
   Banner,
@@ -22,7 +23,7 @@ import {
   Spinner,
 } from './kit';
 
-type AdminTab = 'overview' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping';
+type AdminTab = 'overview' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping' | 'reports';
 
 type SortDir = 'asc' | 'desc';
 
@@ -32,6 +33,7 @@ type JobSortKey = 'job' | 'owner' | 'source' | 'status' | 'created';
 
 const NAV: { id: AdminTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'reports', label: 'Reports' },
   { id: 'users', label: 'Users' },
   { id: 'rooms', label: 'Rooms' },
   { id: 'jobs', label: 'Jobs' },
@@ -675,6 +677,7 @@ export function AdminConsole({
           ) : null}
 
           {tab === 'shopping' ? <AdminShoppingPanel /> : null}
+          {tab === 'reports' ? <AdminReportsPanel enabled /> : null}
         </div>
       </div>
     </div>

@@ -4,6 +4,9 @@ export type AppRoute =
   | { name: 'home' }
   | { name: 'gallery' }
   | { name: 'timeline' }
+  | { name: 'terms' }
+  | { name: 'privacy' }
+  | { name: 'safety' }
   | { name: 'shared'; token: string }
   | { name: 'profile'; handle: string }
   | { name: 'publicRoom'; handle: string; roomId: string };
@@ -14,6 +17,9 @@ const PUBLIC_ROOM_PATH_RE =
   /^\/u\/([a-z0-9_]{3,30})\/r\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\/?$/i;
 const GALLERY_PATH_RE = /^\/gallery\/?$/i;
 const TIMELINE_PATH_RE = /^\/timeline\/?$/i;
+const TERMS_PATH_RE = /^\/terms\/?$/i;
+const PRIVACY_PATH_RE = /^\/privacy\/?$/i;
+const SAFETY_PATH_RE = /^\/safety\/?$/i;
 
 export function parsePathname(pathname: string): AppRoute {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -25,6 +31,10 @@ export function parsePathname(pathname: string): AppRoute {
   if (TIMELINE_PATH_RE.test(path) || path === '/timeline') {
     return { name: 'timeline' };
   }
+
+  if (TERMS_PATH_RE.test(path)) return { name: 'terms' };
+  if (PRIVACY_PATH_RE.test(path)) return { name: 'privacy' };
+  if (SAFETY_PATH_RE.test(path)) return { name: 'safety' };
 
   const room = path.match(PUBLIC_ROOM_PATH_RE);
   if (room?.[1] && room[2]) {
@@ -64,6 +74,18 @@ export function galleryPath(search = ''): string {
 
 export function timelinePath(): string {
   return '/timeline';
+}
+
+export function termsPath(): string {
+  return '/terms';
+}
+
+export function privacyPath(): string {
+  return '/privacy';
+}
+
+export function safetyPath(): string {
+  return '/safety';
 }
 
 export function navigate(path: string, replace = false): void {
