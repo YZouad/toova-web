@@ -11,9 +11,10 @@ import {
   updateChecklistProductWithModel,
 } from '../lib/shoppingCatalogAdmin';
 import { generateGlbFromPhoto } from '../lib/trellisGenerate';
-import { trellisUsesRemoteUrl } from '../lib/trellisApi';
+import { TRELLIS_STARTING_STATUS, trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { downloadCatalogModelByKind } from '../lib/modelStorage';
 import { ImageFileField } from './ImageFileField';
+import { PhotoSubjectPrep } from './PhotoSubjectPrep';
 import { Banner, Button, Checkbox, Field, Input, Modal, Spinner, Tabs } from './kit';
 
 type ModelTab = 'upload' | 'generate';
@@ -54,6 +55,7 @@ export function ChecklistProductModal({
   const [modelTab, setModelTab] = useState<ModelTab>('upload');
   const [glbFile, setGlbFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [preparedFile, setPreparedFile] = useState<File | null>(null);
   const [decimatedFile, setDecimatedFile] = useState<File | null>(null);
   const [decimating, setDecimating] = useState(false);
   const [decimationWarning, setDecimationWarning] = useState<string | null>(null);
@@ -165,8 +167,8 @@ export function ChecklistProductModal({
   };
 
   const handleGenerate = async () => {
-    if (generating || !imageFile) {
-      if (!imageFile) setGenerateError('Choose an image first.');
+    if (generating || !preparedFile) {
+      if (!preparedFile) setGenerateError('Crop and confirm the image first.');
       return;
     }
 
@@ -174,13 +176,13 @@ export function ChecklistProductModal({
     const abortController = new AbortController();
     generateAbortRef.current = abortController;
     setGenerateError(null);
-    setGenerateStatus('Waking Trellis…');
+    setGenerateStatus(TRELLIS_STARTING_STATUS);
     setGeneratePhase('generating');
     setGenerating(true);
 
     try {
       const generated = await generateGlbFromPhoto(
-        imageFile,
+        preparedFile,
         abortController.signal,
         (message) => {
           setGenerateStatus(message);
@@ -423,12 +425,33 @@ export function ChecklistProductModal({
             </div>
           ) : (
             <div className="import-modal-generate" style={{ marginTop: 12 }}>
-              <ImageFileField
-                label="Source image"
-                file={imageFile}
-                disabled={busy}
-                onFile={setImageFile}
-              />
+              {imageFile && !generating ? (
+                <>
+                  <PhotoSubjectPrep
+                    imageFile={imageFile}
+                    disabled={busy}
+                    onPreparedChange={setPreparedFile}
+                  />
+                  <button
+                    type="button"
+                    className="photo-prep__btn photo-prep__btn--quiet"
+                    disabled={busy}
+                    onClick={() => {
+                      setImageFile(null);
+                      setPreparedFile(null);
+                    }}
+                  >
+                    Use a different photo
+                  </button>
+                </>
+              ) : (
+                <ImageFileField
+                  label="Source image"
+                  file={imageFile}
+                  disabled={busy}
+                  onFile={setImageFile}
+                />
+              )}
               {trellisUsesRemoteUrl ? (
                 <p className="import-modal-generate-status" style={{ marginTop: 8 }}>
                   Photo is sent to your configured Trellis endpoint.
@@ -443,14 +466,14 @@ export function ChecklistProductModal({
               <Button
                 type="button"
                 size="sm"
-                disabled={busy || !imageFile}
+                disabled={busy || !preparedFile}
                 onClick={() => void handleGenerate()}
                 style={{ marginTop: 8 }}
               >
                 {generating
                   ? generateStatus ??
                     (generatePhase === 'downloading' ? 'Downloading model…' : 'Generating…')
-                  : 'Generate 3D model'}
+                  : 'Send to 3D generation'}
               </Button>
             </div>
           )}

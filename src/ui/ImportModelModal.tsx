@@ -11,7 +11,7 @@ import {
   readGlbAxisBoundsWithTimeout,
 } from '../lib/glbImportPipeline';
 import { generateGlbFromPhoto } from '../lib/trellisGenerate';
-import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../lib/trellisApi';
+import { TRELLIS_GENERATE_URL, TRELLIS_STARTING_STATUS, trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { validateCatalogText } from '../lib/bannedWords';
 import {
   CATALOG_CATEGORY_DEFS,
@@ -20,6 +20,7 @@ import {
   type CatalogCategorySlug,
 } from '../lib/catalogCategories';
 import { ImageFileField } from './ImageFileField';
+import { PhotoSubjectPrep } from './PhotoSubjectPrep';
 import { PosterImageCrop } from './PosterImageCrop';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
@@ -72,6 +73,7 @@ export function ImportModelModal({
   const [file, setFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [preparedFile, setPreparedFile] = useState<File | null>(null);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [categories, setCategories] = useState<CatalogCategorySlug[]>([]);
@@ -134,15 +136,17 @@ export function ImportModelModal({
 
   const checklistLeafOptions = adminLeafCategories(checklistCategories);
 
+  // Prefer the prepared image so the shot shown during generation is the one sent.
   useEffect(() => {
-    if (!imageFile) {
+    const src = preparedFile ?? imageFile;
+    if (!src) {
       setImagePreviewUrl(null);
       return;
     }
-    const url = URL.createObjectURL(imageFile);
+    const url = URL.createObjectURL(src);
     setImagePreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [imageFile]);
+  }, [preparedFile, imageFile]);
 
   useEffect(() => {
     if (!posterImageFile) {
@@ -210,6 +214,7 @@ export function ImportModelModal({
     setTab('upload');
     setFile(null);
     setImageFile(null);
+    setPreparedFile(null);
     setTitle('');
     setDescription('');
     setCategories([]);
@@ -264,8 +269,8 @@ export function ImportModelModal({
 
     setGenerateError(null);
 
-    if (!imageFile) {
-      setGenerateError('Choose an image first.');
+    if (!preparedFile) {
+      setGenerateError('Crop and confirm the image first.');
       return;
     }
 
@@ -274,7 +279,7 @@ export function ImportModelModal({
     generateAbortRef.current = abortController;
 
     setElapsedSec(0);
-    setGenerateStatus('Waking Trellis…');
+    setGenerateStatus(TRELLIS_STARTING_STATUS);
     setGeneratePhase('generating');
     setGenerating(true);
 
@@ -282,13 +287,13 @@ export function ImportModelModal({
       userId,
       source: 'trellis',
       status: 'processing',
-      label: imageFile.name || 'Image → 3D',
+      label: imageFile?.name || 'Image → 3D',
     });
     activeJobIdRef.current = jobId;
 
     try {
       const glbFile = await generateGlbFromPhoto(
-        imageFile,
+        preparedFile,
         abortController.signal,
         (message) => {
           setGenerateStatus(message);
@@ -302,7 +307,7 @@ export function ImportModelModal({
       if (jobId) {
         await updateConversionJob(jobId, {
           status: 'completed',
-          label: imageFile.name || 'Image → 3D',
+          label: imageFile?.name || 'Image → 3D',
         });
       }
     } catch (err) {
@@ -468,6 +473,7 @@ export function ImportModelModal({
       if (addToChecklist && isAdmin && checklistCategoryId) {
         const cover =
           checklistCoverFile ??
+          preparedFile ??
           imageFile ??
           posterImageFile ??
           null;
@@ -570,20 +576,43 @@ export function ImportModelModal({
 
         {tab === 'generate' ? (
           <div className="import-modal-generate">
-            <ImageFileField
-              label="Source image"
-              file={imageFile}
-              disabled={busy}
-              onFile={setImageFile}
-            />
-
-            {imagePreviewUrl ? (
-              <img
-                className="import-modal-generate-preview"
-                src={imagePreviewUrl}
-                alt="Preview of selected image"
+            {imageFile ? (
+              <>
+                {!generating ? (
+                  <PhotoSubjectPrep
+                    imageFile={imageFile}
+                    disabled={busy}
+                    onPreparedChange={setPreparedFile}
+                  />
+                ) : imagePreviewUrl ? (
+                  <img
+                    className="import-modal-generate-preview"
+                    src={imagePreviewUrl}
+                    alt="Prepared image being sent for generation"
+                  />
+                ) : null}
+                {!generating ? (
+                  <button
+                    type="button"
+                    className="photo-prep__btn photo-prep__btn--quiet"
+                    disabled={busy}
+                    onClick={() => {
+                      setImageFile(null);
+                      setPreparedFile(null);
+                    }}
+                  >
+                    Use a different photo
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <ImageFileField
+                label="Source image"
+                file={imageFile}
+                disabled={busy}
+                onFile={setImageFile}
               />
-            ) : null}
+            )}
 
             {generating ? (
               <Spinner
@@ -619,11 +648,15 @@ export function ImportModelModal({
 
             <div className="import-modal-actions">
               {tabFooter(
-                <Button size="sm" disabled={busy} onClick={() => void handleGenerate()}>
+                <Button
+                  size="sm"
+                  disabled={busy || !preparedFile}
+                  onClick={() => void handleGenerate()}
+                >
                   {generating
                     ? generateStatus ??
                       (generatePhase === 'downloading' ? 'Downloading…' : 'Generating…')
-                    : 'Generate 3D model'}
+                    : 'Send to 3D generation'}
                 </Button>,
               )}
             </div>
@@ -889,9 +922,11 @@ export function ImportModelModal({
                       <small style={{ display: 'block', marginTop: 6, color: 'var(--ink-4)' }}>
                         {checklistCoverFile
                           ? checklistCoverFile.name
-                          : imageFile
-                            ? `Using generate photo: ${imageFile.name}`
-                            : posterImageFile
+                          : preparedFile
+                            ? `Using prepared photo: ${preparedFile.name}`
+                            : imageFile
+                              ? `Using generate photo: ${imageFile.name}`
+                              : posterImageFile
                               ? `Using poster image: ${posterImageFile.name}`
                               : 'Optional — uses source photo when available'}
                       </small>

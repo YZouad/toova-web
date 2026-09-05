@@ -13,6 +13,8 @@ import {
   createChecklistProductFromCatalog,
   parsePriceDollarsToCents,
 } from '../../../lib/shoppingCatalogAdmin';
+import { TRELLIS_STARTING_STATUS } from '../../../lib/trellisApi';
+import { PhotoSubjectPrep } from '../../PhotoSubjectPrep';
 import { PosterImageCrop } from '../../PosterImageCrop';
 import type { CatalogModel, ImportRoute } from '../chromeTypes';
 import {
@@ -174,8 +176,9 @@ export function MobileImportSheet({
     };
   }, [open, isAdmin]);
 
+  // Prefer the prepared image so the shot shown during generation is the one sent.
   useEffect(() => {
-    const src = photoJob.imageFile;
+    const src = photoJob.preparedFile ?? photoJob.imageFile;
     if (!src) {
       setImagePreviewUrl(null);
       return;
@@ -183,7 +186,7 @@ export function MobileImportSheet({
     const url = URL.createObjectURL(src);
     setImagePreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [photoJob.imageFile]);
+  }, [photoJob.preparedFile, photoJob.imageFile]);
 
   useEffect(() => {
     if (!posterImageFile) {
@@ -249,7 +252,7 @@ export function MobileImportSheet({
 
   const onPhotoFile = (f: File | null) => {
     if (!f) return;
-    patchPhotoJob({ imageFile: f, error: null, glbFile: null });
+    patchPhotoJob({ imageFile: f, preparedFile: null, error: null, glbFile: null });
     setFile(null);
     if (!title.trim()) {
       setTitle(f.name.replace(/\.(jpe?g|png|webp)$/i, ''));
@@ -257,7 +260,7 @@ export function MobileImportSheet({
   };
 
   const handleGenerate = async () => {
-    if (!userId || !photoJob.imageFile || photoJob.generating) return;
+    if (!userId || !photoJob.preparedFile || photoJob.generating) return;
     patchPhotoJob({ error: null });
     photoJobAbortRef.current?.abort();
     const abort = new AbortController();
@@ -265,7 +268,7 @@ export function MobileImportSheet({
     patchPhotoJob({
       generating: true,
       phase: 'generating',
-      status: 'Waking Trellis…',
+      status: TRELLIS_STARTING_STATUS,
       elapsedSec: 0,
       glbFile: null,
       jobId: null,
@@ -273,7 +276,7 @@ export function MobileImportSheet({
     startPhotoJobElapsed();
     try {
       const { glbFile, jobId } = await runPhotoGenerate(
-        photoJob.imageFile,
+        photoJob.preparedFile,
         userId,
         abort.signal,
         (message) => {
@@ -367,7 +370,8 @@ export function MobileImportSheet({
         priorJobId: photoJob.jobId,
       });
       if (addToChecklist && isAdmin && checklistCategoryId) {
-        const cover = checklistCoverFile ?? photoJob.imageFile ?? posterImageFile ?? null;
+        const cover =
+          checklistCoverFile ?? photoJob.preparedFile ?? photoJob.imageFile ?? posterImageFile ?? null;
         await createChecklistProductFromCatalog({
           categoryId: checklistCategoryId,
           name: title.trim(),
@@ -440,7 +444,7 @@ export function MobileImportSheet({
     if (activeRoute === 'photo') {
       if (photoJob.generating) return 'Generating…';
       if (!photoJob.imageFile) return 'Take a photo';
-      if (!fileReady) return 'Generate 3D';
+      if (!fileReady) return 'Send to 3D generation';
       return submitting ? 'Saving…' : 'Add to library';
     }
     if (activeRoute === 'poster') {
@@ -456,7 +460,7 @@ export function MobileImportSheet({
     if (activeRoute === 'photo') {
       if (photoJob.generating) return true;
       if (!photoJob.imageFile) return true;
-      if (!fileReady) return !userId;
+      if (!fileReady) return !userId || !photoJob.preparedFile;
       return !canSave;
     }
     if (activeRoute === 'poster') {
@@ -757,50 +761,67 @@ export function MobileImportSheet({
         </>
       ) : (
         <>
-          {imagePreviewUrl ? (
-            <div className="dgm-photo-preview">
-              <img src={imagePreviewUrl} alt="" />
-            </div>
+          {photoJob.generating || fileReady ? (
+            imagePreviewUrl ? (
+              <div className="dgm-photo-preview">
+                <img src={imagePreviewUrl} alt="" />
+              </div>
+            ) : null
           ) : null}
-          {!fileReady ? (
+
+          {photoJob.generating ? (
             <div className="dgm-gen-card">
-              {photoJob.generating ? (
-                <>
-                  <div className="dgm-gen-card__row">
-                    <span className="dgm-gen-card__spin" aria-hidden />
-                    <span className="dgm-gen-card__label">
-                      {photoJob.status ?? 'Generating 3D'} · {photoJob.elapsedSec}s
-                    </span>
-                  </div>
-                  <div className="dgm-gen-card__bar">
-                    <span className="dgm-gen-card__bar-fill" />
-                  </div>
-                  <p className="dgm-gen-card__hint">
-                    One to two minutes. Leave this screen and keep designing — we&apos;ll drop it
-                    into Yours when it lands.
-                  </p>
-                  <button
-                    type="button"
-                    className="dgm-chip"
-                    onClick={() => {
-                      photoJobAbortRef.current?.abort();
-                      patchPhotoJob({ generating: false, phase: 'idle', status: null });
-                      stopPhotoJobElapsed();
-                    }}
-                  >
-                    Cancel generation
-                  </button>
-                </>
-              ) : (
-                <>
-                  <p className="dgm-gen-card__hint">
-                    Generate a rough 3D piece from your photo. Best for simple furniture.
-                  </p>
-                  {photoJob.error ? <p className="dgm-import-error">{photoJob.error}</p> : null}
-                </>
-              )}
+              <div className="dgm-gen-card__row">
+                <span className="dgm-gen-card__spin" aria-hidden />
+                <span className="dgm-gen-card__label">
+                  {photoJob.status ?? 'Generating 3D'} · {photoJob.elapsedSec}s
+                </span>
+              </div>
+              <div className="dgm-gen-card__bar">
+                <span className="dgm-gen-card__bar-fill" />
+              </div>
+              <p className="dgm-gen-card__hint">
+                One to two minutes. Leave this screen and keep designing — we&apos;ll drop it into
+                Yours when it lands.
+              </p>
+              <button
+                type="button"
+                className="dgm-chip"
+                onClick={() => {
+                  photoJobAbortRef.current?.abort();
+                  patchPhotoJob({ generating: false, phase: 'idle', status: null });
+                  stopPhotoJobElapsed();
+                }}
+              >
+                Cancel generation
+              </button>
             </div>
+          ) : !fileReady ? (
+            <>
+              <PhotoSubjectPrep
+                imageFile={photoJob.imageFile}
+                disabled={busy}
+                onPreparedChange={(f) => patchPhotoJob({ preparedFile: f })}
+              />
+              <button
+                type="button"
+                className="dgm-chip"
+                disabled={busy}
+                onClick={() =>
+                  patchPhotoJob({
+                    imageFile: null,
+                    preparedFile: null,
+                    glbFile: null,
+                    error: null,
+                  })
+                }
+              >
+                Use a different photo
+              </button>
+              {photoJob.error ? <p className="dgm-import-error">{photoJob.error}</p> : null}
+            </>
           ) : null}
+
           {showMetadata ? renderMetadataForm() : null}
         </>
       )}

@@ -8,6 +8,8 @@ export type PhotoJobSnapshot = {
   error: string | null;
   elapsedSec: number;
   imageFile: File | null;
+  /** The exact image the user confirmed; what gets sent to Trellis. */
+  preparedFile: File | null;
   glbFile: File | null;
   jobId: string | null;
 };
@@ -19,6 +21,7 @@ const INITIAL: PhotoJobSnapshot = {
   error: null,
   elapsedSec: 0,
   imageFile: null,
+  preparedFile: null,
   glbFile: null,
   jobId: null,
 };
