@@ -7,26 +7,23 @@ import {
   useState,
 } from 'react';
 import {
-  AlphaUndoStack,
-  applyRgbaBrushStroke,
-  copyAlphaChannel,
+  applyRgbBrushStroke,
   hexToRgb,
   RgbaUndoStack,
-  type AlphaMask,
   type BrushMode,
 } from '../lib/maskBrush';
-import { debounce, drawOutlineOverlay, drawRgbaOnWhite, ensureCanvasSize, rafThrottle } from '../lib/photoBrushCanvas';
+import { debounce, drawRgba, ensureCanvasSize, rafThrottle } from '../lib/photoBrushCanvas';
 import { loadRgbaFromBlob, rgbaToCutoutBlob } from '../lib/preparePhotoForTrellis';
 import { DEFAULT_PAINT_COLOR, PhotoBrushTools } from './PhotoBrushTools';
 
-export interface PhotoMaskEditorProps {
-  /** Initial cutout — kept stable for the session; do not pass edited blobs back in. */
-  cutout: Blob;
+export interface PhotoSourcePainterProps {
+  /** Snapshot when the paint session opened — kept stable until the session ends. */
+  source: Blob;
   disabled?: boolean;
-  onCutoutChange: (blob: Blob) => void;
+  onSourceChange: (blob: Blob) => void;
 }
 
-export interface PhotoMaskEditorHandle {
+export interface PhotoSourcePainterHandle {
   exportNow: () => Promise<void>;
 }
 
@@ -44,24 +41,20 @@ function pointerToImage(
 }
 
 /**
- * Brush editor for the auto-isolated cutout. Erase drops leftover background;
- * Paint fills with a chosen color; Restore brings back parts the model removed.
+ * Pre-isolation brush editor. Erase paints white; Paint uses a chosen color;
+ * Restore brings back the original pixels.
  */
-export const PhotoMaskEditor = forwardRef<PhotoMaskEditorHandle, PhotoMaskEditorProps>(
-  function PhotoMaskEditor({ cutout, disabled = false, onCutoutChange }, ref) {
-    const baseRef = useRef<HTMLCanvasElement>(null);
-    const outlineRef = useRef<HTMLCanvasElement>(null);
+export const PhotoSourcePainter = forwardRef<PhotoSourcePainterHandle, PhotoSourcePainterProps>(
+  function PhotoSourcePainter({ source, disabled = false, onSourceChange }, ref) {
+    const canvasRef = useRef<HTMLCanvasElement>(null);
     const rgbaRef = useRef<Uint8ClampedArray | null>(null);
     const initialRgbaRef = useRef<Uint8ClampedArray | null>(null);
-    const alphaRef = useRef<AlphaMask | null>(null);
-    const initialAlphaRef = useRef<AlphaMask | null>(null);
-    const alphaUndoRef = useRef(new AlphaUndoStack());
-    const rgbaUndoRef = useRef(new RgbaUndoStack());
+    const undoRef = useRef(new RgbaUndoStack());
     const paintingRef = useRef(false);
     const lastPointRef = useRef<{ x: number; y: number } | null>(null);
     const dimensionsRef = useRef<{ width: number; height: number } | null>(null);
-    const onCutoutChangeRef = useRef(onCutoutChange);
-    onCutoutChangeRef.current = onCutoutChange;
+    const onSourceChangeRef = useRef(onSourceChange);
+    onSourceChangeRef.current = onSourceChange;
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -70,12 +63,10 @@ export const PhotoMaskEditor = forwardRef<PhotoMaskEditorHandle, PhotoMaskEditor
     const [paintColor, setPaintColor] = useState<string>(DEFAULT_PAINT_COLOR);
     const [canUndo, setCanUndo] = useState(false);
 
-    const syncUndo = useCallback(() => {
-      setCanUndo(alphaUndoRef.current.canUndo || rgbaUndoRef.current.canUndo);
-    }, []);
+    const syncUndo = () => setCanUndo(undoRef.current.canUndo);
 
-    const paintBase = useCallback(() => {
-      const canvas = baseRef.current;
+    const paintCanvas = useCallback(() => {
+      const canvas = canvasRef.current;
       const rgba = rgbaRef.current;
       const dimensions = dimensionsRef.current;
       if (!canvas || !rgba || !dimensions) return;
@@ -83,100 +74,69 @@ export const PhotoMaskEditor = forwardRef<PhotoMaskEditorHandle, PhotoMaskEditor
       ensureCanvasSize(canvas, dimensions.width, dimensions.height);
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
-      drawRgbaOnWhite(ctx, rgba, dimensions.width, dimensions.height);
+      drawRgba(ctx, rgba, dimensions.width, dimensions.height);
     }, []);
 
-    const paintOutline = useCallback(() => {
-      const canvas = outlineRef.current;
-      const rgba = rgbaRef.current;
-      const dimensions = dimensionsRef.current;
-      if (!canvas || !rgba || !dimensions) return;
-
-      ensureCanvasSize(canvas, dimensions.width, dimensions.height);
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      drawOutlineOverlay(ctx, rgba, dimensions.width, dimensions.height);
-    }, []);
-
-    const setOutlineVisible = useCallback((visible: boolean) => {
-      const canvas = outlineRef.current;
-      if (!canvas) return;
-      canvas.style.opacity = visible ? '1' : '0';
-    }, []);
-
-    const exportCutout = useCallback(async () => {
+    const exportSource = useCallback(async () => {
       const rgba = rgbaRef.current;
       const dimensions = dimensionsRef.current;
       if (!rgba || !dimensions) return;
       const blob = await rgbaToCutoutBlob(rgba, dimensions.width, dimensions.height);
-      onCutoutChangeRef.current(blob);
+      onSourceChangeRef.current(blob);
     }, []);
 
-    const debouncedExport = useRef(debounce(() => void exportCutout(), 400));
+    const debouncedExport = useRef(debounce(() => void exportSource(), 400));
 
-    useImperativeHandle(ref, () => ({ exportNow: exportCutout }), [exportCutout]);
+    useImperativeHandle(ref, () => ({ exportNow: exportSource }), [exportSource]);
 
-    const scheduleRepaint = useRef(rafThrottle(() => {
-      paintBase();
-    }));
+    const scheduleRepaint = useRef(rafThrottle(() => paintCanvas()));
 
     useEffect(() => {
       let cancelled = false;
       setLoading(true);
       setError(null);
-      alphaUndoRef.current.clear();
-      rgbaUndoRef.current.clear();
+      undoRef.current.clear();
       syncUndo();
 
-      void loadRgbaFromBlob(cutout)
+      void loadRgbaFromBlob(source)
         .then(({ data, width, height }) => {
           if (cancelled) return;
-          const initialAlpha = copyAlphaChannel(data);
-          const alpha = copyAlphaChannel(data);
           const rgba = new Uint8ClampedArray(data);
-
           rgbaRef.current = rgba;
           initialRgbaRef.current = new Uint8ClampedArray(data);
-          alphaRef.current = alpha;
-          initialAlphaRef.current = initialAlpha;
           dimensionsRef.current = { width, height };
           setLoading(false);
         })
         .catch((err) => {
           if (cancelled) return;
-          setError(err instanceof Error ? err.message : 'Could not load the cutout.');
+          setError(err instanceof Error ? err.message : 'Could not load the photo.');
           setLoading(false);
         });
 
       return () => {
         cancelled = true;
       };
-    }, [cutout, syncUndo]);
+    }, [source]);
 
     useEffect(() => {
       if (loading || !dimensionsRef.current) return;
-      paintBase();
-      paintOutline();
-      setOutlineVisible(true);
-      void exportCutout();
-    }, [loading, paintBase, paintOutline, setOutlineVisible, exportCutout]);
+      paintCanvas();
+    }, [loading, paintCanvas]);
 
     const strokeBetween = (from: { x: number; y: number }, to: { x: number; y: number }) => {
       const rgba = rgbaRef.current;
       const initialRgba = initialRgbaRef.current;
-      const initialAlpha = initialAlphaRef.current;
       const dimensions = dimensionsRef.current;
-      if (!rgba || !initialRgba || !initialAlpha || !dimensions) return;
+      if (!rgba || !initialRgba || !dimensions) return;
 
       const color = hexToRgb(paintColor);
       const dist = Math.hypot(to.x - from.x, to.y - from.y);
       const steps = Math.max(1, Math.ceil(dist / Math.max(2, brushSize * 0.35)));
       for (let i = 0; i <= steps; i += 1) {
         const t = i / steps;
-        applyRgbaBrushStroke(
+        applyRgbBrushStroke(
           rgba,
           initialRgba,
-          initialAlpha,
           dimensions.width,
           dimensions.height,
           from.x + (to.x - from.x) * t,
@@ -186,26 +146,17 @@ export const PhotoMaskEditor = forwardRef<PhotoMaskEditorHandle, PhotoMaskEditor
           color,
         );
       }
-      if (alphaRef.current) {
-        alphaRef.current = copyAlphaChannel(rgba);
-      }
     };
 
     const beginStroke = (point: { x: number; y: number }) => {
       const rgba = rgbaRef.current;
-      const alpha = alphaRef.current;
-      if (!rgba || !alpha) return;
-      if (mode === 'paint') {
-        rgbaUndoRef.current.push(new Uint8ClampedArray(rgba));
-      } else {
-        alphaUndoRef.current.push(new Uint8ClampedArray(alpha));
-      }
+      if (!rgba) return;
+      undoRef.current.push(new Uint8ClampedArray(rgba));
       syncUndo();
       paintingRef.current = true;
       lastPointRef.current = point;
-      setOutlineVisible(false);
       strokeBetween(point, point);
-      paintBase();
+      paintCanvas();
     };
 
     const continueStroke = (point: { x: number; y: number }) => {
@@ -220,15 +171,13 @@ export const PhotoMaskEditor = forwardRef<PhotoMaskEditorHandle, PhotoMaskEditor
       if (!paintingRef.current) return;
       paintingRef.current = false;
       lastPointRef.current = null;
-      paintBase();
-      paintOutline();
-      setOutlineVisible(true);
+      paintCanvas();
       debouncedExport.current();
     };
 
     const handlePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
       if (disabled || loading) return;
-      const canvas = baseRef.current;
+      const canvas = canvasRef.current;
       if (!canvas) return;
       event.currentTarget.setPointerCapture(event.pointerId);
       const point = pointerToImage(event.clientX, event.clientY, canvas);
@@ -238,7 +187,7 @@ export const PhotoMaskEditor = forwardRef<PhotoMaskEditorHandle, PhotoMaskEditor
 
     const handlePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
       if (!paintingRef.current || disabled || loading) return;
-      const canvas = baseRef.current;
+      const canvas = canvasRef.current;
       if (!canvas) return;
       const point = pointerToImage(event.clientX, event.clientY, canvas);
       if (!point) return;
@@ -253,44 +202,23 @@ export const PhotoMaskEditor = forwardRef<PhotoMaskEditorHandle, PhotoMaskEditor
     };
 
     const handleUndo = () => {
+      const restored = undoRef.current.pop();
       const rgba = rgbaRef.current;
-      if (!rgba) return;
-
-      const rgbaRestored = rgbaUndoRef.current.pop();
-      if (rgbaRestored) {
-        rgba.set(rgbaRestored);
-        alphaRef.current = copyAlphaChannel(rgba);
-        syncUndo();
-        paintBase();
-        paintOutline();
-        debouncedExport.current();
-        return;
-      }
-
-      const alphaRestored = alphaUndoRef.current.pop();
-      if (!alphaRestored) return;
-      alphaRef.current = alphaRestored;
-      for (let px = 0; px < alphaRestored.length; px += 1) {
-        rgba[px * 4 + 3] = alphaRestored[px];
-      }
+      if (!restored || !rgba) return;
+      rgba.set(restored);
       syncUndo();
-      paintBase();
-      paintOutline();
+      paintCanvas();
       debouncedExport.current();
     };
 
     const handleReset = () => {
       const initialRgba = initialRgbaRef.current;
-      const initialAlpha = initialAlphaRef.current;
       const rgba = rgbaRef.current;
-      if (!initialRgba || !initialAlpha || !rgba) return;
-      rgbaUndoRef.current.push(new Uint8ClampedArray(rgba));
-      alphaUndoRef.current.push(copyAlphaChannel(rgba));
+      if (!initialRgba || !rgba) return;
+      undoRef.current.push(new Uint8ClampedArray(rgba));
       syncUndo();
       rgba.set(initialRgba);
-      alphaRef.current = copyAlphaChannel(initialAlpha);
-      paintBase();
-      paintOutline();
+      paintCanvas();
       debouncedExport.current();
     };
 
@@ -302,7 +230,7 @@ export const PhotoMaskEditor = forwardRef<PhotoMaskEditorHandle, PhotoMaskEditor
           paintColor={paintColor}
           canUndo={canUndo}
           disabled={disabled || loading}
-          resetLabel="Reset mask"
+          resetLabel="Reset paint"
           onModeChange={setMode}
           onBrushSizeChange={setBrushSize}
           onPaintColorChange={setPaintColor}
@@ -311,26 +239,19 @@ export const PhotoMaskEditor = forwardRef<PhotoMaskEditorHandle, PhotoMaskEditor
         />
 
         <div className="photo-prep__frame photo-prep__frame--mask">
-          <div className={`photo-prep__brush-stage${loading ? ' photo-prep__brush-stage--loading' : ''}`}>
-            <canvas
-              ref={baseRef}
-              className="photo-prep__mask-canvas photo-prep__mask-canvas--base"
-              aria-label="Paint to erase or restore parts of the detected subject"
-              aria-busy={loading}
-              onPointerDown={handlePointerDown}
-              onPointerMove={handlePointerMove}
-              onPointerUp={handlePointerUp}
-              onPointerLeave={handlePointerUp}
-              onPointerCancel={handlePointerUp}
-            />
-            <canvas
-              ref={outlineRef}
-              className="photo-prep__mask-canvas photo-prep__mask-canvas--outline"
-              aria-hidden
-            />
-          </div>
+          <canvas
+            ref={canvasRef}
+            className={`photo-prep__mask-canvas${loading ? ' photo-prep__mask-canvas--loading' : ''}`}
+            aria-label="Paint to cover or mark parts of the photo before isolation"
+            aria-busy={loading}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerLeave={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+          />
           {loading ? (
-            <span className="photo-prep__frame-loading">Loading the cutout…</span>
+            <span className="photo-prep__frame-loading">Loading the photo…</span>
           ) : null}
         </div>
 

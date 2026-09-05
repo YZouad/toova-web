@@ -1,83 +1,144 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useRef,
+  useState,
+} from 'react';
 import ReactCrop, {
   centerCrop,
   convertToPixelCrop,
   type Crop,
-  type PixelCrop,
 } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
+import {
+  displayCropToNaturalPixels,
+  imageLayoutFromHtmlImage,
+  naturalPixelsToDisplayCrop,
+} from '../lib/cropPixels';
 import type { PixelBounds } from '../lib/maskContour';
 
 /** Pixel crop in the source image's natural resolution — what `cropSourceImage` expects. */
 export type CropPixels = PixelBounds;
 
+export interface PhotoFreeCropHandle {
+  getCropPixels: () => CropPixels | null;
+}
+
 interface PhotoFreeCropProps {
   imageUrl: string;
   disabled?: boolean;
-  onCropPixels: (crop: CropPixels | null) => void;
+  initialCrop?: CropPixels | null;
+  onCropPixels?: (crop: CropPixels | null) => void;
 }
 
-function toNaturalPixels(
-  pixelCrop: PixelCrop,
-  displayWidth: number,
-  displayHeight: number,
-  naturalWidth: number,
-  naturalHeight: number,
-): CropPixels {
-  const scaleX = naturalWidth / Math.max(1, displayWidth);
-  const scaleY = naturalHeight / Math.max(1, displayHeight);
-  return {
-    x: Math.round(pixelCrop.x * scaleX),
-    y: Math.round(pixelCrop.y * scaleY),
-    width: Math.max(1, Math.round(pixelCrop.width * scaleX)),
-    height: Math.max(1, Math.round(pixelCrop.height * scaleY)),
-  };
+function cropPixelsFromState(
+  crop: Crop | undefined,
+  img: HTMLImageElement,
+): CropPixels | null {
+  if (!crop) return null;
+  const layout = imageLayoutFromHtmlImage(img);
+  if (!layout) return null;
+  const pixel = convertToPixelCrop(crop, layout.elementWidth, layout.elementHeight);
+  return displayCropToNaturalPixels(pixel, layout);
 }
 
 /**
  * Free-resize crop rectangle for photo prep. No locked aspect — drag corners and
  * edges to any shape.
  */
-export function PhotoFreeCrop({ imageUrl, disabled = false, onCropPixels }: PhotoFreeCropProps) {
-  const imgRef = useRef<HTMLImageElement>(null);
-  const onCropPixelsRef = useRef(onCropPixels);
-  onCropPixelsRef.current = onCropPixels;
-  const [crop, setCrop] = useState<Crop>();
+export const PhotoFreeCrop = forwardRef<PhotoFreeCropHandle, PhotoFreeCropProps>(
+  function PhotoFreeCrop(
+    { imageUrl, disabled = false, initialCrop = null, onCropPixels },
+    ref,
+  ) {
+    const imgRef = useRef<HTMLImageElement>(null);
+    const cropRef = useRef<Crop>();
+    const onCropPixelsRef = useRef(onCropPixels);
+    onCropPixelsRef.current = onCropPixels;
+    const [crop, setCrop] = useState<Crop>();
 
-  useEffect(() => {
-    setCrop(undefined);
-    onCropPixelsRef.current(null);
-  }, [imageUrl]);
+    cropRef.current = crop;
 
-  const emitPixels = useCallback((next: Crop) => {
-    const img = imgRef.current;
-    if (!img?.width || !img?.height) return;
-    const pixel = convertToPixelCrop(next, img.width, img.height);
-    onCropPixelsRef.current(
-      toNaturalPixels(pixel, img.width, img.height, img.naturalWidth, img.naturalHeight),
+    useEffect(() => {
+      setCrop(undefined);
+      onCropPixelsRef.current?.(null);
+    }, [imageUrl]);
+
+    const emitPixels = useCallback((next: Crop) => {
+      const img = imgRef.current;
+      if (!img?.naturalWidth || !img.naturalHeight) return;
+      const pixels = cropPixelsFromState(next, img);
+      onCropPixelsRef.current?.(pixels);
+    }, []);
+
+    const handleCropChange = useCallback(
+      (next: Crop) => {
+        setCrop(next);
+        emitPixels(next);
+      },
+      [emitPixels],
     );
-  }, []);
 
-  return (
-    <div className="photo-prep__free-crop">
-      <ReactCrop crop={crop} disabled={disabled} onChange={setCrop} onComplete={emitPixels}>
-        <img
-          ref={imgRef}
-          src={imageUrl}
-          alt="Crop the piece you want"
-          className="photo-prep__free-crop-img"
-          onLoad={(e) => {
-            const img = e.currentTarget;
-            const initial = centerCrop(
-              { unit: '%', width: 90, height: 90 },
-              img.width,
-              img.height,
-            );
-            setCrop(initial);
-            emitPixels(initial);
-          }}
-        />
-      </ReactCrop>
-    </div>
-  );
-}
+    useImperativeHandle(
+      ref,
+      () => ({
+        getCropPixels: () => {
+          const img = imgRef.current;
+          if (!img || !cropRef.current) return null;
+          return cropPixelsFromState(cropRef.current, img);
+        },
+      }),
+      [],
+    );
+
+    useEffect(() => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const onResize = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          const current = cropRef.current;
+          if (current) emitPixels(current);
+        }, 100);
+      };
+      window.addEventListener('resize', onResize);
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('resize', onResize);
+      };
+    }, [emitPixels]);
+
+    const initCrop = useCallback(
+      (img: HTMLImageElement) => {
+        const layout = imageLayoutFromHtmlImage(img);
+        if (!layout) return;
+        const next =
+          initialCrop
+            ? naturalPixelsToDisplayCrop(initialCrop, layout)
+            : centerCrop(
+                { unit: '%', width: 90, height: 90 },
+                layout.elementWidth,
+                layout.elementHeight,
+              );
+        setCrop(next);
+        emitPixels(next);
+      },
+      [initialCrop, emitPixels],
+    );
+
+    return (
+      <div className="photo-prep__free-crop">
+        <ReactCrop crop={crop} disabled={disabled} onChange={handleCropChange}>
+          <img
+            ref={imgRef}
+            src={imageUrl}
+            alt="Crop the piece you want"
+            className="photo-prep__free-crop-img"
+            onLoad={(e) => initCrop(e.currentTarget)}
+          />
+        </ReactCrop>
+      </div>
+    );
+  },
+);

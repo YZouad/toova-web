@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AlphaUndoStack,
   applyBrushStroke,
+  applyRgbBrushStroke,
   copyAlphaChannel,
   mergeAlphaIntoRgba,
 } from './maskBrush';
@@ -63,6 +64,49 @@ describe('applyBrushStroke', () => {
     applyBrushStroke(alpha, initial, 3, 3, 0, 0, 2, 'erase');
     expect(alpha[0]).toBe(0);
     expect(alpha[8]).toBe(255);
+  });
+});
+
+describe('applyRgbBrushStroke', () => {
+  it('erase paints white and keeps alpha opaque', () => {
+    const width = 4;
+    const height = 4;
+    const rgba = new Uint8ClampedArray(width * height * 4);
+    const initial = new Uint8ClampedArray(rgba);
+    for (let i = 0; i < rgba.length; i += 4) {
+      rgba[i] = 10;
+      rgba[i + 1] = 20;
+      rgba[i + 2] = 30;
+      rgba[i + 3] = 255;
+      initial[i] = 10;
+      initial[i + 1] = 20;
+      initial[i + 2] = 30;
+      initial[i + 3] = 255;
+    }
+
+    applyRgbBrushStroke(rgba, initial, width, height, 1, 1, 1, 'erase');
+
+    expect(rgba[1 * 4]).toBe(255);
+    expect(rgba[1 * 4 + 1]).toBe(255);
+    expect(rgba[1 * 4 + 2]).toBe(255);
+    expect(rgba[1 * 4 + 3]).toBe(255);
+  });
+
+  it('paint uses the chosen color', () => {
+    const width = 3;
+    const height = 3;
+    const rgba = new Uint8ClampedArray(width * height * 4);
+    const initial = new Uint8ClampedArray(rgba);
+    for (let i = 0; i < rgba.length; i += 4) {
+      rgba[i + 3] = 255;
+      initial[i + 3] = 255;
+    }
+
+    applyRgbBrushStroke(rgba, initial, width, height, 1, 1, 1, 'paint', [200, 40, 10]);
+
+    expect(rgba[1 * 4]).toBe(200);
+    expect(rgba[1 * 4 + 1]).toBe(40);
+    expect(rgba[1 * 4 + 2]).toBe(10);
   });
 });
 

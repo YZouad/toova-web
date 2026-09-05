@@ -208,6 +208,18 @@ export async function cropSourceImage(
   crop: PixelBounds | null,
   maxEdge = PREPARED_MAX_EDGE,
 ): Promise<Blob> {
+  return cropRgbaBlob(file, crop, maxEdge);
+}
+
+/**
+ * Crop any RGBA image blob to `crop` (pixel coordinates) and fit inside `maxEdge`.
+ * Used for source photos and post-isolate cutouts alike.
+ */
+export async function cropRgbaBlob(
+  file: Blob,
+  crop: PixelBounds | null,
+  maxEdge = PREPARED_MAX_EDGE,
+): Promise<Blob> {
   const decoded = await decodeImage(file);
   try {
     const region: PixelBounds = crop ?? {
