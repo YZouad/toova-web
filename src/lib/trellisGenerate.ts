@@ -45,7 +45,7 @@ export async function generateGlbFromPhoto(
         throw err;
       }
     }
-    throw new Error(errText || `Generation failed (${res.status})`);
+    throw new Error(formatTrellisError(errText, `Generation failed (${res.status})`));
   }
 
   const contentType = res.headers.get('content-type') ?? '';
