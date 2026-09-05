@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   buildPreparedFile,
+  cropRgbaBlob,
   cropSourceImage,
   isolateSubject,
   MIN_SUBJECT_COVERAGE,
   preparedFileName,
   type SubjectIsolation,
 } from '../lib/preparePhotoForTrellis';
-import { PhotoFreeCrop, type CropPixels } from './PhotoFreeCrop';
-import { PhotoMaskEditor } from './PhotoMaskEditor';
+import { PhotoFreeCrop, type CropPixels, type PhotoFreeCropHandle } from './PhotoFreeCrop';
+import { PhotoMaskEditor, type PhotoMaskEditorHandle } from './PhotoMaskEditor';
 import { PhotoPreparedPreview } from './PhotoPreparedPreview';
+import { PhotoSourcePainter, type PhotoSourcePainterHandle } from './PhotoSourcePainter';
 
 export interface PhotoSubjectPrepProps {
   imageFile: File;
@@ -22,34 +24,66 @@ export interface PhotoSubjectPrepProps {
   onPreparedChange: (file: File | null) => void;
 }
 
-type Stage = 'crop' | 'working' | 'review' | 'confirm';
+type Stage = 'workspace' | 'working' | 'confirm';
+type ActiveTool = 'crop' | 'prePaint' | 'postBrush' | null;
+type CropTarget = 'source' | 'cutout';
 
 /**
- * Two checkpoints before a photo can be sent for generation: the red outline
- * answers "did we pick the right object?", then the final image answers "is this
- * exactly what should be submitted?".
+ * Flexible photo prep workspace: crop, paint, isolate, and brush in any order
+ * before confirming the exact JPEG sent to Trellis.
  */
 export function PhotoSubjectPrep({
   imageFile,
   disabled = false,
   onPreparedChange,
 }: PhotoSubjectPrepProps) {
-  const [stage, setStage] = useState<Stage>('crop');
-  const [pixels, setPixels] = useState<CropPixels | null>(null);
+  const [stage, setStage] = useState<Stage>('workspace');
+  const [activeTool, setActiveTool] = useState<ActiveTool>(null);
+  const [cropTarget, setCropTarget] = useState<CropTarget>('source');
+  const [sourceCropApplied, setSourceCropApplied] = useState(false);
+
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [cropRegion, setCropRegion] = useState<CropPixels | null>(null);
+  const [cutoutCropRegion, setCutoutCropRegion] = useState<CropPixels | null>(null);
+  const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
+  const [sourceEditedBlob, setSourceEditedBlob] = useState<Blob | null>(null);
   const [isolation, setIsolation] = useState<SubjectIsolation | null>(null);
   const [editedCutout, setEditedCutout] = useState<Blob | null>(null);
+  const [cutoutCroppedBlob, setCutoutCroppedBlob] = useState<Blob | null>(null);
   const [prepared, setPrepared] = useState<File | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const croppedRef = useRef<Blob | null>(null);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cropOverlayUrl, setCropOverlayUrl] = useState<string | null>(null);
+  const [paintSessionSource, setPaintSessionSource] = useState<Blob | null>(null);
+  const [brushSessionCutout, setBrushSessionCutout] = useState<Blob | null>(null);
+
+  const cropRef = useRef<PhotoFreeCropHandle>(null);
+  const maskEditorRef = useRef<PhotoMaskEditorHandle>(null);
+  const sourcePainterRef = useRef<PhotoSourcePainterHandle>(null);
   const abortRef = useRef<AbortController | null>(null);
   const notifyRef = useRef(onPreparedChange);
   notifyRef.current = onPreparedChange;
 
-  const onCropPixels = useCallback((crop: CropPixels | null) => {
-    setPixels(crop);
+  const resetWorkspace = useCallback(() => {
+    setStage('workspace');
+    setActiveTool(null);
+    setCropTarget('source');
+    setSourceCropApplied(false);
+    setCropRegion(null);
+    setCutoutCropRegion(null);
+    setCroppedBlob(null);
+    setSourceEditedBlob(null);
+    setIsolation(null);
+    setEditedCutout(null);
+    setCutoutCroppedBlob(null);
+    setPaintSessionSource(null);
+    setBrushSessionCutout(null);
+    setPrepared(null);
+    setError(null);
+    setStatus(null);
+    notifyRef.current(null);
   }, []);
 
   useEffect(() => {
@@ -59,25 +93,126 @@ export function PhotoSubjectPrep({
   }, [imageFile]);
 
   useEffect(() => {
-    setStage('crop');
-    setPixels(null);
-    setIsolation(null);
-    setEditedCutout(null);
-    setPrepared(null);
-    setError(null);
-    setStatus(null);
-    croppedRef.current = null;
-    notifyRef.current(null);
-  }, [imageFile]);
+    resetWorkspace();
+  }, [imageFile, resetWorkspace]);
 
   useEffect(() => () => abortRef.current?.abort(), []);
 
-  const cropRegion = () => (pixels ? { ...pixels } : null);
+  const activeCutout = editedCutout ?? isolation?.cutout ?? null;
+
+  const previewBlob =
+    cutoutCroppedBlob ??
+    activeCutout ??
+    sourceEditedBlob ??
+    croppedBlob ??
+    null;
+
+  useEffect(() => {
+    if (previewBlob) {
+      const url = URL.createObjectURL(previewBlob);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setPreviewUrl(null);
+  }, [previewBlob]);
+
+  useEffect(() => {
+    if (activeTool === 'crop') {
+      const url = URL.createObjectURL(
+        cropTarget === 'cutout' && activeCutout ? activeCutout : imageFile,
+      );
+      setCropOverlayUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setCropOverlayUrl(null);
+  }, [activeTool, cropTarget, activeCutout, imageFile]);
+
+  const handleCropPixels = useCallback(
+    (pixels: CropPixels | null) => {
+      if (cropTarget === 'source') {
+        setCropRegion(pixels);
+        if (sourceCropApplied) setSourceCropApplied(false);
+      } else {
+        setCutoutCropRegion(pixels);
+      }
+    },
+    [cropTarget, sourceCropApplied],
+  );
+
+  const handleApplyCrop = async () => {
+    setError(null);
+    const pixels =
+      cropRef.current?.getCropPixels() ??
+      (cropTarget === 'source' ? cropRegion : cutoutCropRegion);
+    if (!pixels) return;
+
+    setStatus('Applying crop…');
+    try {
+      if (cropTarget === 'source') {
+        const cropped = await cropSourceImage(imageFile, pixels);
+        setCropRegion(pixels);
+        setCroppedBlob(cropped);
+        setSourceEditedBlob(null);
+        setIsolation(null);
+        setEditedCutout(null);
+        setCutoutCroppedBlob(null);
+        setSourceCropApplied(true);
+        setActiveTool(null);
+      } else if (activeCutout) {
+        const cropped = await cropRgbaBlob(activeCutout, pixels);
+        setCutoutCropRegion(pixels);
+        setCutoutCroppedBlob(cropped);
+        setActiveTool(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not apply that crop.');
+    } finally {
+      setStatus(null);
+    }
+  };
+
+  const handleEditCrop = () => {
+    setCropTarget('source');
+    setActiveTool('crop');
+    setSourceCropApplied(false);
+  };
+
+  const handleOpenCrop = (target: CropTarget) => {
+    setCropTarget(target);
+    setActiveTool('crop');
+    if (target === 'source') {
+      setSourceCropApplied(false);
+    }
+  };
+
+  const invalidateAfterPrePaint = () => {
+    setIsolation(null);
+    setEditedCutout(null);
+    setCutoutCroppedBlob(null);
+  };
+
+  const handleSourcePaintChange = (blob: Blob) => {
+    setSourceEditedBlob(blob);
+    invalidateAfterPrePaint();
+  };
+
+  const handleCutoutChange = (blob: Blob) => {
+    setEditedCutout(blob);
+    setCutoutCroppedBlob(null);
+  };
+
+  const resolveIsolateInput = async (): Promise<Blob> => {
+    if (sourceEditedBlob) return sourceEditedBlob;
+    if (croppedBlob) return croppedBlob;
+    if (cropRegion) return cropSourceImage(imageFile, cropRegion);
+    return cropSourceImage(imageFile, null);
+  };
 
   const handleIsolate = async () => {
     setError(null);
     setStage('working');
-    setStatus('Cropping…');
+    setStatus('Preparing…');
+    setActiveTool(null);
     abortRef.current?.abort();
     const abort = new AbortController();
     abortRef.current = abort;
@@ -87,11 +222,10 @@ export function PhotoSubjectPrep({
     };
 
     try {
-      const cropped = await cropSourceImage(imageFile, cropRegion());
-      croppedRef.current = cropped;
+      const input = await resolveIsolateInput();
       bailIfAborted();
 
-      const result = await isolateSubject(cropped, {
+      const result = await isolateSubject(input, {
         signal: abort.signal,
         onProgress: setStatus,
       });
@@ -99,18 +233,28 @@ export function PhotoSubjectPrep({
 
       setIsolation(result);
       setEditedCutout(result.cutout);
-      setStage('review');
+      setCutoutCroppedBlob(null);
+      setStage('workspace');
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') {
-        setStage('crop');
+        setStage('workspace');
         return;
       }
       setError(err instanceof Error ? err.message : 'Could not isolate the subject.');
-      setStage('crop');
+      setStage('workspace');
     } finally {
       setStatus(null);
       if (abortRef.current === abort) abortRef.current = null;
     }
+  };
+
+  const resolveFinalImage = async (): Promise<Blob> => {
+    if (cutoutCroppedBlob) return cutoutCroppedBlob;
+    if (editedCutout) return editedCutout;
+    if (isolation?.cutout) return isolation.cutout;
+    if (sourceEditedBlob) return sourceEditedBlob;
+    if (croppedBlob) return croppedBlob;
+    return cropSourceImage(imageFile, cropRegion);
   };
 
   const finish = async (image: Blob) => {
@@ -128,15 +272,28 @@ export function PhotoSubjectPrep({
     }
   };
 
-  const handleSkip = async () => {
-    setError(null);
-    setStatus('Cropping…');
+  const handleUseThis = async () => {
     try {
-      const cropped = croppedRef.current ?? (await cropSourceImage(imageFile, cropRegion()));
-      croppedRef.current = cropped;
+      const image = await resolveFinalImage();
+      await finish(image);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not prepare that photo.');
+    }
+  };
+
+  const handleSkipIsolation = async () => {
+    setError(null);
+    setStatus('Preparing…');
+    setActiveTool(null);
+    try {
+      const image = await resolveFinalImage();
+      if (isolation || editedCutout) {
+        await finish(image);
+        return;
+      }
       setIsolation(null);
       setEditedCutout(null);
-      await finish(cropped);
+      await finish(image);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not prepare that photo.');
       setStatus(null);
@@ -146,101 +303,119 @@ export function PhotoSubjectPrep({
   const leaveConfirm = () => {
     setPrepared(null);
     notifyRef.current(null);
-    setStage(isolation ? 'review' : 'crop');
+    setStage('workspace');
+  };
+
+  const openPrePaint = () => {
+    setPaintSessionSource(sourceEditedBlob ?? croppedBlob ?? imageFile);
+    setActiveTool('prePaint');
+  };
+
+  const openPostBrush = () => {
+    if (!isolation) return;
+    setBrushSessionCutout(editedCutout ?? isolation.cutout);
+    setActiveTool('postBrush');
+  };
+
+  const finishEditing = async () => {
+    if (activeTool === 'postBrush') {
+      await maskEditorRef.current?.exportNow();
+    } else if (activeTool === 'prePaint') {
+      await sourcePainterRef.current?.exportNow();
+    }
+    setActiveTool(null);
+    setPaintSessionSource(null);
+    setBrushSessionCutout(null);
+  };
+
+  const onCropKeyDown = (event: React.KeyboardEvent) => {
+    if (activeTool !== 'crop' || busy) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void handleApplyCrop();
+    }
   };
 
   const busy = disabled || stage === 'working' || status !== null;
-  const activeCutout = editedCutout ?? isolation?.cutout ?? null;
 
   if (stage === 'confirm' && prepared) {
     return <PhotoPreparedPreview file={prepared} disabled={disabled} onBack={leaveConfirm} />;
   }
 
-  if (stage === 'review' && isolation) {
-    return (
-      <div className="photo-prep">
-        <div className="photo-prep__head">
-          <span className="photo-prep__eyebrow">Step 1 of 2 · Did we pick the right thing?</span>
-          <p className="photo-prep__hint">
-            Paint to erase leftover background. Switch to Restore to bring back parts. The red
-            outline shows what will be kept.
-          </p>
-        </div>
-
-        <PhotoMaskEditor
-          cutout={isolation.cutout}
-          disabled={busy}
-          onCutoutChange={setEditedCutout}
-        />
-
-        {isolation.coverage < MIN_SUBJECT_COVERAGE ? (
-          <p className="photo-prep__warn">
-            We could barely find a subject here. Try cropping closer to the piece, or skip
-            isolation and send the photo as it is.
-          </p>
+  return (
+    <div className="photo-prep" onKeyDown={onCropKeyDown}>
+      <div className="photo-prep__head">
+        <span className="photo-prep__eyebrow">Frame · Clean · Isolate · Finish</span>
+        <p className="photo-prep__hint">
+          Use any tool in any order. Crop to frame the piece, paint over distractions, remove the
+          background, then brush to refine the cutout.
+        </p>
+        {activeTool === null ? (
+          <div className="photo-prep__tips">
+            <span className="photo-prep__eyebrow">Tips and tricks</span>
+            <ul className="photo-prep__tips-list">
+              <li>Prefer a simple background. Extra objects in the frame make isolation harder.</li>
+              <li>Avoid reflections — they read as extra objects.</li>
+              <li>Photograph the real piece, not a picture of it on a TV or printed page.</li>
+            </ul>
+          </div>
         ) : null}
+      </div>
 
-        {error ? <p className="photo-prep__error">{error}</p> : null}
+      {activeTool === 'crop' && cropOverlayUrl ? (
+        <PhotoFreeCrop
+          ref={cropRef}
+          imageUrl={cropOverlayUrl}
+          disabled={busy}
+          initialCrop={cropTarget === 'source' ? cropRegion : cutoutCropRegion}
+          onCropPixels={handleCropPixels}
+        />
+      ) : activeTool === 'prePaint' && paintSessionSource ? (
+        <PhotoSourcePainter
+          ref={sourcePainterRef}
+          source={paintSessionSource}
+          disabled={busy}
+          onSourceChange={handleSourcePaintChange}
+        />
+      ) : activeTool === 'postBrush' && brushSessionCutout ? (
+        <PhotoMaskEditor
+          ref={maskEditorRef}
+          cutout={brushSessionCutout}
+          disabled={busy}
+          onCutoutChange={handleCutoutChange}
+        />
+      ) : previewUrl ? (
+        <div className="photo-prep__frame">
+          <img src={previewUrl} alt="Current photo prep preview" />
+        </div>
+      ) : sourceUrl ? (
+        <div className="photo-prep__frame">
+          <img src={sourceUrl} alt="Uploaded photo" />
+        </div>
+      ) : (
+        <div className="photo-prep__frame photo-prep__frame--empty">Loading the photo…</div>
+      )}
 
+      {activeTool === 'crop' ? (
         <div className="photo-prep__actions">
           <button
             type="button"
             className="photo-prep__btn photo-prep__btn--primary"
-            disabled={busy || !activeCutout}
-            onClick={() => {
-              if (activeCutout) void finish(activeCutout);
-            }}
-          >
-            {status ?? 'Use this'}
-          </button>
-          <button
-            type="button"
-            className="photo-prep__btn"
             disabled={busy}
-            onClick={() => {
-              setIsolation(null);
-              setEditedCutout(null);
-              setStage('crop');
-            }}
+            onClick={() => void handleApplyCrop()}
           >
-            Recrop
+            {status ?? 'Apply crop'}
           </button>
           <button
             type="button"
             className="photo-prep__btn photo-prep__btn--quiet"
             disabled={busy}
-            onClick={() => void handleSkip()}
+            onClick={() => setActiveTool(null)}
           >
-            Skip isolation
+            Cancel
           </button>
         </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="photo-prep">
-      <div className="photo-prep__head">
-        <span className="photo-prep__eyebrow">Step 1 of 2 · Frame the piece</span>
-        <p className="photo-prep__hint">
-          Drag the corners and edges to frame the piece. Any shape works — we trim to the object
-          itself afterwards, so a little extra room is fine.
-        </p>
-        <div className="photo-prep__tips">
-          <span className="photo-prep__eyebrow">Tips and tricks</span>
-          <ul className="photo-prep__tips-list">
-            <li>Prefer a simple background. Extra objects in the frame make isolation harder.</li>
-            <li>Avoid reflections — they read as extra objects.</li>
-            <li>Photograph the real piece, not a picture of it on a TV or printed page.</li>
-          </ul>
-        </div>
-      </div>
-
-      {sourceUrl ? (
-        <PhotoFreeCrop imageUrl={sourceUrl} disabled={busy} onCropPixels={onCropPixels} />
-      ) : (
-        <div className="photo-prep__frame photo-prep__frame--empty">Loading the photo…</div>
-      )}
+      ) : null}
 
       {stage === 'working' ? (
         <div className="photo-prep__working">
@@ -254,32 +429,109 @@ export function PhotoSubjectPrep({
             Cancel
           </button>
         </div>
+      ) : activeTool === null ? (
+        <div className="photo-prep__toolbar">
+          <div className="photo-prep__actions">
+            {sourceCropApplied ? (
+              <button
+                type="button"
+                className="photo-prep__btn"
+                disabled={busy}
+                onClick={handleEditCrop}
+              >
+                Edit crop
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="photo-prep__btn"
+                disabled={busy}
+                onClick={() => handleOpenCrop('source')}
+              >
+                Crop
+              </button>
+            )}
+            <button
+              type="button"
+              className="photo-prep__btn"
+              disabled={busy}
+              onClick={openPrePaint}
+            >
+              Paint
+            </button>
+            <button
+              type="button"
+              className="photo-prep__btn photo-prep__btn--primary"
+              disabled={busy}
+              onClick={() => void handleIsolate()}
+            >
+              Remove background
+            </button>
+            <button
+              type="button"
+              className="photo-prep__btn"
+              disabled={busy || !isolation}
+              onClick={openPostBrush}
+            >
+              Brush
+            </button>
+            {isolation ? (
+              <button
+                type="button"
+                className="photo-prep__btn"
+                disabled={busy}
+                onClick={() => handleOpenCrop('cutout')}
+              >
+                Crop cutout
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="photo-prep__btn photo-prep__btn--primary"
+              disabled={busy}
+              onClick={() => void handleUseThis()}
+            >
+              {status ?? 'Use this'}
+            </button>
+            {!isolation ? (
+              <button
+                type="button"
+                className="photo-prep__btn photo-prep__btn--quiet"
+                disabled={busy}
+                onClick={() => void handleSkipIsolation()}
+              >
+                Skip isolation
+              </button>
+            ) : null}
+          </div>
+        </div>
       ) : (
         <div className="photo-prep__actions">
           <button
             type="button"
-            className="photo-prep__btn photo-prep__btn--primary"
-            disabled={busy}
-            onClick={() => void handleIsolate()}
-          >
-            Remove the background
-          </button>
-          <button
-            type="button"
             className="photo-prep__btn photo-prep__btn--quiet"
             disabled={busy}
-            onClick={() => void handleSkip()}
+            onClick={() => void finishEditing()}
           >
-            Skip isolation
+            Done editing
           </button>
         </div>
       )}
 
+      {isolation && isolation.coverage < MIN_SUBJECT_COVERAGE ? (
+        <p className="photo-prep__warn">
+          We could barely find a subject here. Try cropping closer, painting over distractions, or
+          skip isolation and send the photo as it is.
+        </p>
+      ) : null}
+
       {error ? <p className="photo-prep__error">{error}</p> : null}
 
-      <p className="photo-prep__note">
-        The first isolation downloads a model, so it takes longer than the ones after it.
-      </p>
+      {!isolation ? (
+        <p className="photo-prep__note">
+          The first isolation downloads a model, so it takes longer than the ones after it.
+        </p>
+      ) : null}
     </div>
   );
 }

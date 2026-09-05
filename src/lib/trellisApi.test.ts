@@ -131,6 +131,26 @@ describe('ensureTrellisReady', () => {
     const { ensureTrellisReady, TRELLIS_INSUFFICIENT_SPACE_MESSAGE } = await import('./trellisApi');
     await expect(ensureTrellisReady()).rejects.toThrow(TRELLIS_INSUFFICIENT_SPACE_MESSAGE);
   });
+
+  it('stops polling when status reports insufficient space', async () => {
+    vi.stubEnv('VITE_TRELLIS_GENERATE_URL', '');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/wake')) {
+        return new Response(JSON.stringify({ ready: false }), { status: 200 });
+      }
+      if (url.endsWith('/status')) {
+        return new Response(
+          JSON.stringify({ ready: false, ec2: 'pending', error: 'insufficient space' }),
+          { status: 200 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const { ensureTrellisReady, TRELLIS_INSUFFICIENT_SPACE_MESSAGE } = await import('./trellisApi');
+    await expect(ensureTrellisReady()).rejects.toThrow(TRELLIS_INSUFFICIENT_SPACE_MESSAGE);
+  });
 });
 
 describe('formatTrellisError', () => {

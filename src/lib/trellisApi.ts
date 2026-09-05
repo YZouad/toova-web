@@ -102,15 +102,24 @@ export async function ensureTrellisReady(
       ready?: boolean;
       ec2?: string;
       trellis?: string;
+      error?: string;
+      message?: string;
     };
 
     if (body.ready) {
       return;
     }
 
+    const statusDetail = [body.message, body.error, body.ec2, body.trellis]
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      .join(' ');
+    if (INSUFFICIENT_SPACE_RE.test(statusDetail)) {
+      throw new Error(TRELLIS_INSUFFICIENT_SPACE_MESSAGE);
+    }
+
     onProgress?.(TRELLIS_STARTING_STATUS);
     await sleep(TRELLIS_STATUS_POLL_MS, signal);
   }
 
-  throw new Error('Trellis did not become ready in time');
+  throw new Error('The model instance did not become ready in time.');
 }
