@@ -114,4 +114,45 @@ describe('ensureTrellisReady', () => {
     await expect(readyPromise).resolves.toBeUndefined();
     expect(statusCalls).toBeGreaterThanOrEqual(2);
   });
+
+  it('rewrites insufficient-space wake errors with a retry hint', async () => {
+    vi.stubEnv('VITE_TRELLIS_GENERATE_URL', '');
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.endsWith('/wake')) {
+        return new Response(
+          JSON.stringify({ error: 'InsufficientInstanceCapacity: insufficient space in the AZ' }),
+          { status: 503 },
+        );
+      }
+      throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    const { ensureTrellisReady, TRELLIS_INSUFFICIENT_SPACE_MESSAGE } = await import('./trellisApi');
+    await expect(ensureTrellisReady()).rejects.toThrow(TRELLIS_INSUFFICIENT_SPACE_MESSAGE);
+  });
+});
+
+describe('formatTrellisError', () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it('keeps unrelated errors and fills an empty fallback', async () => {
+    vi.stubEnv('VITE_TRELLIS_GENERATE_URL', '');
+    const { formatTrellisError } = await import('./trellisApi');
+    expect(formatTrellisError('Generation failed (500)', 'fallback')).toBe('Generation failed (500)');
+    expect(formatTrellisError('   ', 'Could not start')).toBe('Could not start');
+  });
+
+  it('detects insufficient space in raw and JSON payloads', async () => {
+    vi.stubEnv('VITE_TRELLIS_GENERATE_URL', '');
+    const { formatTrellisError, TRELLIS_INSUFFICIENT_SPACE_MESSAGE } = await import('./trellisApi');
+    expect(formatTrellisError('insufficient space on host', 'fallback')).toBe(
+      TRELLIS_INSUFFICIENT_SPACE_MESSAGE,
+    );
+    expect(
+      formatTrellisError(JSON.stringify({ message: 'AWS not enough capacity right now' }), 'fallback'),
+    ).toBe(TRELLIS_INSUFFICIENT_SPACE_MESSAGE);
+  });
 });
