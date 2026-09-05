@@ -14,6 +14,35 @@ export const trellisUsesRemoteUrl = /^https?:\/\//i.test(TRELLIS_GENERATE_URL);
 export const TRELLIS_READY_TIMEOUT_MS = 10 * 60 * 1000;
 export const TRELLIS_STATUS_POLL_MS = 2500;
 
+export const TRELLIS_STARTING_STATUS = 'Starting the model instance…';
+
+const INSUFFICIENT_SPACE_RE =
+  /insufficient\s+(space|capacity)|InsufficientInstanceCapacity|not enough (space|capacity)/i;
+
+export const TRELLIS_INSUFFICIENT_SPACE_MESSAGE =
+  "There isn't enough space to start the model instance. Please try again in 5 minutes.";
+
+function extractErrorText(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = JSON.parse(trimmed) as { message?: unknown; error?: unknown };
+    if (typeof parsed.message === 'string' && parsed.message.trim()) return parsed.message.trim();
+    if (typeof parsed.error === 'string' && parsed.error.trim()) return parsed.error.trim();
+  } catch {
+    /* keep the raw text */
+  }
+  return trimmed;
+}
+
+export function formatTrellisError(raw: string, fallback: string): string {
+  const text = extractErrorText(raw);
+  if (INSUFFICIENT_SPACE_RE.test(text) || INSUFFICIENT_SPACE_RE.test(raw)) {
+    return TRELLIS_INSUFFICIENT_SPACE_MESSAGE;
+  }
+  return text || fallback;
+}
+
 export function trellisSiblingUrl(endpoint: 'wake' | 'status'): string {
   if (!TRELLIS_GENERATE_URL.endsWith('/generate')) {
     throw new Error(`Unexpected TRELLIS_GENERATE_URL: ${TRELLIS_GENERATE_URL}`);
@@ -51,12 +80,12 @@ export async function ensureTrellisReady(
   signal?: AbortSignal,
   onProgress?: (message: string) => void,
 ): Promise<void> {
-  onProgress?.('Waking Trellis…');
+  onProgress?.(TRELLIS_STARTING_STATUS);
 
   const wakeRes = await fetch(trellisSiblingUrl('wake'), { method: 'POST', signal });
   if (!wakeRes.ok) {
     const text = await wakeRes.text();
-    throw new Error(text || `Trellis wake failed (${wakeRes.status})`);
+    throw new Error(formatTrellisError(text, `Could not start the model instance (${wakeRes.status})`));
   }
 
   const deadline = Date.now() + TRELLIS_READY_TIMEOUT_MS;
@@ -66,7 +95,7 @@ export async function ensureTrellisReady(
     const statusRes = await fetch(trellisSiblingUrl('status'), { signal });
     if (!statusRes.ok) {
       const text = await statusRes.text();
-      throw new Error(text || `Trellis status failed (${statusRes.status})`);
+      throw new Error(formatTrellisError(text, `Could not start the model instance (${statusRes.status})`));
     }
 
     const body = (await statusRes.json()) as {
@@ -79,7 +108,7 @@ export async function ensureTrellisReady(
       return;
     }
 
-    onProgress?.(`Starting Trellis… (${body.ec2 ?? 'unknown'}, ${body.trellis ?? 'unknown'})`);
+    onProgress?.(TRELLIS_STARTING_STATUS);
     await sleep(TRELLIS_STATUS_POLL_MS, signal);
   }
 
