@@ -1624,6 +1624,7 @@
   text-transform: uppercase; color: var(--ink-6);
 }
 
+.dg-import-shop { display: grid; gap: 10px; }
 .dg-import-admin { display: flex; flex-direction: column; gap: 10px; }
 .dg-import-admin__fields {
   display: grid; gap: 10px;

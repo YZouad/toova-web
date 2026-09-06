@@ -35,6 +35,8 @@ import { Modal } from './kit/Modal';
 import { Select } from './kit/Select';
 import { Spinner } from './kit/Spinner';
 import { Tabs } from './kit/Tabs';
+import { useShoppingCatalogContext } from '../context/ShoppingCatalogContext';
+import { parseImportedShopDetails } from '../lib/localRoomChecklist';
 import { fetchAdminShoppingCatalog } from '../lib/shoppingCatalog';
 import {
   adminLeafCategories,
@@ -74,6 +76,7 @@ export function ImportModelModal({
   onClose,
   onAdded,
 }: ImportModelModalProps) {
+  const { addImportedModelToChecklist } = useShoppingCatalogContext();
   const [tab, setTab] = useState<ModalTab>(initialTab);
   const [file, setFile] = useState<File | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -116,6 +119,8 @@ export function ImportModelModal({
   const [checklistAffiliateUrl, setChecklistAffiliateUrl] = useState('');
   const [checklistPriceDollars, setChecklistPriceDollars] = useState('');
   const [checklistCoverFile, setChecklistCoverFile] = useState<File | null>(null);
+  const [shopUrl, setShopUrl] = useState('');
+  const [shopPriceDollars, setShopPriceDollars] = useState('');
 
   const busy = submitting || generating || decimating || creatingPoster;
 
@@ -247,6 +252,8 @@ export function ImportModelModal({
     setChecklistAffiliateUrl('');
     setChecklistPriceDollars('');
     setChecklistCoverFile(null);
+    setShopUrl('');
+    setShopPriceDollars('');
   };
 
   const handleDownloadDecimated = () => {
@@ -411,6 +418,12 @@ export function ImportModelModal({
       return;
     }
 
+    const shop = parseImportedShopDetails(shopUrl, shopPriceDollars);
+    if (!shop.ok) {
+      setFormError(shop.error);
+      return;
+    }
+
     const banned = validateCatalogText({
       label,
       description: description.trim() || null,
@@ -489,6 +502,16 @@ export function ImportModelModal({
           priceCents: parsePriceDollarsToCents(checklistPriceDollars),
           coverFile: cover,
           description: description.trim() || undefined,
+        });
+      }
+
+      if (shop.ok && !shop.empty) {
+        await addImportedModelToChecklist({
+          name: label,
+          description: description.trim() || undefined,
+          affiliateUrl: shop.details.affiliateUrl,
+          priceCents: shop.details.priceCents,
+          catalogKind: kind,
         });
       }
 
@@ -848,6 +871,27 @@ export function ImportModelModal({
                 Public models can be browsed, liked, and placed in anyone&apos;s room.
               </small>
             </label>
+
+            <Field label="Amazon link (optional)">
+              <Input
+                type="url"
+                value={shopUrl}
+                onChange={(e) => setShopUrl(e.target.value)}
+                placeholder="https://www.amazon.com/… or https://amzn.to/…"
+                disabled={submitting || decimating}
+              />
+            </Field>
+            <Field label="Price USD (optional)">
+              <Input
+                value={shopPriceDollars}
+                onChange={(e) => setShopPriceDollars(e.target.value)}
+                placeholder="29.99"
+                disabled={submitting || decimating}
+              />
+              <small style={{ display: 'block', marginTop: 6, color: 'var(--ink-4)' }}>
+                A link or price adds this piece to this room&apos;s shopping checklist.
+              </small>
+            </Field>
 
             {isAdmin ? (
               <div className="import-modal-field" style={{ borderTop: '1px solid var(--rule-soft)', paddingTop: 16 }}>

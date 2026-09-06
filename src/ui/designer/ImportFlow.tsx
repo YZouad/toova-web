@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useShoppingCatalogContext } from '../../context/ShoppingCatalogContext';
 import { useAuth } from '../../hooks/useAuth';
 import {
   CATALOG_CATEGORY_DEFS,
@@ -13,6 +14,7 @@ import {
   createChecklistProductFromCatalog,
   parsePriceDollarsToCents,
 } from '../../lib/shoppingCatalogAdmin';
+import { parseImportedShopDetails } from '../../lib/localRoomChecklist';
 import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../../lib/trellisApi';
 import { ImageFileField } from '../ImageFileField';
 import { PosterImageCrop } from '../PosterImageCrop';
@@ -87,6 +89,7 @@ export function ImportFlow({
 }: ImportFlowProps) {
   const { user } = useAuth();
   const userId = user?.id ?? null;
+  const { addImportedModelToChecklist } = useShoppingCatalogContext();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -129,6 +132,8 @@ export function ImportFlow({
   const [checklistAffiliateUrl, setChecklistAffiliateUrl] = useState('');
   const [checklistPriceDollars, setChecklistPriceDollars] = useState('');
   const [checklistCoverFile, setChecklistCoverFile] = useState<File | null>(null);
+  const [shopUrl, setShopUrl] = useState('');
+  const [shopPriceDollars, setShopPriceDollars] = useState('');
 
   const busy = submitting || generating || decimating || creatingPoster;
 
@@ -164,6 +169,8 @@ export function ImportFlow({
     setChecklistAffiliateUrl('');
     setChecklistPriceDollars('');
     setChecklistCoverFile(null);
+    setShopUrl('');
+    setShopPriceDollars('');
   };
 
   useEffect(() => {
@@ -346,6 +353,11 @@ export function ImportFlow({
       setFormError('Pick a checklist subcategory.');
       return;
     }
+    const shop = parseImportedShopDetails(shopUrl, shopPriceDollars);
+    if (!shop.ok) {
+      setFormError(shop.error);
+      return;
+    }
     setSubmitting(true);
     try {
       const model = await submitCatalogImport({
@@ -376,6 +388,15 @@ export function ImportFlow({
           priceCents: parsePriceDollarsToCents(checklistPriceDollars),
           coverFile: cover,
           description: description.trim() || undefined,
+        });
+      }
+      if (shop.ok && !shop.empty) {
+        await addImportedModelToChecklist({
+          name: title.trim(),
+          description: description.trim() || undefined,
+          affiliateUrl: shop.details.affiliateUrl,
+          priceCents: shop.details.priceCents,
+          catalogKind: model.kind,
         });
       }
       activeJobIdRef.current = null;
@@ -741,6 +762,39 @@ export function ImportFlow({
         </span>
         <span className={`dg-toggle${listInGallery ? ' is-on' : ''}`} aria-hidden />
       </button>
+
+      <div className="dg-import-shop">
+        <label className="dg-import-field">
+          <span className="dg-import-field__label">
+            Amazon link <span className="dg-row__meta">optional</span>
+          </span>
+          <input
+            className="dg-import-input"
+            type="url"
+            value={shopUrl}
+            disabled={busy}
+            placeholder="https://www.amazon.com/… or https://amzn.to/…"
+            onChange={(e) => setShopUrl(e.target.value)}
+          />
+        </label>
+        <label className="dg-import-field">
+          <span className="dg-import-field__label">
+            Price (USD) <span className="dg-row__meta">optional</span>
+          </span>
+          <input
+            className="dg-import-input"
+            type="text"
+            inputMode="decimal"
+            value={shopPriceDollars}
+            disabled={busy}
+            placeholder="29.99"
+            onChange={(e) => setShopPriceDollars(e.target.value)}
+          />
+          <span className="dg-import-field__hint">
+            A link or price adds this piece to this room&apos;s shopping checklist.
+          </span>
+        </label>
+      </div>
 
       {isAdmin ? (
         <div className="dg-import-admin">

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore, useState } from 'react';
+import { useShoppingCatalogContext } from '../../../context/ShoppingCatalogContext';
 import { useAuth } from '../../../hooks/useAuth';
 import {
   CATALOG_CATEGORY_DEFS,
@@ -13,6 +14,7 @@ import {
   createChecklistProductFromCatalog,
   parsePriceDollarsToCents,
 } from '../../../lib/shoppingCatalogAdmin';
+import { parseImportedShopDetails } from '../../../lib/localRoomChecklist';
 import { PosterImageCrop } from '../../PosterImageCrop';
 import type { CatalogModel, ImportRoute } from '../chromeTypes';
 import {
@@ -82,6 +84,7 @@ export function MobileImportSheet({
 }: MobileImportSheetProps) {
   const { user } = useAuth();
   const userId = user?.id ?? null;
+  const { addImportedModelToChecklist } = useShoppingCatalogContext();
   const photoJob = useSyncExternalStore(subscribePhotoJob, getPhotoJobSnapshot, getPhotoJobSnapshot);
 
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -122,6 +125,8 @@ export function MobileImportSheet({
   const [checklistAffiliateUrl, setChecklistAffiliateUrl] = useState('');
   const [checklistPriceDollars, setChecklistPriceDollars] = useState('');
   const [checklistCoverFile, setChecklistCoverFile] = useState<File | null>(null);
+  const [shopUrl, setShopUrl] = useState('');
+  const [shopPriceDollars, setShopPriceDollars] = useState('');
 
   const resetFormOnly = useCallback(() => {
     setFile(null);
@@ -146,6 +151,8 @@ export function MobileImportSheet({
     setChecklistAffiliateUrl('');
     setChecklistPriceDollars('');
     setChecklistCoverFile(null);
+    setShopUrl('');
+    setShopPriceDollars('');
   }, []);
 
   const resetAll = useCallback(() => {
@@ -347,6 +354,11 @@ export function MobileImportSheet({
       setFormError('Pick a checklist subcategory.');
       return;
     }
+    const shop = parseImportedShopDetails(shopUrl, shopPriceDollars);
+    if (!shop.ok) {
+      setFormError(shop.error);
+      return;
+    }
     setSubmitting(true);
     try {
       const model = await submitCatalogImport({
@@ -376,6 +388,15 @@ export function MobileImportSheet({
           priceCents: parsePriceDollarsToCents(checklistPriceDollars),
           coverFile: cover,
           description: description.trim() || undefined,
+        });
+      }
+      if (shop.ok && !shop.empty) {
+        await addImportedModelToChecklist({
+          name: title.trim(),
+          description: description.trim() || undefined,
+          affiliateUrl: shop.details.affiliateUrl,
+          priceCents: shop.details.priceCents,
+          catalogKind: model.kind,
         });
       }
       onComplete?.(model);
@@ -602,6 +623,32 @@ export function MobileImportSheet({
             </span>
             <span className={`dgm-toggle${listInGallery ? ' is-on' : ''}`} aria-hidden />
           </button>
+          <label className="dgm-field">
+            <span className="dgm-field__label">Amazon link (optional)</span>
+            <input
+              className="dgm-input"
+              type="url"
+              value={shopUrl}
+              disabled={busy}
+              placeholder="https://www.amazon.com/… or amzn.to/…"
+              onChange={(e) => setShopUrl(e.target.value)}
+            />
+          </label>
+          <label className="dgm-field">
+            <span className="dgm-field__label">Price USD (optional)</span>
+            <input
+              className="dgm-input"
+              type="text"
+              inputMode="decimal"
+              value={shopPriceDollars}
+              disabled={busy}
+              placeholder="29.99"
+              onChange={(e) => setShopPriceDollars(e.target.value)}
+            />
+            <span className="dgm-field__hint">
+              A link or price adds this piece to this room&apos;s shopping checklist.
+            </span>
+          </label>
         </>
       ) : null}
 

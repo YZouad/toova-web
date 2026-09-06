@@ -112,6 +112,44 @@ describe('buildPurchaseCartLines', () => {
     });
     expect(lines).toHaveLength(0);
   });
+
+  it('includes a local imported model that was added to To Buy', () => {
+    const localProduct: CuratedProduct = {
+      ...productA,
+      id: 'local:desk',
+      categoryId: 'local-your-models',
+      slug: 'local:desk',
+      name: 'Imported desk',
+      affiliateUrl: 'https://www.amazon.com/dp/B001',
+      priceCents: 8900,
+      placeBuiltinKind: null,
+      placeCatalogKind: 'custom-desk',
+    };
+    const localCategories: ChecklistCategoryWithProducts[] = [
+      {
+        id: 'local-your-models',
+        slug: 'your-models',
+        name: 'Your models',
+        sortOrder: 10_000,
+        published: true,
+        parentId: null,
+        imagePath: null,
+        imageUrl: null,
+        products: [localProduct],
+      },
+    ];
+    const lines = buildPurchaseCartLines({
+      categories: localCategories,
+      items: {},
+      order: [],
+      list: [{ productId: localProduct.id, quantity: 1, reviewDone: false }],
+      productsById: { [localProduct.id]: localProduct },
+      getResolution: () => undefined,
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.product.name).toBe('Imported desk');
+    expect(lines[0]?.source).toBe('list');
+  });
 });
 
 describe('purchaseCartTotalCents', () => {
