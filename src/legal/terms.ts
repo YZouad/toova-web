@@ -44,7 +44,7 @@ export const TERMS_DOCUMENT: LegalDocument = {
       heading: '4. Contact',
       body: [
         'Questions about these Terms: ag@toova.net',
-        'Safety reports: safety@toova.net',
+        'Safety reports: ag@toova.net',
       ],
     },
   ],

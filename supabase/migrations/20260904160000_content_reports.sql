@@ -225,10 +225,10 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.quarantine_catalog_model(text, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.quarantine_room(uuid, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.restore_catalog_model(text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.restore_room(uuid) FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.quarantine_catalog_model(text, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.quarantine_room(uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.restore_catalog_model(text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.restore_room(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.quarantine_catalog_model(text, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.quarantine_room(uuid, text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.restore_catalog_model(text) TO authenticated;
@@ -379,9 +379,32 @@ BEGIN
         'created_at', cr.created_at,
         'reporter_id', cr.reporter_id,
         'reporter_email', cr.reporter_email,
+        'reporter_handle', reporter.handle,
+        'reporter_display_name', reporter.display_name,
         'target_type', cr.target_type,
         'target_id', cr.target_id,
+        'target_label', coalesce(
+          nullif(btrim(cr.evidence->>'label'), ''),
+          nullif(btrim(cr.evidence->>'name'), ''),
+          nullif(btrim(cr.evidence->>'display_name'), ''),
+          CASE
+            WHEN nullif(btrim(cr.evidence->>'handle'), '') IS NOT NULL
+              THEN '@' || btrim(cr.evidence->>'handle')
+            ELSE NULL
+          END,
+          fc.label,
+          rm.name,
+          CASE
+            WHEN cr.target_type IN ('profile', 'avatar') THEN coalesce(
+              CASE WHEN owner.handle IS NOT NULL THEN '@' || owner.handle END,
+              owner.display_name
+            )
+            ELSE NULL
+          END
+        ),
         'target_owner_id', cr.target_owner_id,
+        'owner_handle', owner.handle,
+        'owner_display_name', owner.display_name,
         'reason', cr.reason,
         'details', cr.details,
         'status', cr.status,
@@ -396,6 +419,13 @@ BEGIN
       CASE WHEN cr.reason IN ('csam', 'sexual_content') THEN 0 ELSE 1 END AS sort_priority,
       cr.created_at
     FROM public.content_reports cr
+    LEFT JOIN public.profiles reporter ON reporter.id = cr.reporter_id
+    LEFT JOIN public.profiles owner ON owner.id = cr.target_owner_id
+    LEFT JOIN public.furniture_catalog fc
+      ON cr.target_type = 'catalog_model' AND fc.kind = cr.target_id
+    LEFT JOIN public.rooms rm
+      ON cr.target_type = 'room'
+     AND rm.id::text = cr.target_id
     WHERE (p_status IS NULL OR cr.status = p_status)
       AND (p_reason IS NULL OR cr.reason = p_reason)
     ORDER BY sort_priority, cr.created_at DESC
@@ -549,9 +579,13 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.admin_list_content_reports(text, text, int, int) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.admin_content_report_action(uuid, text, text, text) FROM PUBLIC;
-REVOKE ALL ON FUNCTION public.admin_unreviewed_report_count() FROM PUBLIC;
+REVOKE ALL ON FUNCTION public.admin_list_content_reports(text, text, int, int) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.admin_content_report_action(uuid, text, text, text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.admin_unreviewed_report_count() FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.trg_block_preserved_catalog_delete() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trg_block_preserved_room_delete() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trg_block_quarantined_catalog_public() FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.trg_block_quarantined_room_public() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_list_content_reports(text, text, int, int) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_content_report_action(uuid, text, text, text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.admin_unreviewed_report_count() TO authenticated;

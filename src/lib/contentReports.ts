@@ -102,9 +102,14 @@ export interface ContentReportRow {
   created_at: string;
   reporter_id: string | null;
   reporter_email: string | null;
+  reporter_handle?: string | null;
+  reporter_display_name?: string | null;
   target_type: ContentReportTargetType;
   target_id: string;
+  target_label?: string | null;
   target_owner_id: string | null;
+  owner_handle?: string | null;
+  owner_display_name?: string | null;
   reason: ContentReportReason;
   details: string | null;
   status: ContentReportStatus;
@@ -115,6 +120,75 @@ export interface ContentReportRow {
   ncmec_report_id: string | null;
   ncmec_reported_at: string | null;
   preserve_until: string | null;
+}
+
+function evidenceText(evidence: Record<string, unknown> | null | undefined, key: string): string | null {
+  const value = evidence?.[key];
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length ? trimmed : null;
+}
+
+export function formatReportPersonName(handle?: string | null, displayName?: string | null): string | null {
+  const h = handle?.trim().replace(/^@/, '') || null;
+  const d = displayName?.trim() || null;
+  if (h && d && d.toLowerCase() !== h.toLowerCase()) return `@${h} · ${d}`;
+  if (h) return `@${h}`;
+  if (d) return d;
+  return null;
+}
+
+export function formatReportPerson(opts: {
+  id?: string | null;
+  handle?: string | null;
+  displayName?: string | null;
+  email?: string | null;
+  anonymousLabel?: string;
+}): string {
+  const name = formatReportPersonName(opts.handle, opts.displayName);
+  if (name && opts.id) return `${name} (${opts.id})`;
+  if (name) return name;
+  if (opts.email && opts.id) return `${opts.email} (${opts.id})`;
+  if (opts.email) return opts.email;
+  if (opts.id) return opts.id;
+  return opts.anonymousLabel ?? 'anonymous';
+}
+
+export function reportTargetLabel(row: Pick<ContentReportRow, 'target_label' | 'evidence'>): string | null {
+  const fromRow = row.target_label?.trim();
+  if (fromRow) return fromRow;
+  const ev = row.evidence;
+  const handle = evidenceText(ev, 'handle');
+  return (
+    evidenceText(ev, 'label') ||
+    evidenceText(ev, 'name') ||
+    evidenceText(ev, 'display_name') ||
+    (handle ? `@${handle.replace(/^@/, '')}` : null)
+  );
+}
+
+export function formatReportTarget(row: ContentReportRow): string {
+  const label = reportTargetLabel(row);
+  if (label) return `${label} (${row.target_type} / ${row.target_id})`;
+  return `${row.target_type} / ${row.target_id}`;
+}
+
+export function formatReportReporter(row: ContentReportRow): string {
+  return formatReportPerson({
+    id: row.reporter_id,
+    handle: row.reporter_handle ?? evidenceText(row.evidence, 'reporter_handle'),
+    displayName: row.reporter_display_name ?? evidenceText(row.evidence, 'reporter_display_name'),
+    email: row.reporter_email,
+  });
+}
+
+export function formatReportOwner(row: ContentReportRow): string {
+  return formatReportPerson({
+    id: row.target_owner_id,
+    handle: row.owner_handle ?? evidenceText(row.evidence, 'owner_handle'),
+    displayName: row.owner_display_name ?? evidenceText(row.evidence, 'owner_display_name'),
+    anonymousLabel: '—',
+  });
 }
 
 export async function adminListContentReports(opts?: {

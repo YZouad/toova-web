@@ -11,7 +11,7 @@ runbook — not legal advice. Engage counsel for NCMEC program design.
 
 | Role | Responsibility |
 |------|----------------|
-| Primary safety owner | Monitors `safety@toova.net`, triages AdminConsole Reports queue |
+| Primary safety owner | Monitors `ag@toova.net` / `yz@toova.net`, triages AdminConsole Reports queue |
 | Backup | Covers weekends / absence |
 | Engineering admin | Can restore quarantined content after a false positive |
 
@@ -25,7 +25,7 @@ runbook — not legal advice. Engage counsel for NCMEC program design.
 
 ## Workflow
 
-1. Alert arrives at `safety@toova.net` and the report appears in AdminConsole → Reports.
+1. Alert arrives at `ag@toova.net` / `yz@toova.net` and the report appears in AdminConsole → Reports.
 2. Open the report. Evidence is shown via short-lived signed URLs — **do not
    download, forward, screenshot, or re-host** reported media.
 3. Decide:

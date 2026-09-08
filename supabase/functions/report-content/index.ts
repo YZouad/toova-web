@@ -2,7 +2,7 @@
  * Accept a content report (signed-in or signed-out), snapshot evidence,
  * optionally auto-quarantine CSAM / sexual content, and alert safety@.
  *
- * Secrets: RESEND_API_KEY, SAFETY_ALERT_TO, SAFETY_ALERT_FROM (optional),
+ * Secrets: RESEND_API_KEY, SAFETY_ALERT_TO (comma-separated), SAFETY_ALERT_FROM (optional),
  *          SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
  * verify_jwt = false — function verifies JWT when present.
  */
@@ -109,6 +109,17 @@ Deno.serve(async (req: Request) => {
     evidence.client_ip = ip;
     evidence.user_agent = (req.headers.get("user-agent") ?? "").slice(0, 512);
 
+    const ownerProfile = await loadProfile(admin, typeof evidence.owner_id === "string" ? evidence.owner_id : null);
+    const reporterProfile = await loadProfile(admin, reporterId);
+    if (ownerProfile) {
+      evidence.owner_handle = ownerProfile.handle;
+      evidence.owner_display_name = ownerProfile.display_name;
+    }
+    if (reporterProfile) {
+      evidence.reporter_handle = reporterProfile.handle;
+      evidence.reporter_display_name = reporterProfile.display_name;
+    }
+
     if (reporterId && evidence.owner_id && reporterId === evidence.owner_id) {
       return json({ error: "Cannot report your own content." }, 400);
     }
@@ -174,9 +185,15 @@ Deno.serve(async (req: Request) => {
       reason,
       targetType,
       targetId,
+      targetLabel: targetLabelFromEvidence(evidence),
       quarantined,
       reporterId,
       reporterEmail: reporterEmail || null,
+      reporterHandle: reporterProfile?.handle ?? null,
+      reporterDisplayName: reporterProfile?.display_name ?? null,
+      ownerId: typeof evidence.owner_id === "string" ? evidence.owner_id : null,
+      ownerHandle: ownerProfile?.handle ?? null,
+      ownerDisplayName: ownerProfile?.display_name ?? null,
       priority: AUTO_QUARANTINE.has(reason),
     });
 
@@ -273,11 +290,17 @@ async function snapshotEvidence(
       .eq("token", targetId)
       .maybeSingle();
     if (data) {
+      const { data: room } = await admin
+        .from("rooms")
+        .select("name")
+        .eq("id", data.room_id)
+        .maybeSingle();
       return {
         ...base,
         owner_id: data.created_by,
         room_id: data.room_id,
         token: data.token,
+        name: room?.name ?? null,
       };
     }
   }
@@ -285,36 +308,124 @@ async function snapshotEvidence(
   return base;
 }
 
+type ProfileLabel = { handle: string | null; display_name: string | null };
+
+async function loadProfile(
+  admin: ReturnType<typeof createClient>,
+  id: string | null,
+): Promise<ProfileLabel | null> {
+  if (!id) return null;
+  const { data } = await admin
+    .from("profiles")
+    .select("handle, display_name")
+    .eq("id", id)
+    .maybeSingle();
+  if (!data) return null;
+  return {
+    handle: typeof data.handle === "string" ? data.handle : null,
+    display_name: typeof data.display_name === "string" ? data.display_name : null,
+  };
+}
+
+function formatPersonName(handle?: string | null, displayName?: string | null): string | null {
+  const h = handle?.trim().replace(/^@/, "") || null;
+  const d = displayName?.trim() || null;
+  if (h && d && d.toLowerCase() !== h.toLowerCase()) return `@${h} · ${d}`;
+  if (h) return `@${h}`;
+  if (d) return d;
+  return null;
+}
+
+function formatPersonLine(opts: {
+  id?: string | null;
+  handle?: string | null;
+  displayName?: string | null;
+  email?: string | null;
+  empty?: string;
+}): string {
+  const name = formatPersonName(opts.handle, opts.displayName);
+  if (name && opts.id) return `${name} (${opts.id})`;
+  if (name) return name;
+  if (opts.email && opts.id) return `${opts.email} (${opts.id})`;
+  if (opts.email) return opts.email;
+  if (opts.id) return opts.id;
+  return opts.empty ?? "(none)";
+}
+
+function targetLabelFromEvidence(evidence: Evidence): string | null {
+  const label = typeof evidence.label === "string" ? evidence.label.trim() : "";
+  const name = typeof evidence.name === "string" ? evidence.name.trim() : "";
+  const display = typeof evidence.display_name === "string" ? evidence.display_name.trim() : "";
+  const handle = typeof evidence.handle === "string" ? evidence.handle.trim() : "";
+  if (label) return label;
+  if (name) return name;
+  if (display) return display;
+  if (handle) return `@${handle.replace(/^@/, "")}`;
+  return null;
+}
+
 async function sendSafetyAlert(opts: {
   reportId: string;
   reason: string;
   targetType: string;
   targetId: string;
+  targetLabel: string | null;
   quarantined: boolean;
   reporterId: string | null;
   reporterEmail: string | null;
+  reporterHandle: string | null;
+  reporterDisplayName: string | null;
+  ownerId: string | null;
+  ownerHandle: string | null;
+  ownerDisplayName: string | null;
   priority: boolean;
 }): Promise<void> {
   const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
-  const to = Deno.env.get("SAFETY_ALERT_TO")?.trim() || "safety@toova.net";
+  // Comma-separated list, e.g. "ag@toova.net,yz@toova.net"
+  const to = (Deno.env.get("SAFETY_ALERT_TO")?.trim() || "ag@toova.net")
+    .split(",")
+    .map((addr) => addr.trim())
+    .filter((addr) => addr.includes("@"));
   const from = Deno.env.get("SAFETY_ALERT_FROM")?.trim()
-    || "Toova Safety <alerts@toova.net>";
+    || "Toova Safety <ag@toova.net>";
 
   if (!apiKey) {
     console.warn("RESEND_API_KEY not set — skipping safety email for", opts.reportId);
     return;
   }
+  if (to.length === 0) {
+    console.warn("SAFETY_ALERT_TO empty — skipping safety email for", opts.reportId);
+    return;
+  }
+
+  const target = opts.targetLabel
+    ? `${opts.targetType} / ${opts.targetLabel} (${opts.targetId})`
+    : `${opts.targetType} / ${opts.targetId}`;
+  const subjectTarget = opts.targetLabel
+    ? `${opts.targetType}: ${opts.targetLabel}`
+    : opts.targetType;
 
   const subject = opts.priority
-    ? `[PRIORITY] Toova report: ${opts.reason} (${opts.targetType})`
-    : `Toova report: ${opts.reason} (${opts.targetType})`;
+    ? `[PRIORITY] Toova report: ${opts.reason} (${subjectTarget})`
+    : `Toova report: ${opts.reason} (${subjectTarget})`;
 
   const text = [
     `New content report ${opts.reportId}`,
     `Reason: ${opts.reason}`,
-    `Target: ${opts.targetType} / ${opts.targetId}`,
+    `Target: ${target}`,
     `Quarantined: ${opts.quarantined ? "yes" : "no"}`,
-    `Reporter user: ${opts.reporterId ?? "(anonymous)"}`,
+    `Reported user: ${formatPersonLine({
+      id: opts.ownerId,
+      handle: opts.ownerHandle,
+      displayName: opts.ownerDisplayName,
+      empty: "(unknown)",
+    })}`,
+    `Reporter user: ${formatPersonLine({
+      id: opts.reporterId,
+      handle: opts.reporterHandle,
+      displayName: opts.reporterDisplayName,
+      empty: "(anonymous)",
+    })}`,
     `Reporter email: ${opts.reporterEmail ?? "(none)"}`,
     "",
     "Review in AdminConsole → Reports.",
@@ -327,7 +438,7 @@ async function sendSafetyAlert(opts: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ from, to: [to], subject, text }),
+    body: JSON.stringify({ from, to, subject, text }),
   });
 
   if (!res.ok) {

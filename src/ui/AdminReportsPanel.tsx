@@ -1,7 +1,59 @@
 import { useState } from 'react';
-import type { ContentReportRow } from '../lib/contentReports';
+import {
+  formatReportOwner,
+  formatReportReporter,
+  formatReportTarget,
+  type ContentReportRow,
+} from '../lib/contentReports';
 import { useContentReports } from '../hooks/useContentReports';
 import { Banner, Button, Field, Input, RuledTable } from './kit';
+
+const REPORT_ACTION_HELP: { term: string; detail: string }[] = [
+  {
+    term: 'Opening a new report',
+    detail:
+      'Moves the row from New to Reviewing so others know you have it. Evidence links are short-lived — view here only. Do not download, screenshot, forward, or re-host reported media.',
+  },
+  {
+    term: 'Resolution note',
+    detail: 'Optional. Saved onto the report with whatever action you take next.',
+  },
+  {
+    term: 'CyberTipline report ID',
+    detail:
+      'Required before Mark escalated to NCMEC will enable. File at report.cybertip.org first, then paste the ID here. Toova does not file for you.',
+  },
+  {
+    term: 'Quarantine',
+    detail:
+      'Hides this catalog model or room from the public (turns it private). Marks the report Actioned. CSAM and sexual-content reports may already be auto-quarantined on submit.',
+  },
+  {
+    term: 'Restore',
+    detail:
+      'Un-hides a quarantined model or room after a false positive. Does not change the report status — pair with Dismiss if the report itself should be closed.',
+  },
+  {
+    term: 'Dismiss',
+    detail:
+      'Closes the report as not actionable. Does not restore quarantined content; hit Restore first if it was auto-hidden.',
+  },
+  {
+    term: 'Mark actioned',
+    detail:
+      'Records that you handled the report, without quarantining, restoring, or banning. Use when the content is already taken care of.',
+  },
+  {
+    term: 'Ban uploader',
+    detail:
+      'Soft-ban: makes the owner\'s profile private and quarantines all of their public models and rooms. Marks this report Actioned.',
+  },
+  {
+    term: 'Mark escalated to NCMEC',
+    detail:
+      'Stores the CyberTipline ID and sets a 90-day preservation hold so related files cannot be hard-deleted. Use only after a real CyberTipline filing. CSAM triage target is 24 hours.',
+  },
+];
 
 export function AdminReportsPanel({ enabled }: { enabled: boolean }) {
   const {
@@ -25,12 +77,14 @@ export function AdminReportsPanel({ enabled }: { enabled: boolean }) {
   const [evidenceUrls, setEvidenceUrls] = useState<Record<string, string | null>>({});
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   async function openReport(row: ContentReportRow) {
     setSelected(row);
     setNote('');
     setNcmecId('');
     setActionError(null);
+    setHelpOpen(false);
     setEvidenceUrls({});
     try {
       const ev = await loadEvidence(row.id);
@@ -129,7 +183,7 @@ export function AdminReportsPanel({ enabled }: { enabled: boolean }) {
             r.reason === 'csam' || r.reason === 'sexual_content' ? '!' : '',
             new Date(r.created_at).toLocaleString(),
             r.reason,
-            `${r.target_type} / ${r.target_id}`,
+            formatReportTarget(r),
             r.status,
             <Button key={r.id} size="sm" variant="outline" onClick={() => void openReport(r)}>
               Open
@@ -145,18 +199,59 @@ export function AdminReportsPanel({ enabled }: { enabled: boolean }) {
               <h3>
                 {selected.reason} · {selected.target_type}
               </h3>
-              <button type="button" onClick={() => setSelected(null)} aria-label="Close">
-                ×
-              </button>
+              <div className="admin-reports__detail-tools">
+                <button
+                  type="button"
+                  className={`admin-reports__icon-btn${helpOpen ? ' is-open' : ''}`}
+                  aria-label="Explain report actions"
+                  aria-expanded={helpOpen}
+                  aria-controls="admin-report-action-help"
+                  onClick={() => setHelpOpen((open) => !open)}
+                >
+                  ?
+                </button>
+                <button
+                  type="button"
+                  className="admin-reports__icon-btn"
+                  onClick={() => {
+                    setHelpOpen(false);
+                    setSelected(null);
+                  }}
+                  aria-label="Close"
+                >
+                  ×
+                </button>
+              </div>
             </header>
+            {helpOpen ? (
+              <div
+                id="admin-report-action-help"
+                className="admin-reports__help"
+                role="region"
+                aria-label="What each action does"
+              >
+                <p className="admin-reports__help-lead">
+                  Review in this window only. SLA: CSAM and sexual content within 24 hours; other
+                  reports within 72 hours.
+                </p>
+                <dl>
+                  {REPORT_ACTION_HELP.map((item) => (
+                    <div key={item.term} className="admin-reports__help-item">
+                      <dt>{item.term}</dt>
+                      <dd>{item.detail}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            ) : null}
             <p className="admin-reports__meta">
               ID {selected.id}
               <br />
-              Target {selected.target_id}
+              Target {formatReportTarget(selected)}
               <br />
-              Owner {selected.target_owner_id ?? '—'}
+              Owner {formatReportOwner(selected)}
               <br />
-              Reporter {selected.reporter_id ?? selected.reporter_email ?? 'anonymous'}
+              Reporter {formatReportReporter(selected)}
             </p>
             {selected.details ? <p className="admin-reports__details">{selected.details}</p> : null}
 

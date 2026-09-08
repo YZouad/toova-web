@@ -22,7 +22,7 @@ export const CHILD_SAFETY_DOCUMENT: LegalDocument = {
       body: [
         'Use the Report control on models, rooms, and profiles, or submit a report on this page. Reports go to a human on the Toova safety team — not to the content creator.',
         'You can report while signed out. Include as much detail as you can (link, description, why it concerns you).',
-        'Email: safety@toova.net',
+        'Email: ag@toova.net',
       ],
     },
     {

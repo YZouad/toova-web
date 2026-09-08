@@ -249,6 +249,10 @@ export function ModelDetailModal({
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.stopPropagation();
+        if (reportOpen) {
+          setReportOpen(false);
+          return;
+        }
         onClose();
         return;
       }
@@ -269,7 +273,7 @@ export function ModelDetailModal({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, reportOpen]);
 
   useEffect(() => {
     if (model.visibility !== 'public') return;
@@ -446,36 +450,6 @@ export function ModelDetailModal({
     </div>
   );
 
-  const reportBlock =
-    canReport && reading ? (
-      <div className="md-report">
-        {reported ? (
-          <span className="md-report-done">Reported — thanks, we&apos;ll take a look</span>
-        ) : !reportOpen ? (
-          <button
-            type="button"
-            className="md-report-link"
-            onClick={() => setReportOpen(true)}
-          >
-            Report this model
-          </button>
-        ) : (
-          <ReportDialog
-            open
-            inline
-            onClose={() => setReportOpen(false)}
-            targetType="catalog_model"
-            targetId={model.kind}
-            targetLabel={model.label}
-            onSubmitted={() => {
-              setReported(true);
-              setReportOpen(false);
-            }}
-          />
-        )}
-      </div>
-    ) : null;
-
   const editBlock =
     editing && isOwner ? (
       <div className="md-edit">
@@ -646,8 +620,6 @@ export function ModelDetailModal({
           </div>
         </div>
       </div>
-
-      {reportBlock}
     </>
   ) : (
     editBlock
@@ -818,15 +790,28 @@ export function ModelDetailModal({
                 {agoLabel ? <span className="md-ago">{agoLabel}</span> : null}
               </div>
             </div>
-            <button
-              ref={closeRef}
-              type="button"
-              className="md-close"
-              onClick={onClose}
-              aria-label="Close"
-            >
-              <CloseIcon />
-            </button>
+            <div className="md-head-actions">
+              {canReport && reading ? (
+                <button
+                  type="button"
+                  className="md-close md-head-report"
+                  onClick={() => setReportOpen(true)}
+                  disabled={reported}
+                  aria-label={reported ? 'Already reported' : 'Report this model'}
+                >
+                  Report
+                </button>
+              ) : null}
+              <button
+                ref={closeRef}
+                type="button"
+                className="md-close"
+                onClick={onClose}
+                aria-label="Close"
+              >
+                <CloseIcon />
+              </button>
+            </div>
           </header>
 
           {statsStrip}
@@ -909,5 +894,22 @@ export function ModelDetailModal({
     </div>
   );
 
-  return createPortal(modal, document.body);
+  return (
+    <>
+      {createPortal(modal, document.body)}
+      {canReport ? (
+        <ReportDialog
+          open={reportOpen}
+          onClose={() => setReportOpen(false)}
+          targetType="catalog_model"
+          targetId={model.kind}
+          targetLabel={model.label}
+          onSubmitted={() => {
+            setReported(true);
+            setReportOpen(false);
+          }}
+        />
+      ) : null}
+    </>
+  );
 }

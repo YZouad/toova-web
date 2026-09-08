@@ -6,11 +6,12 @@ the gap open.
 
 ## 1. Monitored safety inbox
 
-- Create and monitor **`safety@toova.net`**.
+- Monitor **`ag@toova.net`** and **`yz@toova.net`** (comma-separated in
+  `SAFETY_ALERT_TO`).
 - Name a primary owner and a backup.
 - Agree a response SLA (target: triage CSAM-flagged reports within **24 hours**,
   other reports within **72 hours**).
-- Route alerts from the `report-content` Edge Function to this address
+- Route alerts from the `report-content` Edge Function to these addresses
   (`SAFETY_ALERT_TO` secret).
 
 ## 2. NCMEC Electronic Service Provider registration
@@ -28,8 +29,8 @@ Provision a Resend (or equivalent) API key and set Edge Function secrets:
 
 ```bash
 supabase secrets set RESEND_API_KEY=re_...
-supabase secrets set SAFETY_ALERT_TO=safety@toova.net
-supabase secrets set SAFETY_ALERT_FROM="Toova Safety <alerts@toova.net>"
+supabase secrets set SAFETY_ALERT_TO=ag@toova.net,yz@toova.net
+supabase secrets set SAFETY_ALERT_FROM="Toova Safety <ag@toova.net>"
 ```
 
 Until `RESEND_API_KEY` is set, `report-content` still inserts the report and
