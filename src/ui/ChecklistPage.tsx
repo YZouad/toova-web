@@ -64,6 +64,8 @@ export function ChecklistPage({
     setMoveInBudget,
     getResolution,
     setResolution,
+    getOwnedProduct,
+    markCategoryAsOwned,
     purchaseCartLines,
     removeFromList,
     placedCategoryIds,
@@ -331,10 +333,23 @@ export function ChecklistPage({
                 )
               : undefined
           }
-          onSetResolution={
+          onMarkOwned={
             openCategoryId && !manageMode
-              ? (resolution) => void setResolution(openCategoryId, resolution)
+              ? (input) => void markCategoryAsOwned({ categoryId: openCategoryId, ...input })
               : undefined
+          }
+          onSkip={
+            openCategoryId && !manageMode
+              ? () => void setResolution(openCategoryId, 'skip')
+              : undefined
+          }
+          onUndo={
+            openCategoryId && !manageMode
+              ? () => void setResolution(openCategoryId, null)
+              : undefined
+          }
+          ownedProduct={
+            openCategoryId ? getOwnedProduct(openCategoryId) ?? null : null
           }
           onClose={() => {
             setOpenCategoryId(null);

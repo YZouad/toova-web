@@ -146,7 +146,7 @@ export function MobileChecklistSheet({
   const order = useStore((s) => s.order);
   const select = useStore((s) => s.select);
   const removeItem = useStore((s) => s.removeItem);
-  const { categories, categoriesById, list, addToList, removeFromList, getResolution, setResolution, budgetSummary, setMoveInBudget, purchaseCartLines } = useShoppingCatalogContext();
+  const { categories, categoriesById, list, addToList, removeFromList, getResolution, setResolution, getOwnedProduct, markCategoryAsOwned, budgetSummary, setMoveInBudget, purchaseCartLines } = useShoppingCatalogContext();
   const { user } = useAuth();
   const canDownloadGlb = !!user?.id;
 
@@ -330,7 +330,11 @@ export function MobileChecklistSheet({
         <div className="dgm-checklist-detail-toolbar">
           <ChecklistResolutionActions
             status={activeLine.status}
-            onHave={() => void setResolution(activeLine.categoryId, 'have')}
+            categoryName={activeLine.name}
+            ownedProduct={getOwnedProduct(activeLine.categoryId) ?? null}
+            onMarkOwned={(input) =>
+              void markCategoryAsOwned({ categoryId: activeLine.categoryId, ...input })
+            }
             onSkip={() => void setResolution(activeLine.categoryId, 'skip')}
             onUndo={() => void setResolution(activeLine.categoryId, null)}
             className="dgm-checklist-resolution"

@@ -6,8 +6,9 @@ import type {
   ShoppingListEntry,
 } from './dormChecklist';
 import { getProductDrawKind, itemMatchesPlaceCatalogKind } from './dormChecklist';
+import { isOwnedChecklistProductId } from './ownedChecklistItems';
 
-export type PurchaseCartSource = 'list' | 'room' | 'both';
+export type PurchaseCartSource = 'list' | 'room' | 'both' | 'owned';
 
 export interface PurchaseCartLine {
   productId: string;
@@ -54,11 +55,13 @@ export function productForRoomItem(
 }
 
 function isCategoryExcludedFromPurchase(
-  categoryId: string,
+  product: CuratedProduct,
   getResolution: (categoryId: string) => CategoryResolution | undefined,
 ): boolean {
-  const resolution = getResolution(categoryId);
-  return resolution === 'have' || resolution === 'skip';
+  const resolution = getResolution(product.categoryId);
+  if (resolution === 'skip') return true;
+  if (resolution === 'have' && !isOwnedChecklistProductId(product.id)) return true;
+  return false;
 }
 
 /** Items to purchase: shopping list entries plus placed room picks (deduped by product). */
@@ -76,12 +79,12 @@ export function buildPurchaseCartLines(input: {
   for (const entry of list) {
     const product = productsById[entry.productId];
     if (!product) continue;
-    if (isCategoryExcludedFromPurchase(product.categoryId, getResolution)) continue;
+    if (isCategoryExcludedFromPurchase(product, getResolution)) continue;
     byProductId.set(product.id, {
       productId: product.id,
       product,
       quantity: entry.quantity,
-      source: 'list',
+      source: isOwnedChecklistProductId(product.id) ? 'owned' : 'list',
       reviewDone: entry.reviewDone,
       approximate: false,
     });
@@ -93,11 +96,11 @@ export function buildPurchaseCartLines(input: {
     const resolved = productForRoomItem(item, categories, productsById);
     if (!resolved) continue;
     const { product, approximate } = resolved;
-    if (isCategoryExcludedFromPurchase(product.categoryId, getResolution)) continue;
+    if (isCategoryExcludedFromPurchase(product, getResolution)) continue;
 
     const existing = byProductId.get(product.id);
     if (existing) {
-      existing.source = 'both';
+      existing.source = existing.source === 'owned' ? 'owned' : 'both';
       existing.quantity = Math.max(existing.quantity, 1);
       existing.approximate = existing.approximate && approximate;
     } else {

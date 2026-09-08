@@ -85,7 +85,7 @@ describe('local room checklist products', () => {
     expect(findLocalProductByCatalogKind('custom-lamp', ROOM_B)).toBeNull();
   });
 
-  it('merges local products into a Your models category', () => {
+  it('merges local products into a Your models group with per-model rows', () => {
     const product = createLocalChecklistProduct({
       name: 'Desk',
       affiliateUrl: 'https://www.amazon.com/dp/B001',
@@ -108,10 +108,14 @@ describe('local room checklist products', () => {
       ],
       [product],
     );
-    expect(merged).toHaveLength(2);
-    const local = merged.find((c) => c.id === LOCAL_CHECKLIST_CATEGORY_ID);
-    expect(local?.name).toBe('Your models');
-    expect(local?.products).toEqual([product]);
+    expect(merged).toHaveLength(3);
+    const parent = merged.find((c) => c.id === LOCAL_CHECKLIST_CATEGORY_ID);
+    expect(parent?.name).toBe('Your models');
+    expect(parent?.products).toEqual([]);
+    const child = merged.find((c) => c.id === product.id);
+    expect(child?.name).toBe('Desk');
+    expect(child?.parentId).toBe(LOCAL_CHECKLIST_CATEGORY_ID);
+    expect(child?.products).toEqual([{ ...product, categoryId: product.id }]);
   });
 
   it('keeps local To Buy rows when a remote list overwrites', () => {

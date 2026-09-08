@@ -13,7 +13,7 @@ import {
   type CuratedProduct,
   type ShoppingListEntry,
 } from './dormChecklist';
-import { isLocalChecklistProductId } from './localRoomChecklist';
+import { isRoomLocalProductId } from './ownedChecklistItems';
 
 function mapCategory(row: Record<string, unknown>): ChecklistCategory {
   const imagePath =
@@ -447,7 +447,7 @@ export async function mergeLocalShoppingStateToAccount(
 
   const byProduct = new Map(remoteList.map((e) => [e.productId, e]));
   for (const entry of localList) {
-    if (isLocalChecklistProductId(entry.productId)) {
+    if (isRoomLocalProductId(entry.productId)) {
       byProduct.set(entry.productId, entry);
       continue;
     }

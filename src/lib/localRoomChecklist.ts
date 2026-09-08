@@ -6,6 +6,7 @@ import {
   type CuratedProduct,
   type ShoppingListEntry,
 } from './dormChecklist';
+import { isRoomLocalProductId } from './ownedChecklistItems';
 
 export const LOCAL_CHECKLIST_PRODUCTS_KEY = 'toova-local-checklist-products';
 export const LOCAL_CHECKLIST_CATEGORY_ID = 'local-your-models';
@@ -89,7 +90,7 @@ function parseLocalProduct(row: unknown): CuratedProduct | null {
       : Number(o.priceCents);
   return {
     id: o.id,
-    categoryId: LOCAL_CHECKLIST_CATEGORY_ID,
+    categoryId: o.id,
     slug: typeof o.slug === 'string' ? o.slug : o.id,
     name: o.name.trim(),
     description: typeof o.description === 'string' ? o.description : '',
@@ -155,7 +156,7 @@ export function createLocalChecklistProduct(input: {
   const id = `${LOCAL_CHECKLIST_PRODUCT_PREFIX}${crypto.randomUUID()}`;
   return {
     id,
-    categoryId: LOCAL_CHECKLIST_CATEGORY_ID,
+    categoryId: id,
     slug: id,
     name: input.name.trim(),
     description: input.description?.trim() ?? '',
@@ -202,14 +203,25 @@ export function findLocalProductByCatalogKind(
   );
 }
 
+function stripLocalCategories(
+  categories: ChecklistCategoryWithProducts[],
+): ChecklistCategoryWithProducts[] {
+  return categories.filter(
+    (c) =>
+      c.id !== LOCAL_CHECKLIST_CATEGORY_ID &&
+      c.parentId !== LOCAL_CHECKLIST_CATEGORY_ID &&
+      !isLocalChecklistProductId(c.id),
+  );
+}
+
 export function mergeLocalProductsIntoCategories(
   categories: ChecklistCategoryWithProducts[],
   localProducts: CuratedProduct[],
 ): ChecklistCategoryWithProducts[] {
-  const withoutLocal = categories.filter((c) => c.id !== LOCAL_CHECKLIST_CATEGORY_ID);
+  const withoutLocal = stripLocalCategories(categories);
   if (localProducts.length === 0) return withoutLocal;
   const cover = localProducts.find((p) => p.imageUrl)?.imageUrl ?? null;
-  const localCategory: ChecklistCategoryWithProducts = {
+  const parentCategory: ChecklistCategoryWithProducts = {
     id: LOCAL_CHECKLIST_CATEGORY_ID,
     slug: LOCAL_CHECKLIST_CATEGORY_SLUG,
     name: 'Your models',
@@ -218,9 +230,23 @@ export function mergeLocalProductsIntoCategories(
     parentId: null,
     imagePath: null,
     imageUrl: cover,
-    products: localProducts,
+    products: [],
   };
-  return [...withoutLocal, localCategory];
+  const childCategories = localProducts.map((product) => {
+    const normalized = { ...product, categoryId: product.id };
+    return {
+      id: product.id,
+      slug: product.slug,
+      name: product.name,
+      sortOrder: product.sortOrder,
+      published: true,
+      parentId: LOCAL_CHECKLIST_CATEGORY_ID,
+      imagePath: null,
+      imageUrl: product.imageUrl,
+      products: [normalized],
+    } satisfies ChecklistCategoryWithProducts;
+  });
+  return [...withoutLocal, parentCategory, ...childCategories];
 }
 
 /** Keep local-only To Buy rows when a remote shopping list overwrites storage. */
@@ -230,7 +256,7 @@ export function keepLocalShoppingListEntries(
 ): ShoppingListEntry[] {
   const remoteIds = new Set(remoteList.map((e) => e.productId));
   const extras = localList.filter(
-    (e) => isLocalChecklistProductId(e.productId) && !remoteIds.has(e.productId),
+    (e) => isRoomLocalProductId(e.productId) && !remoteIds.has(e.productId),
   );
   return extras.length ? [...remoteList, ...extras] : remoteList;
 }
