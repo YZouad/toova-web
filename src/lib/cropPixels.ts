@@ -1,5 +1,10 @@
 import type { PixelBounds } from './maskContour';
 
+export interface NaturalPoint {
+  x: number;
+  y: number;
+}
+
 export interface ImageLayout {
   /** Full element box — react-image-crop coordinates. */
   elementWidth: number;
@@ -55,6 +60,105 @@ export function imageLayoutFromHtmlImage(img: HTMLImageElement): ImageLayout | n
     return null;
   }
   return imageLayoutFromElement(rect.width, rect.height, img.naturalWidth, img.naturalHeight);
+}
+
+function naturalSizeFromElement(
+  element: HTMLCanvasElement | HTMLImageElement,
+): { width: number; height: number } | null {
+  if (element instanceof HTMLCanvasElement) {
+    if (element.width <= 0 || element.height <= 0) return null;
+    return { width: element.width, height: element.height };
+  }
+  if (!element.naturalWidth || !element.naturalHeight) return null;
+  return { width: element.naturalWidth, height: element.naturalHeight };
+}
+
+/** Map viewport coords + element box to natural pixels (testable without DOM). */
+export function clientPointToNaturalPixels(
+  clientX: number,
+  clientY: number,
+  rect: { left: number; top: number; width: number; height: number },
+  naturalWidth: number,
+  naturalHeight: number,
+): NaturalPoint | null {
+  if (rect.width <= 0 || rect.height <= 0 || naturalWidth <= 0 || naturalHeight <= 0) {
+    return null;
+  }
+
+  const layout = imageLayoutFromElement(rect.width, rect.height, naturalWidth, naturalHeight);
+  const displayX = clientX - rect.left;
+  const displayY = clientY - rect.top;
+
+  if (
+    displayX < layout.offsetX ||
+    displayY < layout.offsetY ||
+    displayX > layout.offsetX + layout.contentWidth ||
+    displayY > layout.offsetY + layout.contentHeight
+  ) {
+    return null;
+  }
+
+  const scaleX = layout.naturalWidth / Math.max(1, layout.contentWidth);
+  const scaleY = layout.naturalHeight / Math.max(1, layout.contentHeight);
+  const x = (displayX - layout.offsetX) * scaleX;
+  const y = (displayY - layout.offsetY) * scaleY;
+
+  if (x < 0 || y < 0 || x >= layout.naturalWidth || y >= layout.naturalHeight) return null;
+  return { x, y };
+}
+
+/**
+ * Map a viewport pointer position to natural image pixels, accounting for
+ * object-fit: contain letterboxing on the element.
+ */
+export function pointerToNaturalPixels(
+  clientX: number,
+  clientY: number,
+  element: HTMLCanvasElement | HTMLImageElement,
+): NaturalPoint | null {
+  const rect = element.getBoundingClientRect();
+  const natural = naturalSizeFromElement(element);
+  if (!natural) return null;
+  return clientPointToNaturalPixels(
+    clientX,
+    clientY,
+    rect,
+    natural.width,
+    natural.height,
+  );
+}
+
+/** Convert a display-space point (element box) to natural image pixels. */
+export function displayPointToNatural(
+  point: { x: number; y: number },
+  layout: ImageLayout,
+): NaturalPoint {
+  const scaleX = layout.naturalWidth / Math.max(1, layout.contentWidth);
+  const scaleY = layout.naturalHeight / Math.max(1, layout.contentHeight);
+  return {
+    x: (point.x - layout.offsetX) * scaleX,
+    y: (point.y - layout.offsetY) * scaleY,
+  };
+}
+
+/** Convert natural image pixels to display-space coordinates. */
+export function naturalPointToDisplay(
+  point: NaturalPoint,
+  layout: ImageLayout,
+): { x: number; y: number } {
+  const scaleX = layout.contentWidth / Math.max(1, layout.naturalWidth);
+  const scaleY = layout.contentHeight / Math.max(1, layout.naturalHeight);
+  return {
+    x: layout.offsetX + point.x * scaleX,
+    y: layout.offsetY + point.y * scaleY,
+  };
+}
+
+export function naturalPointsToDisplay(
+  points: NaturalPoint[],
+  layout: ImageLayout,
+): { x: number; y: number }[] {
+  return points.map((point) => naturalPointToDisplay(point, layout));
 }
 
 /**

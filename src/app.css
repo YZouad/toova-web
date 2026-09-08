@@ -3697,6 +3697,121 @@ button.landing-nav-brand { cursor: pointer; }
   height: auto;
 }
 
+.photo-prep__crop-mode {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  margin-bottom: 10px;
+}
+.photo-prep__crop-mode-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+.photo-prep__crop-mode-btn.is-active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.photo-prep__crop-mode-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.photo-prep__polygon-crop {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.photo-prep__polygon-crop-stage {
+  position: relative;
+  width: 100%;
+  max-height: 360px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+.photo-prep__polygon-crop-frame {
+  position: relative;
+  display: inline-block;
+  line-height: 0;
+  max-width: 100%;
+  touch-action: none;
+  cursor: crosshair;
+}
+.photo-prep__polygon-crop-frame--move {
+  cursor: grab;
+}
+.photo-prep__polygon-crop-frame--move.photo-prep__polygon-crop-frame--dragging {
+  cursor: grabbing;
+}
+.photo-prep__polygon-crop-img {
+  display: block;
+  max-width: 100%;
+  max-height: 360px;
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  pointer-events: none;
+  user-select: none;
+}
+.photo-prep__polygon-crop-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+.photo-prep__polygon-crop-mask {
+  fill: rgba(0, 0, 0, 0.45);
+}
+.photo-prep__polygon-crop-line {
+  fill: none;
+  stroke: #fff;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+}
+.photo-prep__polygon-crop-vertex {
+  fill: #fff;
+  stroke: #111;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+.photo-prep__polygon-crop-vertex--move {
+  fill: #fff;
+  stroke: #2563eb;
+  stroke-width: 2.5;
+}
+.photo-prep__polygon-crop-vertex.is-active {
+  fill: #2563eb;
+  stroke: #fff;
+}
+.photo-prep__polygon-crop-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+.photo-prep__polygon-crop-tools .photo-prep__crop-mode {
+  margin-bottom: 0;
+}
+.photo-prep__polygon-crop-hint {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
 .photo-prep__mask-editor { display: flex; flex-direction: column; gap: 10px; }
 .photo-prep__mask-tools {
   display: flex;
@@ -3889,6 +4004,8 @@ button.landing-nav-brand { cursor: pointer; }
   .photo-prep__free-crop,
   .photo-prep__free-crop .ReactCrop,
   .photo-prep__free-crop-img { max-height: 260px; }
+  .photo-prep__polygon-crop-stage,
+  .photo-prep__polygon-crop-img { max-height: 260px; }
   .photo-prep__frame { max-height: 260px; }
   .photo-prep__frame img { max-height: 240px; }
   .photo-prep__mask-canvas { max-height: 260px; }

@@ -12,6 +12,7 @@ import {
   RgbaUndoStack,
   type BrushMode,
 } from '../lib/maskBrush';
+import { pointerToNaturalPixels } from '../lib/cropPixels';
 import { debounce, drawRgba, ensureCanvasSize, rafThrottle } from '../lib/photoBrushCanvas';
 import { loadRgbaFromBlob, rgbaToCutoutBlob } from '../lib/preparePhotoForTrellis';
 import { DEFAULT_PAINT_COLOR, PhotoBrushTools } from './PhotoBrushTools';
@@ -25,19 +26,6 @@ export interface PhotoSourcePainterProps {
 
 export interface PhotoSourcePainterHandle {
   exportNow: () => Promise<void>;
-}
-
-function pointerToImage(
-  clientX: number,
-  clientY: number,
-  canvas: HTMLCanvasElement,
-): { x: number; y: number } | null {
-  const rect = canvas.getBoundingClientRect();
-  if (rect.width <= 0 || rect.height <= 0) return null;
-  const x = ((clientX - rect.left) / rect.width) * canvas.width;
-  const y = ((clientY - rect.top) / rect.height) * canvas.height;
-  if (x < 0 || y < 0 || x >= canvas.width || y >= canvas.height) return null;
-  return { x, y };
 }
 
 /**
@@ -180,7 +168,7 @@ export const PhotoSourcePainter = forwardRef<PhotoSourcePainterHandle, PhotoSour
       const canvas = canvasRef.current;
       if (!canvas) return;
       event.currentTarget.setPointerCapture(event.pointerId);
-      const point = pointerToImage(event.clientX, event.clientY, canvas);
+      const point = pointerToNaturalPixels(event.clientX, event.clientY, canvas);
       if (!point) return;
       beginStroke(point);
     };
@@ -189,7 +177,7 @@ export const PhotoSourcePainter = forwardRef<PhotoSourcePainterHandle, PhotoSour
       if (!paintingRef.current || disabled || loading) return;
       const canvas = canvasRef.current;
       if (!canvas) return;
-      const point = pointerToImage(event.clientX, event.clientY, canvas);
+      const point = pointerToNaturalPixels(event.clientX, event.clientY, canvas);
       if (!point) return;
       continueStroke(point);
     };

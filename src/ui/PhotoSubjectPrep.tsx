@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { applyPolygonCrop } from '../lib/cropPolygon';
+import type { NaturalPoint } from '../lib/cropPixels';
 import {
   buildPreparedFile,
   cropRgbaBlob,
@@ -10,6 +12,10 @@ import {
 } from '../lib/preparePhotoForTrellis';
 import { PhotoFreeCrop, type CropPixels, type PhotoFreeCropHandle } from './PhotoFreeCrop';
 import { PhotoMaskEditor, type PhotoMaskEditorHandle } from './PhotoMaskEditor';
+import {
+  PhotoPolygonCrop,
+  type PhotoPolygonCropHandle,
+} from './PhotoPolygonCrop';
 import { PhotoPreparedPreview } from './PhotoPreparedPreview';
 import { PhotoSourcePainter, type PhotoSourcePainterHandle } from './PhotoSourcePainter';
 
@@ -27,6 +33,7 @@ export interface PhotoSubjectPrepProps {
 type Stage = 'workspace' | 'working' | 'confirm';
 type ActiveTool = 'crop' | 'prePaint' | 'postBrush' | null;
 type CropTarget = 'source' | 'cutout';
+type CropMode = 'rect' | 'polygon';
 
 /**
  * Flexible photo prep workspace: crop, paint, isolate, and brush in any order
@@ -40,11 +47,14 @@ export function PhotoSubjectPrep({
   const [stage, setStage] = useState<Stage>('workspace');
   const [activeTool, setActiveTool] = useState<ActiveTool>(null);
   const [cropTarget, setCropTarget] = useState<CropTarget>('source');
+  const [cropMode, setCropMode] = useState<CropMode>('rect');
   const [sourceCropApplied, setSourceCropApplied] = useState(false);
 
   const [sourceUrl, setSourceUrl] = useState<string | null>(null);
   const [cropRegion, setCropRegion] = useState<CropPixels | null>(null);
   const [cutoutCropRegion, setCutoutCropRegion] = useState<CropPixels | null>(null);
+  const [polygonRegion, setPolygonRegion] = useState<NaturalPoint[] | null>(null);
+  const [cutoutPolygonRegion, setCutoutPolygonRegion] = useState<NaturalPoint[] | null>(null);
   const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
   const [sourceEditedBlob, setSourceEditedBlob] = useState<Blob | null>(null);
   const [isolation, setIsolation] = useState<SubjectIsolation | null>(null);
@@ -60,6 +70,7 @@ export function PhotoSubjectPrep({
   const [brushSessionCutout, setBrushSessionCutout] = useState<Blob | null>(null);
 
   const cropRef = useRef<PhotoFreeCropHandle>(null);
+  const polygonCropRef = useRef<PhotoPolygonCropHandle>(null);
   const maskEditorRef = useRef<PhotoMaskEditorHandle>(null);
   const sourcePainterRef = useRef<PhotoSourcePainterHandle>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -70,9 +81,12 @@ export function PhotoSubjectPrep({
     setStage('workspace');
     setActiveTool(null);
     setCropTarget('source');
+    setCropMode('rect');
     setSourceCropApplied(false);
     setCropRegion(null);
     setCutoutCropRegion(null);
+    setPolygonRegion(null);
+    setCutoutPolygonRegion(null);
     setCroppedBlob(null);
     setSourceEditedBlob(null);
     setIsolation(null);
@@ -139,28 +153,87 @@ export function PhotoSubjectPrep({
     [cropTarget, sourceCropApplied],
   );
 
+  const handlePolygonChange = useCallback(
+    (points: NaturalPoint[] | null) => {
+      if (cropTarget === 'source') {
+        setPolygonRegion(points);
+        if (sourceCropApplied) setSourceCropApplied(false);
+      } else {
+        setCutoutPolygonRegion(points);
+      }
+    },
+    [cropTarget, sourceCropApplied],
+  );
+
+  const activePolygonRegion = cropTarget === 'source' ? polygonRegion : cutoutPolygonRegion;
+  const canApplyCrop =
+    cropMode === 'rect'
+      ? Boolean(cropTarget === 'source' ? cropRegion : cutoutCropRegion)
+      : (activePolygonRegion?.length ?? 0) >= 3;
+
   const handleApplyCrop = async () => {
     setError(null);
-    const pixels =
-      cropRef.current?.getCropPixels() ??
-      (cropTarget === 'source' ? cropRegion : cutoutCropRegion);
-    if (!pixels) return;
+
+    if (cropMode === 'rect') {
+      const pixels =
+        cropRef.current?.getCropPixels() ??
+        (cropTarget === 'source' ? cropRegion : cutoutCropRegion);
+      if (!pixels) return;
+
+      setStatus('Applying crop…');
+      try {
+        if (cropTarget === 'source') {
+          const cropped = await cropSourceImage(imageFile, pixels);
+          setCropRegion(pixels);
+          setPolygonRegion(null);
+          setCroppedBlob(cropped);
+          setSourceEditedBlob(null);
+          setIsolation(null);
+          setEditedCutout(null);
+          setCutoutCroppedBlob(null);
+          setCutoutPolygonRegion(null);
+          setSourceCropApplied(true);
+          setActiveTool(null);
+        } else if (activeCutout) {
+          const cropped = await cropRgbaBlob(activeCutout, pixels);
+          setCutoutCropRegion(pixels);
+          setCutoutPolygonRegion(null);
+          setCutoutCroppedBlob(cropped);
+          setActiveTool(null);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not apply that crop.');
+      } finally {
+        setStatus(null);
+      }
+      return;
+    }
+
+    const points =
+      polygonCropRef.current?.getPolygonPoints() ??
+      (cropTarget === 'source' ? polygonRegion : cutoutPolygonRegion);
+    if (!points || points.length < 3) return;
 
     setStatus('Applying crop…');
     try {
+      const outside = cropTarget === 'source' ? 'white' : 'transparent';
       if (cropTarget === 'source') {
-        const cropped = await cropSourceImage(imageFile, pixels);
-        setCropRegion(pixels);
+        const cropped = await applyPolygonCrop(imageFile, points, { outside });
+        setPolygonRegion(points);
+        setCropRegion(null);
         setCroppedBlob(cropped);
         setSourceEditedBlob(null);
         setIsolation(null);
         setEditedCutout(null);
         setCutoutCroppedBlob(null);
+        setCutoutPolygonRegion(null);
+        setCutoutCropRegion(null);
         setSourceCropApplied(true);
         setActiveTool(null);
       } else if (activeCutout) {
-        const cropped = await cropRgbaBlob(activeCutout, pixels);
-        setCutoutCropRegion(pixels);
+        const cropped = await applyPolygonCrop(activeCutout, points, { outside });
+        setCutoutPolygonRegion(points);
+        setCutoutCropRegion(null);
         setCutoutCroppedBlob(cropped);
         setActiveTool(null);
       }
@@ -204,6 +277,9 @@ export function PhotoSubjectPrep({
   const resolveIsolateInput = async (): Promise<Blob> => {
     if (sourceEditedBlob) return sourceEditedBlob;
     if (croppedBlob) return croppedBlob;
+    if (polygonRegion && polygonRegion.length >= 3) {
+      return applyPolygonCrop(imageFile, polygonRegion, { outside: 'white' });
+    }
     if (cropRegion) return cropSourceImage(imageFile, cropRegion);
     return cropSourceImage(imageFile, null);
   };
@@ -363,13 +439,48 @@ export function PhotoSubjectPrep({
       </div>
 
       {activeTool === 'crop' && cropOverlayUrl ? (
-        <PhotoFreeCrop
-          ref={cropRef}
-          imageUrl={cropOverlayUrl}
-          disabled={busy}
-          initialCrop={cropTarget === 'source' ? cropRegion : cutoutCropRegion}
-          onCropPixels={handleCropPixels}
-        />
+        <>
+          <div className="photo-prep__crop-mode" role="tablist" aria-label="Crop shape">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={cropMode === 'rect'}
+              className={`photo-prep__crop-mode-btn${cropMode === 'rect' ? ' is-active' : ''}`}
+              disabled={busy}
+              onClick={() => setCropMode('rect')}
+            >
+              Rectangle
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={cropMode === 'polygon'}
+              className={`photo-prep__crop-mode-btn${cropMode === 'polygon' ? ' is-active' : ''}`}
+              disabled={busy}
+              onClick={() => setCropMode('polygon')}
+            >
+              Polygon
+            </button>
+          </div>
+          {cropMode === 'rect' ? (
+            <PhotoFreeCrop
+              ref={cropRef}
+              imageUrl={cropOverlayUrl}
+              disabled={busy}
+              initialCrop={cropTarget === 'source' ? cropRegion : cutoutCropRegion}
+              onCropPixels={handleCropPixels}
+            />
+          ) : (
+            <PhotoPolygonCrop
+              key={`${cropOverlayUrl}-${cropTarget}`}
+              ref={polygonCropRef}
+              imageUrl={cropOverlayUrl}
+              disabled={busy}
+              initialPoints={cropTarget === 'source' ? polygonRegion : cutoutPolygonRegion}
+              onPolygonChange={handlePolygonChange}
+            />
+          )}
+        </>
       ) : activeTool === 'prePaint' && paintSessionSource ? (
         <PhotoSourcePainter
           ref={sourcePainterRef}
@@ -401,7 +512,7 @@ export function PhotoSubjectPrep({
           <button
             type="button"
             className="photo-prep__btn photo-prep__btn--primary"
-            disabled={busy}
+            disabled={busy || !canApplyCrop}
             onClick={() => void handleApplyCrop()}
           >
             {status ?? 'Apply crop'}

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
   displayCropToNaturalPixels,
+  clientPointToNaturalPixels,
+  displayPointToNatural,
   imageLayoutFromElement,
   naturalPixelsToDisplayCrop,
+  naturalPointToDisplay,
 } from './cropPixels';
 
 describe('displayCropToNaturalPixels', () => {
@@ -62,5 +65,43 @@ describe('imageLayoutFromElement', () => {
     expect(layout.contentHeight).toBe(400);
     expect(layout.offsetX).toBe(200);
     expect(layout.offsetY).toBe(0);
+  });
+});
+
+describe('clientPointToNaturalPixels', () => {
+  it('maps through letterboxing on the left', () => {
+    const layout = imageLayoutFromElement(600, 400, 400, 800);
+    const display = naturalPointToDisplay({ x: 0, y: 0 }, layout);
+    const point = clientPointToNaturalPixels(
+      100 + display.x,
+      50 + display.y,
+      { left: 100, top: 50, width: 600, height: 400 },
+      400,
+      800,
+    );
+    expect(point).toEqual({ x: 0, y: 0 });
+  });
+
+  it('returns null outside the visible image content', () => {
+    expect(
+      clientPointToNaturalPixels(
+        50,
+        200,
+        { left: 0, top: 0, width: 600, height: 400 },
+        400,
+        800,
+      ),
+    ).toBeNull();
+  });
+});
+
+describe('displayPointToNatural', () => {
+  it('round-trips with naturalPointToDisplay under letterboxing', () => {
+    const layout = imageLayoutFromElement(600, 400, 400, 800);
+    const natural = { x: 120, y: 240 };
+    const display = naturalPointToDisplay(natural, layout);
+    const back = displayPointToNatural(display, layout);
+    expect(back.x).toBeCloseTo(natural.x, 5);
+    expect(back.y).toBeCloseTo(natural.y, 5);
   });
 });
