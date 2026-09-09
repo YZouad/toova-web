@@ -299,7 +299,8 @@ export function ImportFlow({
       onRoute('upload');
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
-      setGenerateError(err instanceof Error ? err.message : 'Generation failed');
+      const message = err instanceof Error ? err.message : 'Generation failed';
+      setGenerateError(message);
     } finally {
       setGenerating(false);
       setGeneratePhase('idle');

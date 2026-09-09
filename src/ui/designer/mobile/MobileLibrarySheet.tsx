@@ -76,7 +76,7 @@ export function MobileLibrarySheet({
 
   const place = useCallback(
     (model: CatalogModel) => {
-      placeFromCatalog(model, user?.id);
+      void placeFromCatalog(model, user?.id);
     },
     [user?.id],
   );
