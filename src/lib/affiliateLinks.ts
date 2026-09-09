@@ -77,6 +77,14 @@ export function resolveAffiliateForItem(
     return [offerFromProduct(productsById[item.curatedProductId])];
   }
 
+  const catalogKind = item.catalogKind?.trim();
+  if (catalogKind && productsById) {
+    const localMatch = Object.values(productsById).find(
+      (p) => p.placeCatalogKind === catalogKind && p.affiliateUrl.trim(),
+    );
+    if (localMatch) return [offerFromProduct(localMatch)];
+  }
+
   const kindTerm = BUILTIN_SEARCH_TERMS[item.kind] ?? 'dorm essentials';
   const label = sanitizeLabel(item.label);
   const query = label ? `${label} ${kindTerm}` : kindTerm;

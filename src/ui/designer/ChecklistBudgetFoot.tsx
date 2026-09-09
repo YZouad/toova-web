@@ -1,5 +1,7 @@
-import { useState } from 'react';
-import type { ChecklistBudgetSummary } from '../../lib/dormChecklist';
+import { useEffect, useState } from 'react';
+import type { ChecklistBudgetSummary, CuratedProduct } from '../../lib/dormChecklist';
+import { formatPriceCents } from '../../lib/dormChecklist';
+import { parseOwnedPurchaseDetails } from '../../lib/ownedChecklistItems';
 
 export interface ChecklistBudgetFootProps {
   budget: ChecklistBudgetSummary;
@@ -117,7 +119,13 @@ export function ChecklistBudgetFoot({
 
 export interface ChecklistResolutionActionsProps {
   status: import('../../lib/dormChecklist').ChecklistLineStatus;
-  onHave: () => void;
+  categoryName: string;
+  ownedProduct?: CuratedProduct | null;
+  onMarkOwned: (input: {
+    name: string;
+    affiliateUrl: string;
+    priceCents: number;
+  }) => void | Promise<void>;
   onSkip: () => void;
   onUndo: () => void;
   className?: string;
@@ -125,20 +133,108 @@ export interface ChecklistResolutionActionsProps {
 
 export function ChecklistResolutionActions({
   status,
-  onHave,
+  categoryName,
+  ownedProduct,
+  onMarkOwned,
   onSkip,
   onUndo,
   className = '',
 }: ChecklistResolutionActionsProps) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(categoryName);
+  const [link, setLink] = useState('');
+  const [price, setPrice] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (!editing) {
+      setName(categoryName);
+      setLink(ownedProduct?.affiliateUrl ?? '');
+      setPrice(
+        ownedProduct?.priceCents != null
+          ? String((ownedProduct.priceCents / 100).toFixed(2)).replace(/\.00$/, '')
+          : '',
+      );
+      setError(null);
+    }
+  }, [categoryName, ownedProduct, editing]);
+
   if (status === 'placed') return null;
 
-  if (status === 'have') {
+  const openEditor = () => {
+    setName(categoryName);
+    setLink(ownedProduct?.affiliateUrl ?? '');
+    setPrice(
+      ownedProduct?.priceCents != null
+        ? String((ownedProduct.priceCents / 100).toFixed(2)).replace(/\.00$/, '')
+        : '',
+    );
+    setError(null);
+    setEditing(true);
+  };
+
+  const cancelEditor = () => {
+    setEditing(false);
+    setError(null);
+  };
+
+  const submitOwned = async () => {
+    const parsed = parseOwnedPurchaseDetails(name, link, price);
+    if (!parsed.ok) {
+      setError(parsed.error);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onMarkOwned({
+        name: parsed.name,
+        affiliateUrl: parsed.affiliateUrl,
+        priceCents: parsed.priceCents,
+      });
+      setEditing(false);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (status === 'have' && ownedProduct && !editing) {
+    const priceLabel = formatPriceCents(ownedProduct.priceCents, ownedProduct.currency);
     return (
       <div className={`checklist-resolution ${className}`.trim()}>
-        <span className="checklist-resolution__label">Marked as already owned</span>
-        <button type="button" className="checklist-resolution__undo" onClick={onUndo}>
-          Undo
-        </button>
+        <span className="checklist-resolution__label">
+          {ownedProduct.name}
+          {priceLabel ? ` · ${priceLabel}` : ''}
+        </span>
+        <div className="checklist-resolution__actions">
+          <button type="button" className="checklist-resolution__btn" onClick={openEditor}>
+            Edit
+          </button>
+          <button type="button" className="checklist-resolution__undo" onClick={onUndo}>
+            Undo
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (status === 'have' && !ownedProduct && !editing) {
+    return (
+      <div className={`checklist-resolution ${className}`.trim()}>
+        <span className="checklist-resolution__label">
+          Marked as already owned — add a price for your budget
+        </span>
+        <div className="checklist-resolution__actions">
+          <button type="button" className="checklist-resolution__btn" onClick={openEditor}>
+            Add details
+          </button>
+          <button type="button" className="checklist-resolution__undo" onClick={onUndo}>
+            Undo
+          </button>
+        </div>
       </div>
     );
   }
@@ -154,14 +250,84 @@ export function ChecklistResolutionActions({
     );
   }
 
-  return (
-    <div className={`checklist-resolution ${className}`.trim()}>
-      <button type="button" className="checklist-resolution__btn" onClick={onHave}>
-        I already have
-      </button>
-      <button type="button" className="checklist-resolution__btn" onClick={onSkip}>
-        Don&apos;t need
-      </button>
-    </div>
-  );
+  if (editing || status === 'open') {
+    if (editing) {
+      return (
+        <div className={`checklist-resolution checklist-resolution--form ${className}`.trim()}>
+          <span className="checklist-resolution__label">What do you already have?</span>
+          <label className="checklist-resolution__field">
+            <span className="checklist-resolution__field-label">Name</span>
+            <input
+              className="checklist-resolution__input"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              disabled={saving}
+            />
+          </label>
+          <label className="checklist-resolution__field">
+            <span className="checklist-resolution__field-label">Price (USD)</span>
+            <input
+              className="checklist-resolution__input"
+              type="text"
+              inputMode="decimal"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              disabled={saving}
+              placeholder="29.99"
+            />
+          </label>
+          <label className="checklist-resolution__field">
+            <span className="checklist-resolution__field-label">
+              Link <span className="checklist-resolution__optional">optional</span>
+            </span>
+            <input
+              className="checklist-resolution__input"
+              type="url"
+              value={link}
+              onChange={(e) => setLink(e.target.value)}
+              disabled={saving}
+              placeholder="https://www.amazon.com/…"
+            />
+          </label>
+          {error ? (
+            <p className="checklist-resolution__error" role="alert">
+              {error}
+            </p>
+          ) : null}
+          <div className="checklist-resolution__actions">
+            <button
+              type="button"
+              className="checklist-resolution__btn checklist-resolution__btn--primary"
+              onClick={() => void submitOwned()}
+              disabled={saving}
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              className="checklist-resolution__btn"
+              onClick={cancelEditor}
+              disabled={saving}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className={`checklist-resolution ${className}`.trim()}>
+        <button type="button" className="checklist-resolution__btn" onClick={openEditor}>
+          I already have
+        </button>
+        <button type="button" className="checklist-resolution__btn" onClick={onSkip}>
+          Don&apos;t need
+        </button>
+      </div>
+    );
+  }
+
+  return null;
 }

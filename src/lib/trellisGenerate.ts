@@ -1,4 +1,4 @@
-import { ensureTrellisReady, TRELLIS_GENERATE_URL } from './trellisApi';
+import { ensureTrellisReady, formatTrellisError, TRELLIS_GENERATE_URL } from './trellisApi';
 import { ensureJpegForTrellis } from './webpToJpeg';
 
 function isInvalidGlbContentType(contentType: string): boolean {
@@ -35,15 +35,17 @@ export async function generateGlbFromPhoto(
     if (res.status === 503) {
       try {
         const parsed = JSON.parse(errText) as { message?: string; error?: string };
-        throw new Error(parsed.message || parsed.error || 'Trellis is not ready yet.');
+        throw new Error(
+          formatTrellisError(parsed.message || parsed.error || '', 'The model instance is not ready yet.'),
+        );
       } catch (err) {
         if (err instanceof SyntaxError) {
-          throw new Error(errText || 'Trellis is not ready yet.');
+          throw new Error(formatTrellisError(errText, 'The model instance is not ready yet.'));
         }
         throw err;
       }
     }
-    throw new Error(errText || `Generation failed (${res.status})`);
+    throw new Error(formatTrellisError(errText, `Generation failed (${res.status})`));
   }
 
   const contentType = res.headers.get('content-type') ?? '';

@@ -3,6 +3,8 @@ import type { ChecklistCategoryWithProducts, CuratedProduct } from './dormCheckl
 import { buildPurchaseCartLines, purchaseCartTotalCents } from './purchaseCart';
 import { checklistProgressCounts } from './checklistProgress';
 import type { ChecklistLineModel } from './checklistLines';
+import { createLocalChecklistProduct, mergeLocalProductsIntoCategories } from './localRoomChecklist';
+import { createOwnedChecklistProduct } from './ownedChecklistItems';
 
 const productA: CuratedProduct = {
   id: 'prod-a',
@@ -101,7 +103,7 @@ describe('buildPurchaseCartLines', () => {
     expect(lines[0]?.quantity).toBe(2);
   });
 
-  it('excludes have/skip categories', () => {
+  it('excludes bare have resolutions without owned purchase details', () => {
     const lines = buildPurchaseCartLines({
       categories,
       items: {},
@@ -111,6 +113,60 @@ describe('buildPurchaseCartLines', () => {
       getResolution: (id) => (id === 'cat-a' ? 'have' : undefined),
     });
     expect(lines).toHaveLength(0);
+  });
+
+  it('includes owned items marked as already have', () => {
+    const ownedProduct = createOwnedChecklistProduct({
+      categoryId: 'cat-a',
+      name: 'Thrifted lamp',
+      affiliateUrl: 'https://www.amazon.com/dp/B000',
+      priceCents: 2499,
+    });
+    const lines = buildPurchaseCartLines({
+      categories,
+      items: {},
+      order: [],
+      list: [{ productId: ownedProduct.id, quantity: 1, reviewDone: false }],
+      productsById: { ...productsById, [ownedProduct.id]: ownedProduct },
+      getResolution: (id) => (id === 'cat-a' ? 'have' : undefined),
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.source).toBe('owned');
+    expect(lines[0]?.product.name).toContain('Thrifted lamp');
+    expect(purchaseCartTotalCents(lines).sum).toBe(2499);
+  });
+
+  it('excludes skip resolutions', () => {
+    const lines = buildPurchaseCartLines({
+      categories,
+      items: {},
+      order: [],
+      list: [{ productId: productA.id, quantity: 1, reviewDone: false }],
+      productsById,
+      getResolution: (id) => (id === 'cat-a' ? 'skip' : undefined),
+    });
+    expect(lines).toHaveLength(0);
+  });
+
+  it('includes a local imported model that was added to To Buy', () => {
+    const localProduct = createLocalChecklistProduct({
+      name: 'Imported desk',
+      affiliateUrl: 'https://www.amazon.com/dp/B001',
+      priceCents: 8900,
+      catalogKind: 'custom-desk',
+    });
+    const localCategories = mergeLocalProductsIntoCategories([], [localProduct]);
+    const lines = buildPurchaseCartLines({
+      categories: localCategories,
+      items: {},
+      order: [],
+      list: [{ productId: localProduct.id, quantity: 1, reviewDone: false }],
+      productsById: { [localProduct.id]: { ...localProduct, categoryId: localProduct.id } },
+      getResolution: () => undefined,
+    });
+    expect(lines).toHaveLength(1);
+    expect(lines[0]?.product.name).toBe('Imported desk');
+    expect(lines[0]?.source).toBe('list');
   });
 });
 

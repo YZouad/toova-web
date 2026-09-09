@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useShoppingCatalogContext } from '../../context/ShoppingCatalogContext';
 import { useAuth } from '../../hooks/useAuth';
 import {
   CATALOG_CATEGORY_DEFS,
@@ -13,8 +14,10 @@ import {
   createChecklistProductFromCatalog,
   parsePriceDollarsToCents,
 } from '../../lib/shoppingCatalogAdmin';
-import { TRELLIS_GENERATE_URL, trellisUsesRemoteUrl } from '../../lib/trellisApi';
+import { parseImportedShopDetails } from '../../lib/localRoomChecklist';
+import { TRELLIS_GENERATE_URL, TRELLIS_STARTING_STATUS, trellisUsesRemoteUrl } from '../../lib/trellisApi';
 import { ImageFileField } from '../ImageFileField';
+import { PhotoSubjectPrep } from '../PhotoSubjectPrep';
 import { PosterImageCrop } from '../PosterImageCrop';
 import type { CatalogModel, ImportRoute } from './chromeTypes';
 import {
@@ -87,6 +90,7 @@ export function ImportFlow({
 }: ImportFlowProps) {
   const { user } = useAuth();
   const userId = user?.id ?? null;
+  const { addImportedModelToChecklist } = useShoppingCatalogContext();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [file, setFile] = useState<File | null>(null);
@@ -96,6 +100,7 @@ export function ImportFlow({
 
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
+  const [preparedFile, setPreparedFile] = useState<File | null>(null);
   const [generating, setGenerating] = useState(false);
   const [generatePhase, setGeneratePhase] = useState<GeneratePhase>('idle');
   const [generateStatus, setGenerateStatus] = useState<string | null>(null);
@@ -129,6 +134,8 @@ export function ImportFlow({
   const [checklistAffiliateUrl, setChecklistAffiliateUrl] = useState('');
   const [checklistPriceDollars, setChecklistPriceDollars] = useState('');
   const [checklistCoverFile, setChecklistCoverFile] = useState<File | null>(null);
+  const [shopUrl, setShopUrl] = useState('');
+  const [shopPriceDollars, setShopPriceDollars] = useState('');
 
   const busy = submitting || generating || decimating || creatingPoster;
 
@@ -138,6 +145,7 @@ export function ImportFlow({
     setDecimating(false);
     setDecimationError(null);
     setImageFile(null);
+    setPreparedFile(null);
     setGenerating(false);
     setGeneratePhase('idle');
     setGenerateStatus(null);
@@ -164,6 +172,8 @@ export function ImportFlow({
     setChecklistAffiliateUrl('');
     setChecklistPriceDollars('');
     setChecklistCoverFile(null);
+    setShopUrl('');
+    setShopPriceDollars('');
   };
 
   useEffect(() => {
@@ -265,18 +275,18 @@ export function ImportFlow({
   };
 
   const handleGenerate = async () => {
-    if (!userId || !imageFile || generating) return;
+    if (!userId || !preparedFile || generating) return;
     setGenerateError(null);
     generateAbortRef.current?.abort();
     const abort = new AbortController();
     generateAbortRef.current = abort;
     setElapsedSec(0);
-    setGenerateStatus('Waking Trellis…');
+    setGenerateStatus(TRELLIS_STARTING_STATUS);
     setGeneratePhase('generating');
     setGenerating(true);
     try {
       const { glbFile, jobId } = await runPhotoGenerate(
-        imageFile,
+        preparedFile,
         userId,
         abort.signal,
         (message) => {
@@ -346,6 +356,11 @@ export function ImportFlow({
       setFormError('Pick a checklist subcategory.');
       return;
     }
+    const shop = parseImportedShopDetails(shopUrl, shopPriceDollars);
+    if (!shop.ok) {
+      setFormError(shop.error);
+      return;
+    }
     setSubmitting(true);
     try {
       const model = await submitCatalogImport({
@@ -367,7 +382,7 @@ export function ImportFlow({
       });
       if (addToChecklist && isAdmin && checklistCategoryId) {
         const cover =
-          checklistCoverFile ?? imageFile ?? posterImageFile ?? null;
+          checklistCoverFile ?? preparedFile ?? imageFile ?? posterImageFile ?? null;
         await createChecklistProductFromCatalog({
           categoryId: checklistCategoryId,
           name: title.trim(),
@@ -376,6 +391,15 @@ export function ImportFlow({
           priceCents: parsePriceDollarsToCents(checklistPriceDollars),
           coverFile: cover,
           description: description.trim() || undefined,
+        });
+      }
+      if (shop.ok && !shop.empty) {
+        await addImportedModelToChecklist({
+          name: title.trim(),
+          description: description.trim() || undefined,
+          affiliateUrl: shop.details.affiliateUrl,
+          priceCents: shop.details.priceCents,
+          catalogKind: model.kind,
         });
       }
       activeJobIdRef.current = null;
@@ -413,7 +437,7 @@ export function ImportFlow({
     activeRoute === 'upload'
       ? fileReady
       : activeRoute === 'photo'
-        ? Boolean(imageFile)
+        ? Boolean(preparedFile)
         : Boolean(posterCroppedBlob);
   const nameOk = title.trim().length > 0;
   const catsOk = categories.length >= 1 && categories.length <= MAX_CATALOG_CATEGORIES;
@@ -426,22 +450,22 @@ export function ImportFlow({
           {
             done: Boolean(imageFile),
             label: 'One photo, one object',
-            note: 'jpg, png or webp. Paste works too.',
+            note: 'jpg, png or webp. Paste works too. Shot straight on works best.',
           },
           {
-            done: Boolean(imageFile),
-            label: 'Shot straight on',
-            note: 'Whole piece in frame, plain background, even light.',
+            done: Boolean(preparedFile),
+            label: 'Crop and confirm the piece',
+            note: 'We lift it off its background; you check the red outline.',
+          },
+          {
+            done: Boolean(preparedFile),
+            label: 'Review the exact image',
+            note: 'Download it first if you want to inspect what we send.',
           },
           {
             done: fileReady,
             label: 'Generation finishes',
             note: 'One to two minutes. You can leave and come back.',
-          },
-          {
-            done: false,
-            label: 'Then name, categories and size',
-            note: 'The generated model finishes on the Upload tab.',
           },
         ]
       : activeRoute === 'poster'
@@ -499,6 +523,8 @@ export function ImportFlow({
   const weHandle =
     activeRoute === 'photo'
       ? [
+          'Background removal runs on your device — the photo stays here until you send it.',
+          'The image you download is the exact file we submit.',
           'We track the job. You can close this and keep designing.',
           'Generated meshes skip polygon reduction; materials and normals are fixed instead.',
           'The result lands in Your models, private until you share it.',
@@ -552,7 +578,11 @@ export function ImportFlow({
       : activeRoute === 'photo'
         ? generating
           ? `Generating · ${elapsedSec}s`
-          : 'Generate a model, then finish details on Upload.'
+          : !imageFile
+            ? 'Choose a photo to start.'
+            : !preparedFile
+              ? 'Crop the piece and confirm the image before it is sent.'
+              : 'Nothing has been sent yet — review the image, then send it.'
         : creatingPoster
           ? 'Building poster…'
           : 'Build the poster GLB, then finish details on Upload.';
@@ -742,6 +772,39 @@ export function ImportFlow({
         <span className={`dg-toggle${listInGallery ? ' is-on' : ''}`} aria-hidden />
       </button>
 
+      <div className="dg-import-shop">
+        <label className="dg-import-field">
+          <span className="dg-import-field__label">
+            Amazon link <span className="dg-row__meta">optional</span>
+          </span>
+          <input
+            className="dg-import-input"
+            type="url"
+            value={shopUrl}
+            disabled={busy}
+            placeholder="https://www.amazon.com/… or https://amzn.to/…"
+            onChange={(e) => setShopUrl(e.target.value)}
+          />
+        </label>
+        <label className="dg-import-field">
+          <span className="dg-import-field__label">
+            Price (USD) <span className="dg-row__meta">optional</span>
+          </span>
+          <input
+            className="dg-import-input"
+            type="text"
+            inputMode="decimal"
+            value={shopPriceDollars}
+            disabled={busy}
+            placeholder="29.99"
+            onChange={(e) => setShopPriceDollars(e.target.value)}
+          />
+          <span className="dg-import-field__hint">
+            A link or price adds this piece to this room&apos;s shopping checklist.
+          </span>
+        </label>
+      </div>
+
       {isAdmin ? (
         <div className="dg-import-admin">
           <button
@@ -831,20 +894,45 @@ export function ImportFlow({
 
   const renderPhotoForm = () => (
     <div className="dg-import-form">
-      <ImageFileField
-        label="Source image"
-        file={imageFile}
-        disabled={busy}
-        onFile={setImageFile}
-      />
-      {trellisUsesRemoteUrl && !generating ? (
-        <p className="dg-import-field__hint">Uses Trellis at {TRELLIS_GENERATE_URL}</p>
+      {imageFile ? (
+        <PhotoSubjectPrep
+          imageFile={imageFile}
+          disabled={busy}
+          onPreparedChange={setPreparedFile}
+        />
+      ) : (
+        <>
+          <ImageFileField
+            label="Source image"
+            file={imageFile}
+            disabled={busy}
+            onFile={setImageFile}
+          />
+          {trellisUsesRemoteUrl && !generating ? (
+            <p className="dg-import-field__hint">Uses Trellis at {TRELLIS_GENERATE_URL}</p>
+          ) : null}
+          <div className="dg-note">
+            Next you crop to the piece and we lift it off its background. You see the exact image
+            and can download it before anything is sent for generation.
+          </div>
+        </>
+      )}
+
+      {imageFile && !generating ? (
+        <button
+          type="button"
+          className="dg-chip"
+          disabled={busy}
+          onClick={() => {
+            setImageFile(null);
+            setPreparedFile(null);
+          }}
+        >
+          Use a different photo
+        </button>
       ) : null}
+
       {generateError ? <p className="dg-import-error">{generateError}</p> : null}
-      <div className="dg-note">
-        The generated model opens on <strong>Upload a model</strong> with its size already
-        measured. Give it a name and a category and it&apos;s in your library.
-      </div>
     </div>
   );
 
@@ -994,7 +1082,7 @@ export function ImportFlow({
     activeRoute === 'photo'
       ? generating
         ? 'Generating…'
-        : 'Generate 3D'
+        : 'Send to 3D generation'
       : activeRoute === 'poster'
         ? creatingPoster
           ? 'Building…'
@@ -1005,7 +1093,7 @@ export function ImportFlow({
 
   const primaryDisabled =
     activeRoute === 'photo'
-      ? !imageFile || !userId || generating
+      ? !preparedFile || !userId || generating
       : activeRoute === 'poster'
         ? busy || !posterCroppedBlob
         : !canSave;

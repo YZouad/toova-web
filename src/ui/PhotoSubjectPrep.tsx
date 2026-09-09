@@ -1,0 +1,710 @@
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
+import { applyPolygonCrop } from '../lib/cropPolygon';
+import type { NaturalPoint } from '../lib/cropPixels';
+import {
+  buildPreparedFile,
+  cropRgbaBlob,
+  cropSourceImage,
+  isolateSubject,
+  MIN_SUBJECT_COVERAGE,
+  preparedFileName,
+  type SubjectIsolation,
+} from '../lib/preparePhotoForTrellis';
+import { PhotoFreeCrop, type CropPixels, type PhotoFreeCropHandle } from './PhotoFreeCrop';
+import { PhotoLassoCrop, type PhotoLassoCropHandle } from './PhotoLassoCrop';
+import { PhotoMaskEditor, type PhotoMaskEditorHandle } from './PhotoMaskEditor';
+import {
+  PhotoPolygonCrop,
+  type PhotoPolygonCropHandle,
+} from './PhotoPolygonCrop';
+import { PhotoPreparedPreview } from './PhotoPreparedPreview';
+import { PhotoSourcePainter, type PhotoSourcePainterHandle } from './PhotoSourcePainter';
+
+export interface PhotoSubjectPrepProps {
+  imageFile: File;
+  disabled?: boolean;
+  /**
+   * Fires with the finished image once the user confirms the isolation, and with
+   * null when they go back to make changes. This component never starts
+   * generation — the caller owns the send action.
+   */
+  onPreparedChange: (file: File | null) => void;
+}
+
+type Stage = 'workspace' | 'working' | 'confirm';
+type ActiveTool = 'crop' | 'prePaint' | 'postBrush' | null;
+type CropTarget = 'source' | 'cutout';
+type CropMode = 'rect' | 'polygon' | 'lasso';
+
+/**
+ * Flexible photo prep workspace: crop, paint, isolate, and brush in any order
+ * before confirming the exact JPEG sent to Trellis.
+ */
+export function PhotoSubjectPrep({
+  imageFile,
+  disabled = false,
+  onPreparedChange,
+}: PhotoSubjectPrepProps) {
+  const [stage, setStage] = useState<Stage>('workspace');
+  const [activeTool, setActiveTool] = useState<ActiveTool>(null);
+  const [cropTarget, setCropTarget] = useState<CropTarget>('source');
+  const [cropMode, setCropMode] = useState<CropMode>('rect');
+  const [sourceCropApplied, setSourceCropApplied] = useState(false);
+
+  const [sourceUrl, setSourceUrl] = useState<string | null>(null);
+  const [cropRegion, setCropRegion] = useState<CropPixels | null>(null);
+  const [cutoutCropRegion, setCutoutCropRegion] = useState<CropPixels | null>(null);
+  const [polygonRegion, setPolygonRegion] = useState<NaturalPoint[] | null>(null);
+  const [cutoutPolygonRegion, setCutoutPolygonRegion] = useState<NaturalPoint[] | null>(null);
+  const [lassoRegion, setLassoRegion] = useState<NaturalPoint[] | null>(null);
+  const [cutoutLassoRegion, setCutoutLassoRegion] = useState<NaturalPoint[] | null>(null);
+  const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
+  const [sourceEditedBlob, setSourceEditedBlob] = useState<Blob | null>(null);
+  const [isolation, setIsolation] = useState<SubjectIsolation | null>(null);
+  const [editedCutout, setEditedCutout] = useState<Blob | null>(null);
+  const [cutoutCroppedBlob, setCutoutCroppedBlob] = useState<Blob | null>(null);
+  const [prepared, setPrepared] = useState<File | null>(null);
+  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [showTips, setShowTips] = useState(false);
+
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [cropOverlayUrl, setCropOverlayUrl] = useState<string | null>(null);
+  const [paintSessionSource, setPaintSessionSource] = useState<Blob | null>(null);
+  const [brushSessionCutout, setBrushSessionCutout] = useState<Blob | null>(null);
+
+  const cropRef = useRef<PhotoFreeCropHandle>(null);
+  const polygonCropRef = useRef<PhotoPolygonCropHandle>(null);
+  const lassoCropRef = useRef<PhotoLassoCropHandle>(null);
+  const maskEditorRef = useRef<PhotoMaskEditorHandle>(null);
+  const sourcePainterRef = useRef<PhotoSourcePainterHandle>(null);
+  const abortRef = useRef<AbortController | null>(null);
+  const notifyRef = useRef(onPreparedChange);
+  notifyRef.current = onPreparedChange;
+
+  const resetWorkspace = useCallback(() => {
+    setStage('workspace');
+    setActiveTool(null);
+    setCropTarget('source');
+    setCropMode('rect');
+    setSourceCropApplied(false);
+    setCropRegion(null);
+    setCutoutCropRegion(null);
+    setPolygonRegion(null);
+    setCutoutPolygonRegion(null);
+    setLassoRegion(null);
+    setCutoutLassoRegion(null);
+    setCroppedBlob(null);
+    setSourceEditedBlob(null);
+    setIsolation(null);
+    setEditedCutout(null);
+    setCutoutCroppedBlob(null);
+    setPaintSessionSource(null);
+    setBrushSessionCutout(null);
+    setPrepared(null);
+    setError(null);
+    setStatus(null);
+    setCancelling(false);
+    setShowTips(false);
+    notifyRef.current(null);
+  }, []);
+
+  useEffect(() => {
+    const url = URL.createObjectURL(imageFile);
+    setSourceUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [imageFile]);
+
+  useEffect(() => {
+    resetWorkspace();
+  }, [imageFile, resetWorkspace]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const activeCutout = editedCutout ?? isolation?.cutout ?? null;
+
+  const previewBlob =
+    cutoutCroppedBlob ??
+    activeCutout ??
+    sourceEditedBlob ??
+    croppedBlob ??
+    null;
+
+  useEffect(() => {
+    if (previewBlob) {
+      const url = URL.createObjectURL(previewBlob);
+      setPreviewUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setPreviewUrl(null);
+  }, [previewBlob]);
+
+  useEffect(() => {
+    if (activeTool === 'crop') {
+      const url = URL.createObjectURL(
+        cropTarget === 'cutout' && activeCutout ? activeCutout : imageFile,
+      );
+      setCropOverlayUrl(url);
+      return () => URL.revokeObjectURL(url);
+    }
+    setCropOverlayUrl(null);
+  }, [activeTool, cropTarget, activeCutout, imageFile]);
+
+  const handleCropPixels = useCallback(
+    (pixels: CropPixels | null) => {
+      if (cropTarget === 'source') {
+        setCropRegion(pixels);
+        if (sourceCropApplied) setSourceCropApplied(false);
+      } else {
+        setCutoutCropRegion(pixels);
+      }
+    },
+    [cropTarget, sourceCropApplied],
+  );
+
+  const handlePolygonChange = useCallback(
+    (points: NaturalPoint[] | null) => {
+      if (cropTarget === 'source') {
+        setPolygonRegion(points);
+        if (sourceCropApplied) setSourceCropApplied(false);
+      } else {
+        setCutoutPolygonRegion(points);
+      }
+    },
+    [cropTarget, sourceCropApplied],
+  );
+
+  const handleLassoChange = useCallback(
+    (points: NaturalPoint[] | null) => {
+      if (cropTarget === 'source') {
+        setLassoRegion(points);
+        if (sourceCropApplied) setSourceCropApplied(false);
+      } else {
+        setCutoutLassoRegion(points);
+      }
+    },
+    [cropTarget, sourceCropApplied],
+  );
+
+  const activePolygonRegion = cropTarget === 'source' ? polygonRegion : cutoutPolygonRegion;
+  const activeLassoRegion = cropTarget === 'source' ? lassoRegion : cutoutLassoRegion;
+  const canApplyCrop =
+    cropMode === 'rect'
+      ? Boolean(cropTarget === 'source' ? cropRegion : cutoutCropRegion)
+      : cropMode === 'lasso'
+        ? (activeLassoRegion?.length ?? 0) >= 3
+        : (activePolygonRegion?.length ?? 0) >= 3;
+
+  const handleApplyCrop = async () => {
+    setError(null);
+
+    if (cropMode === 'rect') {
+      const pixels =
+        cropRef.current?.getCropPixels() ??
+        (cropTarget === 'source' ? cropRegion : cutoutCropRegion);
+      if (!pixels) return;
+
+      setStatus('Applying crop…');
+      try {
+        if (cropTarget === 'source') {
+          const cropped = await cropSourceImage(imageFile, pixels);
+          setCropRegion(pixels);
+          setPolygonRegion(null);
+          setLassoRegion(null);
+          setCroppedBlob(cropped);
+          setSourceEditedBlob(null);
+          setIsolation(null);
+          setEditedCutout(null);
+          setCutoutCroppedBlob(null);
+          setCutoutPolygonRegion(null);
+          setCutoutLassoRegion(null);
+          setSourceCropApplied(true);
+          setActiveTool(null);
+        } else if (activeCutout) {
+          const cropped = await cropRgbaBlob(activeCutout, pixels);
+          setCutoutCropRegion(pixels);
+          setCutoutPolygonRegion(null);
+          setCutoutLassoRegion(null);
+          setCutoutCroppedBlob(cropped);
+          setActiveTool(null);
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Could not apply that crop.');
+      } finally {
+        setStatus(null);
+      }
+      return;
+    }
+
+    const points =
+      cropMode === 'lasso'
+        ? lassoCropRef.current?.getLassoPoints() ??
+          (cropTarget === 'source' ? lassoRegion : cutoutLassoRegion)
+        : polygonCropRef.current?.getPolygonPoints() ??
+          (cropTarget === 'source' ? polygonRegion : cutoutPolygonRegion);
+    if (!points || points.length < 3) return;
+
+    setStatus('Applying crop…');
+    try {
+      const outside = cropTarget === 'source' ? 'white' : 'transparent';
+      if (cropTarget === 'source') {
+        const cropped = await applyPolygonCrop(imageFile, points, { outside });
+        if (cropMode === 'lasso') {
+          setLassoRegion(points);
+          setPolygonRegion(null);
+        } else {
+          setPolygonRegion(points);
+          setLassoRegion(null);
+        }
+        setCropRegion(null);
+        setCroppedBlob(cropped);
+        setSourceEditedBlob(null);
+        setIsolation(null);
+        setEditedCutout(null);
+        setCutoutCroppedBlob(null);
+        setCutoutPolygonRegion(null);
+        setCutoutLassoRegion(null);
+        setCutoutCropRegion(null);
+        setSourceCropApplied(true);
+        setActiveTool(null);
+      } else if (activeCutout) {
+        const cropped = await applyPolygonCrop(activeCutout, points, { outside });
+        if (cropMode === 'lasso') {
+          setCutoutLassoRegion(points);
+          setCutoutPolygonRegion(null);
+        } else {
+          setCutoutPolygonRegion(points);
+          setCutoutLassoRegion(null);
+        }
+        setCutoutCropRegion(null);
+        setCutoutCroppedBlob(cropped);
+        setActiveTool(null);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not apply that crop.');
+    } finally {
+      setStatus(null);
+    }
+  };
+
+  const handleEditCrop = () => {
+    setCropTarget('source');
+    setActiveTool('crop');
+    setSourceCropApplied(false);
+  };
+
+  const handleOpenCrop = (target: CropTarget) => {
+    setCropTarget(target);
+    setActiveTool('crop');
+    if (target === 'source') {
+      setSourceCropApplied(false);
+    }
+  };
+
+  const invalidateAfterPrePaint = () => {
+    setIsolation(null);
+    setEditedCutout(null);
+    setCutoutCroppedBlob(null);
+  };
+
+  const handleSourcePaintChange = (blob: Blob) => {
+    setSourceEditedBlob(blob);
+    invalidateAfterPrePaint();
+  };
+
+  const handleCutoutChange = (blob: Blob) => {
+    setEditedCutout(blob);
+    setCutoutCroppedBlob(null);
+  };
+
+  const resolveIsolateInput = async (): Promise<Blob> => {
+    if (sourceEditedBlob) return sourceEditedBlob;
+    if (croppedBlob) return croppedBlob;
+    if (lassoRegion && lassoRegion.length >= 3) {
+      return applyPolygonCrop(imageFile, lassoRegion, { outside: 'white' });
+    }
+    if (polygonRegion && polygonRegion.length >= 3) {
+      return applyPolygonCrop(imageFile, polygonRegion, { outside: 'white' });
+    }
+    if (cropRegion) return cropSourceImage(imageFile, cropRegion);
+    return cropSourceImage(imageFile, null);
+  };
+
+  const cancelIsolation = () => {
+    const abort = abortRef.current;
+    if (!abort || abort.signal.aborted) return;
+    abort.abort();
+    flushSync(() => {
+      setCancelling(true);
+      setStatus('Cancelling…');
+    });
+  };
+
+  const handleIsolate = async () => {
+    setError(null);
+    setCancelling(false);
+    setStage('working');
+    setStatus('Preparing…');
+    setActiveTool(null);
+    abortRef.current?.abort();
+    const abort = new AbortController();
+    abortRef.current = abort;
+
+    const stillCurrent = () => abortRef.current === abort && !abort.signal.aborted;
+    const bailIfAborted = () => {
+      if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
+    };
+
+    try {
+      const input = await resolveIsolateInput();
+      bailIfAborted();
+
+      const result = await isolateSubject(input, {
+        signal: abort.signal,
+        onProgress: (message) => {
+          if (stillCurrent()) setStatus(message);
+        },
+      });
+      bailIfAborted();
+
+      setIsolation(result);
+      setEditedCutout(result.cutout);
+      setCutoutCroppedBlob(null);
+      setStage('workspace');
+    } catch (err) {
+      if (abort.signal.aborted || abortRef.current !== abort) return;
+      setError(err instanceof Error ? err.message : 'Could not isolate the subject.');
+      setStage('workspace');
+    } finally {
+      if (abortRef.current === abort) {
+        abortRef.current = null;
+        setCancelling(false);
+        setStatus(null);
+        setStage('workspace');
+      }
+    }
+  };
+
+  const resolveFinalImage = async (): Promise<Blob> => {
+    if (cutoutCroppedBlob) return cutoutCroppedBlob;
+    if (editedCutout) return editedCutout;
+    if (isolation?.cutout) return isolation.cutout;
+    if (sourceEditedBlob) return sourceEditedBlob;
+    if (croppedBlob) return croppedBlob;
+    return cropSourceImage(imageFile, cropRegion);
+  };
+
+  const finish = async (image: Blob) => {
+    setError(null);
+    setStatus('Building the final image…');
+    try {
+      const file = await buildPreparedFile(image, preparedFileName(imageFile.name));
+      setPrepared(file);
+      setStage('confirm');
+      notifyRef.current(file);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not build the final image.');
+    } finally {
+      setStatus(null);
+    }
+  };
+
+  const handleUseThis = async () => {
+    try {
+      const image = await resolveFinalImage();
+      await finish(image);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not prepare that photo.');
+    }
+  };
+
+  const leaveConfirm = () => {
+    setPrepared(null);
+    notifyRef.current(null);
+    setStage('workspace');
+  };
+
+  const openPrePaint = () => {
+    setPaintSessionSource(sourceEditedBlob ?? croppedBlob ?? imageFile);
+    setActiveTool('prePaint');
+  };
+
+  const openPostBrush = () => {
+    if (!isolation) return;
+    setBrushSessionCutout(editedCutout ?? isolation.cutout);
+    setActiveTool('postBrush');
+  };
+
+  const finishEditing = async () => {
+    if (activeTool === 'postBrush') {
+      await maskEditorRef.current?.exportNow();
+    } else if (activeTool === 'prePaint') {
+      await sourcePainterRef.current?.exportNow();
+    }
+    setActiveTool(null);
+    setPaintSessionSource(null);
+    setBrushSessionCutout(null);
+  };
+
+  const onCropKeyDown = (event: React.KeyboardEvent) => {
+    if (activeTool !== 'crop' || busy) return;
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      void handleApplyCrop();
+    }
+  };
+
+  const busy = disabled || stage === 'working' || status !== null;
+
+  if (stage === 'confirm' && prepared) {
+    return <PhotoPreparedPreview file={prepared} disabled={disabled} onBack={leaveConfirm} />;
+  }
+
+  return (
+    <div className="photo-prep" onKeyDown={onCropKeyDown}>
+      <div className="photo-prep__head">
+        <button
+          type="button"
+          className={`photo-prep__help-btn${showTips ? ' is-open' : ''}`}
+          aria-expanded={showTips}
+          aria-controls="photo-prep-tips"
+          aria-label={showTips ? 'Hide photo tips' : 'Photo tips'}
+          onClick={() => setShowTips((open) => !open)}
+        >
+          ?
+        </button>
+        {showTips ? (
+          <div id="photo-prep-tips" className="photo-prep__tips">
+            <p className="photo-prep__hint">
+              Use tools in any order. Crop, paint, isolate, then brush the cutout.
+            </p>
+            <ul className="photo-prep__tips-list">
+              <li>Prefer a simple background. Extra objects make isolation harder.</li>
+              <li>Avoid reflections. They read as extra objects.</li>
+              <li>Photograph the real piece, not a picture of it.</li>
+            </ul>
+          </div>
+        ) : null}
+      </div>
+
+      {activeTool === 'crop' && cropOverlayUrl ? (
+        <>
+          <div className="photo-prep__crop-mode" role="tablist" aria-label="Crop shape">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={cropMode === 'rect'}
+              className={`photo-prep__crop-mode-btn${cropMode === 'rect' ? ' is-active' : ''}`}
+              disabled={busy}
+              onClick={() => setCropMode('rect')}
+            >
+              Rectangle
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={cropMode === 'polygon'}
+              className={`photo-prep__crop-mode-btn${cropMode === 'polygon' ? ' is-active' : ''}`}
+              disabled={busy}
+              onClick={() => setCropMode('polygon')}
+            >
+              Polygon
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={cropMode === 'lasso'}
+              className={`photo-prep__crop-mode-btn${cropMode === 'lasso' ? ' is-active' : ''}`}
+              disabled={busy}
+              onClick={() => setCropMode('lasso')}
+            >
+              Lasso
+            </button>
+          </div>
+          {cropMode === 'rect' ? (
+            <PhotoFreeCrop
+              ref={cropRef}
+              imageUrl={cropOverlayUrl}
+              disabled={busy}
+              initialCrop={cropTarget === 'source' ? cropRegion : cutoutCropRegion}
+              onCropPixels={handleCropPixels}
+            />
+          ) : cropMode === 'lasso' ? (
+            <PhotoLassoCrop
+              key={`${cropOverlayUrl}-${cropTarget}-lasso`}
+              ref={lassoCropRef}
+              imageUrl={cropOverlayUrl}
+              disabled={busy}
+              initialPoints={cropTarget === 'source' ? lassoRegion : cutoutLassoRegion}
+              onLassoChange={handleLassoChange}
+            />
+          ) : (
+            <PhotoPolygonCrop
+              key={`${cropOverlayUrl}-${cropTarget}`}
+              ref={polygonCropRef}
+              imageUrl={cropOverlayUrl}
+              disabled={busy}
+              initialPoints={cropTarget === 'source' ? polygonRegion : cutoutPolygonRegion}
+              onPolygonChange={handlePolygonChange}
+            />
+          )}
+        </>
+      ) : activeTool === 'prePaint' && paintSessionSource ? (
+        <PhotoSourcePainter
+          ref={sourcePainterRef}
+          source={paintSessionSource}
+          disabled={busy}
+          onSourceChange={handleSourcePaintChange}
+        />
+      ) : activeTool === 'postBrush' && brushSessionCutout ? (
+        <PhotoMaskEditor
+          ref={maskEditorRef}
+          cutout={brushSessionCutout}
+          disabled={busy}
+          onCutoutChange={handleCutoutChange}
+        />
+      ) : previewUrl ? (
+        <div className="photo-prep__frame">
+          <img src={previewUrl} alt="Current photo prep preview" />
+        </div>
+      ) : sourceUrl ? (
+        <div className="photo-prep__frame">
+          <img src={sourceUrl} alt="Uploaded photo" />
+        </div>
+      ) : (
+        <div className="photo-prep__frame photo-prep__frame--empty">Loading the photo…</div>
+      )}
+
+      {stage === 'working' ? (
+        <div className="photo-prep__working">
+          <span className="photo-prep__spin" aria-hidden />
+          <span className="photo-prep__working-label">
+            {cancelling ? 'Cancelling…' : (status ?? 'Working…')}
+          </span>
+          {cancelling ? null : (
+            <button
+              type="button"
+              className="photo-prep__btn photo-prep__btn--quiet"
+              onClick={cancelIsolation}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      ) : activeTool === 'crop' ? (
+        <div className="photo-prep__actions">
+          <button
+            type="button"
+            className="photo-prep__btn photo-prep__btn--primary"
+            disabled={busy || !canApplyCrop}
+            onClick={() => void handleApplyCrop()}
+          >
+            {status ?? 'Apply crop'}
+          </button>
+          <button
+            type="button"
+            className="photo-prep__btn photo-prep__btn--quiet"
+            disabled={busy}
+            onClick={() => setActiveTool(null)}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : activeTool === null ? (
+        <div className="photo-prep__toolbar">
+          <div className="photo-prep__actions">
+            {sourceCropApplied ? (
+              <button
+                type="button"
+                className="photo-prep__btn"
+                disabled={busy}
+                onClick={handleEditCrop}
+              >
+                Edit crop
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="photo-prep__btn"
+                disabled={busy}
+                onClick={() => handleOpenCrop('source')}
+              >
+                Crop
+              </button>
+            )}
+            <button
+              type="button"
+              className="photo-prep__btn"
+              disabled={busy}
+              onClick={openPrePaint}
+            >
+              Paint
+            </button>
+            <button
+              type="button"
+              className="photo-prep__btn photo-prep__btn--primary"
+              disabled={busy}
+              onClick={() => void handleIsolate()}
+            >
+              Remove background
+            </button>
+            <button
+              type="button"
+              className="photo-prep__btn"
+              disabled={busy || !isolation}
+              onClick={openPostBrush}
+            >
+              Brush
+            </button>
+            {isolation ? (
+              <button
+                type="button"
+                className="photo-prep__btn"
+                disabled={busy}
+                onClick={() => handleOpenCrop('cutout')}
+              >
+                Crop cutout
+              </button>
+            ) : null}
+            <button
+              type="button"
+              className="photo-prep__btn photo-prep__btn--primary"
+              disabled={busy}
+              onClick={() => void handleUseThis()}
+            >
+              {status ?? 'Use this'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="photo-prep__actions">
+          <button
+            type="button"
+            className="photo-prep__btn photo-prep__btn--quiet"
+            disabled={busy}
+            onClick={() => void finishEditing()}
+          >
+            Done editing
+          </button>
+        </div>
+      )}
+
+      {isolation && isolation.coverage < MIN_SUBJECT_COVERAGE ? (
+        <p className="photo-prep__warn">
+          We could barely find a subject here. Try cropping closer, painting over distractions, or
+          use this photo as it is.
+        </p>
+      ) : null}
+
+      {error ? <p className="photo-prep__error">{error}</p> : null}
+
+      {!isolation ? (
+        <p className="photo-prep__note">
+          The first isolation downloads a model, so it takes longer than the ones after it.
+        </p>
+      ) : null}
+    </div>
+  );
+}

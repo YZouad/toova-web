@@ -564,6 +564,50 @@ describe('shopping checklist helpers', () => {
     expect(offers[0].url).toContain('amazon.com/s');
   });
 
+  it('uses the imported model shop link when catalog kind matches', () => {
+    const item = {
+      id: '3',
+      kind: 'imported',
+      label: 'Thrifted lamp',
+      catalogKind: 'custom-lamp',
+      position: [0, 0, 0],
+      rotationY: 0,
+      size: [10, 22, 10],
+    } as Item;
+    const offers = resolveAffiliateForItem(item, {
+      'local:lamp': {
+        id: 'local:lamp',
+        categoryId: 'local-your-models',
+        slug: 'local:lamp',
+        name: 'Thrifted lamp',
+        description: '',
+        retailer: 'Amazon',
+        affiliateUrl: 'https://www.amazon.com/dp/B000',
+        priceCents: 2499,
+        currency: 'USD',
+        imagePath: null,
+        imageUrl: null,
+        sortOrder: 0,
+        published: true,
+        lastVerifiedAt: null,
+        placeBuiltinKind: null,
+        placeCatalogKind: 'custom-lamp',
+        placeHangingKind: null,
+        placeBeddingKind: null,
+        brand: null,
+        featureBullets: [],
+        dimensionsText: null,
+        rating: null,
+        reviewCount: null,
+        availability: null,
+      },
+    });
+    expect(offers).toHaveLength(1);
+    expect(offers[0].approximate).toBe(false);
+    expect(offers[0].url).toBe('https://www.amazon.com/dp/B000');
+    expect(offers[0].priceCents).toBe(2499);
+  });
+
   it('does not match storage bins to dresser or bookshelf furniture', () => {
     const bins: CuratedProduct = {
       id: 'prod-bins',
