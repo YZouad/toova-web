@@ -17,6 +17,11 @@ import {
   signAvatarPath,
   type Profile,
 } from '../lib/profiles';
+import {
+  clearPendingLegalAcceptance,
+  flushPendingLegalAcceptance,
+  loadPendingLegalAcceptance,
+} from '../lib/legalAcceptance';
 
 interface AuthCtxValue {
   loading: boolean;
@@ -88,6 +93,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           } else {
             trackLoggedIn({ user_id: next.id, method });
           }
+        }
+
+        // Flush clickwrap + DOB stashed before OAuth redirect (or email confirm).
+        if (loadPendingLegalAcceptance()) {
+          void flushPendingLegalAcceptance().catch((err) => {
+            console.error('flushPendingLegalAcceptance failed', err);
+            const msg = err instanceof Error ? err.message : '';
+            if (/at least 13/i.test(msg)) {
+              clearPendingLegalAcceptance();
+              void supabase.auth.signOut();
+            }
+          });
         }
       }
     });

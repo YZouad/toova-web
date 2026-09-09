@@ -1,4 +1,5 @@
 import { Footer, type FooterLink } from './Footer';
+import { privacyPath, safetyPath, termsPath } from '../../hooks/useRoute';
 
 export interface SiteFooterProps {
   onContact?: () => void;
@@ -22,8 +23,9 @@ export function SiteFooter({
       ? [{ label: 'Pitch Madness', onClick: onPitchMadness }]
       : []),
     ...(onFeedback ? [{ label: 'Feedback', onClick: onFeedback }] : []),
-    { label: 'Privacy' },
-    { label: 'Terms' },
+    { label: 'Privacy', href: privacyPath() },
+    { label: 'Terms', href: termsPath() },
+    { label: 'Child Safety', href: safetyPath() },
     ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
   ];
 

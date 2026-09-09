@@ -381,6 +381,14 @@ deno_version = 2
 [functions.request-unfurl-deploy]
 verify_jwt = true
 
+# Signed-out reports allowed; function verifies JWT when present.
+[functions.report-content]
+verify_jwt = false
+
+# Admin-only signed URLs for report evidence.
+[functions.sign-report-evidence]
+verify_jwt = true
+
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 

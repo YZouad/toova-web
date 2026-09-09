@@ -22,6 +22,7 @@ import { planBounds } from '../lib/roomGeometry';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
 import { withPreviewTints } from '../hooks/useGalleryRooms';
 import { UserAvatar } from './UserAvatar';
+import { ReportDialog } from './ReportDialog';
 import {
   Badge,
   Banner,
@@ -107,6 +108,7 @@ export function ProfilePage({
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
 
   const [editHandle, setEditHandle] = useState('');
   const [editName, setEditName] = useState('');
@@ -455,9 +457,25 @@ export function ProfilePage({
                   profile.is_public ? 'Public' : 'Private',
                 ].join(' · ')}
               </MonoMeta>
+              {!isOwner ? (
+                <div style={{ marginTop: 16 }}>
+                  <Button size="sm" variant="outline" onClick={() => setReportOpen(true)}>
+                    Report profile
+                  </Button>
+                </div>
+              ) : null}
             </div>
           </div>
         )}
+
+        <ReportDialog
+          open={reportOpen}
+          onClose={() => setReportOpen(false)}
+          targetType="profile"
+          targetId={profile.id}
+          targetLabel={`@${profile.handle}`}
+          allowAnonymousEmail={!viewerUserId}
+        />
 
         <section className="profile-ledger">
           <SectionOpener

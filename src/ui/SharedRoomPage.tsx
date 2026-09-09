@@ -4,6 +4,7 @@ import { navigate, profilePath } from '../hooks/useRoute';
 import { forkSharedRoom, redeemShareToken, type ShareRole } from '../lib/roomShares';
 import { useStore } from '../store';
 import { Scene } from '../scene/Scene';
+import { ReportDialog } from './ReportDialog';
 import { Button, DisplayHeading, Logo, MonoMeta, Splash } from './kit';
 
 interface SharedRoomPageProps {
@@ -63,6 +64,7 @@ export function SharedRoomPage({
   const [allowCopy, setAllowCopy] = useState(true);
   const [forkCount, setForkCount] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const [showAuthWall, setShowAuthWall] = useState(false);
   const [resumeAction, setResumeAction] = useState<PendingAction | null>(null);
@@ -199,6 +201,9 @@ export function SharedRoomPage({
           </div>
         </div>
         <div className="shared-topbar-actions">
+          <Button size="sm" variant="outline" onClick={() => setReportOpen(true)}>
+            Report
+          </Button>
           {allowCopy ? (
             <Button size="sm" disabled={busy} onClick={() => requireAuthThen('copy')}>
               Make a copy
@@ -211,6 +216,15 @@ export function SharedRoomPage({
           ) : null}
         </div>
       </header>
+
+      <ReportDialog
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        targetType="share"
+        targetId={token}
+        targetLabel={roomName}
+        allowAnonymousEmail={!userId}
+      />
 
       {actionError ? (
         <div className="tv-banner-error" style={{ margin: '0 20px', position: 'relative', zIndex: 2 }} role="alert">
