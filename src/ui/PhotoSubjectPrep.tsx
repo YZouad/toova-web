@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { applyPolygonCrop } from '../lib/cropPolygon';
 import type { NaturalPoint } from '../lib/cropPixels';
 import {
@@ -11,6 +12,7 @@ import {
   type SubjectIsolation,
 } from '../lib/preparePhotoForTrellis';
 import { PhotoFreeCrop, type CropPixels, type PhotoFreeCropHandle } from './PhotoFreeCrop';
+import { PhotoLassoCrop, type PhotoLassoCropHandle } from './PhotoLassoCrop';
 import { PhotoMaskEditor, type PhotoMaskEditorHandle } from './PhotoMaskEditor';
 import {
   PhotoPolygonCrop,
@@ -33,7 +35,7 @@ export interface PhotoSubjectPrepProps {
 type Stage = 'workspace' | 'working' | 'confirm';
 type ActiveTool = 'crop' | 'prePaint' | 'postBrush' | null;
 type CropTarget = 'source' | 'cutout';
-type CropMode = 'rect' | 'polygon';
+type CropMode = 'rect' | 'polygon' | 'lasso';
 
 /**
  * Flexible photo prep workspace: crop, paint, isolate, and brush in any order
@@ -55,6 +57,8 @@ export function PhotoSubjectPrep({
   const [cutoutCropRegion, setCutoutCropRegion] = useState<CropPixels | null>(null);
   const [polygonRegion, setPolygonRegion] = useState<NaturalPoint[] | null>(null);
   const [cutoutPolygonRegion, setCutoutPolygonRegion] = useState<NaturalPoint[] | null>(null);
+  const [lassoRegion, setLassoRegion] = useState<NaturalPoint[] | null>(null);
+  const [cutoutLassoRegion, setCutoutLassoRegion] = useState<NaturalPoint[] | null>(null);
   const [croppedBlob, setCroppedBlob] = useState<Blob | null>(null);
   const [sourceEditedBlob, setSourceEditedBlob] = useState<Blob | null>(null);
   const [isolation, setIsolation] = useState<SubjectIsolation | null>(null);
@@ -63,6 +67,8 @@ export function PhotoSubjectPrep({
   const [prepared, setPrepared] = useState<File | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+  const [showTips, setShowTips] = useState(false);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [cropOverlayUrl, setCropOverlayUrl] = useState<string | null>(null);
@@ -71,6 +77,7 @@ export function PhotoSubjectPrep({
 
   const cropRef = useRef<PhotoFreeCropHandle>(null);
   const polygonCropRef = useRef<PhotoPolygonCropHandle>(null);
+  const lassoCropRef = useRef<PhotoLassoCropHandle>(null);
   const maskEditorRef = useRef<PhotoMaskEditorHandle>(null);
   const sourcePainterRef = useRef<PhotoSourcePainterHandle>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -87,6 +94,8 @@ export function PhotoSubjectPrep({
     setCutoutCropRegion(null);
     setPolygonRegion(null);
     setCutoutPolygonRegion(null);
+    setLassoRegion(null);
+    setCutoutLassoRegion(null);
     setCroppedBlob(null);
     setSourceEditedBlob(null);
     setIsolation(null);
@@ -97,6 +106,8 @@ export function PhotoSubjectPrep({
     setPrepared(null);
     setError(null);
     setStatus(null);
+    setCancelling(false);
+    setShowTips(false);
     notifyRef.current(null);
   }, []);
 
@@ -165,11 +176,26 @@ export function PhotoSubjectPrep({
     [cropTarget, sourceCropApplied],
   );
 
+  const handleLassoChange = useCallback(
+    (points: NaturalPoint[] | null) => {
+      if (cropTarget === 'source') {
+        setLassoRegion(points);
+        if (sourceCropApplied) setSourceCropApplied(false);
+      } else {
+        setCutoutLassoRegion(points);
+      }
+    },
+    [cropTarget, sourceCropApplied],
+  );
+
   const activePolygonRegion = cropTarget === 'source' ? polygonRegion : cutoutPolygonRegion;
+  const activeLassoRegion = cropTarget === 'source' ? lassoRegion : cutoutLassoRegion;
   const canApplyCrop =
     cropMode === 'rect'
       ? Boolean(cropTarget === 'source' ? cropRegion : cutoutCropRegion)
-      : (activePolygonRegion?.length ?? 0) >= 3;
+      : cropMode === 'lasso'
+        ? (activeLassoRegion?.length ?? 0) >= 3
+        : (activePolygonRegion?.length ?? 0) >= 3;
 
   const handleApplyCrop = async () => {
     setError(null);
@@ -186,18 +212,21 @@ export function PhotoSubjectPrep({
           const cropped = await cropSourceImage(imageFile, pixels);
           setCropRegion(pixels);
           setPolygonRegion(null);
+          setLassoRegion(null);
           setCroppedBlob(cropped);
           setSourceEditedBlob(null);
           setIsolation(null);
           setEditedCutout(null);
           setCutoutCroppedBlob(null);
           setCutoutPolygonRegion(null);
+          setCutoutLassoRegion(null);
           setSourceCropApplied(true);
           setActiveTool(null);
         } else if (activeCutout) {
           const cropped = await cropRgbaBlob(activeCutout, pixels);
           setCutoutCropRegion(pixels);
           setCutoutPolygonRegion(null);
+          setCutoutLassoRegion(null);
           setCutoutCroppedBlob(cropped);
           setActiveTool(null);
         }
@@ -210,8 +239,11 @@ export function PhotoSubjectPrep({
     }
 
     const points =
-      polygonCropRef.current?.getPolygonPoints() ??
-      (cropTarget === 'source' ? polygonRegion : cutoutPolygonRegion);
+      cropMode === 'lasso'
+        ? lassoCropRef.current?.getLassoPoints() ??
+          (cropTarget === 'source' ? lassoRegion : cutoutLassoRegion)
+        : polygonCropRef.current?.getPolygonPoints() ??
+          (cropTarget === 'source' ? polygonRegion : cutoutPolygonRegion);
     if (!points || points.length < 3) return;
 
     setStatus('Applying crop…');
@@ -219,7 +251,13 @@ export function PhotoSubjectPrep({
       const outside = cropTarget === 'source' ? 'white' : 'transparent';
       if (cropTarget === 'source') {
         const cropped = await applyPolygonCrop(imageFile, points, { outside });
-        setPolygonRegion(points);
+        if (cropMode === 'lasso') {
+          setLassoRegion(points);
+          setPolygonRegion(null);
+        } else {
+          setPolygonRegion(points);
+          setLassoRegion(null);
+        }
         setCropRegion(null);
         setCroppedBlob(cropped);
         setSourceEditedBlob(null);
@@ -227,12 +265,19 @@ export function PhotoSubjectPrep({
         setEditedCutout(null);
         setCutoutCroppedBlob(null);
         setCutoutPolygonRegion(null);
+        setCutoutLassoRegion(null);
         setCutoutCropRegion(null);
         setSourceCropApplied(true);
         setActiveTool(null);
       } else if (activeCutout) {
         const cropped = await applyPolygonCrop(activeCutout, points, { outside });
-        setCutoutPolygonRegion(points);
+        if (cropMode === 'lasso') {
+          setCutoutLassoRegion(points);
+          setCutoutPolygonRegion(null);
+        } else {
+          setCutoutPolygonRegion(points);
+          setCutoutLassoRegion(null);
+        }
         setCutoutCropRegion(null);
         setCutoutCroppedBlob(cropped);
         setActiveTool(null);
@@ -277,6 +322,9 @@ export function PhotoSubjectPrep({
   const resolveIsolateInput = async (): Promise<Blob> => {
     if (sourceEditedBlob) return sourceEditedBlob;
     if (croppedBlob) return croppedBlob;
+    if (lassoRegion && lassoRegion.length >= 3) {
+      return applyPolygonCrop(imageFile, lassoRegion, { outside: 'white' });
+    }
     if (polygonRegion && polygonRegion.length >= 3) {
       return applyPolygonCrop(imageFile, polygonRegion, { outside: 'white' });
     }
@@ -284,8 +332,19 @@ export function PhotoSubjectPrep({
     return cropSourceImage(imageFile, null);
   };
 
+  const cancelIsolation = () => {
+    const abort = abortRef.current;
+    if (!abort || abort.signal.aborted) return;
+    abort.abort();
+    flushSync(() => {
+      setCancelling(true);
+      setStatus('Cancelling…');
+    });
+  };
+
   const handleIsolate = async () => {
     setError(null);
+    setCancelling(false);
     setStage('working');
     setStatus('Preparing…');
     setActiveTool(null);
@@ -293,6 +352,7 @@ export function PhotoSubjectPrep({
     const abort = new AbortController();
     abortRef.current = abort;
 
+    const stillCurrent = () => abortRef.current === abort && !abort.signal.aborted;
     const bailIfAborted = () => {
       if (abort.signal.aborted) throw new DOMException('Aborted', 'AbortError');
     };
@@ -303,7 +363,9 @@ export function PhotoSubjectPrep({
 
       const result = await isolateSubject(input, {
         signal: abort.signal,
-        onProgress: setStatus,
+        onProgress: (message) => {
+          if (stillCurrent()) setStatus(message);
+        },
       });
       bailIfAborted();
 
@@ -312,15 +374,16 @@ export function PhotoSubjectPrep({
       setCutoutCroppedBlob(null);
       setStage('workspace');
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setStage('workspace');
-        return;
-      }
+      if (abort.signal.aborted || abortRef.current !== abort) return;
       setError(err instanceof Error ? err.message : 'Could not isolate the subject.');
       setStage('workspace');
     } finally {
-      setStatus(null);
-      if (abortRef.current === abort) abortRef.current = null;
+      if (abortRef.current === abort) {
+        abortRef.current = null;
+        setCancelling(false);
+        setStatus(null);
+        setStage('workspace');
+      }
     }
   };
 
@@ -354,25 +417,6 @@ export function PhotoSubjectPrep({
       await finish(image);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not prepare that photo.');
-    }
-  };
-
-  const handleSkipIsolation = async () => {
-    setError(null);
-    setStatus('Preparing…');
-    setActiveTool(null);
-    try {
-      const image = await resolveFinalImage();
-      if (isolation || editedCutout) {
-        await finish(image);
-        return;
-      }
-      setIsolation(null);
-      setEditedCutout(null);
-      await finish(image);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not prepare that photo.');
-      setStatus(null);
     }
   };
 
@@ -421,18 +465,25 @@ export function PhotoSubjectPrep({
   return (
     <div className="photo-prep" onKeyDown={onCropKeyDown}>
       <div className="photo-prep__head">
-        <span className="photo-prep__eyebrow">Frame · Clean · Isolate · Finish</span>
-        <p className="photo-prep__hint">
-          Use any tool in any order. Crop to frame the piece, paint over distractions, remove the
-          background, then brush to refine the cutout.
-        </p>
-        {activeTool === null ? (
-          <div className="photo-prep__tips">
-            <span className="photo-prep__eyebrow">Tips and tricks</span>
+        <button
+          type="button"
+          className={`photo-prep__help-btn${showTips ? ' is-open' : ''}`}
+          aria-expanded={showTips}
+          aria-controls="photo-prep-tips"
+          aria-label={showTips ? 'Hide photo tips' : 'Photo tips'}
+          onClick={() => setShowTips((open) => !open)}
+        >
+          ?
+        </button>
+        {showTips ? (
+          <div id="photo-prep-tips" className="photo-prep__tips">
+            <p className="photo-prep__hint">
+              Use tools in any order. Crop, paint, isolate, then brush the cutout.
+            </p>
             <ul className="photo-prep__tips-list">
-              <li>Prefer a simple background. Extra objects in the frame make isolation harder.</li>
-              <li>Avoid reflections — they read as extra objects.</li>
-              <li>Photograph the real piece, not a picture of it on a TV or printed page.</li>
+              <li>Prefer a simple background. Extra objects make isolation harder.</li>
+              <li>Avoid reflections. They read as extra objects.</li>
+              <li>Photograph the real piece, not a picture of it.</li>
             </ul>
           </div>
         ) : null}
@@ -461,6 +512,16 @@ export function PhotoSubjectPrep({
             >
               Polygon
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={cropMode === 'lasso'}
+              className={`photo-prep__crop-mode-btn${cropMode === 'lasso' ? ' is-active' : ''}`}
+              disabled={busy}
+              onClick={() => setCropMode('lasso')}
+            >
+              Lasso
+            </button>
           </div>
           {cropMode === 'rect' ? (
             <PhotoFreeCrop
@@ -469,6 +530,15 @@ export function PhotoSubjectPrep({
               disabled={busy}
               initialCrop={cropTarget === 'source' ? cropRegion : cutoutCropRegion}
               onCropPixels={handleCropPixels}
+            />
+          ) : cropMode === 'lasso' ? (
+            <PhotoLassoCrop
+              key={`${cropOverlayUrl}-${cropTarget}-lasso`}
+              ref={lassoCropRef}
+              imageUrl={cropOverlayUrl}
+              disabled={busy}
+              initialPoints={cropTarget === 'source' ? lassoRegion : cutoutLassoRegion}
+              onLassoChange={handleLassoChange}
             />
           ) : (
             <PhotoPolygonCrop
@@ -507,7 +577,23 @@ export function PhotoSubjectPrep({
         <div className="photo-prep__frame photo-prep__frame--empty">Loading the photo…</div>
       )}
 
-      {activeTool === 'crop' ? (
+      {stage === 'working' ? (
+        <div className="photo-prep__working">
+          <span className="photo-prep__spin" aria-hidden />
+          <span className="photo-prep__working-label">
+            {cancelling ? 'Cancelling…' : (status ?? 'Working…')}
+          </span>
+          {cancelling ? null : (
+            <button
+              type="button"
+              className="photo-prep__btn photo-prep__btn--quiet"
+              onClick={cancelIsolation}
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+      ) : activeTool === 'crop' ? (
         <div className="photo-prep__actions">
           <button
             type="button"
@@ -522,20 +608,6 @@ export function PhotoSubjectPrep({
             className="photo-prep__btn photo-prep__btn--quiet"
             disabled={busy}
             onClick={() => setActiveTool(null)}
-          >
-            Cancel
-          </button>
-        </div>
-      ) : null}
-
-      {stage === 'working' ? (
-        <div className="photo-prep__working">
-          <span className="photo-prep__spin" aria-hidden />
-          <span className="photo-prep__working-label">{status ?? 'Working…'}</span>
-          <button
-            type="button"
-            className="photo-prep__btn photo-prep__btn--quiet"
-            onClick={() => abortRef.current?.abort()}
           >
             Cancel
           </button>
@@ -604,16 +676,6 @@ export function PhotoSubjectPrep({
             >
               {status ?? 'Use this'}
             </button>
-            {!isolation ? (
-              <button
-                type="button"
-                className="photo-prep__btn photo-prep__btn--quiet"
-                disabled={busy}
-                onClick={() => void handleSkipIsolation()}
-              >
-                Skip isolation
-              </button>
-            ) : null}
           </div>
         </div>
       ) : (
@@ -632,7 +694,7 @@ export function PhotoSubjectPrep({
       {isolation && isolation.coverage < MIN_SUBJECT_COVERAGE ? (
         <p className="photo-prep__warn">
           We could barely find a subject here. Try cropping closer, painting over distractions, or
-          skip isolation and send the photo as it is.
+          use this photo as it is.
         </p>
       ) : null}
 

@@ -262,6 +262,7 @@ export async function isolateSubject(
   options: CutOutOptions = {},
 ): Promise<SubjectIsolation> {
   const cutout = await cutOutSubject(cropped, options);
+  if (options.signal?.aborted) throw new DOMException('Aborted', 'AbortError');
 
   const decoded = await decodeImage(cutout);
   try {
