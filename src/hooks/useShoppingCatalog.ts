@@ -22,6 +22,23 @@ import {
   type CuratedProduct,
   type ShoppingListEntry,
 } from '../lib/dormChecklist';
+import {
+  createLocalChecklistProduct,
+  keepLocalShoppingListEntries,
+  loadLocalChecklistProducts,
+  mergeLocalProductsIntoCategories,
+  upsertLocalChecklistProduct,
+} from '../lib/localRoomChecklist';
+import {
+  createOwnedChecklistProduct,
+  isOwnedChecklistProductId,
+  loadOwnedChecklistProducts,
+  OWNED_CHECKLIST_PRODUCT_PREFIX,
+  ownedProductIdForCategory,
+  removeOwnedChecklistProduct,
+  upsertOwnedChecklistProduct,
+  isRoomLocalProductId,
+} from '../lib/ownedChecklistItems';
 import { isGuestWorkspaceId } from '../lib/guestDesignSnapshot';
 import { trackChecklistItemAdded } from '../lib/analytics';
 import { buildPurchaseCartLines, purchaseCartTotalCents } from '../lib/purchaseCart';
@@ -48,7 +65,11 @@ export function useShoppingCatalog(roomId: string | null) {
   const canSyncRemote =
     !!user?.id && !!persistRoomId && !isGuestWorkspaceId(persistRoomId);
 
-  const [categories, setCategories] = useState<ChecklistCategoryWithProducts[]>([]);
+  const [publishedCategories, setPublishedCategories] = useState<
+    ChecklistCategoryWithProducts[]
+  >([]);
+  const [localProducts, setLocalProducts] = useState<CuratedProduct[]>([]);
+  const [ownedProducts, setOwnedProducts] = useState<CuratedProduct[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checked, setChecked] = useState<Set<string>>(() => new Set());
@@ -65,13 +86,19 @@ export function useShoppingCatalog(roomId: string | null) {
     if (persistRoomId) setActiveChecklistRoomId(persistRoomId);
   }, [persistRoomId]);
 
+  const categories = useMemo(
+    () => mergeLocalProductsIntoCategories(publishedCategories, localProducts),
+    [publishedCategories, localProducts],
+  );
+
   const productsById = useMemo(() => {
     const map: Record<string, CuratedProduct> = {};
     for (const cat of categories) {
       for (const p of cat.products) map[p.id] = p;
     }
+    for (const p of ownedProducts) map[p.id] = p;
     return map;
-  }, [categories]);
+  }, [categories, ownedProducts]);
 
   const categoriesById = useMemo(() => {
     const map: Record<string, ChecklistCategoryWithProducts> = {};
@@ -132,9 +159,31 @@ export function useShoppingCatalog(roomId: string | null) {
     [placedCategoryIds, resolutions, categoriesById, checked],
   );
 
+  const getOwnedProduct = useCallback(
+    (categoryId: string): CuratedProduct | undefined =>
+      ownedProducts.find((p) => p.categoryId === categoryId),
+    [ownedProducts],
+  );
+
   const getResolution = useCallback(
     (categoryId: string): CategoryResolution | undefined => resolutions.get(categoryId),
     [resolutions],
+  );
+
+  const clearOwnedForCategory = useCallback(
+    (categoryId: string) => {
+      if (!persistRoomId) return;
+      const ownedId = ownedProductIdForCategory(categoryId);
+      const nextOwned = removeOwnedChecklistProduct(categoryId, persistRoomId);
+      setOwnedProducts(nextOwned);
+      setList((prev) => {
+        if (!prev.some((e) => e.productId === ownedId)) return prev;
+        const next = prev.filter((e) => e.productId !== ownedId);
+        saveLocalShoppingList(next, persistRoomId);
+        return next;
+      });
+    },
+    [persistRoomId],
   );
 
   const refreshCatalog = useCallback(async () => {
@@ -142,7 +191,7 @@ export function useShoppingCatalog(roomId: string | null) {
     setError(null);
     try {
       const cats = await fetchPublishedShoppingCatalog();
-      setCategories(cats);
+      setPublishedCategories(cats);
       setChecked((prev) => {
         const remapped = remapCheckedSlugsToIds(prev, cats);
         saveCheckedIds(remapped, persistRoomId);
@@ -170,6 +219,8 @@ export function useShoppingCatalog(roomId: string | null) {
       setResolutions(new Map());
       setMoveInBudgetCents(null);
       setList([]);
+      setLocalProducts([]);
+      setOwnedProducts([]);
       setReady(true);
       return () => {
         cancelled = true;
@@ -183,6 +234,8 @@ export function useShoppingCatalog(roomId: string | null) {
           setResolutions(loadLocalResolutions(persistRoomId));
           setMoveInBudgetCents(loadLocalMoveInBudgetCents(persistRoomId));
           setList(loadLocalShoppingList(persistRoomId));
+          setLocalProducts(loadLocalChecklistProducts(persistRoomId));
+          setOwnedProducts(loadOwnedChecklistProducts(persistRoomId));
           setReady(true);
         }
         return;
@@ -201,20 +254,30 @@ export function useShoppingCatalog(roomId: string | null) {
           fetchUserMoveInBudgetCents(user!.id, persistRoomId),
         ]);
         if (cancelled) return;
+        const localProductsForRoom = loadLocalChecklistProducts(persistRoomId);
+        const ownedProductsForRoom = loadOwnedChecklistProducts(persistRoomId);
+        const mergedList = keepLocalShoppingListEntries(
+          remoteList,
+          loadLocalShoppingList(persistRoomId),
+        );
         setChecked(remoteChecked);
         saveCheckedIds(remoteChecked, persistRoomId);
         setResolutions(remoteResolutions);
         saveLocalResolutions(remoteResolutions, persistRoomId);
         setMoveInBudgetCents(remoteBudget);
         saveLocalMoveInBudgetCents(remoteBudget, persistRoomId);
-        setList(remoteList);
-        saveLocalShoppingList(remoteList, persistRoomId);
+        setList(mergedList);
+        saveLocalShoppingList(mergedList, persistRoomId);
+        setLocalProducts(localProductsForRoom);
+        setOwnedProducts(ownedProductsForRoom);
       } catch {
         if (!cancelled) {
           setChecked(loadCheckedIds(persistRoomId));
           setResolutions(loadLocalResolutions(persistRoomId));
           setMoveInBudgetCents(loadLocalMoveInBudgetCents(persistRoomId));
           setList(loadLocalShoppingList(persistRoomId));
+          setLocalProducts(loadLocalChecklistProducts(persistRoomId));
+          setOwnedProducts(loadOwnedChecklistProducts(persistRoomId));
         }
       } finally {
         if (!cancelled) setReady(true);
@@ -253,6 +316,9 @@ export function useShoppingCatalog(roomId: string | null) {
     async (categoryId: string, resolution: CategoryResolution | null) => {
       if (!persistRoomId) return;
       if (placedCategoryIds.has(categoryId) && resolution != null) return;
+      if (resolution == null) {
+        clearOwnedForCategory(categoryId);
+      }
       setResolutions((prev) => {
         const current = prev.get(categoryId);
         if (current === resolution || (current == null && resolution == null)) return prev;
@@ -268,7 +334,7 @@ export function useShoppingCatalog(roomId: string | null) {
         return next;
       });
     },
-    [canSyncRemote, placedCategoryIds, persistRoomId, user],
+    [canSyncRemote, clearOwnedForCategory, placedCategoryIds, persistRoomId, user],
   );
 
   const setMoveInBudget = useCallback(
@@ -312,7 +378,7 @@ export function useShoppingCatalog(roomId: string | null) {
         }
         saveLocalShoppingList(next, persistRoomId);
         const entry = next.find((e) => e.productId === productId)!;
-        if (canSyncRemote) {
+        if (canSyncRemote && !isRoomLocalProductId(productId)) {
           void upsertShoppingListEntry(user!.id, persistRoomId, entry).catch(() => {});
         }
         return next;
@@ -331,7 +397,7 @@ export function useShoppingCatalog(roomId: string | null) {
         );
         saveLocalShoppingList(next, persistRoomId);
         const entry = next.find((e) => e.productId === productId);
-        if (canSyncRemote && entry) {
+        if (canSyncRemote && entry && !isRoomLocalProductId(productId)) {
           void upsertShoppingListEntry(user!.id, persistRoomId, entry).catch(() => {});
         }
         return next;
@@ -343,16 +409,21 @@ export function useShoppingCatalog(roomId: string | null) {
   const removeFromList = useCallback(
     async (productId: string) => {
       if (!persistRoomId) return;
+      if (isOwnedChecklistProductId(productId)) {
+        const categoryId = productId.slice(OWNED_CHECKLIST_PRODUCT_PREFIX.length);
+        await setResolution(categoryId, null);
+        return;
+      }
       setList((prev) => {
         const next = prev.filter((e) => e.productId !== productId);
         saveLocalShoppingList(next, persistRoomId);
         return next;
       });
-      if (canSyncRemote) {
+      if (canSyncRemote && !isRoomLocalProductId(productId)) {
         void removeShoppingListEntry(user!.id, persistRoomId, productId).catch(() => {});
       }
     },
-    [canSyncRemote, persistRoomId, user],
+    [canSyncRemote, persistRoomId, setResolution, user],
   );
 
   const toggleChecked = useCallback(
@@ -413,6 +484,7 @@ export function useShoppingCatalog(roomId: string | null) {
         if (next.has(catId)) {
           next.delete(catId);
           changed = true;
+          clearOwnedForCategory(catId);
           if (canSyncRemote) {
             void upsertChecklistResolution(user!.id, persistRoomId, catId, null).catch(() => {});
           }
@@ -422,7 +494,7 @@ export function useShoppingCatalog(roomId: string | null) {
       saveLocalResolutions(next, persistRoomId);
       return next;
     });
-  }, [ready, placedCategoryIds, canSyncRemote, persistRoomId, user]);
+  }, [ready, placedCategoryIds, canSyncRemote, persistRoomId, user, clearOwnedForCategory]);
 
   // When the last room copy of a curated product is deleted, drop it from To Buy.
   useEffect(() => {
@@ -469,13 +541,50 @@ export function useShoppingCatalog(roomId: string | null) {
         );
         saveLocalShoppingList(next, persistRoomId);
         const entry = next.find((e) => e.productId === productId);
-        if (canSyncRemote && entry) {
+        if (canSyncRemote && entry && !isRoomLocalProductId(productId)) {
           void upsertShoppingListEntry(user!.id, persistRoomId, entry).catch(() => {});
         }
         return next;
       });
     },
     [canSyncRemote, persistRoomId, user],
+  );
+
+  const addImportedModelToChecklist = useCallback(
+    async (input: {
+      name: string;
+      description?: string;
+      affiliateUrl: string;
+      priceCents: number | null;
+      catalogKind: string;
+      imageUrl?: string | null;
+    }) => {
+      if (!persistRoomId) return null;
+      const product = createLocalChecklistProduct(input);
+      const next = upsertLocalChecklistProduct(product, persistRoomId);
+      setLocalProducts(next);
+      await addToList(product.id);
+      return product;
+    },
+    [addToList, persistRoomId],
+  );
+
+  const markCategoryAsOwned = useCallback(
+    async (input: {
+      categoryId: string;
+      name: string;
+      affiliateUrl: string;
+      priceCents: number;
+    }) => {
+      if (!persistRoomId) return null;
+      const product = createOwnedChecklistProduct(input);
+      const nextOwned = upsertOwnedChecklistProduct(product, persistRoomId);
+      setOwnedProducts(nextOwned);
+      await addToList(product.id);
+      await setResolution(input.categoryId, 'have');
+      return product;
+    },
+    [addToList, persistRoomId, setResolution],
   );
 
   return {
@@ -492,7 +601,9 @@ export function useShoppingCatalog(roomId: string | null) {
     satisfiedCategoryIds,
     isCategoryDone,
     getResolution,
+    getOwnedProduct,
     setResolution,
+    markCategoryAsOwned,
     moveInBudgetCents,
     setMoveInBudget,
     spentCents,
@@ -501,6 +612,7 @@ export function useShoppingCatalog(roomId: string | null) {
     list,
     toggleChecked,
     addToList,
+    addImportedModelToChecklist,
     setQuantity,
     removeFromList,
     markReviewDone,

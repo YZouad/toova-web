@@ -25,7 +25,14 @@ interface ProductDrawerProps {
   onDeleteProduct?: (product: CuratedProduct) => void;
   onEditCategory?: () => void;
   lineStatus?: ChecklistLineStatus;
-  onSetResolution?: (resolution: 'have' | 'skip' | null) => void;
+  ownedProduct?: CuratedProduct | null;
+  onMarkOwned?: (input: {
+    name: string;
+    affiliateUrl: string;
+    priceCents: number;
+  }) => void | Promise<void>;
+  onSkip?: () => void;
+  onUndo?: () => void;
 }
 
 export function ProductDrawer({
@@ -42,7 +49,10 @@ export function ProductDrawer({
   onDeleteProduct,
   onEditCategory,
   lineStatus,
-  onSetResolution,
+  ownedProduct,
+  onMarkOwned,
+  onSkip,
+  onUndo,
 }: ProductDrawerProps) {
   const titleId = useId();
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -115,12 +125,14 @@ export function ProductDrawer({
           </div>
         </header>
 
-        {!adminMode && lineStatus && onSetResolution ? (
+        {!adminMode && lineStatus && onMarkOwned && onSkip && onUndo ? (
           <ChecklistResolutionActions
             status={lineStatus}
-            onHave={() => onSetResolution('have')}
-            onSkip={() => onSetResolution('skip')}
-            onUndo={() => onSetResolution(null)}
+            categoryName={categoryName}
+            ownedProduct={ownedProduct}
+            onMarkOwned={onMarkOwned}
+            onSkip={onSkip}
+            onUndo={onUndo}
             className="product-drawer-resolution"
           />
         ) : null}

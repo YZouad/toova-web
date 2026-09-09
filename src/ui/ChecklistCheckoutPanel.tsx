@@ -9,6 +9,7 @@ import { MonoMeta } from './kit/MonoMeta';
 import { RuledTable } from './kit/RuledTable';
 
 function sourceLabel(source: PurchaseCartLine['source']): string {
+  if (source === 'owned') return 'Already own';
   if (source === 'both') return 'List · In room';
   if (source === 'room') return 'In room';
   return 'On list';
@@ -140,6 +141,14 @@ export function ChecklistCheckoutPanel({
                         </a>
                       ) : null}
                       {line.source === 'list' || line.source === 'both' ? (
+                        <button
+                          type="button"
+                          className="kit-btn kit-btn--sm kit-btn--outline"
+                          onClick={() => onRemoveFromList(line.productId)}
+                        >
+                          Remove
+                        </button>
+                      ) : line.source === 'owned' ? (
                         <button
                           type="button"
                           className="kit-btn kit-btn--sm kit-btn--outline"
