@@ -15,12 +15,13 @@ export type DesignerPanel =
 
 export type DesignerOverlay = null | 'cmdk' | 'keys' | 'more';
 
-export type ImportRoute = null | 'upload' | 'photo' | 'poster';
+export type ImportRoute = null | 'upload' | 'photo' | 'poster' | 'thrixel';
 
 export type InspectorTab =
   | 'fit'
   | 'bedding'
   | 'finish'
+  | 'thrixel'
   | 'path'
   | 'bulbs'
   | 'light';

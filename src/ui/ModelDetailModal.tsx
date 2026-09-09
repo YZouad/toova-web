@@ -27,6 +27,8 @@ import {
   requestBuiltinPreview,
   useBuiltinPreviews,
 } from '../hooks/useBuiltinPreviews';
+import { useStore } from '../store';
+import { ThrixelRevisePanel } from './ThrixelRevisePanel';
 import './model-detail.css';
 
 export interface ModelDetailModalProps {
@@ -40,6 +42,8 @@ export interface ModelDetailModalProps {
   onModelDeleted: (kind: string) => void;
   /** When true, open directly in edit mode (owner). */
   startInEdit?: boolean;
+  /** When true, scroll the Thrixel revise block into view (owner). */
+  focusThrixelRevise?: boolean;
 }
 
 const COMPACT_MQ = '(max-width: 1023px)';
@@ -143,6 +147,7 @@ export function ModelDetailModal({
   onModelPatched,
   onModelDeleted,
   startInEdit = false,
+  focusThrixelRevise = false,
 }: ModelDetailModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -170,6 +175,8 @@ export function ModelDetailModal({
   );
   const [downloadBusy, setDownloadBusy] = useState(false);
   const [imgBroken, setImgBroken] = useState(false);
+  const thrixelReviseRef = useRef<HTMLDivElement>(null);
+  const patchImportedCatalogModel = useStore((s) => s.patchImportedCatalogModel);
 
   const canDownload =
     !!currentUserId &&
@@ -213,6 +220,14 @@ export function ModelDetailModal({
     mq.addEventListener('change', sync);
     return () => mq.removeEventListener('change', sync);
   }, []);
+
+  useEffect(() => {
+    if (!focusThrixelRevise || !isOwner) return;
+    const timer = window.setTimeout(() => {
+      thrixelReviseRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [focusThrixelRevise, isOwner, model.kind]);
 
   useEffect(() => {
     restoreFocusRef.current = document.activeElement as HTMLElement | null;
@@ -587,6 +602,41 @@ export function ModelDetailModal({
       </div>
     ) : null;
 
+  const thrixelReviseBlock =
+    isOwner && currentUserId && !editing ? (
+      <div ref={thrixelReviseRef}>
+        <ThrixelRevisePanel
+          model={model}
+          userId={currentUserId}
+          onRevised={(patch) => {
+            void (async () => {
+              const access = model.visibility === 'public' ? 'public' : 'private';
+              const storagePath = patch.storagePath ?? model.storagePath;
+              const signedUrl = storagePath
+                ? await resolveBrowsableModelUrl(storagePath, { access })
+                : model.signedUrl;
+              onModelPatched(model.kind, {
+                ...patch,
+                storagePath,
+                signedUrl: signedUrl ?? model.signedUrl,
+              });
+              if (signedUrl && storagePath) {
+                patchImportedCatalogModel(model.kind, {
+                  url: signedUrl,
+                  storagePath,
+                  catalogSizeIn:
+                    patch.width_in != null && patch.height_in != null && patch.depth_in != null
+                      ? [patch.width_in, patch.height_in, patch.depth_in]
+                      : undefined,
+                });
+              }
+              setImgBroken(false);
+            })();
+          }}
+        />
+      </div>
+    ) : null;
+
   const readingBlock = reading ? (
     <>
       {model.categories.length > 0 ? (
@@ -819,6 +869,7 @@ export function ModelDetailModal({
           <div className="md-scroll">
             {error ? <p className="md-error" role="alert">{error}</p> : null}
             {readingBlock}
+            {thrixelReviseBlock}
             {mobileOwner}
           </div>
 

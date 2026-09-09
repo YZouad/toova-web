@@ -6,9 +6,16 @@ import { IconDuplicate, IconTrash } from './icons';
 export interface ContextBarProps {
   onEditDetails: () => void;
   detailLabel?: string;
+  onReviseWithThrixel?: () => void;
+  showReviseWithThrixel?: boolean;
 }
 
-export function ContextBar({ onEditDetails, detailLabel = 'Edit details' }: ContextBarProps) {
+export function ContextBar({
+  onEditDetails,
+  detailLabel = 'Edit details',
+  onReviseWithThrixel,
+  showReviseWithThrixel = false,
+}: ContextBarProps) {
   const selectedId = useStore((s) => s.selectedId);
   const selectedIds = useStore((s) => s.selectedIds);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
@@ -124,6 +131,12 @@ export function ContextBar({ onEditDetails, detailLabel = 'Edit details' }: Cont
       </button>
 
       <div style={{ width: 1, height: 30, background: 'var(--rule-soft)', margin: '0 6px' }} />
+
+      {showReviseWithThrixel && onReviseWithThrixel ? (
+        <button type="button" className="dg-context-btn" onClick={onReviseWithThrixel}>
+          Revise with Thrixel
+        </button>
+      ) : null}
 
       <button type="button" className="dg-context-btn is-primary" onClick={onEditDetails}>
         {detailLabel}

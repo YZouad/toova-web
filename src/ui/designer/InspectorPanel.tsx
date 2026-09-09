@@ -17,8 +17,11 @@ import { DEFAULT_RUG_COLOR, isChecklistRug } from '../../lib/checklistPublicGlbs
 import { LED_PALETTE_PRESETS, palettePresetBackground } from '../../lib/hangingDecorGeometry';
 import { proportionalSizesFromMaxSide } from '../../lib/uniformItemSize';
 import { planBounds } from '../../lib/roomGeometry';
+import { useAuth } from '../../hooks/useAuth';
+import { useCatalogThrixelLinked } from '../../hooks/useCatalogThrixelLinked';
 import { DEFAULT_EMITTER, useStore } from '../../store';
 import type { InspectorTab } from './chromeTypes';
+import { InspectorThrixelReviseSection } from './InspectorThrixelReviseSection';
 import { PanelSection } from './PanelShell';
 
 export interface InspectorPanelProps {
@@ -49,8 +52,10 @@ function TabBtn({
 }
 
 export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelProps) {
+  const { user } = useAuth();
   const selectedId = useStore((s) => s.selectedId);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
+  const thrixelLinked = useCatalogThrixelLinked(item?.catalogKind);
   const roomGeometry = useStore((s) => s.roomGeometry);
   const updateRotation = useStore((s) => s.updateRotation);
   const setItemSize = useStore((s) => s.setItemSize);
@@ -139,6 +144,9 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
                 <TabBtn active={tab === 'bedding'} label="Bedding" onClick={() => onTab('bedding')} />
               ) : null}
               <TabBtn active={tab === 'finish'} label="Finish" onClick={() => onTab('finish')} />
+              {thrixelLinked ? (
+                <TabBtn active={tab === 'thrixel'} label="Revise" onClick={() => onTab('thrixel')} />
+              ) : null}
             </>
           ) : null}
           {isHanging ? (
@@ -292,6 +300,10 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
               patch={(p) => setBeddingConfig(item.id, p)}
               config={resolveBeddingConfig(item)}
             />
+          ) : null}
+
+          {tab === 'thrixel' && thrixelLinked && item.catalogKind && user?.id ? (
+            <InspectorThrixelReviseSection catalogKind={item.catalogKind} userId={user.id} />
           ) : null}
 
           {tab === 'finish' && isFurniture ? (

@@ -9,6 +9,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 /** Same-origin prefix the app calls; Vite forwards to the Render BFF. */
 const trellisProxyPath = '/api/trellis';
+const thrixelProxyPath = '/api/thrixel';
 const defaultTrellisBffOrigin = 'https://toova-bff.onrender.com';
 
 /** GitHub Pages SPA fallback: unknown paths serve 404.html (= index.html). */
@@ -25,9 +26,9 @@ function spa404Fallback(): Plugin {
   };
 }
 
-function buildTrellisProxy(trellisBffOrigin: string): Record<string, ProxyOptions> {
+function buildBffProxy(trellisBffOrigin: string, prefix: string): Record<string, ProxyOptions> {
   return {
-    [trellisProxyPath]: {
+    [prefix]: {
       target: trellisBffOrigin,
       changeOrigin: true,
       timeout: 600_000,
@@ -35,22 +36,30 @@ function buildTrellisProxy(trellisBffOrigin: string): Record<string, ProxyOption
       configure: (proxy) => {
         proxy.on('proxyReq', (_proxyReq, req) => {
           console.log(
-            `[TRELLIS proxy] ${req.method} ${req.url} -> ${trellisBffOrigin}${req.url}`,
+            `[${prefix} proxy] ${req.method} ${req.url} -> ${trellisBffOrigin}${req.url}`,
           );
         });
 
         proxy.on('proxyRes', (proxyRes, req) => {
           console.log(
-            `[TRELLIS proxy] response ${proxyRes.statusCode} for ${req.url}`,
+            `[${prefix} proxy] response ${proxyRes.statusCode} for ${req.url}`,
           );
         });
 
         proxy.on('error', (err, req) => {
-          console.error(`[TRELLIS proxy] error for ${req.url}:`, err.message);
+          console.error(`[${prefix} proxy] error for ${req.url}:`, err.message);
         });
       },
     },
   };
+}
+
+function buildTrellisProxy(trellisBffOrigin: string): Record<string, ProxyOptions> {
+  return buildBffProxy(trellisBffOrigin, trellisProxyPath);
+}
+
+function buildThrixelProxy(trellisBffOrigin: string): Record<string, ProxyOptions> {
+  return buildBffProxy(trellisBffOrigin, thrixelProxyPath);
 }
 
 export default defineConfig(({ mode }) => {
@@ -65,7 +74,9 @@ export default defineConfig(({ mode }) => {
     );
   }
 
-  const trellisProxy = trellisBffOrigin ? buildTrellisProxy(trellisBffOrigin) : undefined;
+  const trellisProxy = trellisBffOrigin
+    ? { ...buildTrellisProxy(trellisBffOrigin), ...buildThrixelProxy(trellisBffOrigin) }
+    : undefined;
 
   return {
     base,

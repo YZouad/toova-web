@@ -7,6 +7,8 @@ export interface MobileSelectionActionsProps {
   onEditDetails: () => void;
   onDismiss?: () => void;
   detailLabel?: string;
+  onReviseWithThrixel?: () => void;
+  showReviseWithThrixel?: boolean;
 }
 
 /**
@@ -17,6 +19,8 @@ export function MobileSelectionActions({
   onEditDetails,
   onDismiss,
   detailLabel = 'Edit details',
+  onReviseWithThrixel,
+  showReviseWithThrixel = false,
 }: MobileSelectionActionsProps) {
   const selectedId = useStore((s) => s.selectedId);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
@@ -120,6 +124,11 @@ export function MobileSelectionActions({
                 <span>Copy</span>
               </button>
             </>
+          ) : null}
+          {showReviseWithThrixel && onReviseWithThrixel ? (
+            <button type="button" className="dgm-action-btn" onClick={onReviseWithThrixel}>
+              <span>Revise with Thrixel</span>
+            </button>
           ) : null}
           <button
             type="button"

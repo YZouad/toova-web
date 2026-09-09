@@ -297,6 +297,15 @@ interface StoreState {
   /** Whether room fixtures are currently considered "on". */
   roomFixturesLit: () => boolean;
   registerImportedNaturalSize: (id: string, natural: [number, number, number]) => void;
+  /** Swap GLB URL/path for every placed import from this catalog kind. */
+  patchImportedCatalogModel: (
+    catalogKind: string,
+    patch: {
+      url: string;
+      storagePath: string;
+      catalogSizeIn?: [number, number, number];
+    },
+  ) => void;
   setImportedSize: (id: string, size: [number, number, number]) => void;
   /**
    * Replace selection, or toggle membership when `additive` (shift-click).
@@ -1120,6 +1129,23 @@ export const useStore = create<StoreState>((set, get) => ({
         };
       }
       return s;
+    }),
+
+  patchImportedCatalogModel: (catalogKind, patch) =>
+    set((s) => {
+      let changed = false;
+      const items = { ...s.items };
+      for (const [id, it] of Object.entries(items)) {
+        if (it.kind !== 'imported' || it.catalogKind !== catalogKind) continue;
+        items[id] = {
+          ...it,
+          importedUrl: patch.url,
+          importedStoragePath: patch.storagePath,
+          ...(patch.catalogSizeIn ? { catalogSizeIn: patch.catalogSizeIn } : {}),
+        };
+        changed = true;
+      }
+      return changed ? { items } : s;
     }),
 
   setImportedSize: (id, sizeInput) =>

@@ -9,9 +9,14 @@ export function defaultInspectorTab(kind: string | undefined): InspectorTab {
 }
 
 /** Which tabs are valid for a kind. */
-export function inspectorTabsForKind(kind: string | undefined): InspectorTab[] {
+export function inspectorTabsForKind(
+  kind: string | undefined,
+  opts?: { thrixelRevise?: boolean },
+): InspectorTab[] {
   if (kind === 'hanging') return ['path', 'bulbs'];
   if (kind === 'light') return ['light'];
-  if (kind === 'bed') return ['fit', 'bedding', 'finish'];
-  return ['fit', 'finish'];
+  if (kind === 'bed') {
+    return opts?.thrixelRevise ? ['fit', 'bedding', 'finish', 'thrixel'] : ['fit', 'bedding', 'finish'];
+  }
+  return opts?.thrixelRevise ? ['fit', 'finish', 'thrixel'] : ['fit', 'finish'];
 }
