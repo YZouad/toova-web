@@ -16,6 +16,14 @@ import {
 } from '../../../lib/shoppingCatalogAdmin';
 import { parseImportedShopDetails } from '../../../lib/localRoomChecklist';
 import { TRELLIS_STARTING_STATUS } from '../../../lib/trellisApi';
+import { fetchThrixelConnectionStatus } from '../../../lib/thrixelApi';
+import { useGlbPreviewUrl } from '../../../hooks/useGlbPreviewUrl';
+import { useThrixelCredits } from '../../../hooks/useThrixelCredits';
+import { GlbTurntablePreview } from '../../GlbTurntablePreview';
+import { ThrixelCreditsBanner } from '../../ThrixelCreditsBanner';
+import { ThrixelImportRevisePanel } from '../../ThrixelImportRevisePanel';
+import type { ThrixelCatalogStage } from '../../../lib/thrixelCatalogAssets';
+import { profilePath, navigate } from '../../../hooks/useRoute';
 import { PhotoSubjectPrep } from '../../PhotoSubjectPrep';
 import { PosterImageCrop } from '../../PosterImageCrop';
 import type { CatalogModel, ImportRoute } from '../chromeTypes';
@@ -23,6 +31,7 @@ import {
   buildPosterGlb,
   prepareGlbFile,
   runPhotoGenerate,
+  runThrixelGenerate,
   submitCatalogImport,
 } from '../importLogic';
 import { MobileSheet } from './MobileSheet';
@@ -43,7 +52,10 @@ export interface MobileImportSheetProps {
   onRoute: (r: ImportRoute) => void;
   onClose: () => void;
   isAdmin?: boolean;
-  onComplete?: (model: CatalogModel) => void;
+  onComplete?: (
+    model: CatalogModel,
+    meta?: { fromThrixel: boolean; thrixelLinkFailed?: boolean },
+  ) => void;
 }
 
 const POSTER_SIZES = [
@@ -67,6 +79,7 @@ function formatBytes(n: number): string {
 
 function sheetTitle(route: ImportRoute): string {
   if (route === 'photo') return 'From a photo';
+  if (route === 'thrixel') return 'With Thrixel';
   if (route === 'poster') return 'Make a poster';
   if (route === 'upload') return 'Upload a model';
   return 'Bring a piece in';
@@ -84,7 +97,7 @@ export function MobileImportSheet({
   isAdmin = false,
   onComplete,
 }: MobileImportSheetProps) {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const userId = user?.id ?? null;
   const { addImportedModelToChecklist } = useShoppingCatalogContext();
   const photoJob = useSyncExternalStore(subscribePhotoJob, getPhotoJobSnapshot, getPhotoJobSnapshot);
@@ -107,6 +120,20 @@ export function MobileImportSheet({
   const [creatingPoster, setCreatingPoster] = useState(false);
   const [posterError, setPosterError] = useState<string | null>(null);
   const [posterSizeIdx, setPosterSizeIdx] = useState(2);
+
+  const [thrixelPrompt, setThrixelPrompt] = useState('');
+  const [thrixelConnected, setThrixelConnected] = useState<boolean | null>(null);
+  const [thrixelGenerating, setThrixelGenerating] = useState(false);
+  const [thrixelStatus, setThrixelStatus] = useState<string | null>(null);
+  const [thrixelError, setThrixelError] = useState<string | null>(null);
+  const [thrixelElapsedSec, setThrixelElapsedSec] = useState(0);
+  const thrixelAbortRef = useRef<AbortController | null>(null);
+  const [thrixelSubmissionId, setThrixelSubmissionId] = useState<string | null>(null);
+  const [thrixelStage, setThrixelStage] = useState<ThrixelCatalogStage>('architect');
+  const thrixelJobIdRef = useRef<string | null>(null);
+  const thrixelCredits = useThrixelCredits(
+    open && (route === 'thrixel' || thrixelSubmissionId != null),
+  );
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -155,6 +182,16 @@ export function MobileImportSheet({
     setChecklistCoverFile(null);
     setShopUrl('');
     setShopPriceDollars('');
+    setThrixelPrompt('');
+    setThrixelConnected(null);
+    setThrixelGenerating(false);
+    setThrixelStatus(null);
+    setThrixelError(null);
+    setThrixelElapsedSec(0);
+    setThrixelSubmissionId(null);
+    setThrixelStage('architect');
+    thrixelAbortRef.current?.abort();
+    thrixelAbortRef.current = null;
   }, []);
 
   const resetAll = useCallback(() => {
@@ -167,6 +204,30 @@ export function MobileImportSheet({
     if (photoJobBusy()) return;
     resetFormOnly();
   }, [open, resetFormOnly]);
+
+  useEffect(() => {
+    if (!open || !userId) {
+      setThrixelConnected(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchThrixelConnectionStatus()
+      .then((status) => {
+        if (!cancelled) setThrixelConnected(status.connected);
+      })
+      .catch(() => {
+        if (!cancelled) setThrixelConnected(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, userId]);
+
+  useEffect(() => {
+    if (!thrixelGenerating) return;
+    const id = window.setInterval(() => setThrixelElapsedSec((s) => s + 1), 1000);
+    return () => window.clearInterval(id);
+  }, [thrixelGenerating]);
 
   useEffect(() => {
     if (!open || !isAdmin) return;
@@ -309,6 +370,46 @@ export function MobileImportSheet({
     }
   };
 
+  const handleThrixelGenerate = async () => {
+    if (!userId || thrixelGenerating) return;
+    const task = thrixelPrompt.trim();
+    if (!task) {
+      setThrixelError('Describe the piece you want Thrixel to make.');
+      return;
+    }
+    if (thrixelConnected === false) {
+      setThrixelError('Connect your Thrixel account in profile settings first.');
+      return;
+    }
+    setThrixelError(null);
+    thrixelAbortRef.current?.abort();
+    const abort = new AbortController();
+    thrixelAbortRef.current = abort;
+    setThrixelElapsedSec(0);
+    setThrixelStatus('Submitting to Thrixel…');
+    setThrixelGenerating(true);
+    try {
+      const { glbFile, jobId, submissionId } = await runThrixelGenerate(
+        { task },
+        userId,
+        abort.signal,
+        (message) => setThrixelStatus(message),
+      );
+      thrixelJobIdRef.current = jobId;
+      setThrixelSubmissionId(submissionId ?? null);
+      setThrixelStage('architect');
+      setFile(glbFile);
+      void thrixelCredits.refresh();
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setThrixelError(err instanceof Error ? err.message : 'Generation failed');
+    } finally {
+      setThrixelGenerating(false);
+      setThrixelStatus(null);
+      if (thrixelAbortRef.current === abort) thrixelAbortRef.current = null;
+    }
+  };
+
   const handleCreatePoster = async () => {
     setPosterError(null);
     const w = Number(widthIn);
@@ -364,7 +465,8 @@ export function MobileImportSheet({
     }
     setSubmitting(true);
     try {
-      const model = await submitCatalogImport({
+      const fromThrixel = Boolean(thrixelSubmissionId);
+      const { model, thrixelLinkFailed } = await submitCatalogImport({
         userId,
         file: activeFile,
         uploadFile,
@@ -379,7 +481,8 @@ export function MobileImportSheet({
           listInGallery: listInGallery || (isAdmin && addToChecklist),
         },
         posterCroppedBlob,
-        priorJobId: photoJob.jobId,
+        priorJobId: thrixelJobIdRef.current ?? photoJob.jobId,
+        thrixelSubmissionId,
       });
       if (addToChecklist && isAdmin && checklistCategoryId) {
         const cover =
@@ -403,7 +506,7 @@ export function MobileImportSheet({
           catalogKind: model.kind,
         });
       }
-      onComplete?.(model);
+      onComplete?.(model, { fromThrixel, thrixelLinkFailed });
       resetAll();
       onClose();
     } catch (err) {
@@ -414,7 +517,7 @@ export function MobileImportSheet({
   };
 
   const handleClose = () => {
-    if (submitting || decimating || creatingPoster) return;
+    if (submitting || decimating || creatingPoster || thrixelGenerating) return;
     if (photoJob.generating) {
       onClose();
       return;
@@ -432,12 +535,14 @@ export function MobileImportSheet({
     handleClose();
   };
 
+  const activeFile = file ?? photoJob.glbFile;
+  const fileReady = Boolean(activeFile && uploadFile && !decimating);
+  const glbPreviewUrl = useGlbPreviewUrl(open && fileReady ? uploadFile : null);
+
   if (!open) return null;
 
   const activeRoute = route;
-  const busy = submitting || photoJob.generating || decimating || creatingPoster;
-  const activeFile = file ?? photoJob.glbFile;
-  const fileReady = Boolean(activeFile && uploadFile && !decimating);
+  const busy = submitting || photoJob.generating || thrixelGenerating || decimating || creatingPoster;
   const nameOk = title.trim().length > 0;
   const catsOk = categories.length >= 1 && categories.length <= MAX_CATALOG_CATEGORIES;
   const dimsOk =
@@ -454,11 +559,21 @@ export function MobileImportSheet({
       ? fileReady
       : activeRoute === 'photo'
         ? fileReady
+        : activeRoute === 'thrixel'
+          ? fileReady
         : activeRoute === 'poster'
           ? fileReady
           : false;
 
   const canSave = fileReady && nameOk && catsOk && dimsOk && !busy && Boolean(userId);
+
+  const renderGlbPreviewBlock = () =>
+    glbPreviewUrl ? (
+      <div className="dg-import-glb-preview dg-import-glb-preview--compact">
+        <GlbTurntablePreview url={glbPreviewUrl} compact enableZoom />
+        <p className="dg-import-glb-preview__hint">Drag to rotate · pinch to zoom</p>
+      </div>
+    ) : null;
 
   const primaryLabel = (() => {
     if (!activeRoute) return 'Pick a route';
@@ -471,6 +586,11 @@ export function MobileImportSheet({
     if (activeRoute === 'poster') {
       if (!posterCroppedBlob) return 'Create poster';
       if (!fileReady) return creatingPoster ? 'Building…' : 'Build poster';
+      return submitting ? 'Saving…' : 'Add to library';
+    }
+    if (activeRoute === 'thrixel') {
+      if (thrixelGenerating) return 'Generating…';
+      if (!fileReady) return 'Send to Thrixel';
       return submitting ? 'Saving…' : 'Add to library';
     }
     return submitting ? 'Saving…' : 'Add to library';
@@ -487,6 +607,11 @@ export function MobileImportSheet({
     if (activeRoute === 'poster') {
       if (!posterCroppedBlob) return busy;
       if (!fileReady) return busy;
+      return !canSave;
+    }
+    if (activeRoute === 'thrixel') {
+      if (thrixelGenerating) return true;
+      if (!fileReady) return !userId || !thrixelPrompt.trim() || thrixelConnected !== true;
       return !canSave;
     }
     return !canSave;
@@ -514,11 +639,58 @@ export function MobileImportSheet({
       void handleSubmit();
       return;
     }
+    if (activeRoute === 'thrixel') {
+      if (!fileReady) {
+        void handleThrixelGenerate();
+        return;
+      }
+      void handleSubmit();
+      return;
+    }
     void handleSubmit();
   };
 
   const renderMetadataForm = () => (
     <div className="dgm-import-form">
+      {fileReady ? renderGlbPreviewBlock() : null}
+
+      {thrixelSubmissionId && activeRoute === 'thrixel' ? (
+        <>
+          <p className="dgm-note">
+            <span className="dgm-chip" style={{ pointerEvents: 'none' }}>
+              Generated with Thrixel
+            </span>
+          </p>
+          <ThrixelCreditsBanner
+            balanceLabel={thrixelCredits.balanceLabel}
+            plan={thrixelCredits.account?.plan ?? null}
+            costLine={
+              thrixelCredits.costLine('generate') +
+              ' Generation was metered on your Thrixel account.'
+            }
+            loading={thrixelCredits.loading}
+            error={thrixelCredits.error}
+            compact
+          />
+          <ThrixelImportRevisePanel
+            submissionId={thrixelSubmissionId}
+            stage={thrixelStage}
+            previewFile={uploadFile}
+            disabled={busy}
+            onRevised={(result) => {
+              setFile(result.glbFile);
+              setUploadFile(result.uploadFile);
+              setThrixelSubmissionId(result.submissionId);
+              setThrixelStage(result.stage);
+              setWidthIn(result.widthIn);
+              setHeightIn(result.heightIn);
+              setDepthIn(result.depthIn);
+              setDecimationError(null);
+            }}
+          />
+        </>
+      ) : null}
+
       <label className="dgm-field">
         <span className="dgm-field__label">
           Name it <span className="dgm-field__req">required</span>
@@ -719,6 +891,68 @@ export function MobileImportSheet({
     </div>
   );
 
+  const renderThrixelStep = () => (
+    <div className="dgm-import-form">
+      {thrixelConnected === false ? (
+        <p className="dgm-note">
+          Connect Thrixel in{' '}
+          <button
+            type="button"
+            className="dgm-chip"
+            disabled={busy}
+            onClick={() => {
+              if (profile?.handle) navigate(profilePath(profile.handle));
+            }}
+          >
+            profile settings
+          </button>{' '}
+          first.
+        </p>
+      ) : null}
+      {thrixelConnected !== false ? (
+        <ThrixelCreditsBanner
+          balanceLabel={thrixelCredits.balanceLabel}
+          plan={thrixelCredits.account?.plan ?? null}
+          costLine={
+            thrixelCredits.account
+              ? thrixelCredits.costLine('generate')
+              : thrixelCredits.pricingOnlyCostLine('generate')
+          }
+          loading={thrixelCredits.loading}
+          error={thrixelCredits.error ?? thrixelCredits.pricingError}
+          compact
+        />
+      ) : null}
+      {!fileReady && thrixelConnected !== false ? (
+        <p className="dgm-note" style={{ fontWeight: 500 }}>
+          {thrixelCredits.loading
+            ? 'Loading cost estimate…'
+            : thrixelCredits.account
+              ? thrixelCredits.costLine('generate')
+              : thrixelCredits.pricingOnlyCostLine('generate')}
+        </p>
+      ) : null}
+      <label className="dgm-field">
+        <span className="dgm-field__label">Describe the piece</span>
+        <textarea
+          className="dgm-input dgm-input--area"
+          value={thrixelPrompt}
+          disabled={busy}
+          rows={3}
+          placeholder="A weathered wooden desk with two drawers"
+          onChange={(e) => setThrixelPrompt(e.target.value)}
+        />
+      </label>
+      {thrixelGenerating ? (
+        <p className="dgm-note">
+          {thrixelStatus ?? 'Generating with Thrixel…'} · {thrixelElapsedSec}s
+        </p>
+      ) : null}
+      {thrixelError ? <p className="dgm-import-error">{thrixelError}</p> : null}
+      {showMetadata ? renderMetadataForm() : null}
+    </div>
+  );
+
   const renderRoutePicker = () => (
     <div className="dgm-import-routes">
       <button type="button" className="dgm-import-route dgm-import-route--primary" onClick={() => pickRoute('photo')}>
@@ -729,6 +963,13 @@ export function MobileImportSheet({
         <span className="dgm-import-route__copy">
           <span className="dgm-import-route__title">Take a photo</span>
           <span className="dgm-import-route__sub">Point at the real thing — we make the 3D model</span>
+        </span>
+      </button>
+      <button type="button" className="dgm-import-route" onClick={() => pickRoute('thrixel')}>
+        <span className="dgm-import-route__icon" aria-hidden />
+        <span className="dgm-import-route__copy">
+          <span className="dgm-import-route__title">With Thrixel</span>
+          <span className="dgm-import-route__sub">Your account · text prompt · uses your cubes</span>
         </span>
       </button>
       <button type="button" className="dgm-import-route" onClick={() => pickRoute('poster')}>
@@ -1014,6 +1255,8 @@ export function MobileImportSheet({
         ? renderRoutePicker()
         : activeRoute === 'photo'
           ? renderPhotoStep()
+          : activeRoute === 'thrixel'
+            ? renderThrixelStep()
           : activeRoute === 'poster'
             ? renderPosterStep()
             : renderUploadStep()}

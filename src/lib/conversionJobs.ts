@@ -1,6 +1,6 @@
 import { supabase } from './supabase';
 
-export type ConversionJobSource = 'trellis' | 'upload' | 'poster';
+export type ConversionJobSource = 'trellis' | 'thrixel' | 'upload' | 'poster';
 export type ConversionJobStatus = 'queued' | 'processing' | 'completed' | 'failed';
 
 export async function createConversionJob(input: {
@@ -34,12 +34,19 @@ export async function updateConversionJob(
     error?: string | null;
     kind?: string | null;
     label?: string | null;
+    thrixelSubmissionId?: string | null;
   },
 ): Promise<void> {
   const payload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
-    ...patch,
+    status: patch.status,
+    error: patch.error,
+    kind: patch.kind,
+    label: patch.label,
   };
+  if (patch.thrixelSubmissionId !== undefined) {
+    payload.thrixel_submission_id = patch.thrixelSubmissionId;
+  }
   if (patch.status === 'completed' || patch.status === 'failed') {
     payload.completed_at = new Date().toISOString();
   }

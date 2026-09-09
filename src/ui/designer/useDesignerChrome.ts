@@ -80,6 +80,13 @@ export function useDesignerChrome() {
     setInspectorTab(defaultInspectorTab(selectedItem?.kind));
   }, [selectedItem?.kind]);
 
+  const openInspectorTab = useCallback((tab: InspectorTab) => {
+    setPanelRaw('inspect');
+    setRadialOpen(false);
+    setOverlay(null);
+    setInspectorTab(tab);
+  }, []);
+
   const clearSelection = useCallback(() => {
     useStore.getState().select(null);
     setRadialOpen(false);
@@ -105,6 +112,7 @@ export function useDesignerChrome() {
     setInspectorTab((t) => {
       if (kind !== 'bed' && t === 'bedding') return 'fit';
       if (t === 'path' || t === 'bulbs' || t === 'light') return 'fit';
+      if (t === 'thrixel') return t;
       return t;
     });
   }, [selectedItem?.kind, panel]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -230,6 +238,7 @@ export function useDesignerChrome() {
       inspectorTab,
       setInspectorTab,
       openInspector,
+      openInspectorTab,
       clearSelection,
       startDraw,
       drawing,
@@ -264,6 +273,7 @@ export function useDesignerChrome() {
       closeImport,
       inspectorTab,
       openInspector,
+      openInspectorTab,
       clearSelection,
       startDraw,
       drawing,

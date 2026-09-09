@@ -1,0 +1,130 @@
+import { Canvas, useThree } from '@react-three/fiber';
+import { ContactShadows, Environment, OrbitControls, useGLTF } from '@react-three/drei';
+import { Suspense, useEffect, useMemo } from 'react';
+import * as THREE from 'three';
+import { normalizeImportedMaterials } from '../lib/normalizeImportedMaterials';
+import { MonoMeta, Spinner } from './kit';
+
+function TransparentClear() {
+  const { gl } = useThree();
+  useEffect(() => {
+    gl.setClearColor(0x000000, 0);
+  }, [gl]);
+  return null;
+}
+
+function DisposeGlOnUnmount() {
+  const { gl } = useThree();
+  useEffect(() => () => gl.dispose(), [gl]);
+  return null;
+}
+
+export function GlbTurntableModel({ url, compact = false }: { url: string; compact?: boolean }) {
+  const { scene } = useGLTF(url) as { scene: THREE.Object3D };
+
+  const object = useMemo(() => {
+    const cloned = scene.clone(true);
+    normalizeImportedMaterials(cloned, { relight: true });
+    const box = new THREE.Box3().setFromObject(cloned);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const center = new THREE.Vector3();
+    box.getCenter(center);
+    cloned.position.set(-center.x, -box.min.y, -center.z);
+
+    const targetSize = compact ? 20 : 26;
+    const maxDim = Math.max(size.x, size.y, size.z, 1e-3);
+    cloned.scale.setScalar(targetSize / maxDim);
+    return cloned;
+  }, [compact, scene]);
+
+  return <primitive object={object} />;
+}
+
+export interface GlbTurntablePreviewProps {
+  url?: string | null;
+  className?: string;
+  compact?: boolean;
+  enableZoom?: boolean;
+  autoRotate?: boolean;
+}
+
+export function GlbTurntablePreview({
+  url,
+  className,
+  compact = false,
+  enableZoom = true,
+  autoRotate = true,
+}: GlbTurntablePreviewProps) {
+  useEffect(() => {
+    if (url) useGLTF.preload(url);
+  }, [url]);
+
+  if (!url) {
+    return (
+      <div className="glb-turntable-fallback">
+        <MonoMeta size="sm" tone="dense">
+          No model to preview
+        </MonoMeta>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className={[
+        'glb-turntable',
+        compact ? 'glb-turntable--compact' : '',
+        className,
+      ]
+        .filter(Boolean)
+        .join(' ')}
+      aria-label="Drag to rotate the 3D model"
+    >
+      <Suspense
+        fallback={
+          <div className="glb-turntable-fallback">
+            <Spinner label="Loading model…" />
+          </div>
+        }
+      >
+        <Canvas
+          key={url}
+          camera={
+            compact
+              ? { position: [50, 23, 58], fov: 32 }
+              : { position: [38, 24, 44], fov: 30 }
+          }
+          dpr={[1, 1.5]}
+          gl={{
+            antialias: true,
+            alpha: true,
+            premultipliedAlpha: false,
+            powerPreference: 'low-power',
+          }}
+          style={{ background: 'transparent', width: '100%', height: '100%' }}
+          onCreated={({ gl }) => {
+            gl.setClearColor(0x000000, 0);
+          }}
+        >
+          <TransparentClear />
+          <DisposeGlOnUnmount />
+          <ambientLight intensity={0.55} />
+          <directionalLight position={[36, 48, 24]} intensity={1.05} />
+          <directionalLight position={[-28, 18, -16]} intensity={0.35} color="#B05A3C" />
+          <Environment preset="apartment" environmentIntensity={0.35} />
+          <GlbTurntableModel url={url} compact={compact} />
+          <ContactShadows position={[0, 0.01, 0]} opacity={0.28} scale={48} blur={2.4} far={40} />
+          <OrbitControls
+            target={compact ? [0, 10, 0] : [0, 11, 0]}
+            enablePan={false}
+            enableZoom={enableZoom}
+            autoRotate={autoRotate}
+            autoRotateSpeed={0.55}
+            enableDamping
+          />
+        </Canvas>
+      </Suspense>
+    </div>
+  );
+}
