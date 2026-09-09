@@ -10,15 +10,9 @@ import {
   prepareGlbForCatalogUpload,
   readGlbAxisBoundsWithTimeout,
 } from '../lib/glbImportPipeline';
-import { generateGlbFromPhoto } from '../lib/trellisGenerate';
 import { TRELLIS_GENERATE_URL, TRELLIS_STARTING_STATUS, trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { validateCatalogText } from '../lib/bannedWords';
-import { classifyGenerationFailure } from './designer/importLogic';
-import {
-  trackModelGenerationStarted,
-  trackModelGenerationSucceeded,
-  trackModelGenerationFailed,
-} from '../lib/analytics';
+import { runPhotoGenerate } from './designer/importLogic';
 import {
   CATALOG_CATEGORY_DEFS,
   MAX_CATALOG_CATEGORIES,
@@ -64,6 +58,8 @@ interface ImportModelModalProps {
   userId: string;
   open: boolean;
   initialTab?: ModalTab;
+  initialGlbFile?: File | null;
+  priorJobId?: string | null;
   isAdmin?: boolean;
   onClose: () => void;
   onAdded: () => void | Promise<void>;
@@ -73,6 +69,8 @@ export function ImportModelModal({
   userId,
   open,
   initialTab = 'upload',
+  initialGlbFile = null,
+  priorJobId = null,
   isAdmin = false,
   onClose,
   onAdded,
@@ -127,8 +125,15 @@ export function ImportModelModal({
   const busy = submitting || generating || decimating || creatingPoster;
 
   useEffect(() => {
-    if (open) setTab(initialTab);
-  }, [open, initialTab]);
+    if (!open) return;
+    if (initialGlbFile) {
+      setTab('upload');
+      setFile(initialGlbFile);
+      activeJobIdRef.current = priorJobId;
+      return;
+    }
+    setTab(initialTab);
+  }, [open, initialTab, initialGlbFile, priorJobId]);
 
   useEffect(() => {
     if (!open || !isAdmin) return;
@@ -296,19 +301,10 @@ export function ImportModelModal({
     setGeneratePhase('generating');
     setGenerating(true);
 
-    const jobId = await createConversionJob({
-      userId,
-      source: 'trellis',
-      status: 'processing',
-      label: imageFile?.name || 'Image → 3D',
-    });
-    activeJobIdRef.current = jobId;
-    const startedAt = Date.now();
-    if (jobId) trackModelGenerationStarted({ job_id: jobId, source_type: 'photo' });
-
     try {
-      const glbFile = await generateGlbFromPhoto(
+      const { glbFile, jobId } = await runPhotoGenerate(
         preparedFile,
+        userId,
         abortController.signal,
         (message) => {
           setGenerateStatus(message);
@@ -317,35 +313,13 @@ export function ImportModelModal({
           }
         },
       );
+      activeJobIdRef.current = jobId;
       setFile(glbFile);
       setTab('upload');
-      if (jobId) {
-        await updateConversionJob(jobId, {
-          status: 'completed',
-          label: imageFile?.name || 'Image → 3D',
-        });
-        trackModelGenerationSucceeded({ job_id: jobId, duration_ms: Date.now() - startedAt });
-      }
     } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        if (jobId) {
-          await updateConversionJob(jobId, {
-            status: 'failed',
-            error: 'Cancelled',
-          });
-        }
-        return;
-      }
+      if (err instanceof DOMException && err.name === 'AbortError') return;
       console.error('Generation failed:', err);
-      const message = err instanceof Error ? err.message : 'Generation failed';
-      setGenerateError(message);
-      if (jobId) {
-        await updateConversionJob(jobId, {
-          status: 'failed',
-          error: message,
-        });
-        trackModelGenerationFailed({ job_id: jobId, failure_reason: classifyGenerationFailure(message) });
-      }
+      setGenerateError(err instanceof Error ? err.message : 'Generation failed');
     } finally {
       setGenerating(false);
       setGeneratePhase('idle');

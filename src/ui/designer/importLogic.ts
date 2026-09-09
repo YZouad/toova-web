@@ -1,14 +1,15 @@
 import { detectCatalogModelSource, uploadCatalogModel } from '../../lib/catalogModelUpload';
 import { createPosterGlb } from '../../lib/createPosterGlb';
 import { createConversionJob, updateConversionJob } from '../../lib/conversionJobs';
+import { dismissGenerationQueueItem, enqueuePhotoGenerate } from '../../lib/generationQueue';
 import {
   formatInchDimensions,
   prepareGlbForCatalogUpload,
   readGlbAxisBoundsWithTimeout,
 } from '../../lib/glbImportPipeline';
 import { validateCatalogText } from '../../lib/bannedWords';
+import { resolveBrowsableModelUrl } from '../../lib/modelStorage';
 import type { CatalogCategorySlug } from '../../lib/catalogCategories';
-import { generateGlbFromPhoto } from '../../lib/trellisGenerate';
 import { generateGlbWithThrixel } from '../../lib/thrixelGenerate';
 import { linkCatalogThrixelAsset } from '../../lib/thrixelCatalogAssets';
 import {
@@ -68,39 +69,13 @@ export async function runPhotoGenerate(
   signal: AbortSignal,
   onStatus: (message: string) => void,
 ): Promise<{ glbFile: File; jobId: string | null }> {
-  const jobId = await createConversionJob({
+  return enqueuePhotoGenerate({
     userId,
-    source: 'trellis',
-    status: 'processing',
+    file: imageFile,
     label: imageFile.name || 'Image → 3D',
+    signal,
+    onStatus,
   });
-  const startedAt = Date.now();
-  if (jobId) trackModelGenerationStarted({ job_id: jobId, source_type: 'photo' });
-
-  try {
-    const glbFile = await generateGlbFromPhoto(imageFile, signal, onStatus);
-    if (jobId) {
-      await updateConversionJob(jobId, {
-        status: 'completed',
-        label: imageFile.name || 'Image → 3D',
-      });
-      trackModelGenerationSucceeded({ job_id: jobId, duration_ms: Date.now() - startedAt });
-    }
-    return { glbFile, jobId };
-  } catch (err) {
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      if (jobId) {
-        await updateConversionJob(jobId, { status: 'failed', error: 'Cancelled' });
-      }
-      throw err;
-    }
-    const message = err instanceof Error ? err.message : 'Generation failed';
-    if (jobId) {
-      await updateConversionJob(jobId, { status: 'failed', error: message });
-      trackModelGenerationFailed({ job_id: jobId, failure_reason: classifyGenerationFailure(message) });
-    }
-    throw err;
-  }
 }
 
 export async function runThrixelGenerate(
@@ -267,6 +242,7 @@ export async function submitCatalogImport(
         error: null,
         ...(thrixelSubmissionId ? { thrixelSubmissionId } : {}),
       });
+      await dismissGenerationQueueItem(jobId);
     }
 
     return {
@@ -292,7 +268,7 @@ export async function submitCatalogImport(
         likedByMe: false,
         hotScore: 0,
         storagePath: objectPath,
-        signedUrl: null,
+        signedUrl: await resolveBrowsableModelUrl(objectPath),
         previewUrl: null,
       },
       thrixelLinkFailed,

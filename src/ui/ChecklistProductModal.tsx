@@ -10,7 +10,7 @@ import {
   parsePriceDollarsToCents,
   updateChecklistProductWithModel,
 } from '../lib/shoppingCatalogAdmin';
-import { generateGlbFromPhoto } from '../lib/trellisGenerate';
+import { runPhotoGenerate } from './designer/importLogic';
 import { TRELLIS_STARTING_STATUS, trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { downloadCatalogModelByKind } from '../lib/modelStorage';
 import { ImageFileField } from './ImageFileField';
@@ -181,8 +181,9 @@ export function ChecklistProductModal({
     setGenerating(true);
 
     try {
-      const generated = await generateGlbFromPhoto(
+      const generated = await runPhotoGenerate(
         preparedFile,
+        userId,
         abortController.signal,
         (message) => {
           setGenerateStatus(message);
@@ -191,7 +192,7 @@ export function ChecklistProductModal({
           }
         },
       );
-      setGlbFile(generated);
+      setGlbFile(generated.glbFile);
       setModelTab('upload');
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;

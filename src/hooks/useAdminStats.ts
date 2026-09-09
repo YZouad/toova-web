@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { failStaleProcessingJobsAsAdmin } from '../lib/conversionJobs';
 import { supabase } from '../lib/supabase';
 
 export interface AdminInventoryStatRow {
@@ -89,7 +90,7 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
   const [bundles, setBundles] = useState<AdminBundlePairRow[]>([]);
   const [jobs, setJobs] = useState<AdminConversionJobRow[]>([]);
 
-  const fetchAll = useCallback(async () => {
+  const fetchAll = useCallback(async (opts?: { sweep?: boolean; silent?: boolean }) => {
     if (!userId) {
       setIsAdmin(false);
       setStats([]);
@@ -102,7 +103,7 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
       return;
     }
 
-    setLoading(true);
+    if (!opts?.silent) setLoading(true);
     setError(null);
 
     try {
@@ -134,6 +135,10 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
       }
 
       setIsAdmin(true);
+
+      if (opts?.sweep !== false) {
+        await failStaleProcessingJobsAsAdmin().catch(() => 0);
+      }
 
       const [invRes, roomsRes, usersRes, bundleRes, jobsRes] = await Promise.all([
         supabase.rpc('get_admin_inventory_stats'),
@@ -210,7 +215,7 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
 
       const allowedStatus = new Set(['queued', 'processing', 'completed', 'failed']);
       const allowedSource = new Set(['trellis', 'upload', 'poster']);
-      setJobs(((jobsRes.data ?? []) as Partial<AdminConversionJobRow>[]).map((r) => {
+      const nextJobs = ((jobsRes.data ?? []) as Partial<AdminConversionJobRow>[]).map((r) => {
         const statusRaw = String(r.status ?? 'failed');
         const sourceRaw = String(r.source ?? 'upload');
         return {
@@ -230,7 +235,8 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
           updated_at: String(r.updated_at ?? ''),
           completed_at: r.completed_at != null ? String(r.completed_at) : null,
         };
-      }));
+      });
+      setJobs(nextJobs);
     } catch (e) {
       setStats([]);
       setRooms([]);
@@ -239,13 +245,22 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
       setJobs([]);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (!opts?.silent) setLoading(false);
     }
   }, [userId]);
 
   useEffect(() => {
     void fetchAll();
   }, [fetchAll]);
+
+  useEffect(() => {
+    const hasOpen = jobs.some((job) => job.status === 'queued' || job.status === 'processing');
+    if (!hasOpen) return;
+    const timer = window.setInterval(() => {
+      void fetchAll({ sweep: false, silent: true });
+    }, 15_000);
+    return () => window.clearInterval(timer);
+  }, [fetchAll, jobs]);
 
   return useMemo(
     () => ({

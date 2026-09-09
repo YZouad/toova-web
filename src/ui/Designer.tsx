@@ -283,7 +283,7 @@ export function Designer({
 
   const placeModel = useCallback(
     (model: GalleryModel) => {
-      placeFromCatalog(model, user?.id);
+      void placeFromCatalog(model, user?.id);
       setDetailModel(null);
       chrome.closePanels();
     },
@@ -920,18 +920,19 @@ export function Designer({
         onOpenInspector={chrome.openInspector}
         onOpenAddPanel={() => chrome.setPanel('add')}
         onPlaceModel={(model) => {
-          placeFromCatalog(model, user?.id);
+          void placeFromCatalog(model, user?.id);
           chrome.setOverlay(null);
           chrome.closePanels();
         }}
         onPlaceAndEdit={(model) => {
-          const id = placeFromCatalog(model, user?.id);
-          chrome.setOverlay(null);
-          chrome.closePanels();
-          if (id) {
-            useStore.getState().select(id);
-            chrome.openInspector();
-          }
+          void placeFromCatalog(model, user?.id).then((id) => {
+            chrome.setOverlay(null);
+            chrome.closePanels();
+            if (id) {
+              useStore.getState().select(id);
+              chrome.openInspector();
+            }
+          });
         }}
       />
       <KeysOverlay open={chrome.overlay === 'keys'} onClose={() => chrome.setOverlay(null)} />

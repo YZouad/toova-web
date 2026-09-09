@@ -142,12 +142,13 @@ export function CommandPalette({
       onPlaceModel(model);
       return;
     }
-    const id = placeFromCatalog(model, userId);
-    if (andEdit && id) {
-      useStore.getState().select(id);
-      onOpenInspector?.();
-    }
-    onClose();
+    void placeFromCatalog(model, userId).then((id) => {
+      if (andEdit && id) {
+        useStore.getState().select(id);
+        onOpenInspector?.();
+      }
+      onClose();
+    });
   };
 
   const placeProduct = async (product: CuratedProduct, andEdit?: boolean) => {

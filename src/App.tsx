@@ -53,6 +53,7 @@ import { ProfilePage } from './ui/ProfilePage';
 import { PublicRoomPage } from './ui/PublicRoomPage';
 import { GalleryPage } from './ui/GalleryPage';
 import { CreationsPage } from './ui/CreationsPage';
+import { GenerationQueueHost } from './ui/GenerationQueueHost';
 import { AppRailChrome } from './ui/AppRailChrome';
 import { LegalPage } from './ui/LegalPage';
 import { SafetyReportForm } from './ui/SafetyReportForm';
@@ -171,6 +172,7 @@ function ARPage() {
 export default function App() {
   return (
     <ChecklistRoomProvider>
+      <GenerationQueueHost />
       <AppContent />
     </ChecklistRoomProvider>
   );
