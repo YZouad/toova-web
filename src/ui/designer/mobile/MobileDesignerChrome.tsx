@@ -28,6 +28,7 @@ import { MobileLookSheet } from './MobileLookSheet';
 import { MobilePiecesSheet } from './MobilePiecesSheet';
 import { MobilePresentBar } from './MobilePresentBar';
 import { MobileSelectionActions } from './MobileSelectionActions';
+import { useCatalogThrixelLinked } from '../../../hooks/useCatalogThrixelLinked';
 import { useMobileDesignerChrome } from './useMobileDesignerChrome';
 
 function detailLabelFor(kind: string | undefined): string {
@@ -58,8 +59,12 @@ export interface MobileDesignerChromeProps {
   addLightSource: () => void;
   isAdmin?: boolean;
   onOpenModel: (model: CatalogModel) => void;
-  onImportComplete: (model: CatalogModel) => void;
+  onImportComplete: (
+    model: CatalogModel,
+    meta?: { fromThrixel: boolean; thrixelLinkFailed?: boolean },
+  ) => void;
   onOpenImport: () => void;
+  onOpenThrixelRevise?: (catalogKind: string) => void;
   searchTriggerRef: RefObject<HTMLButtonElement | null>;
 }
 
@@ -88,12 +93,15 @@ export function MobileDesignerChrome({
   onOpenModel,
   onImportComplete,
   onOpenImport,
+  onOpenThrixelRevise,
   searchTriggerRef,
 }: MobileDesignerChromeProps) {
   const mobile = useMobileDesignerChrome(chrome);
   const order = useStore((s) => s.order);
   const items = useStore((s) => s.items);
   const { categories, budgetSummary } = useShoppingCatalogContext();
+
+  const thrixelLinked = useCatalogThrixelLinked(chrome.selectedItem?.catalogKind);
 
   const checklistMeta = useMemo(() => {
     const leaves = leafCategories(categories).filter((c) => c.published);
@@ -313,6 +321,12 @@ export function MobileDesignerChrome({
           onEditDetails={() => mobile.openInspector()}
           onDismiss={chrome.clearSelection}
           detailLabel={detailLabelFor(chrome.selectedItem?.kind)}
+          showReviseWithThrixel={thrixelLinked && Boolean(onOpenThrixelRevise)}
+          onReviseWithThrixel={
+            thrixelLinked && chrome.selectedItem?.catalogKind && onOpenThrixelRevise
+              ? () => onOpenThrixelRevise(chrome.selectedItem!.catalogKind!)
+              : undefined
+          }
         />
       ) : null}
 
@@ -404,10 +418,10 @@ export function MobileDesignerChrome({
             chrome.closeImport();
           }}
           isAdmin={isAdmin}
-          onComplete={(model) => {
+          onComplete={(model, meta) => {
             mobile.closeSheet();
             chrome.closeImport();
-            onImportComplete(model);
+            onImportComplete(model, meta);
           }}
         />
       ) : null}

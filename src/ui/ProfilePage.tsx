@@ -5,6 +5,14 @@ import {
   uploadProfileAvatar,
 } from '../lib/profileStorage';
 import {
+  connectThrixel,
+  disconnectThrixel,
+  fetchThrixelConnectionStatus,
+  type ThrixelConnectionStatus,
+} from '../lib/thrixelApi';
+import { useThrixelCredits } from '../hooks/useThrixelCredits';
+import { ThrixelCreditsBanner } from './ThrixelCreditsBanner';
+import {
   fetchProfileCatalogModels,
   fetchProfilePage,
   isValidHandle,
@@ -114,6 +122,10 @@ export function ProfilePage({
   const [editName, setEditName] = useState('');
   const [editBio, setEditBio] = useState('');
   const [editPublic, setEditPublic] = useState(false);
+  const [thrixelStatus, setThrixelStatus] = useState<ThrixelConnectionStatus | null>(null);
+  const [thrixelApiKey, setThrixelApiKey] = useState('');
+  const [thrixelBusy, setThrixelBusy] = useState(false);
+  const [thrixelError, setThrixelError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -171,6 +183,25 @@ export function ProfilePage({
 
   const rooms = useMemo(() => payload?.rooms ?? [], [payload]);
   const isOwner = !!payload?.is_owner;
+  const thrixelCredits = useThrixelCredits(isOwner && thrixelStatus?.connected === true);
+
+  useEffect(() => {
+    if (!isOwner || !viewerUserId) {
+      setThrixelStatus(null);
+      return;
+    }
+    let cancelled = false;
+    void fetchThrixelConnectionStatus()
+      .then((status) => {
+        if (!cancelled) setThrixelStatus(status);
+      })
+      .catch(() => {
+        if (!cancelled) setThrixelStatus({ connected: false });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwner, viewerUserId, editing]);
 
   useEffect(() => {
     let cancelled = false;
@@ -253,6 +284,40 @@ export function ProfilePage({
       setFormError(err instanceof Error ? err.message : 'Could not remove avatar.');
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function handleConnectThrixel() {
+    setThrixelError(null);
+    const key = thrixelApiKey.trim();
+    if (!key) {
+      setThrixelError('Paste your Thrixel API key.');
+      return;
+    }
+    setThrixelBusy(true);
+    try {
+      const status = await connectThrixel(key);
+      setThrixelStatus(status);
+      setThrixelApiKey('');
+      void thrixelCredits.refresh();
+    } catch (err) {
+      setThrixelError(err instanceof Error ? err.message : 'Could not connect Thrixel.');
+    } finally {
+      setThrixelBusy(false);
+    }
+  }
+
+  async function handleDisconnectThrixel() {
+    setThrixelError(null);
+    setThrixelBusy(true);
+    try {
+      await disconnectThrixel();
+      setThrixelStatus({ connected: false });
+      setThrixelApiKey('');
+    } catch (err) {
+      setThrixelError(err instanceof Error ? err.message : 'Could not disconnect Thrixel.');
+    } finally {
+      setThrixelBusy(false);
     }
   }
 
@@ -467,6 +532,79 @@ export function ProfilePage({
             </div>
           </div>
         )}
+
+        {isOwner ? (
+          <section className="profile-integrations" style={{ marginTop: 56 }}>
+            <SectionOpener level={5} title="Integrations." note="Third-party tools" />
+            <div className="profile-edit-fields" style={{ marginTop: 20, maxWidth: 560 }}>
+              <Field label="Thrixel">
+                <MonoMeta size="sm" tone="subtle" style={{ display: 'block', marginBottom: 12 }}>
+                  Connect your Thrixel account to generate 3D models from Toova using your own
+                  cubes. Create an API key at{' '}
+                  <a href="https://thrixel.com/create/#settings/api-keys" target="_blank" rel="noreferrer">
+                    thrixel.com
+                  </a>
+                  .
+                </MonoMeta>
+                {thrixelStatus?.connected ? (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <ThrixelCreditsBanner
+                      balanceLabel={thrixelCredits.balanceLabel}
+                      plan={thrixelCredits.account?.plan ?? null}
+                      loading={thrixelCredits.loading}
+                      error={thrixelCredits.error}
+                    />
+                    <MonoMeta size="xs" tone="subtle">
+                      Add cubes on{' '}
+                      <a href="https://thrixel.com/create" target="_blank" rel="noreferrer">
+                        thrixel.com
+                      </a>
+                      .
+                    </MonoMeta>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <Badge tone="accent" dot>
+                      Connected
+                    </Badge>
+                    {thrixelStatus.connectedAt ? (
+                      <MonoMeta size="xs" tone="subtle">
+                        since {formatRelativeTime(thrixelStatus.connectedAt)}
+                      </MonoMeta>
+                    ) : null}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={thrixelBusy}
+                      onClick={() => void handleDisconnectThrixel()}
+                    >
+                      Disconnect
+                    </Button>
+                  </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    <Input
+                      type="password"
+                      value={thrixelApiKey}
+                      disabled={thrixelBusy}
+                      placeholder="sk-thrixel-…"
+                      onChange={(e) => setThrixelApiKey(e.target.value)}
+                    />
+                    <div>
+                      <Button
+                        size="sm"
+                        disabled={thrixelBusy || !thrixelApiKey.trim()}
+                        onClick={() => void handleConnectThrixel()}
+                      >
+                        Connect Thrixel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+                {thrixelError ? <Banner tone="error">{thrixelError}</Banner> : null}
+              </Field>
+            </div>
+          </section>
+        ) : null}
 
         <ReportDialog
           open={reportOpen}

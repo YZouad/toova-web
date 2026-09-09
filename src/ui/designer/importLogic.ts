@@ -10,6 +10,13 @@ import {
 import { validateCatalogText } from '../../lib/bannedWords';
 import { resolveBrowsableModelUrl } from '../../lib/modelStorage';
 import type { CatalogCategorySlug } from '../../lib/catalogCategories';
+import { generateGlbWithThrixel } from '../../lib/thrixelGenerate';
+import { linkCatalogThrixelAsset } from '../../lib/thrixelCatalogAssets';
+import {
+  trackModelGenerationStarted,
+  trackModelGenerationSucceeded,
+  trackModelGenerationFailed,
+} from '../../lib/analytics';
 import type { CatalogModel } from './chromeTypes';
 
 /** Buckets a raw error message into the tracking plan's model_generation_failed reason enum. */
@@ -71,6 +78,55 @@ export async function runPhotoGenerate(
   });
 }
 
+export async function runThrixelGenerate(
+  input: {
+    task?: string;
+    imageFile?: File | null;
+  },
+  userId: string,
+  signal: AbortSignal,
+  onStatus: (message: string) => void,
+): Promise<{ glbFile: File; jobId: string | null; submissionId?: string }> {
+  const label =
+    input.task?.trim() ||
+    input.imageFile?.name ||
+    'Thrixel generation';
+  const jobId = await createConversionJob({
+    userId,
+    source: 'thrixel',
+    status: 'processing',
+    label,
+  });
+  const startedAt = Date.now();
+  if (jobId) trackModelGenerationStarted({ job_id: jobId, source_type: 'photo' });
+
+  try {
+    const { glbFile, submissionId } = await generateGlbWithThrixel(input, signal, onStatus);
+    if (jobId) {
+      await updateConversionJob(jobId, {
+        status: 'completed',
+        label,
+        thrixelSubmissionId: submissionId,
+      });
+      trackModelGenerationSucceeded({ job_id: jobId, duration_ms: Date.now() - startedAt });
+    }
+    return { glbFile, jobId, submissionId };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      if (jobId) {
+        await updateConversionJob(jobId, { status: 'failed', error: 'Cancelled' });
+      }
+      throw err;
+    }
+    const message = err instanceof Error ? err.message : 'Generation failed';
+    if (jobId) {
+      await updateConversionJob(jobId, { status: 'failed', error: message });
+      trackModelGenerationFailed({ job_id: jobId, failure_reason: classifyGenerationFailure(message) });
+    }
+    throw err;
+  }
+}
+
 export async function buildPosterGlb(
   croppedBlob: Blob,
   widthIn: number,
@@ -87,11 +143,17 @@ export interface SubmitImportInput {
   form: ImportFormState;
   posterCroppedBlob?: Blob | null;
   priorJobId?: string | null;
+  thrixelSubmissionId?: string | null;
+}
+
+export interface SubmitCatalogImportResult {
+  model: CatalogModel;
+  thrixelLinkFailed: boolean;
 }
 
 export async function submitCatalogImport(
   input: SubmitImportInput,
-): Promise<CatalogModel> {
+): Promise<SubmitCatalogImportResult> {
   const { userId, file, uploadFile, form } = input;
   const label = form.title.trim();
   if (!label) throw new Error('Title is required.');
@@ -122,7 +184,10 @@ export async function submitCatalogImport(
   }
 
   const tags = file.name.toLowerCase() === 'poster.glb' ? ['poster'] : [];
-  const source = detectCatalogModelSource(file.name, tags);
+  const thrixelSubmissionId = input.thrixelSubmissionId?.trim() || null;
+  const source = thrixelSubmissionId
+    ? 'thrixel'
+    : detectCatalogModelSource(file.name, tags);
 
   let jobId = input.priorJobId ?? null;
   const hadPriorJob = Boolean(jobId);
@@ -134,7 +199,10 @@ export async function submitCatalogImport(
       label,
     });
   } else {
-    await updateConversionJob(jobId, { label });
+    await updateConversionJob(jobId, {
+      label,
+      ...(thrixelSubmissionId ? { thrixelSubmissionId } : {}),
+    });
   }
 
   try {
@@ -152,7 +220,19 @@ export async function submitCatalogImport(
       tags,
       preferFlatImage: source === 'poster' ? input.posterCroppedBlob ?? null : null,
       originalFileName: file.name,
+      source,
     });
+
+    let thrixelLinkFailed = false;
+    if (thrixelSubmissionId) {
+      const linkResult = await linkCatalogThrixelAsset({
+        kind,
+        userId,
+        submissionId: thrixelSubmissionId,
+        stage: 'architect',
+      });
+      thrixelLinkFailed = !linkResult.linked;
+    }
 
     if (jobId) {
       await updateConversionJob(jobId, {
@@ -160,36 +240,39 @@ export async function submitCatalogImport(
         kind,
         label,
         error: null,
+        ...(thrixelSubmissionId ? { thrixelSubmissionId } : {}),
       });
       await dismissGenerationQueueItem(jobId);
     }
 
-    const result = {
-      kind,
-      label,
-      description: form.description.trim() || null,
-      tags,
-      categories: form.categories,
-      width_in: w,
-      height_in: h,
-      depth_in: d,
-      clearance_in: clearance,
-      userId,
-      visibility: form.listInGallery ? 'public' : 'private',
-      isBuiltin: false,
-      likesCount: 0,
-      downloadsCount: 0,
-      viewsCount: 0,
-      createdAt: new Date().toISOString(),
-      creatorHandle: null,
-      creatorDisplayName: null,
-      likedByMe: false,
-      hotScore: 0,
-      storagePath: objectPath,
-      signedUrl: await resolveBrowsableModelUrl(objectPath),
-      previewUrl: null,
+    return {
+      model: {
+        kind,
+        label,
+        description: form.description.trim() || null,
+        tags,
+        categories: form.categories,
+        width_in: w,
+        height_in: h,
+        depth_in: d,
+        clearance_in: clearance,
+        userId,
+        visibility: form.listInGallery ? 'public' : 'private',
+        isBuiltin: false,
+        likesCount: 0,
+        downloadsCount: 0,
+        viewsCount: 0,
+        createdAt: new Date().toISOString(),
+        creatorHandle: null,
+        creatorDisplayName: null,
+        likedByMe: false,
+        hotScore: 0,
+        storagePath: objectPath,
+        signedUrl: await resolveBrowsableModelUrl(objectPath),
+        previewUrl: null,
+      },
+      thrixelLinkFailed,
     };
-    return result;
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Upload failed';
     if (jobId && !hadPriorJob) {

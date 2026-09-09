@@ -43,6 +43,8 @@ import { ContextBar } from './designer/ContextBar';
 import { ImportFlow } from './designer/ImportFlow';
 import { MobileDesignerChrome } from './designer/mobile/MobileDesignerChrome';
 import { placeFromCatalog } from './designer/placeCatalogModel';
+import { fetchOwnerCatalogGalleryModel } from '../lib/fetchOwnerCatalogModel';
+import { useCatalogThrixelLinked } from '../hooks/useCatalogThrixelLinked';
 import {
   IconBack,
   IconEye,
@@ -116,6 +118,7 @@ export function Designer({
   const [forkMeta, setForkMeta] = useState<RoomAttributionPayload | null>(null);
   const [cameraPreset, setCameraPreset] = useState<CameraPresetId>('corner');
   const [detailModel, setDetailModel] = useState<GalleryModel | null>(null);
+  const [detailFocusThrixel, setDetailFocusThrixel] = useState(false);
   const builtinPreviews = useBuiltinPreviews();
 
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
@@ -261,8 +264,22 @@ export function Designer({
 
   const openModel = useCallback((model: CatalogModel) => {
     if (model.isBuiltin) requestBuiltinPreview(model.kind);
+    setDetailFocusThrixel(false);
     setDetailModel(model);
   }, []);
+
+  const openThrixelRevise = useCallback(async (catalogKind: string) => {
+    const selected = useStore.getState().items[useStore.getState().selectedId ?? ''];
+    if (selected?.catalogKind === catalogKind) {
+      chrome.openInspectorTab('thrixel');
+      return;
+    }
+    const model = await fetchOwnerCatalogGalleryModel(catalogKind);
+    if (!model) return;
+    setDetailFocusThrixel(true);
+    setDetailModel(model);
+    chrome.closePanels();
+  }, [chrome]);
 
   const placeModel = useCallback(
     (model: GalleryModel) => {
@@ -274,6 +291,7 @@ export function Designer({
   );
 
   const inspectorDetailLabel = detailLabelFor(chrome.selectedItem?.kind);
+  const selectedThrixelLinked = useCatalogThrixelLinked(chrome.selectedItem?.catalogKind);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const fixturesEpoch = useStore(
     (s) =>
@@ -679,10 +697,12 @@ export function Designer({
             addLightSource={addLightSource}
             isAdmin={isAdmin}
             onOpenModel={openModel}
-            onImportComplete={(model) => {
+            onImportComplete={(model, meta) => {
+              setDetailFocusThrixel(meta?.fromThrixel ?? false);
               setDetailModel(model);
             }}
             onOpenImport={() => openImportOrAuth(null)}
+            onOpenThrixelRevise={(kind) => void openThrixelRevise(kind)}
             searchTriggerRef={searchTriggerRef}
           />
         ) : (
@@ -783,7 +803,16 @@ export function Designer({
             ) : null}
 
             {chrome.showContextBar ? (
-              <ContextBar onEditDetails={chrome.openInspector} detailLabel={inspectorDetailLabel} />
+              <ContextBar
+                onEditDetails={chrome.openInspector}
+                detailLabel={inspectorDetailLabel}
+                showReviseWithThrixel={selectedThrixelLinked}
+                onReviseWithThrixel={
+                  selectedThrixelLinked && chrome.selectedItem?.catalogKind
+                    ? () => void openThrixelRevise(chrome.selectedItem!.catalogKind!)
+                    : undefined
+                }
+              />
             ) : null}
 
             {chrome.panel === 'add' ? (
@@ -859,8 +888,9 @@ export function Designer({
               onClose={chrome.closeImport}
               isAdmin={isAdmin}
               compact={false}
-              onComplete={(model) => {
+              onComplete={(model, meta) => {
                 chrome.closeImport();
+                setDetailFocusThrixel(meta?.fromThrixel ?? false);
                 setDetailModel(model);
               }}
             />
@@ -916,12 +946,19 @@ export function Designer({
               : null
           }
           currentUserId={user?.id ?? null}
-          onClose={() => setDetailModel(null)}
+          onClose={() => {
+            setDetailFocusThrixel(false);
+            setDetailModel(null);
+          }}
           onPlace={placeModel}
+          focusThrixelRevise={detailFocusThrixel}
           onModelPatched={(kind, patch) => {
             setDetailModel((m) => (m && m.kind === kind ? { ...m, ...patch } : m));
           }}
-          onModelDeleted={() => setDetailModel(null)}
+          onModelDeleted={() => {
+            setDetailFocusThrixel(false);
+            setDetailModel(null);
+          }}
         />
       ) : null}
 

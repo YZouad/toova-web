@@ -20,6 +20,8 @@ export interface UploadCatalogModelInput {
   preferFlatImage?: Blob | null;
   /** Original file name before decimation, for source detection. */
   originalFileName?: string;
+  /** When set, overrides filename-based source detection. */
+  source?: ConversionJobSource;
 }
 
 export interface UploadCatalogModelResult {
@@ -44,7 +46,9 @@ export async function uploadCatalogModel(
   const kind = `custom-${crypto.randomUUID()}`;
   const contentType = ext === 'glb' ? 'model/gltf-binary' : 'model/gltf+json';
   const tags = input.tags ?? [];
-  const source = detectCatalogModelSource(input.originalFileName ?? input.glbFile.name, tags);
+  const source =
+    input.source ??
+    detectCatalogModelSource(input.originalFileName ?? input.glbFile.name, tags);
 
   const { error: upErr } = await supabase.storage
     .from(MODEL_FILES_BUCKET)
