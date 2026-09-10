@@ -25,7 +25,6 @@ function HudBtn({
       aria-label={title}
       title={title}
       onPointerDown={stopOrbit}
-      onPointerUp={stopOrbit}
       onClick={(e) => {
         stopOrbit(e);
         onClick();
@@ -72,14 +71,10 @@ export function MobileSelectionHud({ hidden = false }: { hidden?: boolean }) {
       center
       zIndexRange={[80, 0]}
       style={{ pointerEvents: 'none' }}
-      onPointerDown={stopOrbit}
-      onPointerUp={stopOrbit}
     >
       <div
         className="dgm-sel-hud dgm-sel-hud--scene"
         aria-label="Selection controls"
-        onPointerDown={stopOrbit}
-        onPointerUp={stopOrbit}
       >
         <div className="dgm-sel-hud__label">
           <span

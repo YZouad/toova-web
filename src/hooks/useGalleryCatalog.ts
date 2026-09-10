@@ -11,7 +11,7 @@ import {
   type GallerySource,
 } from '../lib/galleryCatalog';
 import { getBuiltinPreviewUrl } from './useBuiltinPreviews';
-import { resolveBrowsableModelUrl } from '../lib/modelStorage';
+import { resolveBrowsableModelUrl, resolveCatalogThumbnailUrl } from '../lib/modelStorage';
 import type { CatalogVisibility } from '../lib/catalogEngagement';
 import type { CatalogCategorySlug } from '../lib/catalogCategories';
 import { BUILTIN_CATEGORIES } from '../lib/catalogCategories';
@@ -100,7 +100,7 @@ async function resolveUrls(row: GalleryCatalogRow): Promise<{
 
   let previewUrl: string | null = null;
   if (thumbPath) {
-    previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
+    previewUrl = await resolveCatalogThumbnailUrl(thumbPath, { access });
   }
   if (!previewUrl) {
     previewUrl = getSessionCatalogPreview(row.kind) ?? null;

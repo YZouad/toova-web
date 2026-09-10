@@ -9,6 +9,7 @@ import {
 } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { trackLoggedIn, trackSignedUp, type AuthMethod } from '../lib/analytics';
+import { startLastActiveHeartbeat } from '../lib/lastActive';
 import { supabase } from '../lib/supabase';
 import { clearSignedUrlCache } from '../lib/signedUrlCache';
 import { loadGuestDesignSnapshot } from '../lib/guestDesignSnapshot';
@@ -61,6 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfileLoading(false);
     }
   }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    return startLastActiveHeartbeat();
+  }, [user?.id]);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {

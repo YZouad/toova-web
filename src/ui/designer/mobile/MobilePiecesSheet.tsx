@@ -1,5 +1,7 @@
 import { useMemo } from 'react';
+import { usePiecePreviewUrls } from '../../../hooks/usePiecePreviewUrls';
 import { useStore } from '../../../store';
+import { PieceThumb } from '../PieceThumb';
 import { MobileSheet } from './MobileSheet';
 
 export interface MobilePiecesSheetProps {
@@ -39,6 +41,7 @@ export function MobilePiecesSheet({ onClose }: MobilePiecesSheetProps) {
     () => order.map((id) => items[id]).filter((it): it is NonNullable<typeof it> => !!it),
     [items, order],
   );
+  const previewUrls = usePiecePreviewUrls(list);
 
   return (
     <MobileSheet
@@ -70,10 +73,11 @@ export function MobilePiecesSheet({ onClose }: MobilePiecesSheetProps) {
                     onClose();
                   }}
                 >
-                  <span
+                  <PieceThumb
                     className="dgm-piece-row__swatch"
-                    style={{ background: it.tintColor ?? '#C9B391' }}
-                    aria-hidden
+                    kind={it.kind}
+                    tintColor={it.tintColor}
+                    previewUrl={previewUrls[it.id]}
                   />
                   <span className="dgm-piece-row__copy">
                     <span className="dgm-piece-row__name">{it.label?.trim() || it.kind}</span>

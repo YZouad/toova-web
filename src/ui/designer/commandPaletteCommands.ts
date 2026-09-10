@@ -120,14 +120,22 @@ export function buildDesignerCommands(input: BuildCommandsInput): CommandPalette
       }),
     },
     {
+      id: 'light-shafts',
+      label: 'Toggle light shafts',
+      run: wrap('light-shafts', () => {
+        const on = useStore.getState().environment.godRays;
+        useStore.getState().setGodRays(!on);
+      }),
+    },
+    {
       id: 'view-room',
       label: 'View: Room',
       run: wrap('view-room', () => input.goPreset('corner')),
     },
     {
-      id: 'view-desk',
-      label: 'View: Desk',
-      run: wrap('view-desk', () => input.goPreset('catalog')),
+      id: 'view-walk',
+      label: 'View: Walk',
+      run: wrap('view-walk', () => input.goPreset('window')),
     },
     {
       id: 'view-top',

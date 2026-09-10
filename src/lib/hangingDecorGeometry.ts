@@ -105,6 +105,16 @@ export function palettePresetBackground(colors: string[]): string {
   return `linear-gradient(to right, ${stops})`;
 }
 
+/** Normalize a stored hex so `<input type="color">` can display it. */
+export function toColorInputValue(hex: string, fallback = '#fff4e0'): string {
+  const t = hex.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(t)) return t.toLowerCase();
+  if (/^#[0-9a-fA-F]{3}$/.test(t)) {
+    return `#${t[1]}${t[1]}${t[2]}${t[2]}${t[3]}${t[3]}`.toLowerCase();
+  }
+  return fallback;
+}
+
 export type Vec3 = [number, number, number];
 
 export interface ResolvedAnchor {

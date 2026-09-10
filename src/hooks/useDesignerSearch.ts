@@ -28,7 +28,7 @@ import {
   pushRecentQuery,
 } from '../lib/recentCatalogKinds';
 import { getBuiltinPreviewUrl } from './useBuiltinPreviews';
-import { resolveBrowsableModelUrl } from '../lib/modelStorage';
+import { resolveCatalogThumbnailUrl } from '../lib/modelStorage';
 import { useStore } from '../store';
 import type { GalleryModel } from './useGalleryCatalog';
 import type { CommandPaletteCommand } from '../ui/designer/commandPaletteCommands';
@@ -200,7 +200,7 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
             const thumb = hit.thumbnail_path?.trim();
             if (thumb) {
               const access = hit.visibility === 'public' || hit.is_builtin ? 'public' : 'private';
-              previewUrl = await resolveBrowsableModelUrl(thumb, { access });
+              previewUrl = await resolveCatalogThumbnailUrl(thumb, { access });
             }
             if (!previewUrl && hit.is_builtin) {
               previewUrl = getBuiltinPreviewUrl(hit.kind) ?? null;

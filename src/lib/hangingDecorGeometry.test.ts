@@ -18,6 +18,7 @@ import {
   resolveWallAnchorWorld,
   saggedSpan,
   sampleAlongPath,
+  toColorInputValue,
   wallAnchorFromWorldHit,
   type FurniturePose,
   type HangingDecorationConfig,
@@ -123,6 +124,12 @@ describe('hangingDecorGeometry', () => {
     expect(samples.length).toBeGreaterThan(5);
     expect(paletteColorAt(['#ff0000', '#00ff00'], 0)).toBe('#ff0000');
     expect(paletteColorAt(['#ff0000', '#00ff00'], 3)).toBe('#00ff00');
+  });
+
+  it('normalizes hex for native color inputs', () => {
+    expect(toColorInputValue('#FF6B6B')).toBe('#ff6b6b');
+    expect(toColorInputValue('#abc')).toBe('#aabbcc');
+    expect(toColorInputValue('nope')).toBe('#fff4e0');
   });
 
   it('computes leaf counts from density', () => {

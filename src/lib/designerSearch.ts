@@ -39,7 +39,7 @@ export const SEARCH_ALIASES: Record<string, string[]> = {
   wall: ['wall paint', 'walls', 'paint'],
   walls: ['wall paint', 'paint', 'color'],
   camera: ['view', 'angle', 'orbit'],
-  view: ['camera', 'room view', 'desk view', 'top view'],
+  view: ['camera', 'room view', 'walk view', 'top view'],
 };
 
 const SINGULAR_MAP: Record<string, string> = {
@@ -425,8 +425,8 @@ export function parseSearchIntent(query: string): DesignerSearchIntent {
   if (/\b(top\s*(down|view)?|bird'?s?\s*eye)\b/.test(q)) {
     return { kind: 'camera', cameraPreset: 'topDown' };
   }
-  if (/\b(desk\s*view|view\s*desk)\b/.test(q)) {
-    return { kind: 'camera', cameraPreset: 'catalog' };
+  if (/\b(walk\s*view|view\s*walk|eye\s*view|first\s*person|desk\s*view|view\s*desk)\b/.test(q)) {
+    return { kind: 'camera', cameraPreset: 'window' };
   }
   if (/\b(room\s*view|view\s*room|corner\s*view)\b/.test(q)) {
     return { kind: 'camera', cameraPreset: 'corner' };

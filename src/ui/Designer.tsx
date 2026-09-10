@@ -41,6 +41,7 @@ import { KeysOverlay } from './designer/KeysOverlay';
 import { TourCard } from './designer/TourCard';
 import { ContextBar } from './designer/ContextBar';
 import { ImportFlow } from './designer/ImportFlow';
+import { GenerationQueueHost } from './GenerationQueueHost';
 import { MobileDesignerChrome } from './designer/mobile/MobileDesignerChrome';
 import { placeFromCatalog } from './designer/placeCatalogModel';
 import { fetchOwnerCatalogGalleryModel } from '../lib/fetchOwnerCatalogModel';
@@ -262,6 +263,12 @@ export function Designer({
     sceneRef.current?.goToPreset(id);
   }, []);
 
+  const resetCamera = useCallback(() => {
+    // Snap orbit back to the active preset's framing — do not switch presets,
+    // or the Room/Walk/Top highlight would lie about the current view.
+    sceneRef.current?.resetCamera();
+  }, []);
+
   const openModel = useCallback((model: CatalogModel) => {
     if (model.isBuiltin) requestBuiltinPreview(model.kind);
     setDetailFocusThrixel(false);
@@ -318,10 +325,7 @@ export function Designer({
         openKeys: () => chrome.setOverlay('keys'),
         restartTour: chrome.restartTour,
         goPreset,
-        resetCamera: () => {
-          sceneRef.current?.resetCamera();
-          setCameraPreset('corner');
-        },
+        resetCamera,
         selectedId: chrome.selectedId,
         saveLabel: onRequestSaveAuth ? 'Save design…' : 'Save room',
         isOwner: !!workspace?.isOwner,
@@ -342,6 +346,7 @@ export function Designer({
       onEditFloorPlan,
       workspace?.isOwner,
       goPreset,
+      resetCamera,
       onRequestSaveAuth,
       onRequestImportAuth,
       fixturesEpoch,
@@ -465,13 +470,12 @@ export function Designer({
       }
       if (key === '0') {
         e.preventDefault();
-        sceneRef.current?.resetCamera();
-        setCameraPreset('corner');
+        resetCamera();
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cancelHangingDraft, chrome, onEditFloorPlan, workspace?.isOwner]);
+  }, [cancelHangingDraft, chrome, onEditFloorPlan, resetCamera, workspace?.isOwner]);
 
   // Clicking the viewport takes focus off the room-name field so shortcuts work.
   useEffect(() => {
@@ -790,10 +794,7 @@ export function Designer({
                     type="button"
                     className="dg-camera-btn"
                     aria-label="Reset camera"
-                    onClick={() => {
-                      sceneRef.current?.resetCamera();
-                      setCameraPreset('corner');
-                    }}
+                    onClick={resetCamera}
                   >
                     <IconReset />
                     Reset
@@ -991,6 +992,7 @@ export function Designer({
           onRequestImportAuth?.('signin');
         }}
       />
+      <GenerationQueueHost />
     </div>
   );
 }

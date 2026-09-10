@@ -128,5 +128,5 @@ export interface DesignerSearchIntent {
   lightsOn?: boolean;
   /** Furniture kind hint (desk, lamp, …). */
   furnitureHint?: string;
-  cameraPreset?: 'corner' | 'catalog' | 'topDown';
+  cameraPreset?: 'corner' | 'catalog' | 'window' | 'topDown';
 }

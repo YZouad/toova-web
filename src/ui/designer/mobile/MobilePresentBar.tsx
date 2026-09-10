@@ -1,5 +1,5 @@
 export interface MobilePresentBarProps {
-  /** Current camera preset label (e.g. Room, Desk, Top). */
+  /** Current camera preset label (e.g. Room, Walk, Top). */
   viewLabel: string;
   onPrevView: () => void;
   onNextView: () => void;

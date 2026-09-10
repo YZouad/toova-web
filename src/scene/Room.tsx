@@ -14,6 +14,7 @@ import { FloorMesh, CeilingMesh, ShadowRoof, RecessedLights } from './FloorCeili
 import { Baseboards } from './Baseboards';
 import { DoorAssemblies, WindowAssemblies } from './Openings';
 import { resolveRenderQuality } from '../lib/renderQuality';
+import { OrbitCutawaySync } from './useOrbitFade';
 
 /** Pick wall ids to hide for open-front / top-down cutaways. */
 function cutAwayWallIds(geom: RoomGeometry, mode: string): Set<string> {
@@ -50,6 +51,7 @@ export function Room() {
 
   return (
     <group>
+      <OrbitCutawaySync geom={geom} />
       <FloorMesh geom={geom} preset={appearance.floorPreset} />
       <CeilingMesh
         geom={geom}

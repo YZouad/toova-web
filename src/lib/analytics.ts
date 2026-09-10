@@ -24,6 +24,7 @@
 //    Custom Dimensions/Metrics in GA4 Admin — DebugView shows them immediately either way.
 
 const GA_ID = (import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined)?.trim();
+let analyticsInitialized = false;
 
 declare global {
   interface Window {
@@ -60,8 +61,12 @@ export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
 export type AuthMethod = 'email' | 'google' | 'facebook';
 
 export function initAnalytics(): void {
+  if (analyticsInitialized) return;
+  analyticsInitialized = true;
   if (!GA_ID) {
-    if (import.meta.env.DEV) console.info('[analytics] VITE_GA_MEASUREMENT_ID is not set — skipping');
+    if (import.meta.env.DEV) {
+      console.info('[analytics] VITE_GA_MEASUREMENT_ID is not set — skipping');
+    }
     return;
   }
   try {

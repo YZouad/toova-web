@@ -14,13 +14,13 @@ import {
 import type { BeddingConfigPatch } from '../../lib/bedding/types';
 import { DEFAULT_SHELF_COLOR, SHELF_COLOR_SWATCHES } from '../../furniture/registry';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from '../../lib/checklistPublicGlbs';
-import { LED_PALETTE_PRESETS, palettePresetBackground } from '../../lib/hangingDecorGeometry';
 import { proportionalSizesFromMaxSide } from '../../lib/uniformItemSize';
 import { planBounds } from '../../lib/roomGeometry';
 import { useAuth } from '../../hooks/useAuth';
 import { useCatalogThrixelLinked } from '../../hooks/useCatalogThrixelLinked';
 import { DEFAULT_EMITTER, useStore } from '../../store';
 import type { InspectorTab } from './chromeTypes';
+import { HangingPaletteEditor } from './HangingPaletteEditor';
 import { InspectorThrixelReviseSection } from './InspectorThrixelReviseSection';
 import { PanelSection } from './PanelShell';
 
@@ -386,27 +386,10 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
                   />
                 </PanelSection>
                 <PanelSection title="Colors">
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                    {LED_PALETTE_PRESETS.map((p) => (
-                      <button
-                        key={p.label}
-                        type="button"
-                        title={p.label}
-                        aria-label={p.label}
-                        onClick={() => setHangingConfig(item.id, { palette: [...p.colors] })}
-                        style={{
-                          flex: '1 1 72px',
-                          height: 30,
-                          border: '1px solid var(--rule-hair)',
-                          borderRadius: 7,
-                          overflow: 'hidden',
-                          padding: 0,
-                          cursor: 'pointer',
-                          background: palettePresetBackground(p.colors),
-                        }}
-                      />
-                    ))}
-                  </div>
+                  <HangingPaletteEditor
+                    palette={hang.palette}
+                    onChange={(colors) => setHangingConfig(item.id, { palette: colors })}
+                  />
                 </PanelSection>
               </div>
             ) : (

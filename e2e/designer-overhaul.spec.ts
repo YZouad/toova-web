@@ -133,4 +133,25 @@ test.describe('designer overhaul chrome', () => {
     expect(canvasCountAfter).toBe(canvasCountBefore);
     await expect(page.locator('.furniture-preview canvas')).toHaveCount(0);
   });
+
+  test('reset camera keeps the active view preset highlighted', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await enterGuestDesigner(page);
+
+    const puck = page.locator('.dg-camera-puck').first();
+    const room = puck.getByRole('button', { name: 'Room' });
+    const walk = puck.getByRole('button', { name: 'Walk' });
+    const reset = puck.getByRole('button', { name: 'Reset camera' });
+
+    await expect(room).toHaveClass(/is-active/);
+    await walk.click();
+    await expect(walk).toHaveClass(/is-active/);
+    await expect(room).not.toHaveClass(/is-active/);
+
+    await reset.click();
+    await expect(walk).toHaveClass(/is-active/);
+    await expect(room).not.toHaveClass(/is-active/);
+  });
 });

@@ -17,6 +17,7 @@ import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment
 import { Room } from './Room';
 import { ItemsLayer } from '../furniture/ItemsLayer';
 import { DragController } from '../interaction/DragController';
+import { OrbitPointerGuard } from '../interaction/OrbitPointerGuard';
 import { MobileObjectGestureController } from '../interaction/MobileObjectGestureController';
 import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
 import { HangingPlacementController } from '../interaction/HangingPlacementController';
@@ -660,12 +661,14 @@ function SceneInner({
             </>
           ) : selectionHud ? (
             <>
+              <OrbitPointerGuard />
               <SelectionHud {...selectionHud} />
               <LongPressLift />
               <DragController />
             </>
           ) : (
             <>
+              <OrbitPointerGuard />
               <ObjectGizmo />
               <ArcMenu />
               <DragController />

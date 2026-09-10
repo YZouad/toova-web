@@ -76,8 +76,11 @@ export function AdminReportsPanel({ enabled }: { enabled: boolean }) {
   const [ncmecId, setNcmecId] = useState('');
   const [evidenceUrls, setEvidenceUrls] = useState<Record<string, string | null>>({});
   const [busy, setBusy] = useState(false);
+  const [rowBusyId, setRowBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+
+  const rowBusy = busy || Boolean(rowBusyId);
 
   async function openReport(row: ContentReportRow) {
     setSelected(row);
@@ -113,6 +116,26 @@ export function AdminReportsPanel({ enabled }: { enabled: boolean }) {
       setActionError(e instanceof Error ? e.message : 'Action failed');
     } finally {
       setBusy(false);
+    }
+  }
+
+  function canInlineAct(row: ContentReportRow): boolean {
+    return row.status === 'new' || row.status === 'reviewing';
+  }
+
+  async function runInline(row: ContentReportRow, action: 'quarantine' | 'dismiss') {
+    setRowBusyId(row.id);
+    setActionError(null);
+    try {
+      await act({ reportId: row.id, action });
+      if (selected?.id === row.id) {
+        setHelpOpen(false);
+        setSelected(null);
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Action failed');
+    } finally {
+      setRowBusyId(null);
     }
   }
 
@@ -172,12 +195,12 @@ export function AdminReportsPanel({ enabled }: { enabled: boolean }) {
       ) : (
         <RuledTable
           columns={[
-            { label: '', align: 'left' },
+            { label: 'Priority', align: 'left' },
             { label: 'When', align: 'left' },
             { label: 'Reason', align: 'left' },
             { label: 'Target', align: 'left' },
             { label: 'Status', align: 'left' },
-            { label: '', align: 'right' },
+            { label: 'Actions', align: 'right' },
           ]}
           rows={reports.map((r) => [
             r.reason === 'csam' || r.reason === 'sexual_content' ? '!' : '',
@@ -185,9 +208,30 @@ export function AdminReportsPanel({ enabled }: { enabled: boolean }) {
             r.reason,
             formatReportTarget(r),
             r.status,
-            <Button key={r.id} size="sm" variant="outline" onClick={() => void openReport(r)}>
-              Open
-            </Button>,
+            <div key={r.id} className="admin-reports__row-actions">
+              {canInlineAct(r) ? (
+                <>
+                  <Button
+                    size="sm"
+                    disabled={rowBusy}
+                    onClick={() => void runInline(r, 'quarantine')}
+                  >
+                    {rowBusyId === r.id ? '…' : 'Quarantine'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={rowBusy}
+                    onClick={() => void runInline(r, 'dismiss')}
+                  >
+                    Dismiss
+                  </Button>
+                </>
+              ) : null}
+              <Button size="sm" variant="outline" disabled={rowBusy} onClick={() => void openReport(r)}>
+                Open
+              </Button>
+            </div>,
           ])}
         />
       )}
@@ -276,31 +320,31 @@ export function AdminReportsPanel({ enabled }: { enabled: boolean }) {
             </div>
 
             <Field label="Resolution note">
-              <Input value={note} onChange={(e) => setNote(e.target.value)} disabled={busy} />
+              <Input value={note} onChange={(e) => setNote(e.target.value)} disabled={rowBusy} />
             </Field>
             <Field label="CyberTipline report ID (required to escalate)">
-              <Input value={ncmecId} onChange={(e) => setNcmecId(e.target.value)} disabled={busy} />
+              <Input value={ncmecId} onChange={(e) => setNcmecId(e.target.value)} disabled={rowBusy} />
             </Field>
 
             <div className="admin-reports__actions">
-              <Button size="sm" disabled={busy} onClick={() => void run('quarantine')}>
+              <Button size="sm" disabled={rowBusy} onClick={() => void run('quarantine')}>
                 Quarantine
               </Button>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => void run('restore')}>
+              <Button size="sm" variant="outline" disabled={rowBusy} onClick={() => void run('restore')}>
                 Restore
               </Button>
-              <Button size="sm" variant="outline" disabled={busy} onClick={() => void run('dismiss')}>
+              <Button size="sm" variant="outline" disabled={rowBusy} onClick={() => void run('dismiss')}>
                 Dismiss
               </Button>
-              <Button size="sm" disabled={busy} onClick={() => void run('action')}>
+              <Button size="sm" disabled={rowBusy} onClick={() => void run('action')}>
                 Mark actioned
               </Button>
-              <Button size="sm" disabled={busy} onClick={() => void run('ban_uploader')}>
+              <Button size="sm" disabled={rowBusy} onClick={() => void run('ban_uploader')}>
                 Ban uploader
               </Button>
               <Button
                 size="sm"
-                disabled={busy || ncmecId.trim().length < 3}
+                disabled={rowBusy || ncmecId.trim().length < 3}
                 onClick={() => void run('escalate_ncmec')}
               >
                 Mark escalated to NCMEC

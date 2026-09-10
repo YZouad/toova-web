@@ -1,5 +1,5 @@
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
-import { recordCatalogDownload } from './catalogEngagement';
+import { recordCatalogDownload, recordCatalogView } from './catalogEngagement';
 import type { CuratedProduct } from './dormChecklist';
 import { getProductDrawKind, itemMatchesPlaceCatalogKind } from './dormChecklist';
 import { parseInchDims } from './importedItemSize';
@@ -55,6 +55,7 @@ export async function placeCuratedProduct(product: CuratedProduct): Promise<stri
     catalogKind: product.placeCatalogKind,
     curatedProductId: product.id,
   });
+  void recordCatalogView(String(data.kind)).catch(() => {});
   void recordCatalogDownload(String(data.kind)).catch(() => {});
   return id;
 }

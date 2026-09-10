@@ -1,13 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { PRIVACY_VERSION, TERMS_VERSION } from '../legal';
-import { isAtLeast13, parseDobInput } from '../lib/ageGate';
+import { dobIsoFromMonthYear, isAtLeast13, parseBirthMonthYear } from '../lib/ageGate';
+import { BirthMonthYearFields } from './BirthMonthYearFields';
 import {
   acceptLegalTerms,
   fetchLegalStatus,
   type LegalStatus,
 } from '../lib/legalAcceptance';
 import { useAuth } from '../hooks/useAuth';
-import { Banner, Button, Field, Input } from './kit';
+import { Banner, Button } from './kit';
 
 /**
  * Blocking gate for signed-in users missing current Terms/Privacy acceptance.
@@ -17,7 +18,8 @@ export function LegalGate({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const [status, setStatus] = useState<LegalStatus | null>(null);
   const [loading, setLoading] = useState(false);
-  const [dob, setDob] = useState('');
+  const [birthMonth, setBirthMonth] = useState('');
+  const [birthYear, setBirthYear] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -70,9 +72,10 @@ export function LegalGate({ children }: { children: ReactNode }) {
       setError('Check the box to agree to the Terms and Privacy Policy.');
       return;
     }
-    const parsed = parseDobInput(dob);
-    if (!parsed) {
-      setError('Enter a valid date of birth.');
+    const parsed = parseBirthMonthYear(birthMonth, birthYear);
+    const iso = dobIsoFromMonthYear(birthMonth, birthYear);
+    if (!parsed || !iso) {
+      setError('Enter your birth month and year.');
       return;
     }
     if (!isAtLeast13(parsed)) {
@@ -87,7 +90,7 @@ export function LegalGate({ children }: { children: ReactNode }) {
     }
     setBusy(true);
     try {
-      await acceptLegalTerms({ dob, method: 'gate' });
+      await acceptLegalTerms({ dob: iso, method: 'gate' });
       const next = await fetchLegalStatus();
       setStatus(next);
     } catch (e) {
@@ -117,15 +120,13 @@ export function LegalGate({ children }: { children: ReactNode }) {
           {' '}(v{PRIVACY_VERSION}).
         </p>
         {error ? <Banner tone="error" style={{ marginBottom: 16 }}>{error}</Banner> : null}
-        <Field label="Date of birth">
-          <Input
-            type="date"
-            value={dob}
-            onChange={(e) => setDob(e.target.value)}
-            max={new Date().toISOString().slice(0, 10)}
-            required
-          />
-        </Field>
+        <BirthMonthYearFields
+          idPrefix="legal-birth"
+          month={birthMonth}
+          year={birthYear}
+          onMonthChange={setBirthMonth}
+          onYearChange={setBirthYear}
+        />
         <label className="legal-gate__check">
           <input
             type="checkbox"
@@ -139,7 +140,7 @@ export function LegalGate({ children }: { children: ReactNode }) {
             <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
           </span>
         </label>
-        <Button size="md" full disabled={busy || !agreed || !dob} onClick={() => void handleAccept()}>
+        <Button size="md" full disabled={busy || !agreed || !birthMonth || !birthYear} onClick={() => void handleAccept()}>
           {busy ? 'Saving…' : 'Continue'}
         </Button>
         <button type="button" className="legal-gate__signout" onClick={() => void logout()} disabled={busy}>

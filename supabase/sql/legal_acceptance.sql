@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS public.user_agreements (
   terms_accepted_at timestamptz NOT NULL,
   privacy_version text NOT NULL,
   privacy_accepted_at timestamptz NOT NULL,
-  date_of_birth date NOT NULL,
+  date_of_birth date NOT NULL, -- last day of collected birth month/year; day is not requested from the user
   is_minor boolean NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()

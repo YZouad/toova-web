@@ -1,6 +1,8 @@
 import { useMemo } from 'react';
+import { usePiecePreviewUrls } from '../../hooks/usePiecePreviewUrls';
 import { useStore } from '../../store';
 import { PanelShell } from './PanelShell';
+import { PieceThumb } from './PieceThumb';
 
 export interface PiecesPanelProps {
   compact?: boolean;
@@ -33,6 +35,7 @@ export function PiecesPanel({ compact, onClose }: PiecesPanelProps) {
     () => order.map((id) => items[id]).filter((it): it is NonNullable<typeof it> => !!it),
     [items, order],
   );
+  const previewUrls = usePiecePreviewUrls(list);
 
   return (
     <PanelShell
@@ -72,10 +75,11 @@ export function PiecesPanel({ compact, onClose }: PiecesPanelProps) {
                     onClose();
                   }}
                 >
-                  <span
+                  <PieceThumb
                     className="dg-row__swatch"
-                    style={{ background: it.tintColor ?? '#C9B391' }}
-                    aria-hidden
+                    kind={it.kind}
+                    tintColor={it.tintColor}
+                    previewUrl={previewUrls[it.id]}
                   />
                   <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <span

@@ -1853,7 +1853,14 @@
   pointer-events: none;
   animation: dgPop 0.18s ease both;
 }
-.dg-hud > * { pointer-events: auto; }
+/* Only real controls capture clicks — the label/chrome must not steal the
+   press that starts an object drag. */
+.dg-hud-label__action,
+.dg-hud-radial,
+.dg-hud-hang,
+.dg-hud-handle button {
+  pointer-events: auto;
+}
 
 .dg-hud-label {
   display: flex; align-items: stretch;
@@ -1882,6 +1889,7 @@
   transform: translateX(-50%);
   animation: dgPop 0.2s ease both;
 }
+.dg-hud-radial.is-hanging { width: max-content; }
 .dg-hud-radial__card {
   position: relative;
   background: rgba(251, 247, 240, 0.95);
@@ -1892,6 +1900,18 @@
   box-shadow: 0 18px 40px -18px rgba(36, 31, 25, 0.5);
   padding: 10px;
   display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+}
+.dg-hud-radial__card.is-hanging {
+  grid-template-columns: repeat(3, 1fr);
+  width: 168px;
+  margin: 0 auto;
+  padding: 5px;
+  gap: 2px;
+  border-radius: 12px;
+}
+.dg-hud-radial__card.is-hanging .dg-hud-radial__btn {
+  padding: 4px 2px 5px;
+  gap: 3px;
 }
 .dg-hud-radial__card::before {
   content: ''; position: absolute; left: 50%; top: -6px;
@@ -1906,8 +1926,47 @@
   border-radius: var(--dg-radius-sm); font: 500 10px/1 var(--font-sans); color: var(--ink-2);
 }
 .dg-hud-radial__btn:hover { background: var(--paper-2); border-color: var(--rule-hair); }
+.dg-hud-radial__btn.is-active { background: var(--paper-2); border-color: var(--rule-hair); color: var(--ink-0); }
 .dg-hud-radial__btn.is-danger { color: var(--danger); }
 .dg-hud-radial__btn.is-danger:hover { background: var(--danger-bg); border-color: var(--danger); }
+.dg-hud-hang {
+  margin-top: 6px;
+  width: 220px;
+  padding: 10px 12px 11px;
+  background: rgba(251, 247, 240, 0.95);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--rule-hair);
+  border-radius: 12px;
+  box-shadow: 0 18px 40px -18px rgba(36, 31, 25, 0.5);
+  display: flex; flex-direction: column; gap: 9px;
+  animation: dgPop 0.16s ease both;
+}
+.dg-hud-hang__head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font: 500 10px/1 var(--font-sans); color: var(--ink-4);
+}
+.dg-hud-hang__redraw {
+  border: 1px solid var(--ink-0); background: var(--paper-0); color: var(--ink-0);
+  border-radius: 999px; padding: 4px 9px; font: 600 10px/1 var(--font-sans);
+}
+.dg-hud-hang__redraw:hover { background: var(--paper-2); }
+.dg-hud-hang__row {
+  display: grid; grid-template-columns: 52px 1fr 36px; align-items: center; gap: 8px;
+  font: 500 10px/1 var(--font-sans); color: var(--ink-2);
+}
+.dg-hud-hang__row input[type='range'] {
+  width: 100%; min-width: 0; accent-color: var(--accent);
+}
+.dg-hud-hang__meta { font: var(--type-mono-sm); color: var(--ink-5); text-align: right; }
+.dg-hud-hang__swatches { display: flex; gap: 5px; align-items: center; }
+.dg-hud-hang__swatch {
+  flex: 1; height: 18px; border: 1px solid var(--rule-hair); border-radius: 4px; padding: 0; cursor: pointer;
+}
+.dg-hud-hang__custom {
+  flex: none; width: 22px; height: 18px; padding: 0; border: 1px solid var(--rule-hair);
+  border-radius: 4px; background: transparent; cursor: pointer;
+}
 .dg-hud-radial__detail {
   grid-column: span 4;
   display: flex; align-items: center; justify-content: space-between;
@@ -1925,7 +1984,7 @@
   border: 1px solid var(--rule-hair);
   border-radius: var(--dg-pill);
   box-shadow: 0 14px 30px -14px rgba(36, 31, 25, 0.5);
-  pointer-events: auto;
+  pointer-events: none;
 }
 .dg-hud-handle--under {
   /* Sit under the pill without growing the Html wrapper (keeps pill centered). */
@@ -2094,6 +2153,34 @@
 .dg-swatch.is-active { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dg-swatch-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 
+.dg-hang-palette { display: flex; flex-direction: column; gap: 10px; }
+.dg-hang-palette__presets { display: flex; flex-wrap: wrap; gap: 6px; }
+.dg-hang-palette__preset {
+  flex: 1 1 64px; height: 28px; border: 1px solid var(--rule-hair);
+  border-radius: 7px; padding: 0; cursor: pointer; overflow: hidden;
+}
+.dg-hang-palette__label {
+  font: 500 11px/1 var(--font-sans); color: var(--ink-4);
+}
+.dg-hang-palette__slots { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dg-hang-palette__slot { position: relative; width: 36px; height: 36px; }
+.dg-hang-palette__slot input[type='color'] {
+  width: 36px; height: 36px; padding: 0; border: 1px solid rgba(36, 31, 25, 0.14);
+  border-radius: 8px; background: transparent; cursor: pointer;
+}
+.dg-hang-palette__remove {
+  position: absolute; top: -6px; right: -6px;
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1px solid var(--rule-hair); background: var(--paper-0);
+  font: 600 11px/1 var(--font-sans); color: var(--ink-3); padding: 0; cursor: pointer;
+}
+.dg-hang-palette__add {
+  min-height: 36px; padding: 0 10px; border: 1px dashed var(--rule-hair);
+  border-radius: 8px; background: transparent; color: var(--ink-3);
+  font: 500 11px/1 var(--font-sans); cursor: pointer;
+}
+.dg-hang-palette__add:hover { background: var(--paper-2); }
+
 .dg-mat-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -2211,8 +2298,13 @@
 .dg-row--interactive:hover { background: var(--paper-2); }
 .dg-row.is-selected { background: var(--accent-bg); }
 .dg-row__swatch {
-  width: 24px; height: 24px; border-radius: 5px; flex: none;
+  width: 32px; height: 32px; border-radius: 6px; flex: none;
   border: 1px solid rgba(36, 31, 25, 0.12);
+  overflow: hidden;
+  background: var(--paper-2);
+}
+.dg-row__swatch img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
 }
 .dg-row__label { flex: 1; font: 500 13px/1.3 var(--font-sans); color: var(--ink-1); min-width: 0; }
 .dg-row__meta { font: var(--type-mono-sm); color: var(--ink-6); flex: none; }
@@ -2268,6 +2360,20 @@
 .dg-footer-actions { display: flex; align-items: center; gap: 8px; flex: none; width: 100%; }
 .dg-footer-actions > .is-grow,
 .dg-footer-actions > [data-grow] { flex: 1; }
+.dg-footer-actions--draw {
+  gap: 5px;
+  align-items: stretch;
+}
+.dg-footer-actions--draw > .dg-footer-btn {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 7px 5px;
+  font-size: 10px;
+  line-height: 1.2;
+  white-space: normal;
+  text-align: center;
+  letter-spacing: -0.01em;
+}
 .dg-footer-btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   min-height: var(--hit-min); padding: 10px 16px;

@@ -61,7 +61,7 @@ export function ModelCard({
   const category = model.categories[0]
     ? catalogCategoryLabel(model.categories[0])
     : 'Model';
-  const stats = `♥ ${formatCount(model.likesCount)} · ↓ ${formatCount(model.downloadsCount)}`;
+  const stats = `♥ ${formatCount(model.likesCount)} · ↓ ${formatCount(model.downloadsCount)} · 👁 ${formatCount(model.viewsCount)}`;
   const filename = `${model.kind.split('-')[0]}.glb`;
   const previewPlate = (
     <div>
@@ -102,11 +102,9 @@ export function ModelCard({
             <div className="kit-plate-card__name">{model.label}</div>
             <div className="kit-plate-card__author">{creatorLabel}</div>
           </div>
-          {!dense ? (
-            <MonoMeta size="sm" tone="dense">
-              {stats}
-            </MonoMeta>
-          ) : null}
+          <MonoMeta size="sm" tone="dense">
+            {stats}
+          </MonoMeta>
         </div>
       </div>
     </div>

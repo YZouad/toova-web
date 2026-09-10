@@ -10,7 +10,7 @@ import type { GalleryRoom } from './useGalleryRooms';
 import { mapPreviewItems, withPreviewTints } from './useGalleryRooms';
 import type { CatalogCategorySlug } from '../lib/catalogCategories';
 import type { CatalogVisibility } from '../lib/catalogEngagement';
-import { resolveBrowsableModelUrl } from '../lib/modelStorage';
+import { resolveBrowsableModelUrl, resolveCatalogThumbnailUrl } from '../lib/modelStorage';
 import { getSessionCatalogPreview } from '../lib/catalogThumbnailBackfill';
 import { getBuiltinPreviewUrl } from './useBuiltinPreviews';
 
@@ -73,7 +73,7 @@ async function hydrateModel(row: Record<string, unknown>): Promise<GalleryModel 
   }
   const thumbPath = String(row.thumbnail_path ?? '').trim();
   if (thumbPath) {
-    previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
+    previewUrl = await resolveCatalogThumbnailUrl(thumbPath, { access });
   }
   if (!previewUrl) {
     previewUrl = getSessionCatalogPreview(kind) ?? null;

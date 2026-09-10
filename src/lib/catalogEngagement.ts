@@ -109,6 +109,27 @@ export async function reportCatalogModel(
   markReportedCatalogKind(kind);
 }
 
+type CatalogEngagementModel = {
+  visibility: CatalogVisibility | string;
+  userId?: string | null;
+  isBuiltin?: boolean;
+};
+
+/**
+ * Whether this placement / inspect should increment views_count.
+ * Public community models count for anyone (guests included — the RPC is
+ * granted to anon). Own models and builtins do not.
+ */
+export function shouldRecordCatalogView(
+  model: CatalogEngagementModel,
+  currentUserId?: string | null,
+): boolean {
+  if (model.isBuiltin) return false;
+  if (model.visibility !== 'public') return false;
+  if (model.userId && currentUserId && model.userId === currentUserId) return false;
+  return true;
+}
+
 /** Records at most one view per kind per browser session. */
 export async function recordCatalogView(kind: string): Promise<number | null> {
   const viewed = readViewedSet();
@@ -119,31 +140,52 @@ export async function recordCatalogView(kind: string): Promise<number | null> {
   const { data, error } = await supabase.rpc('record_catalog_view', {
     p_kind: kind,
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    viewed.delete(kind);
+    writeViewedSet(viewed);
+    throw new Error(error.message);
+  }
   return Number(data ?? 0);
 }
 
 /**
  * Whether placing this model should increment downloads_count.
  * Public community models count (including curated ones with no owner).
- * Own models and builtins do not.
+ * Own models, builtins, and guests (no account) do not — the RPC is
+ * authenticated-only, so unsigned visitors must not fire it.
  */
 export function shouldRecordCatalogDownload(
-  model: {
-    visibility: CatalogVisibility | string;
-    userId?: string | null;
-    isBuiltin?: boolean;
-  },
+  model: CatalogEngagementModel,
   currentUserId: string | null | undefined,
 ): boolean {
+  if (!currentUserId) return false;
   if (model.isBuiltin) return false;
   if (model.visibility !== 'public') return false;
-  if (model.userId && currentUserId && model.userId === currentUserId) return false;
+  if (model.userId && model.userId === currentUserId) return false;
   return true;
 }
 
+/** Best-effort view + download counters when a public community model is placed. */
+export function recordCatalogPlaceEngagement(
+  model: CatalogEngagementModel & { kind: string },
+  currentUserId: string | null | undefined,
+): void {
+  if (shouldRecordCatalogView(model, currentUserId)) {
+    void recordCatalogView(model.kind).catch(() => {
+      /* best-effort */
+    });
+  }
+  if (shouldRecordCatalogDownload(model, currentUserId)) {
+    void recordCatalogDownload(model.kind).catch(() => {
+      /* best-effort */
+    });
+  }
+}
+
 /** Call when placing a public community model into the current user's room. */
-export async function recordCatalogDownload(kind: string): Promise<number> {
+export async function recordCatalogDownload(kind: string): Promise<number | null> {
+  const { data: sessionData } = await supabase.auth.getSession();
+  if (!sessionData.session) return null;
   const { data, error } = await supabase.rpc('record_catalog_download', {
     p_kind: kind,
   });

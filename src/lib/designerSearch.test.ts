@@ -207,6 +207,10 @@ describe('parseSearchIntent', () => {
       kind: 'camera',
       cameraPreset: 'topDown',
     });
+    expect(parseSearchIntent('walk view')).toMatchObject({
+      kind: 'camera',
+      cameraPreset: 'window',
+    });
   });
 
   it('parses add intent', () => {

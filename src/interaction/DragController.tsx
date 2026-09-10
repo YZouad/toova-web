@@ -88,8 +88,6 @@ export function DragController() {
       if (e.button !== 0) return;
       // Shift is reserved for multi-select toggles in Selectable.
       if (e.shiftKey) return;
-      const { selectedIds, items } = useStore.getState();
-      if (selectedIds.length === 0) return;
 
       const canvasRect = canvas.getBoundingClientRect();
       ndc.x = ((e.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
@@ -106,12 +104,17 @@ export function DragController() {
         }
         if (hitItemId) break;
       }
-      if (!hitItemId || !selectedIds.includes(hitItemId)) return;
+      if (!hitItemId) return;
 
+      const { selectedIds, items } = useStore.getState();
       const primary = items[hitItemId];
       if (!primary || primary.kind === 'hanging') return;
 
-      const movableIds = selectedIds.filter((id) => {
+      // R3F Selectable runs on the Canvas parent *after* this canvas listener, so
+      // the piece is often not in selectedIds yet. Still treat this press as a drag
+      // of the hit item (or the existing group if it was already selected).
+      const groupIds = selectedIds.includes(hitItemId) ? selectedIds : [hitItemId];
+      const movableIds = groupIds.filter((id) => {
         const it = items[id];
         return !!it && it.kind !== 'hanging';
       });
@@ -124,6 +127,13 @@ export function DragController() {
         primaryId: hitItemId,
         movableIds,
       };
+      // Hold the pointer on the canvas so the selection HUD cannot steal moves
+      // before the 8px drag threshold.
+      try {
+        canvas.setPointerCapture(e.pointerId);
+      } catch {
+        /* ignore */
+      }
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -133,7 +143,13 @@ export function DragController() {
         const dy = e.clientY - pending.startY;
         if (dx * dx + dy * dy > DRAG_START_PX * DRAG_START_PX) {
           pendingRef.current = null;
-          beginDrag(e, pending.primaryId, pending.movableIds);
+          const { selectedIds, items } = useStore.getState();
+          const groupIds = selectedIds.includes(pending.primaryId) ? selectedIds : [pending.primaryId];
+          const movableIds = groupIds.filter((id) => {
+            const it = items[id];
+            return !!it && it.kind !== 'hanging';
+          });
+          beginDrag(e, pending.primaryId, movableIds.length ? movableIds : pending.movableIds);
         }
       }
 
@@ -194,6 +210,7 @@ export function DragController() {
     const handlePointerUp = (e: PointerEvent) => {
       if (pendingRef.current?.pointerId === e.pointerId) {
         pendingRef.current = null;
+        try { canvas.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
       }
 
       const drag = draggingRef.current;
@@ -247,16 +264,17 @@ export function DragController() {
       try { canvas.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
     };
 
-    canvas.addEventListener('pointerdown', handlePointerDown);
-    canvas.addEventListener('pointermove', handlePointerMove);
-    canvas.addEventListener('pointerup', handlePointerUp);
-    canvas.addEventListener('pointercancel', handlePointerUp);
+    canvas.addEventListener('pointerdown', handlePointerDown, true);
+    // Window so the HUD overlay cannot eat moves/up after the press starts.
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
 
     return () => {
-      canvas.removeEventListener('pointerdown', handlePointerDown);
-      canvas.removeEventListener('pointermove', handlePointerMove);
-      canvas.removeEventListener('pointerup', handlePointerUp);
-      canvas.removeEventListener('pointercancel', handlePointerUp);
+      canvas.removeEventListener('pointerdown', handlePointerDown, true);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
     };
   }, [camera, gl, scene, controls]);
 

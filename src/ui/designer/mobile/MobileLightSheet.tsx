@@ -26,8 +26,10 @@ export function MobileLightSheet({ onClose, onStartDraw, onAddLight }: MobileLig
   const exposure = useStore((s) => s.environment.exposure);
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const appearance = useStore((s) => s.environment.appearance);
+  const godRays = useStore((s) => s.environment.godRays);
   const setExposure = useStore((s) => s.setExposure);
   const setTimeOfDay = useStore((s) => s.setTimeOfDay);
+  const setGodRays = useStore((s) => s.setGodRays);
   const setAppearance = useStore((s) => s.setAppearance);
   const items = useStore((s) => s.items);
   const order = useStore((s) => s.order);
@@ -103,6 +105,20 @@ export function MobileLightSheet({ onClose, onStartDraw, onAddLight }: MobileLig
         />
       </section>
 
+      <section className="dgm-section">
+        <button
+          type="button"
+          className="dgm-toggle-card"
+          aria-pressed={godRays}
+          onClick={() => setGodRays(!godRays)}
+        >
+          <span className="dgm-toggle-card__copy">
+            <span className="dgm-toggle-card__title">Light shafts</span>
+          </span>
+          <span className={`dgm-toggle${godRays ? ' is-on' : ''}`} aria-hidden />
+        </button>
+      </section>
+
       <hr className="dgm-rule" />
 
       <section className="dgm-section">
@@ -176,7 +192,7 @@ export function MobileLightSheet({ onClose, onStartDraw, onAddLight }: MobileLig
         </div>
 
         {onStartDraw ? (
-          <div className="dgm-action-row">
+          <div className="dgm-action-row dgm-action-row--draw">
             <button
               type="button"
               className="dgm-action-btn is-dashed"
@@ -193,7 +209,7 @@ export function MobileLightSheet({ onClose, onStartDraw, onAddLight }: MobileLig
             </button>
             <button
               type="button"
-              className="dgm-action-btn is-dashed is-full"
+              className="dgm-action-btn is-dashed"
               onClick={() => onStartDraw('led-strip')}
             >
               Draw LED strip

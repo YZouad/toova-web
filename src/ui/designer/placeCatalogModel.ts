@@ -1,6 +1,6 @@
 import type { FurnitureKind } from '../../furniture/registry';
 import type { GalleryModel } from '../../hooks/useGalleryCatalog';
-import { recordCatalogDownload, shouldRecordCatalogDownload } from '../../lib/catalogEngagement';
+import { recordCatalogPlaceEngagement } from '../../lib/catalogEngagement';
 import { getActiveChecklistRoomId } from '../../lib/dormChecklist';
 import { findLocalProductByCatalogKind } from '../../lib/localRoomChecklist';
 import {
@@ -33,11 +33,7 @@ export function placeFromCatalog(model: GalleryModel, userId?: string | null): s
       catalogKind: model.kind,
       curatedProductId: localProduct?.id,
     });
-    if (shouldRecordCatalogDownload(model, userId ?? null)) {
-      void recordCatalogDownload(model.kind).catch(() => {
-        /* best-effort */
-      });
-    }
+    recordCatalogPlaceEngagement(model, userId ?? null);
   }
 
   if (id) pushRecentKind(model.kind);

@@ -2,7 +2,8 @@ import { type FormEvent, useState } from 'react';
 import { trackLoggedIn, trackSignedUp } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { loadGuestDesignSnapshot } from '../lib/guestDesignSnapshot';
-import { isAtLeast13, parseDobInput } from '../lib/ageGate';
+import { dobIsoFromMonthYear, isAtLeast13, parseBirthMonthYear } from '../lib/ageGate';
+import { BirthMonthYearFields } from './BirthMonthYearFields';
 import {
   acceptLegalTerms,
   stashPendingLegalAcceptance,
@@ -89,7 +90,8 @@ export function AuthPage({
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [dob, setDob] = useState('');
+  const [birthMonth, setBirthMonth] = useState('');
+  const [birthYear, setBirthYear] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
@@ -100,12 +102,16 @@ export function AuthPage({
     if (!agreed) {
       return 'Check the box to agree to the Terms and Privacy Policy.';
     }
-    const parsed = parseDobInput(dob);
-    if (!parsed) return 'Enter a valid date of birth.';
+    const parsed = parseBirthMonthYear(birthMonth, birthYear);
+    if (!parsed) return 'Enter your birth month and year.';
     if (!isAtLeast13(parsed)) {
       return 'You must be at least 13 years old to use Toova.';
     }
     return null;
+  }
+
+  function birthIso(): string | null {
+    return dobIsoFromMonthYear(birthMonth, birthYear);
   }
 
   async function handleOAuth(provider: 'google' | 'facebook') {
@@ -117,7 +123,12 @@ export function AuthPage({
         setError(legalErr);
         return;
       }
-      stashPendingLegalAcceptance(dob, 'signup_oauth');
+      const iso = birthIso();
+      if (!iso) {
+        setError('Enter your birth month and year.');
+        return;
+      }
+      stashPendingLegalAcceptance(iso, 'signup_oauth');
     }
     setOauthBusy(provider);
     try {
@@ -166,15 +177,17 @@ export function AuthPage({
           converted_from_guest: loadGuestDesignSnapshot() != null,
         });
         // Session may be null when email confirmation is required — stash for gate / next sign-in.
+        const iso = birthIso();
+        if (!iso) throw new Error('Enter your birth month and year.');
         if (data.session && data.user) {
           try {
-            await acceptLegalTerms({ dob, method: 'signup_email' });
+            await acceptLegalTerms({ dob: iso, method: 'signup_email' });
           } catch (acceptErr) {
-            stashPendingLegalAcceptance(dob, 'signup_email');
+            stashPendingLegalAcceptance(iso, 'signup_email');
             throw acceptErr;
           }
         } else {
-          stashPendingLegalAcceptance(dob, 'signup_email');
+          stashPendingLegalAcceptance(iso, 'signup_email');
         }
         setInfo('Check your email for a confirmation link, then sign in.');
         setMode('signin');
@@ -187,7 +200,7 @@ export function AuthPage({
   }
 
   const busy = loading || oauthBusy !== null;
-  const signupBlocked = mode === 'signup' && (!agreed || !dob);
+  const signupBlocked = mode === 'signup' && (!agreed || !birthMonth || !birthYear);
 
   return (
     <div className="auth-page-wrap toova-page">
@@ -301,17 +314,13 @@ export function AuthPage({
               </Field>
               {mode === 'signup' ? (
                 <>
-                  <Field label="Date of birth" hint="You must be at least 13." htmlFor="auth-dob">
-                    <Input
-                      id="auth-dob"
-                      type="date"
-                      autoComplete="bday"
-                      value={dob}
-                      onChange={(e) => setDob(e.target.value)}
-                      max={new Date().toISOString().slice(0, 10)}
-                      required
-                    />
-                  </Field>
+                  <BirthMonthYearFields
+                    idPrefix="auth-birth"
+                    month={birthMonth}
+                    year={birthYear}
+                    onMonthChange={setBirthMonth}
+                    onYearChange={setBirthYear}
+                  />
                   <label className="auth-legal-check">
                     <input
                       type="checkbox"

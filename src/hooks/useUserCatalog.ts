@@ -5,7 +5,7 @@ import {
 } from '../lib/catalogThumbnailBackfill';
 import { parseInchDims } from '../lib/importedItemSize';
 import type { CatalogVisibility } from '../lib/catalogEngagement';
-import { resolveBrowsableModelUrl } from '../lib/modelStorage';
+import { resolveBrowsableModelUrl, resolveCatalogThumbnailUrl } from '../lib/modelStorage';
 import { supabase } from '../lib/supabase';
 
 export interface UserCatalogEntry {
@@ -99,7 +99,7 @@ export function useUserCatalog(enabled: boolean) {
           const thumbPath = (row.thumbnail_path as string | null)?.trim() ?? '';
           let previewUrl: string | null = null;
           if (thumbPath) {
-            previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
+            previewUrl = await resolveCatalogThumbnailUrl(thumbPath, { access });
           } else {
             previewUrl = getSessionCatalogPreview(row.kind as string) ?? null;
           }
