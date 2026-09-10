@@ -1,60 +1,86 @@
-export const GENERATION_QUEUE_KEY = 'toova-generation-queue';
-export const GENERATION_QUEUE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+/** IndexedDB persistence for photo→3D jobs so the queue survives tab close. */
 
-export type GenerationQueueStatus = 'queued' | 'processing' | 'completed' | 'failed';
-export type GenerationQueueSource = 'trellis' | 'thrixel';
+const DB_NAME = 'toova-generation-queue';
+const DB_VERSION = 1;
+const STORE = 'assets';
 
-export interface GenerationQueueEntry {
-  id: string;
+export type GenerationAssetKind = 'source' | 'result';
+
+export type GenerationAssetRecord = {
+  jobId: string;
+  userId: string;
   label: string;
-  source: GenerationQueueSource;
-  status: GenerationQueueStatus;
-  message?: string;
-  createdAt: number;
-  updatedAt: number;
-  jobId?: string | null;
-  submissionId?: string;
+  kind: GenerationAssetKind;
+  blob: Blob;
+  fileName: string;
+  type: string;
+};
+
+function openDb(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        db.createObjectStore(STORE, { keyPath: 'jobId' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error('indexedDB open failed'));
+  });
 }
 
-export function isGenerationQueueEntry(raw: unknown): raw is GenerationQueueEntry {
-  if (!raw || typeof raw !== 'object') return false;
-  const o = raw as Record<string, unknown>;
-  const status = o.status;
-  const source = o.source;
-  return (
-    typeof o.id === 'string' &&
-    typeof o.label === 'string' &&
-    (source === 'trellis' || source === 'thrixel') &&
-    (status === 'queued' || status === 'processing' || status === 'completed' || status === 'failed') &&
-    typeof o.createdAt === 'number' &&
-    typeof o.updatedAt === 'number'
-  );
+function reqAs<T>(req: IDBRequest<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error('indexedDB request failed'));
+  });
 }
 
-export function dropStaleGenerationEntries(
-  entries: GenerationQueueEntry[],
-  now = Date.now(),
-  maxAgeMs = GENERATION_QUEUE_MAX_AGE_MS,
-): GenerationQueueEntry[] {
-  return entries.filter((e) => now - e.updatedAt <= maxAgeMs);
+export function fileFromAsset(record: GenerationAssetRecord): File {
+  return new File([record.blob], record.fileName || 'file', {
+    type: record.type || record.blob.type || 'application/octet-stream',
+  });
 }
 
-export function loadGenerationQueue(now = Date.now()): GenerationQueueEntry[] {
+export async function putGenerationAsset(record: GenerationAssetRecord): Promise<void> {
+  const db = await openDb();
   try {
-    const raw = localStorage.getItem(GENERATION_QUEUE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [];
-    return dropStaleGenerationEntries(parsed.filter(isGenerationQueueEntry), now);
-  } catch {
-    return [];
+    await reqAs(db.transaction(STORE, 'readwrite').objectStore(STORE).put(record));
+  } finally {
+    db.close();
   }
 }
 
-export function persistGenerationQueue(entries: GenerationQueueEntry[]): void {
+export async function getGenerationAsset(jobId: string): Promise<GenerationAssetRecord | null> {
+  const db = await openDb();
   try {
-    localStorage.setItem(GENERATION_QUEUE_KEY, JSON.stringify(entries));
-  } catch {
-    /* ignore quota / private mode */
+    const row = await reqAs(
+      db.transaction(STORE, 'readonly').objectStore(STORE).get(jobId),
+    );
+    return (row as GenerationAssetRecord | undefined) ?? null;
+  } finally {
+    db.close();
+  }
+}
+
+export async function deleteGenerationAsset(jobId: string): Promise<void> {
+  const db = await openDb();
+  try {
+    await reqAs(db.transaction(STORE, 'readwrite').objectStore(STORE).delete(jobId));
+  } finally {
+    db.close();
+  }
+}
+
+export async function listGenerationAssets(userId: string): Promise<GenerationAssetRecord[]> {
+  const db = await openDb();
+  try {
+    const rows = await reqAs(
+      db.transaction(STORE, 'readonly').objectStore(STORE).getAll(),
+    );
+    return ((rows as GenerationAssetRecord[]) ?? []).filter((row) => row.userId === userId);
+  } finally {
+    db.close();
   }
 }
