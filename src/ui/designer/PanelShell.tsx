@@ -66,6 +66,8 @@ export function PanelShell({
 
   // Desktop: click outside the sheet closes it. Keep rail/dock clicks so users
   // can switch panels without the dismiss wiping the new selection.
+  // Portaled overlays (model detail, kit modals) sit outside the sheet in the
+  // DOM — dismissing them must not also close this panel.
   useEffect(() => {
     if (compact) return;
     const onPointerDown = (e: PointerEvent) => {
@@ -74,7 +76,7 @@ export function PanelShell({
       if (rootRef.current?.contains(t)) return;
       if (
         t.closest(
-          '.dg-rail, .dg-dock, .dg-more-menu, .dg-cmdk, .dg-keys, .dg-import, .dg-ticker, .dg-topbar',
+          '.dg-rail, .dg-dock, .dg-more-menu, .dg-cmdk, .dg-keys, .dg-import, .dg-ticker, .dg-topbar, .md-backdrop, .md-card, .report-dialog, .kit-modal__scrim',
         )
       ) {
         return;

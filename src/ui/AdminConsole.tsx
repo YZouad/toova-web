@@ -7,15 +7,19 @@ import {
   type AdminRoomRollupRow,
   type AdminUserRollupRow,
 } from '../hooks/useAdminStats';
+import { lastActiveSortValue } from '../lib/adminUserOverview';
 import { formatRelativeTime, shortenId } from '../lib/userDisplay';
 import { AdminShoppingPanel } from './AdminShoppingPanel';
 import { AdminReportsPanel } from './AdminReportsPanel';
+import { AdminStartersPanel } from './AdminStartersPanel';
+import { AdminUserViewer } from './AdminUserViewer';
 import {
   Badge,
   Banner,
   Button,
   DisplayHeading,
   EmptyState,
+  Input,
   Logo,
   MonoMeta,
   RuledTable,
@@ -23,7 +27,7 @@ import {
   Spinner,
 } from './kit';
 
-type AdminTab = 'overview' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping' | 'reports';
+type AdminTab = 'overview' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping' | 'reports' | 'starters';
 
 type SortDir = 'asc' | 'desc';
 
@@ -36,6 +40,7 @@ const NAV: { id: AdminTab; label: string }[] = [
   { id: 'reports', label: 'Reports' },
   { id: 'users', label: 'Users' },
   { id: 'rooms', label: 'Rooms' },
+  { id: 'starters', label: 'Starters' },
   { id: 'jobs', label: 'Jobs' },
   { id: 'usage', label: 'Usage' },
   { id: 'shopping', label: 'Shopping' },
@@ -120,7 +125,9 @@ export interface AdminConsoleProps {
   jobs: AdminConversionJobRow[];
   loading: boolean;
   error: string | null;
+  currentUserId?: string | null;
   onRefresh: () => Promise<void>;
+  onOpenRoom: (room: { id: string; name: string; isOwner?: boolean }) => Promise<void>;
 }
 
 export function AdminConsole({
@@ -131,12 +138,16 @@ export function AdminConsole({
   jobs,
   loading,
   error,
+  currentUserId = null,
   onRefresh,
+  onOpenRoom,
 }: AdminConsoleProps) {
   const [tab, setTab] = useState<AdminTab>('overview');
   const [refreshLabel, setRefreshLabel] = useState('refreshed just now');
-  const [userSortKey, setUserSortKey] = useState<UserSortKey>('placements');
+  const [userSortKey, setUserSortKey] = useState<UserSortKey>('active');
   const [userSortDir, setUserSortDir] = useState<SortDir>('desc');
+  const [userQuery, setUserQuery] = useState('');
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [roomSortKey, setRoomSortKey] = useState<RoomSortKey>('items');
   const [roomSortDir, setRoomSortDir] = useState<SortDir>('desc');
   const [jobSortKey, setJobSortKey] = useState<JobSortKey>('created');
@@ -148,7 +159,7 @@ export function AdminConsole({
     return [
       { label: 'Total rooms', value: String(rooms.length), delta: 'across all users' },
       { label: 'Placements', value: String(totalPlacements), delta: 'room_items rows' },
-      { label: 'Users', value: String(users.length), delta: 'with saved rooms' },
+      { label: 'Users', value: String(users.length), delta: 'registered profiles' },
       { label: 'Catalog items', value: String(stats.length), delta: 'furniture kinds' },
       { label: 'Total likes', value: String(totalLikes), delta: 'catalog engagement' },
     ];
@@ -258,7 +269,7 @@ export function AdminConsole({
           c = cmpNum(a.total_item_placements, b.total_item_placements);
           break;
         case 'active':
-          c = 0;
+          c = cmpNum(lastActiveSortValue(a.last_active_at), lastActiveSortValue(b.last_active_at));
           break;
       }
       if (c === 0) c = cmpText(a.user_id, b.user_id);
@@ -266,6 +277,15 @@ export function AdminConsole({
     });
     return list;
   }, [users, userSortKey, userSortDir]);
+
+  const filteredUsers = useMemo(() => {
+    const q = userQuery.trim().toLowerCase();
+    if (!q) return sortedUsers;
+    return sortedUsers.filter((u) => {
+      const hay = `${u.display_name ?? ''} ${u.handle ?? ''} ${u.user_id}`.toLowerCase();
+      return hay.includes(q);
+    });
+  }, [sortedUsers, userQuery]);
 
   const sortedRooms = useMemo(() => {
     const list = [...rooms];
@@ -412,54 +432,84 @@ export function AdminConsole({
 
           {tab === 'users' && !loading ? (
             users.length === 0 ? (
-              <EmptyState title="No users with rooms yet." />
+              <EmptyState title="No users yet." />
             ) : (
-              <RuledTable
-                sortKey={userSortKey}
-                sortDir={userSortDir}
-                onSort={(key) => {
-                  const next = toggleSort(userSortKey, userSortDir, key as UserSortKey);
-                  setUserSortKey(next.key);
-                  setUserSortDir(next.dir);
-                }}
-                columns={[
-                  { label: 'Account', sortKey: 'account', align: 'left' },
-                  { label: 'Plan', sortKey: 'plan', align: 'left' },
-                  { label: 'Rooms', sortKey: 'rooms', align: 'right' },
-                  { label: 'Placements', sortKey: 'placements', align: 'right' },
-                  { label: 'Last active', sortKey: 'active', align: 'right' },
-                ]}
-                rows={sortedUsers.map((u) => {
-                  const initials = (u.display_name ?? u.handle ?? u.user_id)
-                    .trim()
-                    .split(/\s+/)
-                    .filter(Boolean)
-                    .slice(0, 2)
-                    .map((p) => p[0]?.toUpperCase() ?? '')
-                    .join('') || '?';
-                  return [
-                  <div key={`${u.user_id}-acct`} style={{ display: 'flex', alignItems: 'center', gap: 11 }}>
-                    <div style={{ width: 32, height: 32, borderRadius: 99, background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
-                      {initials}
-                    </div>
-                    <div>
-                      <div style={{ font: 'var(--type-ui-sm)', fontWeight: 600 }}>
-                        {u.display_name ?? 'Unnamed'}
-                      </div>
-                      <MonoMeta size="xs" tone="dense" title={u.user_id}>
-                        {u.handle ? `@${u.handle}` : 'no handle'}
-                        {' · '}
-                        {shortenId(u.user_id)}
-                      </MonoMeta>
-                    </div>
-                  </div>,
-                  <Badge key={`${u.user_id}-plan`} tone="accent">Free</Badge>,
-                  <MonoMeta key={`${u.user_id}-rooms`} size="sm">{String(u.room_count)}</MonoMeta>,
-                  <MonoMeta key={`${u.user_id}-placements`} size="sm">{String(u.total_item_placements)}</MonoMeta>,
-                  <MonoMeta key={`${u.user_id}-active`} size="sm" tone="dense">—</MonoMeta>,
-                ];
-                })}
-              />
+              <>
+                <div className="admin-users-toolbar">
+                  <Input
+                    placeholder="Search name, handle, or id"
+                    value={userQuery}
+                    onChange={(e) => setUserQuery(e.target.value)}
+                    style={{ width: 260 }}
+                  />
+                  <MonoMeta size="sm" tone="dense">
+                    {filteredUsers.length} / {users.length}
+                  </MonoMeta>
+                </div>
+                {filteredUsers.length === 0 ? (
+                  <EmptyState title="No matching users." />
+                ) : (
+                  <RuledTable
+                    sortKey={userSortKey}
+                    sortDir={userSortDir}
+                    onSort={(key) => {
+                      const nextKey = key as UserSortKey;
+                      if (userSortKey === nextKey) {
+                        setUserSortDir(userSortDir === 'asc' ? 'desc' : 'asc');
+                      } else {
+                        setUserSortKey(nextKey);
+                        setUserSortDir(
+                          nextKey === 'account' || nextKey === 'plan' ? 'asc' : 'desc',
+                        );
+                      }
+                    }}
+                    columns={[
+                      { label: 'Account', sortKey: 'account', align: 'left' },
+                      { label: 'Plan', sortKey: 'plan', align: 'left' },
+                      { label: 'Rooms', sortKey: 'rooms', align: 'right' },
+                      { label: 'Placements', sortKey: 'placements', align: 'right' },
+                      { label: 'Last active', sortKey: 'active', align: 'right' },
+                    ]}
+                    rows={filteredUsers.map((u) => {
+                      const initials = (u.display_name ?? u.handle ?? u.user_id)
+                        .trim()
+                        .split(/\s+/)
+                        .filter(Boolean)
+                        .slice(0, 2)
+                        .map((p) => p[0]?.toUpperCase() ?? '')
+                        .join('') || '?';
+                      return [
+                      <button
+                        key={`${u.user_id}-acct`}
+                        type="button"
+                        className="admin-user-open"
+                        onClick={() => setSelectedUserId(u.user_id)}
+                      >
+                        <div style={{ width: 32, height: 32, borderRadius: 99, background: 'var(--accent)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 600 }}>
+                          {initials}
+                        </div>
+                        <div>
+                          <div style={{ font: 'var(--type-ui-sm)', fontWeight: 600 }}>
+                            {u.display_name ?? 'Unnamed'}
+                          </div>
+                          <MonoMeta size="xs" tone="dense" title={u.user_id}>
+                            {u.handle ? `@${u.handle}` : 'no handle'}
+                            {' · '}
+                            {shortenId(u.user_id)}
+                          </MonoMeta>
+                        </div>
+                      </button>,
+                      <Badge key={`${u.user_id}-plan`} tone="accent">Free</Badge>,
+                      <MonoMeta key={`${u.user_id}-rooms`} size="sm">{String(u.room_count)}</MonoMeta>,
+                      <MonoMeta key={`${u.user_id}-placements`} size="sm">{String(u.total_item_placements)}</MonoMeta>,
+                      <MonoMeta key={`${u.user_id}-active`} size="sm" tone="dense">
+                        {u.last_active_at ? formatRelativeTime(u.last_active_at) : '—'}
+                      </MonoMeta>,
+                    ];
+                    })}
+                  />
+                )}
+              </>
             )
           ) : null}
 
@@ -677,9 +727,19 @@ export function AdminConsole({
           ) : null}
 
           {tab === 'shopping' ? <AdminShoppingPanel /> : null}
+          {tab === 'starters' ? <AdminStartersPanel /> : null}
           {tab === 'reports' ? <AdminReportsPanel enabled /> : null}
         </div>
       </div>
+
+      {selectedUserId ? (
+        <AdminUserViewer
+          userId={selectedUserId}
+          currentUserId={currentUserId}
+          onClose={() => setSelectedUserId(null)}
+          onOpenRoom={onOpenRoom}
+        />
+      ) : null}
     </div>
   );
 }

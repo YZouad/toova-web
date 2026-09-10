@@ -38,10 +38,12 @@ export function RuledTable({
             const active = sortable && sortKey === column.sortKey;
             const marker = active ? (sortDir === 'asc' ? ' ↑' : ' ↓') : '';
 
+            const headKey = column.sortKey || column.label || `col-${i}`;
+
             if (!sortable) {
               return (
                 <th
-                  key={column.label}
+                  key={headKey}
                   className="kit-ruled-table__head"
                   style={{ textAlign: align }}
                 >
@@ -52,7 +54,7 @@ export function RuledTable({
 
             return (
               <th
-                key={column.label}
+                key={headKey}
                 className="kit-ruled-table__head"
                 style={{ textAlign: align }}
               >

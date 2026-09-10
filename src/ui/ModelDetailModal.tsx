@@ -37,7 +37,7 @@ export interface ModelDetailModalProps {
   currentUserId?: string | null;
   placeLabel?: string;
   onClose: () => void;
-  onPlace: (model: GalleryModel) => void;
+  onPlace?: (model: GalleryModel) => void;
   onModelPatched: (kind: string, patch: Partial<GalleryModel>) => void;
   onModelDeleted: (kind: string) => void;
   /** When true, open directly in edit mode (owner). */
@@ -153,6 +153,7 @@ export function ModelDetailModal({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const pressedOnScrim = useRef(false);
 
   const isOwner =
     !!currentUserId && !!model.userId && currentUserId === model.userId && !model.isBuiltin;
@@ -263,7 +264,9 @@ export function ModelDetailModal({
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        e.preventDefault();
         e.stopPropagation();
+        e.stopImmediatePropagation();
         if (reportOpen) {
           setReportOpen(false);
           return;
@@ -286,8 +289,8 @@ export function ModelDetailModal({
         first.focus();
       }
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose, reportOpen]);
 
   useEffect(() => {
@@ -759,8 +762,15 @@ export function ModelDetailModal({
     <div
       className={`md-backdrop${compact ? ' is-compact' : ''}`}
       role="presentation"
-      onMouseDown={(e) => {
-        if (e.target === e.currentTarget) onClose();
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        pressedOnScrim.current = e.target === e.currentTarget;
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (pressedOnScrim.current && e.target === e.currentTarget) onClose();
+        pressedOnScrim.current = false;
       }}
     >
       <div
@@ -770,7 +780,9 @@ export function ModelDetailModal({
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
+        onPointerDown={(e) => e.stopPropagation()}
         onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
       >
         <div className="md-handle" aria-hidden>
           <span className="md-handle-bar" />
@@ -931,14 +943,16 @@ export function ModelDetailModal({
 
             {!compact ? <span className="md-spacer" /> : null}
 
-            <button
-              type="button"
-              className="md-btn md-btn--primary"
-              onClick={() => onPlace(model)}
-            >
-              <PlusIcon size={compact ? 18 : 16} />
-              <span>{placeLabel}</span>
-            </button>
+            {onPlace ? (
+              <button
+                type="button"
+                className="md-btn md-btn--primary"
+                onClick={() => onPlace(model)}
+              >
+                <PlusIcon size={compact ? 18 : 16} />
+                <span>{placeLabel}</span>
+              </button>
+            ) : null}
           </footer>
         </div>
       </div>

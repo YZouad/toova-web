@@ -30,8 +30,12 @@ export interface AdminUserRollupRow {
   user_id: string;
   handle: string | null;
   display_name: string | null;
+  is_public: boolean;
+  created_at: string | null;
+  last_active_at: string | null;
   room_count: number;
   total_item_placements: number;
+  model_count: number;
 }
 
 export interface AdminBundlePairRow {
@@ -201,8 +205,12 @@ export function useAdminStats(userId: string | null | undefined): UseAdminStatsR
           r.display_name != null && String(r.display_name).trim()
             ? String(r.display_name)
             : null,
+        is_public: r.is_public === true,
+        created_at: r.created_at != null ? String(r.created_at) : null,
+        last_active_at: r.last_active_at != null ? String(r.last_active_at) : null,
         room_count: Number(r.room_count),
         total_item_placements: Number(r.total_item_placements),
+        model_count: Number(r.model_count ?? 0),
       })));
 
       setBundles(((bundleRes.data ?? []) as Partial<AdminBundlePairRow>[]).map((r) => ({

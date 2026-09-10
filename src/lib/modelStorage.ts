@@ -51,19 +51,49 @@ export function publicModelAssetUrl(objectPath: string): string | null {
   return null;
 }
 
+function parseUrlAccessOpts(
+  expiresSecOrOpts: number | { expiresSec?: number; access?: StorageUrlAccess } = 60 * 60 * 24,
+): { expiresSec: number; access: StorageUrlAccess } {
+  if (typeof expiresSecOrOpts === 'number') {
+    return { expiresSec: expiresSecOrOpts, access: 'private' };
+  }
+  return {
+    expiresSec: expiresSecOrOpts.expiresSec ?? 60 * 60 * 24,
+    access: expiresSecOrOpts.access ?? 'private',
+  };
+}
+
 /** Repo static URL, public CDN URL, or a signed private-bucket URL. */
 export async function resolveBrowsableModelUrl(
   objectPath: string,
   expiresSecOrOpts: number | { expiresSec?: number; access?: StorageUrlAccess } = 60 * 60 * 24,
 ): Promise<string | null> {
-  const opts =
-    typeof expiresSecOrOpts === 'number'
-      ? { expiresSec: expiresSecOrOpts, access: 'private' as const }
-      : expiresSecOrOpts;
+  const opts = parseUrlAccessOpts(expiresSecOrOpts);
   const staticUrl = publicModelAssetUrl(objectPath);
   if (staticUrl) return staticUrl;
   if (opts.access === 'public') return publicModelsUrl(objectPath);
-  return signBrowsableModelPath(objectPath, opts.expiresSec ?? 60 * 60 * 24);
+  return signBrowsableModelPath(objectPath, opts.expiresSec);
+}
+
+/**
+ * Catalog JPEG/PNG thumbs. Sign the origin bucket first so a missing R2
+ * mirror does not 404 as HTML (Firefox OpaqueResponseBlocking) and so
+ * canvas sampling gets CORS. Fall back to the public CDN if signing fails.
+ */
+export async function resolveCatalogThumbnailUrl(
+  objectPath: string,
+  expiresSecOrOpts: number | { expiresSec?: number; access?: StorageUrlAccess } = 60 * 60 * 24,
+): Promise<string | null> {
+  const opts = parseUrlAccessOpts(expiresSecOrOpts);
+  const trimmed = objectPath.trim();
+  if (!trimmed) return null;
+  const staticUrl = publicModelAssetUrl(trimmed);
+  if (staticUrl) return staticUrl;
+  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+  const signed = await signBrowsableModelPath(trimmed, opts.expiresSec);
+  if (signed) return signed;
+  if (opts.access === 'public') return publicModelsUrl(trimmed);
+  return null;
 }
 
 /** Safe filename for a catalog GLB/GLTF download. */

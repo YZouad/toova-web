@@ -105,7 +105,10 @@ function DoorUnit({
   }, [trimMat, leafMat, handleMat]);
 
   const center: [number, number, number] = [placement.cx, placement.h / 2, placement.cz];
-  useOrbitFade([trimRef, leafRef, handleRef], placement.outward, center, { groupRef });
+  useOrbitFade([trimRef, leafRef, handleRef], placement.outward, center, {
+    groupRef,
+    wallId: placement.opening.wallId,
+  });
 
   const w = placement.w;
   const h = placement.h;
@@ -265,7 +268,10 @@ function WindowUnit({
   }, [trimMat, glassMat]);
 
   const center: [number, number, number] = [placement.cx, placement.cy, placement.cz];
-  useOrbitFade([trimRef, glassRef], placement.outward, center, { groupRef });
+  useOrbitFade([trimRef, glassRef], placement.outward, center, {
+    groupRef,
+    wallId: placement.opening.wallId,
+  });
 
   const w = placement.w;
   const h = placement.h;

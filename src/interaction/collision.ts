@@ -2,9 +2,11 @@ import type { RoomGeometry } from '../lib/roomGeometry';
 import {
   allWallSegments,
   isTouchingAnyWall,
+  orderedVertices,
   planBounds,
   planCentroid,
   pointInPolygon,
+  signedArea,
 } from '../lib/floorPlanGeometry';
 import type { Item } from '../store';
 import { useStore } from '../store';
@@ -105,6 +107,151 @@ function footprintInsideRoom(rect: Rect, geom: RoomGeometry, inset = ROOM_INSET)
   return corners.every(([x, z]) => pointInPolygon(x, z, geom, inset));
 }
 
+function footprintAt(x: number, z: number, halfW: number, halfD: number): Rect {
+  return { minX: x - halfW, maxX: x + halfW, minZ: z - halfD, maxZ: z + halfD };
+}
+
+function clampToAabb(
+  x: number,
+  z: number,
+  halfW: number,
+  halfD: number,
+  geom: RoomGeometry,
+): [number, number] {
+  const b = planBounds(geom);
+  return [
+    Math.max(b.minX + ROOM_INSET + halfW, Math.min(b.maxX - ROOM_INSET - halfW, x)),
+    Math.max(b.minZ + ROOM_INSET + halfD, Math.min(b.maxZ - ROOM_INSET - halfD, z)),
+  ];
+}
+
+interface OuterEdge {
+  ax: number;
+  az: number;
+  length: number;
+  tangent: [number, number];
+  inward: [number, number];
+}
+
+/** Outer-loop edges with inward normals — used to slide along non-axis-aligned walls. */
+function outerPolygonEdges(geom: RoomGeometry): OuterEdge[] {
+  const verts = orderedVertices(geom);
+  if (verts.length < 3) return [];
+  const ccw = signedArea(geom) >= 0;
+  const edges: OuterEdge[] = [];
+  for (let i = 0; i < verts.length; i++) {
+    const a = verts[i]!;
+    const b = verts[(i + 1) % verts.length]!;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const length = Math.hypot(dx, dz);
+    if (length < 0.001) continue;
+    const tx = dx / length;
+    const tz = dz / length;
+    const inward: [number, number] = ccw ? [-tz, tx] : [tz, -tx];
+    edges.push({ ax: a.x, az: a.z, length, tangent: [tx, tz], inward });
+  }
+  return edges;
+}
+
+/**
+ * Push an AABB just inside each nearby wall's inner face. Axis-aligned walls are
+ * already handled by the bounding-box clamp; this is what keeps items from
+ * teleporting when they hit a diagonal or otherwise non-square wall.
+ */
+function slideInsideWalls(
+  x: number,
+  z: number,
+  halfW: number,
+  halfD: number,
+  geom: RoomGeometry,
+): [number, number] {
+  const edges = outerPolygonEdges(geom);
+  for (let iter = 0; iter < 8; iter++) {
+    let pushed = false;
+    for (const edge of edges) {
+      const [nx, nz] = edge.inward;
+      const [tx, tz] = edge.tangent;
+      const along = (x - edge.ax) * tx + (z - edge.az) * tz;
+      const alongPad = halfW * Math.abs(tx) + halfD * Math.abs(tz);
+      if (along < -alongPad || along > edge.length + alongPad) continue;
+
+      const dist = (x - edge.ax) * nx + (z - edge.az) * nz;
+      const support = halfW * Math.abs(nx) + halfD * Math.abs(nz);
+      const penetration = ROOM_INSET + support - dist;
+      if (penetration <= 1e-6) continue;
+      x += nx * penetration;
+      z += nz * penetration;
+      pushed = true;
+    }
+    [x, z] = clampToAabb(x, z, halfW, halfD, geom);
+    if (!pushed || footprintInsideRoom(footprintAt(x, z, halfW, halfD), geom)) {
+      return [x, z];
+    }
+  }
+  return [x, z];
+}
+
+/** A point known to be inside the floor polygon, used only as a last-resort pull. */
+function interiorAnchor(geom: RoomGeometry): [number, number] | null {
+  const [cx, cz] = planCentroid(geom);
+  if (pointInPolygon(cx, cz, geom, ROOM_INSET)) return [cx, cz];
+  const verts = orderedVertices(geom);
+  if (verts.length === 0) return null;
+  let sx = 0;
+  let sz = 0;
+  for (const v of verts) {
+    sx += v.x;
+    sz += v.z;
+  }
+  const ax = sx / verts.length;
+  const az = sz / verts.length;
+  if (pointInPolygon(ax, az, geom, 0)) return [ax, az];
+  for (const v of verts) {
+    if (pointInPolygon(v.x, v.z, geom, 0)) return [v.x, v.z];
+  }
+  return null;
+}
+
+/**
+ * Closest valid pose along the segment from (x, z) toward `anchor`.
+ * Takes the first in-room sample (nearest the requested point) so we don't
+ * jump all the way to the room center.
+ */
+function firstValidToward(
+  x: number,
+  z: number,
+  y: number,
+  halfW: number,
+  halfD: number,
+  geom: RoomGeometry,
+  anchor: [number, number],
+): [number, number, number] | null {
+  const validAt = (t: number) => {
+    const tx = x + (anchor[0] - x) * t;
+    const tz = z + (anchor[1] - z) * t;
+    return footprintInsideRoom(footprintAt(tx, tz, halfW, halfD), geom);
+  };
+  if (validAt(0)) return [x, y, z];
+
+  let hi = -1;
+  for (let t = 0.02; t <= 1.0001; t += 0.02) {
+    if (validAt(Math.min(1, t))) {
+      hi = Math.min(1, t);
+      break;
+    }
+  }
+  if (hi < 0) return null;
+
+  let lo = 0;
+  for (let i = 0; i < 16; i++) {
+    const mid = (lo + hi) / 2;
+    if (validAt(mid)) hi = mid;
+    else lo = mid;
+  }
+  return [x + (anchor[0] - x) * hi, y, z + (anchor[1] - z) * hi];
+}
+
 /** Clamp XZ so the item footprint stays inside the floor-plan polygon. */
 export function clampPositionInRoom(
   position: [number, number, number],
@@ -113,45 +260,26 @@ export function clampPositionInRoom(
   geom: RoomGeometry,
 ): [number, number, number] {
   const rect = itemRect({ ...({} as Item), position, rotationY, size });
-  const b = planBounds(geom);
-  let x = position[0];
-  let z = position[2];
   const halfW = (rect.maxX - rect.minX) / 2;
   const halfD = (rect.maxZ - rect.minZ) / 2;
+  const y = position[1];
 
-  x = Math.max(b.minX + ROOM_INSET + halfW, Math.min(b.maxX - ROOM_INSET - halfW, x));
-  z = Math.max(b.minZ + ROOM_INSET + halfD, Math.min(b.maxZ - ROOM_INSET - halfD, z));
-
-  const testRect = {
-    minX: x - halfW,
-    maxX: x + halfW,
-    minZ: z - halfD,
-    maxZ: z + halfD,
-  };
-  if (footprintInsideRoom(testRect, geom)) {
-    return [x, position[1], z];
+  let [x, z] = clampToAabb(position[0], position[2], halfW, halfD, geom);
+  if (footprintInsideRoom(footprintAt(x, z, halfW, halfD), geom)) {
+    return [x, y, z];
   }
 
-  // Binary search toward centroid if corner clamp isn't enough (concave rooms).
-  const cx = (b.minX + b.maxX) / 2;
-  const cz = (b.minZ + b.maxZ) / 2;
-  let bestX = x;
-  let bestZ = z;
-  for (let t = 0; t <= 1; t += 0.05) {
-    const tx = x + (cx - x) * t;
-    const tz = z + (cz - z) * t;
-    const tr = {
-      minX: tx - halfW,
-      maxX: tx + halfW,
-      minZ: tz - halfD,
-      maxZ: tz + halfD,
-    };
-    if (footprintInsideRoom(tr, geom)) {
-      bestX = tx;
-      bestZ = tz;
-    }
+  [x, z] = slideInsideWalls(x, z, halfW, halfD, geom);
+  if (footprintInsideRoom(footprintAt(x, z, halfW, halfD), geom)) {
+    return [x, y, z];
   }
-  return [bestX, position[1], bestZ];
+
+  const anchor = interiorAnchor(geom);
+  if (anchor) {
+    const pulled = firstValidToward(x, z, y, halfW, halfD, geom, anchor);
+    if (pulled) return pulled;
+  }
+  return [x, y, z];
 }
 
 // ---------------------------------------------------------------------------

@@ -116,6 +116,17 @@ describe('presentationCameras', () => {
     expect(f.orthographic).toBe(true);
     expect(f.orthoHalfExtent).toBeGreaterThan(50);
   });
+
+  it('walk framing is standing height from a different side than the room corner', () => {
+    const corner = framingForPreset(DEFAULT_ROOM_GEOMETRY, 'corner');
+    const walk = framingForPreset(DEFAULT_ROOM_GEOMETRY, 'window');
+    expect(walk.position[1]).toBeLessThan(corner.position[1]);
+    expect(walk.position[1]).toBeLessThanOrEqual(62);
+    expect(walk.fov).toBeGreaterThan(corner.fov);
+    const cornerDz = corner.position[2] - corner.target[2];
+    const walkDz = walk.position[2] - walk.target[2];
+    expect(Math.sign(walkDz)).not.toBe(Math.sign(cornerDz));
+  });
 });
 
 describe('shapeUVs', () => {

@@ -8,12 +8,14 @@ CREATE OR REPLACE FUNCTION public.current_terms_version()
 RETURNS text
 LANGUAGE sql
 IMMUTABLE
+SET search_path TO 'public'
 AS $$ SELECT '2026-09-04'::text $$;
 
 CREATE OR REPLACE FUNCTION public.current_privacy_version()
 RETURNS text
 LANGUAGE sql
 IMMUTABLE
+SET search_path TO 'public'
 AS $$ SELECT '2026-09-04'::text $$;
 
 CREATE TABLE IF NOT EXISTS public.user_agreements (
@@ -22,7 +24,7 @@ CREATE TABLE IF NOT EXISTS public.user_agreements (
   terms_accepted_at timestamptz NOT NULL,
   privacy_version text NOT NULL,
   privacy_accepted_at timestamptz NOT NULL,
-  date_of_birth date NOT NULL,
+  date_of_birth date NOT NULL, -- last day of collected birth month/year; day is not requested from the user
   is_minor boolean NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
@@ -101,6 +103,7 @@ CREATE OR REPLACE FUNCTION public.is_at_least_age(p_dob date, p_age int)
 RETURNS boolean
 LANGUAGE sql
 IMMUTABLE
+SET search_path TO 'public'
 AS $$
   SELECT p_dob IS NOT NULL
     AND p_age > 0
@@ -410,6 +413,9 @@ GRANT EXECUTE ON FUNCTION public.set_catalog_visibility(text, text) TO authentic
 REVOKE ALL ON FUNCTION public.set_room_visibility(uuid, text) FROM PUBLIC;
 REVOKE ALL ON FUNCTION public.set_room_visibility(uuid, text) FROM anon;
 GRANT EXECUTE ON FUNCTION public.set_room_visibility(uuid, text) TO authenticated;
+
+GRANT SELECT ON TABLE public.user_agreements TO authenticated;
+GRANT SELECT ON TABLE public.legal_acceptance_events TO authenticated;
 
 NOTIFY pgrst, 'reload schema';
 

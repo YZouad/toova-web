@@ -14,8 +14,8 @@ import { TIME_PRESETS } from './LightPanel';
 
 describe('designer chrome contract', () => {
   it('exposes three view presets mapped to camera ids', () => {
-    expect(VIEW_PRESETS.map((p) => p.id)).toEqual(['corner', 'catalog', 'topDown']);
-    expect(VIEW_PRESETS.map((p) => p.label)).toEqual(['Room', 'Desk', 'Top']);
+    expect(VIEW_PRESETS.map((p) => p.id)).toEqual(['corner', 'window', 'topDown']);
+    expect(VIEW_PRESETS.map((p) => p.label)).toEqual(['Room', 'Walk', 'Top']);
   });
 
   it('has guided tour steps with spotlight targets', () => {
@@ -76,8 +76,9 @@ describe('library category filters', () => {
 });
 
 describe('model card preview policy', () => {
-  it('does not invent a placed count separate from downloads', () => {
+  it('shows views, likes, and downloads — not a separate placed count', () => {
     const allowedStats = ['views_count', 'likes_count', 'downloads_count'] as const;
+    expect(allowedStats).toContain('views_count');
     expect(allowedStats).not.toContain('placed_count');
   });
 });

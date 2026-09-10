@@ -123,7 +123,7 @@ function BaseboardSegment({
     seg.innerFaceCenter[2],
   ];
 
-  useOrbitFade([matRef], [ox, 0, oz], center, { groupRef });
+  useOrbitFade([matRef], [ox, 0, oz], center, { groupRef, wallId: seg.wall.id });
 
   const runs = useMemo(() => baseboardRunsForSegment(geom, seg), [geom, seg]);
   const inward = [-ox, -oz] as [number, number];

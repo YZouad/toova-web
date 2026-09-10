@@ -1,6 +1,12 @@
 import { Html } from '@react-three/drei';
-import type { ReactNode } from 'react';
-import { useStore, type Item } from '../store';
+import { useEffect, useState, type ReactNode } from 'react';
+import {
+  LED_PALETTE_PRESETS,
+  palettePresetBackground,
+  toColorInputValue,
+  type HangingDecorationConfig,
+} from '../lib/hangingDecorGeometry';
+import { useStore, type HangingDecorKind } from '../store';
 
 const ROT_STEP = (15 * Math.PI) / 180;
 
@@ -27,15 +33,161 @@ function stopOrbit(e: { stopPropagation: () => void; preventDefault?: () => void
   e.preventDefault?.();
 }
 
+function stopOrbitBubble(e: { stopPropagation: () => void }) {
+  e.stopPropagation();
+}
+
 function kindSwatch(kind: string): string {
   return KIND_COLORS[kind] ?? KIND_COLORS.default;
 }
 
 function detailLabel(kind: string): string {
   if (kind === 'bed') return 'Bedding & details';
-  if (kind === 'hanging') return 'Path & bulbs';
   if (kind === 'light') return 'Light settings';
   return 'Edit details';
+}
+
+function hangingAccentLabel(kind: HangingDecorKind | undefined): string {
+  if (kind === 'leaves') return 'Leaves';
+  if (kind === 'led-strip') return 'Colors';
+  return 'Bulbs';
+}
+
+function hangingAccentIcon(kind: HangingDecorKind | undefined): 'bulbs' | 'leaves' | 'led' {
+  if (kind === 'leaves') return 'leaves';
+  if (kind === 'led-strip') return 'led';
+  return 'bulbs';
+}
+
+function HangSlider({
+  label,
+  meta,
+  min,
+  max,
+  step,
+  value,
+  onChange,
+}: {
+  label: string;
+  meta: string;
+  min: number;
+  max: number;
+  step: number;
+  value: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <label className="dg-hud-hang__row">
+      <span className="dg-hud-hang__label">{label}</span>
+      <input
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        aria-label={label}
+        onPointerDown={stopOrbitBubble}
+        onChange={(e) => onChange(Number(e.target.value))}
+      />
+      <span className="dg-hud-hang__meta">{meta}</span>
+    </label>
+  );
+}
+
+function HangingHudSheet({
+  sheet,
+  hang,
+  onPatch,
+  onRedraw,
+}: {
+  sheet: 'path' | 'bulbs';
+  hang: HangingDecorationConfig;
+  onPatch: (patch: Partial<HangingDecorationConfig>) => void;
+  onRedraw: () => void;
+}) {
+  const lit = hang.kind === 'lights' || hang.kind === 'led-strip';
+
+  return (
+    <div className="dg-hud-hang" role="region" aria-label={sheet === 'path' ? 'Path' : hangingAccentLabel(hang.kind)}>
+      {sheet === 'path' ? (
+        <>
+          <div className="dg-hud-hang__head">
+            <span>
+              {hang.anchors.length} anchor{hang.anchors.length === 1 ? '' : 's'}
+            </span>
+            <button type="button" className="dg-hud-hang__redraw" onPointerDown={stopOrbit} onClick={onRedraw}>
+              Redraw
+            </button>
+          </div>
+          {hang.kind !== 'led-strip' ? (
+            <HangSlider
+              label="Sag"
+              meta={`${Math.round(hang.sag * 100)}%`}
+              min={0}
+              max={45}
+              step={1}
+              value={Math.round(hang.sag * 100)}
+              onChange={(v) => onPatch({ sag: v / 100 })}
+            />
+          ) : null}
+        </>
+      ) : lit ? (
+        <>
+          <HangSlider
+            label="Spacing"
+            meta={`${hang.density.toFixed(1)}″`}
+            min={2}
+            max={18}
+            step={0.5}
+            value={hang.density}
+            onChange={(v) => onPatch({ density: v })}
+          />
+          <HangSlider
+            label="Glow"
+            meta={hang.lightIntensity.toFixed(1)}
+            min={0.2}
+            max={3}
+            step={0.1}
+            value={hang.lightIntensity}
+            onChange={(v) => onPatch({ lightIntensity: v })}
+          />
+          <div className="dg-hud-hang__swatches" role="group" aria-label="Colors">
+            {LED_PALETTE_PRESETS.map((p) => (
+              <button
+                key={p.label}
+                type="button"
+                title={p.label}
+                aria-label={p.label}
+                className="dg-hud-hang__swatch"
+                style={{ background: palettePresetBackground(p.colors) }}
+                onPointerDown={stopOrbit}
+                onClick={() => onPatch({ palette: [...p.colors] })}
+              />
+            ))}
+            <input
+              type="color"
+              className="dg-hud-hang__custom"
+              aria-label="Custom color"
+              title="Custom color"
+              value={toColorInputValue(hang.palette[0] ?? '#fff4e0')}
+              onPointerDown={stopOrbitBubble}
+              onChange={(e) => onPatch({ palette: [e.target.value] })}
+            />
+          </div>
+        </>
+      ) : (
+        <HangSlider
+          label="Fullness"
+          meta={`${hang.density.toFixed(2)}×`}
+          min={0.4}
+          max={2}
+          step={0.05}
+          value={hang.density}
+          onChange={(v) => onPatch({ density: v })}
+        />
+      )}
+    </div>
+  );
 }
 
 function HudBtn({
@@ -59,7 +211,6 @@ function HudBtn({
       aria-label={title}
       disabled={disabled}
       onPointerDown={stopOrbit}
-      onPointerUp={stopOrbit}
       onClick={(e) => {
         stopOrbit(e);
         if (!disabled) onClick();
@@ -91,6 +242,13 @@ export function SelectionHud({
   const updateRotation = useStore((s) => s.updateRotation);
   const duplicateItem = useStore((s) => s.duplicateItem);
   const removeItem = useStore((s) => s.removeItem);
+  const setHangingConfig = useStore((s) => s.setHangingConfig);
+  const beginHangingDraft = useStore((s) => s.beginHangingDraft);
+  const [hangSheet, setHangSheet] = useState<'path' | 'bulbs' | null>(null);
+
+  useEffect(() => {
+    if (!radialOpen) setHangSheet(null);
+  }, [radialOpen]);
 
   if (hidden || captureMode || !selectedId || !item) return null;
 
@@ -134,15 +292,8 @@ export function SelectionHud({
         center
         zIndexRange={[80, 0]}
         style={{ pointerEvents: 'none' }}
-        onPointerDown={stopOrbit}
-        onPointerUp={stopOrbit}
       >
-        <div
-          className="dg-hud"
-          onPointerDown={stopOrbit}
-          onPointerUp={stopOrbit}
-          onClick={stopOrbit}
-        >
+        <div className="dg-hud">
           <div className="dg-hud-label">
             <div className="dg-hud-label__main">
               <span className="dg-hud-label__dot" style={{ background: swatch }} />
@@ -163,11 +314,7 @@ export function SelectionHud({
           </div>
 
           {showRotate ? (
-            <div
-              className="dg-hud-handle dg-hud-handle--under"
-              onPointerDown={stopOrbit}
-              onPointerUp={stopOrbit}
-            >
+            <div className="dg-hud-handle dg-hud-handle--under">
               <HudBtn title="Rotate left 15°" onClick={() => nudgeRot(-1)}>
                 <RotateGlyph dir="left" />
               </HudBtn>
@@ -179,10 +326,26 @@ export function SelectionHud({
           ) : null}
 
           {radialOpen ? (
-            <div className="dg-hud-radial">
-              <div className="dg-hud-radial__card">
+            <div className={`dg-hud-radial${isHanging ? ' is-hanging' : ''}${hangSheet ? ' has-sheet' : ''}`}>
+              <div className={`dg-hud-radial__card${isHanging ? ' is-hanging' : ''}`}>
                 {isHanging ? (
                   <>
+                    <HudBtn
+                      className={`dg-hud-radial__btn${hangSheet === 'path' ? ' is-active' : ''}`}
+                      title="Path"
+                      onClick={() => setHangSheet((s) => (s === 'path' ? null : 'path'))}
+                    >
+                      <RadialIcon kind="path" />
+                      <span>Path</span>
+                    </HudBtn>
+                    <HudBtn
+                      className={`dg-hud-radial__btn${hangSheet === 'bulbs' ? ' is-active' : ''}`}
+                      title={hangingAccentLabel(item.hanging?.kind)}
+                      onClick={() => setHangSheet((s) => (s === 'bulbs' ? null : 'bulbs'))}
+                    >
+                      <RadialIcon kind={hangingAccentIcon(item.hanging?.kind)} />
+                      <span>{hangingAccentLabel(item.hanging?.kind)}</span>
+                    </HudBtn>
                     <HudBtn
                       className="dg-hud-radial__btn is-danger"
                       title="Remove"
@@ -190,14 +353,6 @@ export function SelectionHud({
                     >
                       <RadialIcon kind="remove" />
                       <span>Remove</span>
-                    </HudBtn>
-                    <HudBtn
-                      className="dg-hud-radial__detail"
-                      title={detailLabel(item.kind)}
-                      onClick={onOpenInspector}
-                    >
-                      <span>{detailLabel(item.kind)}</span>
-                      <span className="dg-hud-kbd">↵</span>
                     </HudBtn>
                   </>
                 ) : (
@@ -247,6 +402,14 @@ export function SelectionHud({
                   </>
                 )}
               </div>
+              {isHanging && hangSheet && item.hanging ? (
+                <HangingHudSheet
+                  sheet={hangSheet}
+                  hang={item.hanging}
+                  onPatch={(patch) => setHangingConfig(item.id, patch)}
+                  onRedraw={() => beginHangingDraft(item.hanging!.kind)}
+                />
+              ) : null}
             </div>
           ) : null}
         </div>
@@ -287,7 +450,11 @@ function RotateGlyph({ dir }: { dir: 'left' | 'right' }) {
   );
 }
 
-function RadialIcon({ kind }: { kind: 'resize' | 'rotate' | 'duplicate' | 'remove' }) {
+function RadialIcon({
+  kind,
+}: {
+  kind: 'resize' | 'rotate' | 'duplicate' | 'remove' | 'path' | 'bulbs' | 'leaves' | 'led';
+}) {
   const common = {
     width: 18,
     height: 18,
@@ -319,6 +486,47 @@ function RadialIcon({ kind }: { kind: 'resize' | 'rotate' | 'duplicate' | 'remov
       <svg {...common}>
         <rect x="9" y="9" width="11" height="11" rx="2" />
         <path d="M15 5H6a2 2 0 0 0-2 2v9" />
+      </svg>
+    );
+  }
+  if (kind === 'path') {
+    return (
+      <svg {...common}>
+        <circle cx="4.5" cy="7" r="1.4" fill="currentColor" stroke="none" />
+        <circle cx="19.5" cy="7" r="1.4" fill="currentColor" stroke="none" />
+        <path d="M4.5 7c3.2 9 11.8 9 15 0" />
+      </svg>
+    );
+  }
+  if (kind === 'bulbs') {
+    return (
+      <svg {...common}>
+        <path d="M4 6h16" />
+        <path d="M7 6v3.2M12 6v4.4M17 6v3.2" />
+        <circle cx="7" cy="12.2" r="2" />
+        <circle cx="12" cy="13.6" r="2" />
+        <circle cx="17" cy="12.2" r="2" />
+      </svg>
+    );
+  }
+  if (kind === 'leaves') {
+    return (
+      <svg {...common}>
+        <path d="M4 6h16" />
+        <path d="M8 6v2.2M12 6v2.6M16 6v2" />
+        <path d="M8 8.2c-2.4 1.3-2.6 4.1-1 5.8 1.9-.9 2.3-3.4 1-5.8" />
+        <path d="M12 8.6c-2.6 1.5-2.8 4.6-1.1 6.6 2-1 2.4-4 1.1-6.6" />
+        <path d="M16 8c2.3 1.2 2.5 3.8 1 5.5-1.8-.8-2.1-3.1-1-5.5" />
+      </svg>
+    );
+  }
+  if (kind === 'led') {
+    return (
+      <svg {...common}>
+        <path d="M4 12h16" strokeWidth="2.4" />
+        <rect x="6" y="10.4" width="2.4" height="3.2" rx="0.5" fill="currentColor" stroke="none" />
+        <rect x="10.8" y="10.4" width="2.4" height="3.2" rx="0.5" fill="currentColor" stroke="none" />
+        <rect x="15.6" y="10.4" width="2.4" height="3.2" rx="0.5" fill="currentColor" stroke="none" />
       </svg>
     );
   }

@@ -11,10 +11,10 @@ import {
   starterPieceCount,
   starterPreviewItems,
   starterTierLabel,
-  templatesForGoal,
   type RoomStarterGoal,
   type RoomStarterTemplate,
 } from '../lib/roomStarterTemplates';
+import { useStarterTemplatesForGoal } from '../hooks/useStarterTemplates';
 import type { RoomGallerySortParam } from '../lib/galleryCatalog';
 import { Button, Field, Input, Modal, Plate, Tabs } from './kit';
 import { RoomGallery } from './RoomGallery';
@@ -79,13 +79,14 @@ export function RoomPresetPicker({
     setGalleryQuery('');
   }, [active, defaultName]);
 
+  const liveForGoal = useStarterTemplatesForGoal(goal);
   const starterPreviews = useMemo<StarterPreview[]>(
     () =>
-      templatesForGoal(goal).map((template) => ({
+      liveForGoal.map((template) => ({
         template,
         plan: template.buildPlan(),
       })),
-    [goal],
+    [liveForGoal],
   );
 
   const blankPreviews = useMemo<BlankPreview[]>(() => {

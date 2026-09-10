@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { useEffect, useState, type CSSProperties } from 'react';
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
 
 interface FurniturePreviewProps {
@@ -59,11 +59,23 @@ export function FurniturePreview({
   const glyph = KIND_GLYPH[kind] ?? '▢';
   const label = labelForKind(kind);
   const classes = ['furniture-preview', className].filter(Boolean).join(' ');
+  const [imgBroken, setImgBroken] = useState(false);
+  const showImg = !!previewUrl && !imgBroken;
+
+  useEffect(() => {
+    setImgBroken(false);
+  }, [previewUrl]);
 
   return (
     <div className={classes} style={style} title={label} aria-hidden>
-      {previewUrl ? (
-        <img className="furniture-preview-img" src={previewUrl} alt="" draggable={false} />
+      {showImg ? (
+        <img
+          className="furniture-preview-img"
+          src={previewUrl}
+          alt=""
+          draggable={false}
+          onError={() => setImgBroken(true)}
+        />
       ) : (
         <div
           className="furniture-preview-swatch"

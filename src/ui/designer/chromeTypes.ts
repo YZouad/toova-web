@@ -29,7 +29,7 @@ export type InspectorTab =
 /** View puck labels mapped onto existing camera presets. */
 export const VIEW_PRESETS: { id: CameraPresetId; label: string }[] = [
   { id: 'corner', label: 'Room' },
-  { id: 'catalog', label: 'Desk' },
+  { id: 'window', label: 'Walk' },
   { id: 'topDown', label: 'Top' },
 ];
 
@@ -102,7 +102,7 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: 'camera',
     title: 'Change your view',
-    body: 'Use Room, Desk, or Top for a quick angle. Drag the room to orbit, scroll to zoom, and Reset if you get lost.',
+    body: 'Use Room, Walk, or Top for a quick angle. Drag the room to orbit, scroll to zoom, and Reset if you get lost.',
     target: 'camera',
     placement: 'top',
     compactPlacement: 'bottom',

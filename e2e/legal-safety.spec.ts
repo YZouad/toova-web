@@ -59,7 +59,8 @@ test.describe('signup clickwrap gate', () => {
     const google = page.getByRole('button', { name: /Continue with Google/i });
     await expect(google).toBeDisabled();
 
-    await page.getByLabel(/Date of birth/i).fill('2005-01-15');
+    await page.getByLabel(/Birth month/i).selectOption('1');
+    await page.getByLabel(/Birth year/i).selectOption('2005');
     await agree.check();
     await expect(submit).toBeEnabled();
     await expect(google).toBeEnabled();
@@ -81,7 +82,8 @@ test.describe('signup clickwrap gate', () => {
       return;
     }
 
-    await page.getByLabel(/Date of birth/i).fill('2020-01-01');
+    await page.getByLabel(/Birth month/i).selectOption('1');
+    await page.getByLabel(/Birth year/i).selectOption('2020');
     await agree.check();
     await page.getByLabel(/^Email$/i).fill('teen@example.com');
     await page.getByLabel(/^Password$/i).fill('password123');

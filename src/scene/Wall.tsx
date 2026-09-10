@@ -222,7 +222,7 @@ export function Wall({
     innerFaceCenter[2],
   ];
 
-  useOrbitFade([matRef], outwardNormal, center, { groupRef, hidden: cutAway });
+  useOrbitFade([matRef], outwardNormal, center, { groupRef, hidden: cutAway, wallId });
 
   return (
     <group>

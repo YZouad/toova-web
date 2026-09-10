@@ -22,7 +22,7 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
     {
       heading: '1. What we collect',
       body: [
-        'Account data (email, display name, handle), date of birth (used only for age eligibility and minor status — not shown on public profiles), content you upload, and usage analytics without email/name as event parameters.',
+        'Account data (email, display name, handle), month and year of birth (used only for age eligibility and minor status — not shown on public profiles), content you upload, and usage analytics without email/name as event parameters.',
       ],
     },
     {

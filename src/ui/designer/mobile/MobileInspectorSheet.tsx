@@ -14,13 +14,13 @@ import {
 import type { BeddingConfigPatch } from '../../../lib/bedding/types';
 import { DEFAULT_SHELF_COLOR, SHELF_COLOR_SWATCHES } from '../../../furniture/registry';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from '../../../lib/checklistPublicGlbs';
-import { LED_PALETTE_PRESETS, palettePresetBackground } from '../../../lib/hangingDecorGeometry';
 import { proportionalSizesFromMaxSide } from '../../../lib/uniformItemSize';
 import { planBounds } from '../../../lib/roomGeometry';
 import { useAuth } from '../../../hooks/useAuth';
 import { useCatalogThrixelLinked } from '../../../hooks/useCatalogThrixelLinked';
 import { DEFAULT_EMITTER, useStore } from '../../../store';
 import type { InspectorTab } from '../chromeTypes';
+import { HangingPaletteEditor } from '../HangingPaletteEditor';
 import { InspectorThrixelReviseSection } from '../InspectorThrixelReviseSection';
 import { inspectorTabsForKind } from '../inspectorTabs';
 import { MobileSheet } from './MobileSheet';
@@ -339,19 +339,10 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
               </section>
               <section className="dgm-section">
                 <h3 className="dgm-section-title">Colors</h3>
-                <div className="dgm-palette-row">
-                  {LED_PALETTE_PRESETS.map((p) => (
-                    <button
-                      key={p.label}
-                      type="button"
-                      className="dgm-palette-btn"
-                      title={p.label}
-                      aria-label={p.label}
-                      style={{ background: palettePresetBackground(p.colors) }}
-                      onClick={() => setHangingConfig(item.id, { palette: [...p.colors] })}
-                    />
-                  ))}
-                </div>
+                <HangingPaletteEditor
+                  palette={hang.palette}
+                  onChange={(colors) => setHangingConfig(item.id, { palette: colors })}
+                />
               </section>
             </div>
           ) : (

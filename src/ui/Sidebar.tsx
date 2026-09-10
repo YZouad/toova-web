@@ -4,7 +4,7 @@ import { useAdminStats } from '../hooks/useAdminStats';
 import { useAuth } from '../hooks/useAuth';
 import { useRoomSave } from '../hooks/useRoomLayout';
 import { useUserCatalog } from '../hooks/useUserCatalog';
-import { recordCatalogDownload, shouldRecordCatalogDownload } from '../lib/catalogEngagement';
+import { recordCatalogPlaceEngagement } from '../lib/catalogEngagement';
 import { useStore } from '../store';
 import { FURNITURE } from '../furniture/registry';
 import { ImportModelModal } from './ImportModelModal';
@@ -70,11 +70,7 @@ export function Sidebar() {
                   catalogSizeIn: [entry.width_in, entry.height_in, entry.depth_in],
                   catalogKind: entry.kind,
                 });
-                if (shouldRecordCatalogDownload(entry, user?.id)) {
-                  void recordCatalogDownload(entry.kind).catch(() => {
-                    /* best-effort metric */
-                  });
-                }
+                recordCatalogPlaceEngagement(entry, user?.id);
               }}
             >
               {entry.label}

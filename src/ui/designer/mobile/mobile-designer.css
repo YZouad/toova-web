@@ -257,6 +257,11 @@
 .dg-page.is-phone .dgm-piece-row__swatch {
   width: 38px; height: 38px; border-radius: 9px; flex: none;
   border: 1px solid rgba(36, 31, 25, 0.14);
+  overflow: hidden;
+  background: var(--paper-2);
+}
+.dg-page.is-phone .dgm-piece-row__swatch img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
 }
 .dg-page.is-phone .dgm-piece-row__copy {
   flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px;
@@ -1092,8 +1097,7 @@
   pointer-events: none;
 }
 
-.dgm-sel-hud--scene .dgm-sel-hud__label,
-.dgm-sel-hud--scene .dgm-sel-hud__handles {
+.dgm-sel-hud--scene .dgm-sel-hud__round {
   pointer-events: auto;
 }
 
@@ -1389,6 +1393,22 @@
 .dg-page.is-phone .dgm-action-row {
   display: flex;
   gap: 7px;
+}
+
+.dg-page.is-phone .dgm-action-row--draw {
+  gap: 5px;
+  align-items: stretch;
+}
+
+.dg-page.is-phone .dgm-action-row--draw .dgm-action-btn {
+  min-width: 0;
+  height: auto;
+  min-height: 44px;
+  padding: 7px 4px;
+  font-size: 10px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: normal;
 }
 
 .dg-page.is-phone .dgm-action-btn.is-dashed {

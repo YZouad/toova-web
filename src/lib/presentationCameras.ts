@@ -2,6 +2,7 @@ import {
   planBounds,
   planCentroid,
   windowOpenings,
+  doorOpenings,
   openingWorldPlacement,
   type RoomGeometry,
 } from './roomGeometry';
@@ -36,26 +37,33 @@ export function framingForPreset(
       };
     }
     case 'window': {
+      // Standing walk-in: look across the room toward a window, or in from the door.
       const windows = windowOpenings(geom);
+      const doors = doorOpenings(geom);
       let outward: [number, number, number] = [0, 0, 1];
       if (windows.length > 0) {
         const p = openingWorldPlacement(geom, windows[0]!);
         if (p) outward = p.outward;
+      } else if (doors.length > 0) {
+        const p = openingWorldPlacement(geom, doors[0]!);
+        if (p) outward = [-p.outward[0], 0, -p.outward[2]];
       }
-      // Stand inside, looking toward the window (against outward).
-      const dist = span * 0.55;
+      const dist = span * 0.48;
+      const side = span * 0.14;
+      const rightX = -outward[2];
+      const rightZ = outward[0];
       return {
         position: [
-          cx - outward[0] * dist,
+          cx - outward[0] * dist + rightX * side,
           eyeY,
-          cz - outward[2] * dist,
+          cz - outward[2] * dist + rightZ * side,
         ],
         target: [
-          cx + outward[0] * (span * 0.2),
-          eyeY * 0.9,
-          cz + outward[2] * (span * 0.2),
+          cx + outward[0] * (span * 0.18),
+          40,
+          cz + outward[2] * (span * 0.18),
         ],
-        fov: 42,
+        fov: 50,
       };
     }
     case 'topDown': {

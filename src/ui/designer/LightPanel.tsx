@@ -36,9 +36,11 @@ export function LightPanel({ compact, onClose, onStartDraw, onAddLight }: LightP
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const weather = useStore((s) => s.environment.weather);
   const appearance = useStore((s) => s.environment.appearance);
+  const godRays = useStore((s) => s.environment.godRays);
   const setExposure = useStore((s) => s.setExposure);
   const setTimeOfDay = useStore((s) => s.setTimeOfDay);
   const setWeather = useStore((s) => s.setWeather);
+  const setGodRays = useStore((s) => s.setGodRays);
   const setAppearance = useStore((s) => s.setAppearance);
   const items = useStore((s) => s.items);
   const order = useStore((s) => s.order);
@@ -121,6 +123,19 @@ export function LightPanel({ compact, onClose, onStartDraw, onAddLight }: LightP
         </div>
       </PanelSection>
 
+      <button
+        type="button"
+        className="dg-toggle-card"
+        style={{ marginBottom: 18 }}
+        aria-pressed={godRays}
+        onClick={() => setGodRays(!godRays)}
+      >
+        <span className="dg-toggle-card__copy">
+          <span className="dg-toggle-card__title">Light shafts</span>
+        </span>
+        <span className={`dg-toggle${godRays ? ' is-on' : ''}`} aria-hidden />
+      </button>
+
       <hr className="dg-rule" />
 
       <PanelSection title="Fixtures in this room">
@@ -180,7 +195,7 @@ export function LightPanel({ compact, onClose, onStartDraw, onAddLight }: LightP
         </div>
 
         {onStartDraw ? (
-          <div className="dg-footer-actions">
+          <div className="dg-footer-actions dg-footer-actions--draw">
             <button
               type="button"
               className="dg-footer-btn is-dashed is-grow"

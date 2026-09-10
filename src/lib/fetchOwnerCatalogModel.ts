@@ -1,7 +1,7 @@
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import { getSessionCatalogPreview } from './catalogThumbnailBackfill';
 import type { CatalogCategorySlug } from './catalogCategories';
-import { resolveBrowsableModelUrl } from './modelStorage';
+import { resolveBrowsableModelUrl, resolveCatalogThumbnailUrl } from './modelStorage';
 import { supabase } from './supabase';
 
 export async function fetchOwnerCatalogGalleryModel(kind: string): Promise<GalleryModel | null> {
@@ -27,7 +27,7 @@ export async function fetchOwnerCatalogGalleryModel(kind: string): Promise<Galle
   const thumbPath = (data.thumbnail_path as string | null)?.trim() ?? '';
   let previewUrl: string | null = null;
   if (thumbPath) {
-    previewUrl = await resolveBrowsableModelUrl(thumbPath, { access });
+    previewUrl = await resolveCatalogThumbnailUrl(thumbPath, { access });
   }
   previewUrl ??= getSessionCatalogPreview(kind) ?? null;
 

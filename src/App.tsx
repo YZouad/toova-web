@@ -20,7 +20,10 @@ import type { FloorPlan } from './lib/floorPlanGeometry';
 import { emptyPlan } from './lib/floorPlanGeometry';
 import { serializeFloorPlan } from './lib/roomGeometry';
 import {
-  getRoomStarterTemplate,
+  getLiveStarterTemplate,
+  loadStarterTemplateOverrides,
+} from './lib/starterTemplateOverrides';
+import {
   materializeStarterItems,
   type RoomStarterTemplate,
 } from './lib/roomStarterTemplates';
@@ -56,10 +59,11 @@ import { CreationsPage } from './ui/CreationsPage';
 import { GenerationQueueHost } from './ui/GenerationQueueHost';
 import { AppRailChrome } from './ui/AppRailChrome';
 import { LegalPage } from './ui/LegalPage';
+import { CookieConsentBanner } from './ui/CookieConsentBanner';
 import { SafetyReportForm } from './ui/SafetyReportForm';
 import { getLegalDocument } from './legal';
 import type { GalleryModel } from './hooks/useGalleryCatalog';
-import { recordCatalogDownload, shouldRecordCatalogDownload } from './lib/catalogEngagement';
+import { recordCatalogPlaceEngagement } from './lib/catalogEngagement';
 import { identifyUser, resetIdentity, setCurrentRoom, setInternalUser, type AuthMethod } from './lib/analytics';
 import { buildGallerySearchParams } from './lib/galleryCatalog';
 import type { FurnitureKind } from './furniture/registry';
@@ -174,6 +178,7 @@ export default function App() {
     <ChecklistRoomProvider>
       <GenerationQueueHost />
       <AppContent />
+      <CookieConsentBanner />
     </ChecklistRoomProvider>
   );
 }
@@ -202,6 +207,10 @@ function AppContent() {
   const hydrateLayout = useStore((s) => s.hydrateLayout);
   const hydrateRoomSettings = useStore((s) => s.hydrateRoomSettings);
   const { load, loading: layoutLoading } = useRoomLoad();
+
+  useEffect(() => {
+    void loadStarterTemplateOverrides();
+  }, []);
 
   useEffect(() => {
     setRoomId(workspace?.id ?? getActiveChecklistRoomId());
@@ -372,9 +381,7 @@ function AppContent() {
           catalogSizeIn: dims,
           catalogKind: model.kind,
         });
-        if (shouldRecordCatalogDownload(model, user?.id)) {
-          void recordCatalogDownload(model.kind).catch(() => {});
-        }
+        recordCatalogPlaceEngagement(model, user?.id);
       }
       setPendingGalleryModel(null);
     },
@@ -847,7 +854,9 @@ function AppContent() {
             jobs={adminConversionJobs}
             loading={adminStatsLoading}
             error={adminStatsError}
+            currentUserId={user.id}
             onRefresh={refetchAdminInventory}
+            onOpenRoom={handlePickExisting}
           />
         </div>
         <AppRailChrome
@@ -1079,7 +1088,7 @@ isAdmin={isAdmin}
           if (floorPlanDraft.mode === 'create') {
             const starterId = floorPlanDraft.starterTemplateId;
             if (starterId) {
-              const template = getRoomStarterTemplate(starterId);
+              const template = getLiveStarterTemplate(starterId);
               if (template) {
                 await handleCreateFromStarter(floorPlanDraft.name, template, plan);
                 return;

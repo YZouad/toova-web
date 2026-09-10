@@ -116,15 +116,8 @@ export function ArcMenu() {
       center
       zIndexRange={[60, 0]}
       style={{ pointerEvents: 'none' }}
-      onPointerDown={(e) => e.stopPropagation()}
-      onPointerUp={(e) => e.stopPropagation()}
     >
-      <div
-        className="arc-menu"
-        onPointerDown={(e) => e.stopPropagation()}
-        onPointerUp={(e) => e.stopPropagation()}
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="arc-menu">
         {buttons.map((b, i) => {
           const deg = angles[i] ?? 0;
           return (

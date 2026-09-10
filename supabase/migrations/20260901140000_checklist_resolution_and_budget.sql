@@ -22,6 +22,7 @@ ALTER TABLE public.user_move_in_budget ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS user_move_in_budget_owner ON public.user_move_in_budget;
 CREATE POLICY user_move_in_budget_owner ON public.user_move_in_budget
   FOR ALL
+  TO authenticated
   USING (auth.uid() = user_id)
   WITH CHECK (auth.uid() = user_id);
 

@@ -72,10 +72,10 @@ export function MobileSheet({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        dismiss();
-      }
+      if (e.key !== 'Escape') return;
+      if (document.querySelector('.md-backdrop, .kit-modal__scrim, .report-dialog')) return;
+      e.preventDefault();
+      dismiss();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -118,7 +118,10 @@ export function MobileSheet({
         type="button"
         className="dgm-scrim"
         aria-label="Dismiss"
-        onClick={dismiss}
+        onClick={() => {
+          if (document.querySelector('.md-backdrop, .kit-modal__scrim, .report-dialog')) return;
+          dismiss();
+        }}
       />
       <div
         ref={sheetRef}
