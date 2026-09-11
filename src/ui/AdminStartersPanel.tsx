@@ -48,15 +48,26 @@ function rad(degStr: string): number {
   return Number.isFinite(n) ? (n * Math.PI) / 180 : 0;
 }
 
-export function AdminStartersPanel() {
+export function AdminStartersPanel({
+  onEnterRoom,
+  initialSelectedId,
+}: {
+  onEnterRoom?: (templateId: string) => void | Promise<void>;
+  initialSelectedId?: string;
+}) {
   const { user } = useAuth();
   const [templates, setTemplates] = useState(getResolvedStarterTemplates);
-  const [selectedId, setSelectedId] = useState(ROOM_STARTER_TEMPLATES[0]?.id ?? '');
+  const [selectedId, setSelectedId] = useState(
+    initialSelectedId && ROOM_STARTER_TEMPLATES.some((t) => t.id === initialSelectedId)
+      ? initialSelectedId
+      : (ROOM_STARTER_TEMPLATES[0]?.id ?? ''),
+  );
   const [draft, setDraft] = useState<StarterTemplateOverride>({});
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  const [entering, setEntering] = useState(false);
 
   useEffect(() => {
     const unsub = subscribeStarterTemplates(setTemplates);
@@ -83,8 +94,21 @@ export function AdminStartersPanel() {
       description: draft.description ?? selected.description,
       floorItems: draft.floorItems ?? selected.floorItems,
       hanging: draft.hanging ?? selected.hanging,
+      itemSnapshots: draft.itemSnapshots ?? selected.itemSnapshots,
     };
   }, [selected, draft]);
+
+  async function handleEnter() {
+    if (!selected || !onEnterRoom) return;
+    setEntering(true);
+    setError(null);
+    try {
+      await onEnterRoom(selected.id);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not open starter');
+      setEntering(false);
+    }
+  }
 
   async function handleSave() {
     if (!selected || !user?.id) return;
@@ -155,8 +179,8 @@ export function AdminStartersPanel() {
   return (
     <div className="admin-starters">
       <p className="admin-starters__lede">
-        Edit the pre-made rooms people pick when they start a design. Changes apply to new rooms;
-        rooms already created are not rewritten.
+        Open a starter in the designer to rearrange furniture in 3D. Saving there updates the
+        template for new rooms; rooms already created are not rewritten.
       </p>
       {error ? <Banner tone="error">{error}</Banner> : null}
       {saved ? <Banner tone="success">{saved}</Banner> : null}
@@ -185,10 +209,21 @@ export function AdminStartersPanel() {
 
         <div className="admin-starters__editor">
           <div className="admin-starters__preview">
-            <RoomPreview
-              geometry={previewTemplate.buildPlan()}
-              items={starterPreviewItems(previewTemplate)}
-            />
+            <button
+              type="button"
+              className="admin-starters__enter-preview"
+              onClick={() => void handleEnter()}
+              disabled={!onEnterRoom || entering || busy}
+              aria-label={`Enter ${selected.label} in the designer`}
+            >
+              <RoomPreview
+                geometry={previewTemplate.buildPlan()}
+                items={starterPreviewItems(previewTemplate)}
+              />
+              <span className="admin-starters__enter-preview-label">
+                {entering ? 'Opening…' : 'Click to enter and design'}
+              </span>
+            </button>
           </div>
 
           <div className="admin-starters__fields">
@@ -267,6 +302,9 @@ export function AdminStartersPanel() {
           </div>
 
           <SectionOpener level={5} title="Furniture." style={{ margin: '18px 0 10px' }} />
+          <MonoMeta size="xs" tone="dense" style={{ display: 'block', margin: '-4px 0 10px' }}>
+            Prefer entering the room to move pieces in 3D. These fields are the same layout.
+          </MonoMeta>
           <div className="admin-starters__items">
             {items.map((seed, i) => (
               <div key={`${seed.kind}-${i}`} className="admin-starters__item">
@@ -389,10 +427,17 @@ export function AdminStartersPanel() {
           </div>
 
           <div className="admin-starters__actions">
-            <Button size="sm" disabled={busy || !user} onClick={() => void handleSave()}>
+            <Button
+              size="sm"
+              disabled={busy || entering || !onEnterRoom}
+              onClick={() => void handleEnter()}
+            >
+              {entering ? 'Opening…' : 'Enter room'}
+            </Button>
+            <Button size="sm" disabled={busy || entering || !user} onClick={() => void handleSave()}>
               {busy ? 'Saving…' : 'Save starter'}
             </Button>
-            <Button size="sm" variant="outline" disabled={busy || !builtin} onClick={() => void handleReset()}>
+            <Button size="sm" variant="outline" disabled={busy || entering || !builtin} onClick={() => void handleReset()}>
               Reset to built-in
             </Button>
           </div>

@@ -1,4 +1,5 @@
 import { isGuestWorkspaceId } from './guestDesignSnapshot';
+import { isStarterEditWorkspaceId } from './starterTemplateOverrides';
 import { supabase } from './supabase';
 import { publicModelAssetUrl, publicModelsUrl } from './modelStorage';
 import { mirrorRoomAssets } from './publicModelsMirror';
@@ -247,7 +248,7 @@ export async function forkPublicRoom(
 }
 
 export async function fetchRoomAttribution(roomId: string): Promise<RoomAttributionPayload | null> {
-  if (isGuestWorkspaceId(roomId)) return null;
+  if (isGuestWorkspaceId(roomId) || isStarterEditWorkspaceId(roomId)) return null;
   const { data: sessionData } = await supabase.auth.getSession();
   if (!sessionData.session) return null;
 

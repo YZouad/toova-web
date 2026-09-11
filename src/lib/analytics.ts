@@ -1,30 +1,42 @@
 // src/lib/analytics.ts
-// GA4 (gtag.js) implementation. v1 of this file (2026-09-03) targeted PostHog — that was
-// implemented and reverted the same day per the founder's call to keep the stack smaller
-// (already running Cloudflare, Supabase, AWS). The event catalog, properties, and every
-// call site elsewhere in src/ are unchanged from that plan; only the transport here
-// changed, from posthog-js back to a hand-rolled gtag.js loader (matching what this file
-// looked like before the tracking-plan work started — see .telemetry/current-implementation.md).
-//
-// Generated from .telemetry/tracking-plan.yaml v2 (2026-09-03) by the
-// product-tracking-implement-tracking skill. Regenerate/extend by re-running that skill
-// after tracking-plan.yaml changes, or hand-edit following the same pattern below.
-//
-// GA4 constraints this file exists to respect (see .telemetry/instrument.md for detail):
-//  - Event/param names: letters, digits, underscores only, must start with a letter,
-//    ≤40 chars — no periods. The `object.action` names from the design phase are
-//    flattened to `object_action` here (room.created -> room_created).
-//  - No PII, ever, in event params OR user properties (Google's gtag/Measurement
-//    Protocol terms). identifyUser() intentionally does not accept email or
-//    display_name — GA4 gets a user_id (Supabase's opaque UUID) and a small set of
-//    non-identifying user properties only.
-//  - Up to 25 event params per call; string param values are truncated at 100 chars
-//    by GA4's collection.
-//  - Custom event params only show up in GA4's standard reports once registered as
-//    Custom Dimensions/Metrics in GA4 Admin — DebugView shows them immediately either way.
+// GA4 (gtag.js) plus first-party collector fan-out. Every product event still
+// goes through private track(). Consent, internal-user exclusion, and identity
+// readiness are enforced here so admin traffic cannot leak before role resolution.
+
+import {
+  EVENTS,
+  dimensionFromProperties,
+  inferDevice,
+  newEventId,
+  parseUtm,
+  sanitizeEventProperties,
+  sanitizeRoute,
+  type AnalyticsAuthMethod,
+  type EventName,
+  type NormalizedAnalyticsEvent,
+} from './analyticsSchema';
+import {
+  enqueueAnalyticsEvent,
+  flushAnalyticsQueue,
+  resetAnalyticsQueueForTests,
+} from './analyticsQueue';
+import { hasAcceptedAnalytics } from './cookieConsent';
+import { supabase } from './supabase';
+
+export { EVENTS, type EventName } from './analyticsSchema';
 
 const GA_ID = (import.meta.env.VITE_GA_MEASUREMENT_ID as string | undefined)?.trim();
+const SESSION_KEY = 'toova-analytics-session';
+const ANON_KEY = 'toova-analytics-anon';
+const SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+
 let analyticsInitialized = false;
+let isInternalUser = false;
+let identityReady = true;
+let currentRoomId: string | null = null;
+let currentAuthMethod: AnalyticsAuthMethod | null = null;
+let sessionStartedForId: string | null = null;
+const pending: Array<{ name: EventName; properties?: Record<string, unknown> }> = [];
 
 declare global {
   interface Window {
@@ -33,83 +45,204 @@ declare global {
   }
 }
 
-let isInternalUser = false;
-let currentRoomId: string | null = null;
+export type AuthMethod = AnalyticsAuthMethod;
 
-/** Every event name in the target tracking plan (.telemetry/tracking-plan.yaml). */
-export const EVENTS = {
-  ACCOUNT_SIGNED_UP: 'account_signed_up',
-  ACCOUNT_LOGGED_IN: 'account_logged_in',
-  ROOM_CREATED: 'room_created',
-  DESIGN_ITEM_ADDED: 'design_item_added',
-  MODEL_GENERATION_STARTED: 'model_generation_started',
-  MODEL_GENERATION_SUCCEEDED: 'model_generation_succeeded',
-  MODEL_GENERATION_FAILED: 'model_generation_failed',
-  CHECKLIST_ITEM_ADDED: 'checklist_item_added',
-  PRODUCT_AFFILIATE_CLICKED: 'product_affiliate_clicked',
-  ROOM_SHARED: 'room_shared',
-  ROOM_LIKED: 'room_liked',
-  CATALOG_SEARCHED: 'catalog_searched',
-  PLAN_UPGRADED: 'plan_upgraded',       // roadmap — no call site until billing exists
-  PLAN_CANCELLED: 'plan_cancelled',     // roadmap — no call site until billing exists
-  LIMIT_REACHED: 'limit_reached',       // roadmap — no call site until billing exists
-} as const;
+type SessionRecord = { id: string; lastSeen: number };
 
-export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
-
-/** Supabase auth providers Toova actually offers (AuthPage.tsx: email, Google, Facebook). */
-export type AuthMethod = 'email' | 'google' | 'facebook';
-
-export function initAnalytics(): void {
-  if (analyticsInitialized) return;
-  analyticsInitialized = true;
-  if (!GA_ID) {
-    if (import.meta.env.DEV) {
-      console.info('[analytics] VITE_GA_MEASUREMENT_ID is not set — skipping');
-    }
-    return;
-  }
+function readStorage(storage: Storage | undefined, key: string): string | null {
   try {
-    window.dataLayer = window.dataLayer || [];
-    window.gtag = function gtag(...args: unknown[]) {
-      window.dataLayer.push(args);
-    };
-    window.gtag('js', new Date());
-    window.gtag('config', GA_ID, {
-      // The tracking plan removed blanket page_view tracking in favor of deliberate
-      // feature-engagement events. This app makes no manual page_view calls, and GA4's
-      // own automatic page-view collection is untouched by this config.
-      debug_mode: import.meta.env.DEV,
-    });
-    const script = document.createElement('script');
-    script.async = true;
-    script.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
-    script.onerror = () => console.warn('[analytics] gtag.js failed to load (ad blocker?)');
-    document.head.appendChild(script);
-  } catch (e) {
-    console.warn('[analytics] GA4 failed to initialize', e);
+    return storage?.getItem(key) ?? null;
+  } catch {
+    return null;
   }
 }
 
-/** Call once whenever the signed-in user's admin status is known (role trait, exclusion guard). */
+function writeStorage(storage: Storage | undefined, key: string, value: string): void {
+  try {
+    storage?.setItem(key, value);
+  } catch {
+    /* quota / private mode */
+  }
+}
+
+function getAnonymousId(): string {
+  const existing = readStorage(typeof localStorage === 'undefined' ? undefined : localStorage, ANON_KEY);
+  if (existing && existing.length >= 8) return existing;
+  const id = newEventId();
+  writeStorage(typeof localStorage === 'undefined' ? undefined : localStorage, ANON_KEY, id);
+  return id;
+}
+
+function readSession(): SessionRecord | null {
+  const raw = readStorage(typeof sessionStorage === 'undefined' ? undefined : sessionStorage, SESSION_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as SessionRecord;
+    if (parsed?.id && typeof parsed.lastSeen === 'number') return parsed;
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function writeSession(record: SessionRecord): void {
+  writeStorage(
+    typeof sessionStorage === 'undefined' ? undefined : sessionStorage,
+    SESSION_KEY,
+    JSON.stringify(record),
+  );
+}
+
+function getOrCreateSession(): { id: string; isNew: boolean } {
+  const now = Date.now();
+  const current = readSession();
+  if (current && now - current.lastSeen < SESSION_TIMEOUT_MS) {
+    const next = { id: current.id, lastSeen: now };
+    writeSession(next);
+    return { id: next.id, isNew: false };
+  }
+  const created = { id: newEventId(), lastSeen: now };
+  writeSession(created);
+  return { id: created.id, isNew: true };
+}
+
+function currentContext() {
+  const search = typeof window === 'undefined' ? '' : window.location.search;
+  const referrer = typeof document === 'undefined' ? '' : document.referrer;
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent;
+  return {
+    route: sanitizeRoute(typeof window === 'undefined' ? '' : `${window.location.pathname}${window.location.search}`),
+    referrer: sanitizeRoute(referrer) ?? null,
+    device: inferDevice(ua),
+    auth_method: currentAuthMethod,
+    ...parseUtm(search),
+  };
+}
+
+async function accessToken(): Promise<string | null> {
+  try {
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function emitFirstParty(name: EventName, properties?: Record<string, unknown>): void {
+  const session = getOrCreateSession();
+  if (session.isNew || sessionStartedForId !== session.id) {
+    sessionStartedForId = session.id;
+    if (name !== EVENTS.SESSION_STARTED) {
+      queueNormalized(EVENTS.SESSION_STARTED, { page_path: currentContext().route ?? '/' });
+    }
+  }
+  queueNormalized(name, properties);
+  void flushSoon();
+}
+
+function queueNormalized(name: EventName, properties?: Record<string, unknown>): void {
+  const sanitized = sanitizeEventProperties(properties);
+  const context = currentContext();
+  const event: NormalizedAnalyticsEvent = {
+    event_id: newEventId(),
+    name,
+    occurred_at: new Date().toISOString(),
+    session_id: getOrCreateSession().id,
+    anonymous_id: getAnonymousId(),
+    room_id: dimensionFromProperties(sanitized, 'room_id'),
+    job_id: dimensionFromProperties(sanitized, 'job_id'),
+    product_id: dimensionFromProperties(sanitized, 'product_id'),
+    properties: sanitized,
+    context,
+  };
+  enqueueAnalyticsEvent(event);
+}
+
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+function flushSoon(): void {
+  if (flushTimer) return;
+  flushTimer = setTimeout(() => {
+    flushTimer = null;
+    void (async () => {
+      const token = await accessToken();
+      await flushAnalyticsQueue({ accessToken: token, keepalive: true });
+    })();
+  }, 20);
+}
+
+function emitGa4(name: EventName, properties?: Record<string, unknown>): void {
+  if (!GA_ID || typeof window === 'undefined' || typeof window.gtag !== 'function') return;
+  try {
+    window.gtag('event', name, properties);
+  } catch (e) {
+    console.warn('[analytics] capture failed', e, name);
+  }
+}
+
+/** Single internal choke point — every event below goes through this. Not exported. */
+function track(name: EventName, properties?: Record<string, unknown>): void {
+  if (!identityReady) {
+    pending.push({ name, properties });
+    return;
+  }
+  if (isInternalUser) return;
+  if (!hasAcceptedAnalytics()) return;
+  emitGa4(name, properties);
+  emitFirstParty(name, properties);
+}
+
+function flushPending(): void {
+  if (!identityReady) return;
+  const queued = pending.splice(0, pending.length);
+  for (const item of queued) track(item.name, item.properties);
+}
+
+export function initAnalytics(): void {
+  if (!hasAcceptedAnalytics()) return;
+  if (!analyticsInitialized) {
+    analyticsInitialized = true;
+    if (GA_ID && typeof window !== 'undefined') {
+      try {
+        window.dataLayer = window.dataLayer || [];
+        window.gtag = function gtag(...args: unknown[]) {
+          window.dataLayer.push(args);
+        };
+        window.gtag('js', new Date());
+        window.gtag('config', GA_ID, {
+          send_page_view: false,
+          debug_mode: import.meta.env.DEV,
+        });
+        const script = document.createElement('script');
+        script.async = true;
+        script.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
+        script.onerror = () => console.warn('[analytics] gtag.js failed to load (ad blocker?)');
+        document.head.appendChild(script);
+      } catch (e) {
+        console.warn('[analytics] GA4 failed to initialize', e);
+      }
+    }
+  }
+  const session = getOrCreateSession();
+  if (session.isNew || sessionStartedForId !== session.id) {
+    sessionStartedForId = session.id;
+    track(EVENTS.SESSION_STARTED, { page_path: currentContext().route ?? '/' });
+  }
+}
+
 export function setInternalUser(isInternal: boolean): void {
   isInternalUser = isInternal;
 }
 
-/**
- * Call whenever the "current room" changes (Toova has no GA4 group concept — this is
- * a lightweight equivalent used to attach room_id to room-scoped events without threading
- * it through every call site in src/store.ts and elsewhere).
- */
+/** While admin status is unknown, hold events so admin traffic cannot leak. */
+export function setAnalyticsIdentityReady(ready: boolean): void {
+  identityReady = ready;
+  if (ready) flushPending();
+}
+
 export function setCurrentRoom(roomId: string | null): void {
   currentRoomId = roomId;
 }
 
-/**
- * GA4's closest equivalent to identify(): a user_id plus a small set of non-identifying
- * user properties. No email, no display_name — see the file header and
- * .telemetry/instrument.md's "No-PII Rule" section for why those are never accepted here.
- */
 export function identifyUser(
   userId: string,
   traits: {
@@ -117,11 +250,14 @@ export function identifyUser(
     role: 'user' | 'admin';
     is_guest: boolean;
     subscription_tier: 'free' | 'pro';
-    created_at: string; // ISO 8601
+    created_at: string;
   },
 ): void {
+  currentAuthMethod = traits.auth_method;
   setInternalUser(traits.role === 'admin');
+  setAnalyticsIdentityReady(true);
   if (isInternalUser || !GA_ID || typeof window.gtag !== 'function') return;
+  if (!hasAcceptedAnalytics()) return;
   try {
     window.gtag('set', { user_id: userId });
     window.gtag('set', 'user_properties', {
@@ -135,8 +271,10 @@ export function identifyUser(
   }
 }
 
-/** Call on logout, so a shared device doesn't keep attributing events to the previous user. */
 export function resetIdentity(): void {
+  currentAuthMethod = null;
+  isInternalUser = false;
+  setAnalyticsIdentityReady(true);
   if (!GA_ID || typeof window.gtag !== 'function') return;
   try {
     window.gtag('set', { user_id: undefined });
@@ -151,31 +289,30 @@ export function resetIdentity(): void {
   }
 }
 
-/** Single internal choke point — every event below goes through this. Not exported. */
-function track(name: EventName, properties?: Record<string, unknown>): void {
-  if (isInternalUser || !GA_ID || typeof window.gtag !== 'function') return;
-  try {
-    window.gtag('event', name, properties);
-  } catch (e) {
-    console.warn('[analytics] capture failed', e, name);
-  }
+export function trackPageView(params?: { path?: string; title?: string; referrer?: string }): void {
+  const path = params?.path
+    ?? (typeof window === 'undefined' ? '/' : `${window.location.pathname}${window.location.search}`);
+  track(EVENTS.PAGE_VIEW, {
+    page_path: path,
+    page_title: params?.title ?? (typeof document === 'undefined' ? '' : document.title),
+    page_referrer: params?.referrer ?? (typeof document === 'undefined' ? '' : document.referrer),
+    page_location: typeof window === 'undefined' ? path : window.location.href,
+  });
 }
-
-// -- Lifecycle --
 
 export function trackSignedUp(params: {
   user_id: string;
   method: AuthMethod;
   converted_from_guest: boolean;
 }): void {
+  currentAuthMethod = params.method;
   track(EVENTS.ACCOUNT_SIGNED_UP, params);
 }
 
 export function trackLoggedIn(params: { user_id: string; method: AuthMethod }): void {
+  currentAuthMethod = params.method;
   track(EVENTS.ACCOUNT_LOGGED_IN, params);
 }
-
-// -- Core value --
 
 export function trackRoomCreated(params: {
   room_id: string;
@@ -215,10 +352,6 @@ export function trackModelGenerationFailed(params: {
 }
 
 export function trackChecklistItemAdded(params: {
-  // The checklist can be open without an active design workspace (e.g. a guest who
-  // hasn't started designing yet), so useShoppingCatalog.ts's own room-scope value is
-  // more reliable here than the module-level currentRoomId — pass it explicitly and it
-  // overrides the auto-injected value below (object spread order).
   room_id?: string;
   product_id?: string;
   category: string;
@@ -229,8 +362,6 @@ export function trackChecklistItemAdded(params: {
 
 export function trackAffiliateClicked(params: {
   retailer?: string;
-  // Optional: SharedToBuyPanel's "approximate" offers resolve to a generic retailer
-  // search link, not a specific catalog product, so there's no product_id to attach.
   product_id?: string;
   is_price_approximate: boolean;
   source:
@@ -244,8 +375,6 @@ export function trackAffiliateClicked(params: {
   track(EVENTS.PRODUCT_AFFILIATE_CLICKED, params);
 }
 
-// -- Collaboration --
-
 export function trackRoomShared(params: { room_id: string; role: 'viewer' | 'editor' }): void {
   track(EVENTS.ROOM_SHARED, params);
 }
@@ -254,8 +383,6 @@ export function trackRoomLiked(params: { room_id: string }): void {
   track(EVENTS.ROOM_LIKED, params);
 }
 
-// -- Navigation --
-
 export function trackCatalogSearched(params: {
   query: string;
   results_count: number;
@@ -263,9 +390,6 @@ export function trackCatalogSearched(params: {
 }): void {
   track(EVENTS.CATALOG_SEARCHED, params);
 }
-
-// -- Billing (roadmap — no call sites yet; no billing system exists in the codebase.
-//    Wire these in when the Pro tier ships, following the pattern above.) --
 
 export function trackPlanUpgraded(params: { from_plan: 'free' | 'pro'; to_plan: 'free' | 'pro' }): void {
   track(EVENTS.PLAN_UPGRADED, params);
@@ -277,4 +401,19 @@ export function trackPlanCancelled(params: { from_plan: 'pro'; reason?: string }
 
 export function trackLimitReached(params: { limit_type: 'ai_generations' | 'render_quality' }): void {
   track(EVENTS.LIMIT_REACHED, params);
+}
+
+export function resetAnalyticsRuntimeForTests(): void {
+  analyticsInitialized = false;
+  isInternalUser = false;
+  identityReady = true;
+  currentRoomId = null;
+  currentAuthMethod = null;
+  sessionStartedForId = null;
+  pending.length = 0;
+  if (flushTimer) {
+    clearTimeout(flushTimer);
+    flushTimer = null;
+  }
+  resetAnalyticsQueueForTests();
 }

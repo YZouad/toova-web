@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useRoomWorkspace } from '../context/RoomWorkspaceContext';
 import { useAuth } from '../hooks/useAuth';
 import { useRoomSave } from '../hooks/useRoomLayout';
@@ -19,6 +19,7 @@ import {
 } from '../hooks/useBuiltinPreviews';
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { isGuestWorkspaceId } from '../lib/guestDesignSnapshot';
+import { isStarterEditWorkspaceId } from '../lib/starterTemplateOverrides';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
@@ -87,6 +88,8 @@ interface DesignerProps {
   onRequestSaveAuth?: () => void;
   /** Guest upload / import — opens auth after modal confirm. */
   onRequestImportAuth?: (mode?: 'signin' | 'signup') => void;
+  /** Admin starter-template edit — persist layout to the starter override. */
+  onPersistStarter?: (name: string) => Promise<void>;
 }
 
 export function Designer({
@@ -96,10 +99,19 @@ export function Designer({
   isAdmin = false,
   onRequestSaveAuth,
   onRequestImportAuth,
+  onPersistStarter,
 }: DesignerProps) {
   const { user } = useAuth();
   const { workspace } = useRoomWorkspace();
-  const { save, saving, error: saveError } = useRoomSave(workspace?.id ?? null);
+  const starterEdit = isStarterEditWorkspaceId(workspace?.id);
+  const canShare = Boolean(workspace?.isOwner && !starterEdit);
+  const { save, saving: roomSaving, error: roomSaveError } = useRoomSave(
+    starterEdit || onRequestSaveAuth ? null : workspace?.id ?? null,
+  );
+  const [starterSaving, setStarterSaving] = useState(false);
+  const [starterSaveError, setStarterSaveError] = useState<string | null>(null);
+  const saving = starterSaving || roomSaving;
+  const saveError = starterSaveError || roomSaveError;
   const sceneRef = useRef<SceneHandle>(null);
   const canvasWrapRef = useRef<HTMLDivElement>(null);
   const pageRef = useRef<HTMLDivElement>(null);
@@ -146,6 +158,13 @@ export function Designer({
     setLeaveConfirmOpen(false);
   }, [workspace?.id, workspace?.name]);
 
+  useLayoutEffect(() => {
+    setCameraPreset('corner');
+    if (useStore.getState().visual.cameraPreset !== 'corner') {
+      useStore.getState().setCameraPreset('corner');
+    }
+  }, [workspace?.id]);
+
   useEffect(() => {
     const syncDirty = () => {
       setDirty(roomDirtyFingerprint(roomName) !== dirtyBaselineRef.current);
@@ -156,7 +175,7 @@ export function Designer({
 
   useEffect(() => {
     let cancelled = false;
-    if (!workspace?.id || isGuestWorkspaceId(workspace.id)) {
+    if (!workspace?.id || isGuestWorkspaceId(workspace.id) || starterEdit) {
       setForkMeta(null);
       return;
     }
@@ -171,12 +190,29 @@ export function Designer({
     return () => {
       cancelled = true;
     };
-  }, [workspace?.id]);
+  }, [workspace?.id, starterEdit]);
 
   const handleSave = useCallback(async () => {
     if (!workspace?.id) return;
     if (onRequestSaveAuth) {
       onRequestSaveAuth();
+      return;
+    }
+    if (starterEdit) {
+      if (!onPersistStarter) return;
+      setStarterSaving(true);
+      setStarterSaveError(null);
+      try {
+        await onPersistStarter(roomName);
+        dirtyBaselineRef.current = roomDirtyFingerprint(roomName);
+        setDirty(false);
+        setSavedLabel('Saved just now');
+      } catch (e) {
+        setStarterSaveError(e instanceof Error ? e.message : 'Could not save starter');
+        throw e;
+      } finally {
+        setStarterSaving(false);
+      }
       return;
     }
     const trimmed = roomName.trim();
@@ -226,7 +262,16 @@ export function Designer({
         console.warn('[toova] room thumbnail capture failed', err);
       }
     }
-  }, [workspace?.id, workspace?.name, roomName, save, user?.id, onRequestSaveAuth]);
+  }, [
+    workspace?.id,
+    workspace?.name,
+    roomName,
+    save,
+    user?.id,
+    onRequestSaveAuth,
+    starterEdit,
+    onPersistStarter,
+  ]);
 
   const requestLeave = useCallback(() => {
     if (!dirty) {
@@ -319,7 +364,7 @@ export function Designer({
         handleSave: () => void handleSave(),
         onOpenChecklist,
         onEditFloorPlan,
-        openShare: workspace?.isOwner ? () => setShareOpen(true) : undefined,
+        openShare: canShare ? () => setShareOpen(true) : undefined,
         openExport: () => setExportOpen(true),
         openFeedback: () => setFeedbackOpen(true),
         openKeys: () => chrome.setOverlay('keys'),
@@ -327,8 +372,8 @@ export function Designer({
         goPreset,
         resetCamera,
         selectedId: chrome.selectedId,
-        saveLabel: onRequestSaveAuth ? 'Save design…' : 'Save room',
-        isOwner: !!workspace?.isOwner,
+        saveLabel: onRequestSaveAuth ? 'Save design…' : starterEdit ? 'Save starter' : 'Save room',
+        isOwner: canShare,
       }),
     [
       chrome.setPanel,
@@ -345,6 +390,8 @@ export function Designer({
       onOpenChecklist,
       onEditFloorPlan,
       workspace?.isOwner,
+      canShare,
+      starterEdit,
       goPreset,
       resetCamera,
       onRequestSaveAuth,
@@ -427,7 +474,7 @@ export function Designer({
 
       if (e.shiftKey && lower === 's') {
         e.preventDefault();
-        if (workspace?.isOwner) {
+        if (canShare) {
           chrome.setOverlay(null);
           setShareOpen(true);
         }
@@ -475,7 +522,7 @@ export function Designer({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cancelHangingDraft, chrome, onEditFloorPlan, resetCamera, workspace?.isOwner]);
+  }, [cancelHangingDraft, chrome, onEditFloorPlan, resetCamera, canShare]);
 
   // Clicking the viewport takes focus off the room-name field so shortcuts work.
   useEffect(() => {
@@ -506,7 +553,7 @@ export function Designer({
       {!chrome.present && !isPhone ? (
         <header className="dg-topbar">
           <div className="dg-topbar-left">
-            <button type="button" className="dg-topbar-icon" onClick={requestLeave} aria-label="Back to rooms">
+            <button type="button" className="dg-topbar-icon" onClick={requestLeave} aria-label={starterEdit ? 'Back to starters' : 'Back to rooms'}>
               <IconBack />
             </button>
             <div className="dg-rule--v" aria-hidden />
@@ -546,7 +593,7 @@ export function Designer({
                       const inn = Math.round(inches % 12);
                       return `${ft}′${inn}″`;
                     };
-                    return `${fmt(b.width)} × ${fmt(b.depth)} · room`;
+                    return `${fmt(b.width)} × ${fmt(b.depth)} · ${starterEdit ? 'starter' : 'room'}`;
                   })()}
                 </div>
               )}
@@ -590,7 +637,7 @@ export function Designer({
                 disabled={saving}
                 onClick={() => void handleSave()}
               >
-                {onRequestSaveAuth ? 'Save design' : 'Save'}
+                {onRequestSaveAuth ? 'Save design' : starterEdit ? 'Save starter' : 'Save'}
               </button>
               <button
                 type="button"
@@ -621,7 +668,7 @@ export function Designer({
                       <span className="dg-more-menu__kbd">F</span>
                     </button>
                   ) : null}
-                  {workspace?.isOwner ? (
+                  {canShare ? (
                     <button type="button" className="dg-more-menu__item" role="menuitem" onClick={() => { setShareOpen(true); chrome.setOverlay(null); }}>
                       Share design
                       <span className="dg-more-menu__kbd">⇧S</span>
@@ -690,9 +737,9 @@ export function Designer({
             saving={saving}
             onBack={requestLeave}
             onSave={() => void handleSave()}
-            saveLabel={onRequestSaveAuth ? 'Save design' : 'Save'}
+            saveLabel={onRequestSaveAuth ? 'Save design' : starterEdit ? 'Save starter' : 'Save'}
             onEditFloorPlan={onEditFloorPlan}
-            onOpenShare={workspace?.isOwner ? () => setShareOpen(true) : undefined}
+            onOpenShare={canShare ? () => setShareOpen(true) : undefined}
             onOpenExport={() => setExportOpen(true)}
             onOpenFeedback={() => setFeedbackOpen(true)}
             onOpenFullChecklist={onOpenChecklist}
@@ -867,7 +914,7 @@ export function Designer({
                   ))}
                 </div>
                 <div className="dg-present-bar__actions">
-                  {workspace?.isOwner ? (
+                  {canShare ? (
                     <button type="button" className="dg-present-bar__btn is-ghost" onClick={() => setShareOpen(true)}>
                       Share
                     </button>
@@ -963,7 +1010,7 @@ export function Designer({
         />
       ) : null}
 
-      {shareOpen && workspace && user?.id ? (
+      {shareOpen && canShare && workspace && user?.id ? (
         <ShareModal roomId={workspace.id} userId={user.id} onClose={() => setShareOpen(false)} />
       ) : null}
       {exportOpen ? (

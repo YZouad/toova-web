@@ -21,7 +21,13 @@ import { emptyPlan } from './lib/floorPlanGeometry';
 import { serializeFloorPlan } from './lib/roomGeometry';
 import {
   getLiveStarterTemplate,
+  isStarterEditWorkspaceId,
   loadStarterTemplateOverrides,
+  overrideFromDesignerState,
+  resolveStarterItemAssets,
+  saveStarterTemplateOverride,
+  starterEditWorkspaceId,
+  templateIdFromStarterEditWorkspace,
 } from './lib/starterTemplateOverrides';
 import {
   materializeStarterItems,
@@ -48,7 +54,7 @@ import {
   type RoomPresetPickerSelection,
 } from './ui/RoomPresetPicker';
 import { ChecklistPage } from './ui/ChecklistPage';
-import { AdminConsole } from './ui/AdminConsole';
+import { AdminConsole, type AdminTab } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
 import { TimelinePage } from './ui/TimelinePage';
 import { SharedRoomPage } from './ui/SharedRoomPage';
@@ -64,7 +70,15 @@ import { SafetyReportForm } from './ui/SafetyReportForm';
 import { getLegalDocument } from './legal';
 import type { GalleryModel } from './hooks/useGalleryCatalog';
 import { recordCatalogPlaceEngagement } from './lib/catalogEngagement';
-import { identifyUser, resetIdentity, setCurrentRoom, setInternalUser, type AuthMethod } from './lib/analytics';
+import {
+  identifyUser,
+  resetIdentity,
+  setAnalyticsIdentityReady,
+  setCurrentRoom,
+  setInternalUser,
+  trackPageView,
+  type AuthMethod,
+} from './lib/analytics';
 import { buildGallerySearchParams } from './lib/galleryCatalog';
 import type { FurnitureKind } from './furniture/registry';
 import { galleryModelImportedSize, galleryModelPlacesAsImport, isProceduralBuiltinKind } from './lib/placeGalleryModel';
@@ -201,6 +215,8 @@ function AppContent() {
   const [authReason, setAuthReason] = useState<string | null>(null);
   const [authFromGuestStart, setAuthFromGuestStart] = useState(false);
   const [guestTemplateId, setGuestTemplateId] = useState<string | undefined>(undefined);
+  const [adminInitialTab, setAdminInitialTab] = useState<AdminTab>('overview');
+  const [adminStarterId, setAdminStarterId] = useState<string | undefined>(undefined);
   const guestRestoreAttempted = useRef(false);
   const addItem = useStore((s) => s.addItem);
   const resetLayout = useStore((s) => s.resetLayout);
@@ -240,7 +256,10 @@ function AppContent() {
   } = useAdminStats(user?.id);
 
   useEffect(() => {
-    if (adminStatsLoading) return;
+    if (user && adminStatsLoading) {
+      setAnalyticsIdentityReady(false);
+      return;
+    }
     if (!user) {
       setInternalUser(false);
       resetIdentity();
@@ -257,6 +276,16 @@ function AppContent() {
       created_at: user.created_at,
     });
   }, [user, isAdmin, adminStatsLoading]);
+
+  useEffect(() => {
+    const path = typeof window === 'undefined'
+      ? '/'
+      : `${window.location.pathname}${window.location.search}`;
+    trackPageView({
+      path,
+      title: typeof document === 'undefined' ? 'Toova' : document.title,
+    });
+  }, [route, screen]);
 
   useEffect(() => {
     if (!user) {
@@ -362,10 +391,16 @@ function AppContent() {
   }, [adminStatsLoading, isAdmin, screen]);
 
   const exitWorkspace = useCallback(() => {
+    const wasStarterEdit = isStarterEditWorkspaceId(workspace?.id);
     resetLayout();
     setWorkspace(null);
+    if (wasStarterEdit) {
+      setAdminInitialTab('starters');
+      setScreen('admin');
+      return;
+    }
     setScreen('dashboard');
-  }, [resetLayout]);
+  }, [resetLayout, workspace?.id]);
 
   const placePendingGalleryModel = useCallback(
     (model: GalleryModel) => {
@@ -479,6 +514,7 @@ function AppContent() {
       const plan = planOverride ?? template.buildPlan();
       const environment = template.buildEnvironment();
       const { items, order } = materializeStarterItems(template, plan);
+      await resolveStarterItemAssets(items);
       await handleCreateWithPlan(name, plan, {
         environment,
         seedItems: items,
@@ -548,10 +584,12 @@ function AppContent() {
       setFloorPlanBusy(true);
       try {
         hydrateRoomSettings(useStore.getState().environment, plan);
-        await supabase
-          .from('rooms')
-          .update({ room_geometry: serializeFloorPlan(plan), updated_at: new Date().toISOString() })
-          .eq('id', workspace.id);
+        if (!isStarterEditWorkspaceId(workspace.id)) {
+          await supabase
+            .from('rooms')
+            .update({ room_geometry: serializeFloorPlan(plan), updated_at: new Date().toISOString() })
+            .eq('id', workspace.id);
+        }
         setFloorPlanDraft(null);
         setScreen('designer');
       } finally {
@@ -559,6 +597,52 @@ function AppContent() {
       }
     },
     [hydrateRoomSettings, workspace?.id],
+  );
+
+  const handleOpenStarterForEdit = useCallback(
+    async (templateId: string) => {
+      const template = getLiveStarterTemplate(templateId);
+      if (!template) throw new Error('Starter not found');
+      const plan = template.buildPlan();
+      const environment = template.buildEnvironment();
+      const { items, order } = materializeStarterItems(template, plan);
+      await resolveStarterItemAssets(items);
+      resetLayout();
+      hydrateLayout(items, order);
+      hydrateRoomSettings(environment, plan);
+      setWorkspace({
+        id: starterEditWorkspaceId(templateId),
+        name: template.label,
+        isOwner: true,
+      });
+      setAdminInitialTab('starters');
+      setAdminStarterId(templateId);
+      setScreen('designer');
+    },
+    [hydrateLayout, hydrateRoomSettings, resetLayout],
+  );
+
+  const persistStarterEdit = useCallback(
+    async (name: string) => {
+      if (!user?.id || !workspace) return;
+      const templateId = templateIdFromStarterEditWorkspace(workspace.id);
+      if (!templateId) return;
+      const template = getLiveStarterTemplate(templateId);
+      if (!template) throw new Error('Starter not found');
+      const { items, order, environment, roomGeometry } = useStore.getState();
+      const payload = overrideFromDesignerState({
+        template,
+        label: name,
+        items,
+        order,
+        environment,
+        plan: roomGeometry,
+      });
+      await saveStarterTemplateOverride(templateId, payload, user.id);
+      const trimmed = name.trim() || template.label;
+      setWorkspace((prev) => (prev ? { ...prev, name: trimmed } : prev));
+    },
+    [user?.id, workspace],
   );
 
   const railActive: AppShellNavId | null =
@@ -855,8 +939,11 @@ function AppContent() {
             loading={adminStatsLoading}
             error={adminStatsError}
             currentUserId={user.id}
+            initialTab={adminInitialTab}
+            initialStarterId={adminStarterId}
             onRefresh={refetchAdminInventory}
             onOpenRoom={handlePickExisting}
+            onEnterStarter={handleOpenStarterForEdit}
           />
         </div>
         <AppRailChrome
@@ -1053,12 +1140,15 @@ function AppContent() {
           onBack={exitWorkspace}
           onEditFloorPlan={handleEditFloorPlan}
           onOpenChecklist={() => openChecklistFrom('designer')}
-isAdmin={isAdmin}
+          isAdmin={isAdmin}
           onRequestSaveAuth={
             isGuestWorkspaceId(workspace.id) ? requestSaveAuth : undefined
           }
           onRequestImportAuth={
             isGuestWorkspaceId(workspace.id) ? requestImportAuth : undefined
+          }
+          onPersistStarter={
+            isStarterEditWorkspaceId(workspace.id) ? persistStarterEdit : undefined
           }
         />
       </RoomWorkspaceProvider>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
+import { parseAdminUserAnalyticsExtras } from '../lib/adminAnalytics';
 import {
   fetchAdminUserOverview,
   type AdminUserAnalyticsSeries,
@@ -27,6 +28,7 @@ import {
   Spinner,
   Tabs,
 } from './kit';
+import { BreakdownTable, LineChart } from './analytics';
 import { ModelDetailModal } from './ModelDetailModal';
 
 type ViewerTab = 'overview' | 'rooms' | 'models' | 'analytics';
@@ -77,6 +79,81 @@ function toGalleryModel(
     signedUrl: urls.signedUrl,
     previewUrl: urls.previewUrl,
   };
+}
+
+function UserAnalyticsExtras({
+  extras,
+  series,
+}: {
+  extras: Record<string, unknown>;
+  series: AdminUserAnalyticsSeries[];
+}) {
+  const parsed = parseAdminUserAnalyticsExtras(extras);
+  const totals = parsed.totals ?? {};
+  return (
+    <>
+      <div className="admin-user-viewer__metrics">
+        {[
+          { label: 'Period events', value: String(totals.events ?? 0) },
+          { label: 'Sessions', value: String(totals.sessions ?? 0) },
+          { label: 'Page views', value: String(totals.page_views ?? 0) },
+          { label: 'Searches', value: String(totals.searches ?? 0) },
+          { label: 'Affiliate clicks', value: String(totals.affiliate_clicks ?? 0) },
+          { label: 'Checklist adds', value: String(totals.checklist_adds ?? 0) },
+        ].map((m) => (
+          <div key={m.label} className="admin-user-viewer__metric">
+            <MonoMeta size="xs" tone="dense" upper>{m.label}</MonoMeta>
+            <div className="admin-user-viewer__metric-value">{m.value}</div>
+          </div>
+        ))}
+      </div>
+      {series.length > 0 ? (
+        series.map((item) => (
+          <LineChart key={item.key} title={item.label} points={item.points} unit={item.unit} />
+        ))
+      ) : (
+        <EmptyState title="No event series yet." body="Consented page views and sessions will plot here." />
+      )}
+      {parsed.funnel && parsed.funnel.length > 0 ? (
+        <div className="admin-user-viewer__section">
+          <SectionOpener level={5} title="Activation milestones." />
+          {parsed.funnel.map((step) => (
+            <KeyValueRow
+              key={step.key}
+              label={step.label}
+              value={step.at ? formatRelativeTime(step.at) : 'Not yet'}
+            />
+          ))}
+        </div>
+      ) : null}
+      {parsed.breakdowns?.events ? (
+        <BreakdownTable title="Events" rows={parsed.breakdowns.events} />
+      ) : null}
+      {parsed.breakdowns?.search_context ? (
+        <BreakdownTable title="Search context" rows={parsed.breakdowns.search_context} />
+      ) : null}
+      {parsed.breakdowns?.affiliate_surface ? (
+        <BreakdownTable title="Affiliate surfaces" rows={parsed.breakdowns.affiliate_surface} />
+      ) : null}
+      {parsed.breakdowns?.generation_status ? (
+        <BreakdownTable title="Generations" rows={parsed.breakdowns.generation_status} />
+      ) : null}
+      {parsed.recent_events && parsed.recent_events.length > 0 ? (
+        <RuledTable
+          columns={[
+            { label: 'When', align: 'left' },
+            { label: 'Event', align: 'left' },
+            { label: 'Route', align: 'left' },
+          ]}
+          rows={parsed.recent_events.map((row) => [
+            formatRelativeTime(row.occurred_at),
+            row.name,
+            row.route ?? '—',
+          ])}
+        />
+      ) : null}
+    </>
+  );
 }
 
 function AnalyticsSeriesBlock({ series }: { series: AdminUserAnalyticsSeries }) {
@@ -438,8 +515,8 @@ export function AdminUserViewer({
             {tab === 'analytics' ? (
               <div className="admin-user-viewer__section">
                 <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 16, maxWidth: 640 }}>
-                  Live totals from rooms, models, and generation jobs. Custom per-user
-                  analytics can fill the series and extras slots without changing this layout.
+                  Lifetime operational totals plus last-90-day consented events for this account.
+                  Empty charts mean collection has not seen this user yet, not necessarily zero product use.
                 </MonoMeta>
                 <div className="admin-user-viewer__metrics">
                   {[
@@ -458,16 +535,7 @@ export function AdminUserViewer({
                     </div>
                   ))}
                 </div>
-                {(analytics?.series.length ?? 0) === 0 ? (
-                  <EmptyState
-                    title="No custom series yet."
-                    body="When custom analytics ships, time series will render here automatically."
-                  />
-                ) : (
-                  analytics?.series.map((series) => (
-                    <AnalyticsSeriesBlock key={series.key} series={series} />
-                  ))
-                )}
+                <UserAnalyticsExtras extras={analytics?.extras ?? {}} series={analytics?.series ?? []} />
               </div>
             ) : null}
           </>

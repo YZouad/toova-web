@@ -78,6 +78,12 @@ export interface RoomStarterTemplate {
   hidden?: boolean;
   floorItems: readonly StarterFloorSeed[];
   hanging?: readonly StarterHangingSeed[];
+  /**
+   * Full designer placements (procedural, catalog GLBs, lights). When present,
+   * materialize prefers these over `floorItems`. Hanging décor still comes from
+   * `hanging` so wall indices survive a plan remap.
+   */
+  itemSnapshots?: readonly Item[];
 }
 
 export const ROOM_STARTER_GOALS: readonly RoomStarterGoalDef[] = [
@@ -506,6 +512,9 @@ export function starterTierLabel(tier: RoomStarterTier): string {
 }
 
 export function starterPieceCount(template: RoomStarterTemplate): number {
+  if (template.itemSnapshots?.length) {
+    return template.itemSnapshots.length + (template.hanging?.length ?? 0);
+  }
   return template.floorItems.length + (template.hanging?.length ?? 0);
 }
 
@@ -559,34 +568,65 @@ function floorSeedToItem(seed: StarterFloorSeed, id: string): Item {
   };
 }
 
-/** Build editable store items from a template + freshly built plan (for hanging wall ids). */
-export function materializeStarterItems(
-  template: RoomStarterTemplate,
+function hangingLabel(kind: HangingDecorKind): string {
+  if (kind === 'lights') return 'String lights';
+  if (kind === 'led-strip') return 'LED strip';
+  return 'Hanging leaves';
+}
+
+function cloneSnapshotItem(snap: Item, id: string): Item {
+  const cloned = structuredClone(snap);
+  cloned.id = id;
+  delete cloned.importedUrl;
+  delete cloned.blanketTextureUrl;
+  if (!cloned.attachmentKey) cloned.attachmentKey = newAttachmentKey();
+  return cloned;
+}
+
+function appendHangingFromSeeds(
+  items: Item[],
   plan: FloorPlan,
-): { items: Item[]; order: string[] } {
-  const items: Item[] = [];
-  let n = 1;
-
-  for (const seed of template.floorItems) {
-    const id = `item-${n++}`;
-    items.push(floorSeedToItem(seed, id));
-  }
-
-  for (const hang of template.hanging ?? []) {
+  hanging: readonly StarterHangingSeed[] | undefined,
+  nextIndex: { n: number },
+): void {
+  for (const hang of hanging ?? []) {
     const config = resolveHanging(plan, hang);
     if (!config) continue;
-    const id = `item-${n++}`;
+    const id = `item-${nextIndex.n++}`;
     items.push({
       id,
       kind: 'hanging',
       position: [0, 0, 0],
       rotationY: 0,
       size: [12, 12, 12],
-      label: hang.kind === 'lights' ? 'String lights' : 'Hanging leaves',
+      label: hangingLabel(hang.kind),
       attachmentKey: newAttachmentKey(),
       hanging: config,
     });
   }
+}
+
+/** Build editable store items from a template + freshly built plan (for hanging wall ids). */
+export function materializeStarterItems(
+  template: RoomStarterTemplate,
+  plan: FloorPlan,
+): { items: Item[]; order: string[] } {
+  const items: Item[] = [];
+  const nextIndex = { n: 1 };
+
+  if (template.itemSnapshots?.length) {
+    for (const snap of template.itemSnapshots) {
+      if (snap.kind === 'hanging') continue;
+      items.push(cloneSnapshotItem(snap, `item-${nextIndex.n++}`));
+    }
+    appendHangingFromSeeds(items, plan, template.hanging, nextIndex);
+    return { items, order: items.map((it) => it.id) };
+  }
+
+  for (const seed of template.floorItems) {
+    items.push(floorSeedToItem(seed, `item-${nextIndex.n++}`));
+  }
+  appendHangingFromSeeds(items, plan, template.hanging, nextIndex);
 
   return { items, order: items.map((it) => it.id) };
 }
@@ -694,6 +734,17 @@ export function starterPreviewItems(template: RoomStarterTemplate): Array<{
   rotationY: number;
   size: [number, number, number];
 }> {
+  if (template.itemSnapshots?.length) {
+    return template.itemSnapshots
+      .filter((it) => it.kind !== 'hanging' && it.kind !== 'light')
+      .map((it, i) => ({
+        id: `preview-${template.id}-${i}`,
+        kind: it.kind,
+        position: [...it.position] as [number, number, number],
+        rotationY: it.rotationY,
+        size: [...it.size] as [number, number, number],
+      }));
+  }
   return template.floorItems.map((seed, i) => {
     const def = FURNITURE[seed.kind];
     const isBed = seed.kind === 'bed';

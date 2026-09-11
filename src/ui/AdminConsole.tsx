@@ -9,6 +9,7 @@ import {
 } from '../hooks/useAdminStats';
 import { lastActiveSortValue } from '../lib/adminUserOverview';
 import { formatRelativeTime, shortenId } from '../lib/userDisplay';
+import { AdminAnalyticsPanel } from './AdminAnalyticsPanel';
 import { AdminShoppingPanel } from './AdminShoppingPanel';
 import { AdminReportsPanel } from './AdminReportsPanel';
 import { AdminStartersPanel } from './AdminStartersPanel';
@@ -27,7 +28,7 @@ import {
   Spinner,
 } from './kit';
 
-type AdminTab = 'overview' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping' | 'reports' | 'starters';
+export type AdminTab = 'overview' | 'analytics' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping' | 'reports' | 'starters';
 
 type SortDir = 'asc' | 'desc';
 
@@ -37,6 +38,7 @@ type JobSortKey = 'job' | 'owner' | 'source' | 'status' | 'created';
 
 const NAV: { id: AdminTab; label: string }[] = [
   { id: 'overview', label: 'Overview' },
+  { id: 'analytics', label: 'Analytics' },
   { id: 'reports', label: 'Reports' },
   { id: 'users', label: 'Users' },
   { id: 'rooms', label: 'Rooms' },
@@ -126,8 +128,11 @@ export interface AdminConsoleProps {
   loading: boolean;
   error: string | null;
   currentUserId?: string | null;
+  initialTab?: AdminTab;
+  initialStarterId?: string;
   onRefresh: () => Promise<void>;
   onOpenRoom: (room: { id: string; name: string; isOwner?: boolean }) => Promise<void>;
+  onEnterStarter?: (templateId: string) => void | Promise<void>;
 }
 
 export function AdminConsole({
@@ -139,10 +144,13 @@ export function AdminConsole({
   loading,
   error,
   currentUserId = null,
+  initialTab = 'overview',
+  initialStarterId,
   onRefresh,
   onOpenRoom,
+  onEnterStarter,
 }: AdminConsoleProps) {
-  const [tab, setTab] = useState<AdminTab>('overview');
+  const [tab, setTab] = useState<AdminTab>(initialTab);
   const [refreshLabel, setRefreshLabel] = useState('refreshed just now');
   const [userSortKey, setUserSortKey] = useState<UserSortKey>('active');
   const [userSortDir, setUserSortDir] = useState<SortDir>('desc');
@@ -726,8 +734,14 @@ export function AdminConsole({
             </>
           ) : null}
 
+          {tab === 'analytics' ? (
+            <AdminAnalyticsPanel enabled onOpenUser={setSelectedUserId} />
+          ) : null}
+
           {tab === 'shopping' ? <AdminShoppingPanel /> : null}
-          {tab === 'starters' ? <AdminStartersPanel /> : null}
+          {tab === 'starters' ? (
+            <AdminStartersPanel onEnterRoom={onEnterStarter} initialSelectedId={initialStarterId} />
+          ) : null}
           {tab === 'reports' ? <AdminReportsPanel enabled /> : null}
         </div>
       </div>
