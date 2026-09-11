@@ -645,7 +645,7 @@ export const useStore = create<StoreState>((set, get) => ({
     })),
 
   resetLayout: () =>
-    set(() => {
+    set((s) => {
       nextId = 1;
       return {
         items: {},
@@ -656,6 +656,7 @@ export const useStore = create<StoreState>((set, get) => ({
         roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
+        visual: { ...s.visual, cameraPreset: DEFAULT_VISUAL_SETTINGS.cameraPreset },
       };
     }),
 

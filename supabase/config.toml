@@ -385,6 +385,10 @@ verify_jwt = true
 [functions.report-content]
 verify_jwt = false
 
+# Consented analytics ingest; function verifies JWT when present and derives user_id.
+[functions.collect-analytics]
+verify_jwt = false
+
 # Admin-only signed URLs for report evidence.
 [functions.sign-report-evidence]
 verify_jwt = true

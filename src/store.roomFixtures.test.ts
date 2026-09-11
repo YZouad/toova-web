@@ -27,4 +27,12 @@ describe('toggleRoomFixtures', () => {
     expect(useStore.getState().environment.appearance.recessedLights).toBe(false);
     expect(useStore.getState().items[lampId]?.emitter?.enabled).toBe(false);
   });
+
+  it('resetLayout restores the Room camera preset', async () => {
+    const { useStore } = await import('./store');
+    useStore.getState().setCameraPreset('window');
+    expect(useStore.getState().visual.cameraPreset).toBe('window');
+    useStore.getState().resetLayout();
+    expect(useStore.getState().visual.cameraPreset).toBe('corner');
+  });
 });

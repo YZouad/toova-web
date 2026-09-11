@@ -23,6 +23,8 @@ export const PRIVACY_DOCUMENT: LegalDocument = {
       heading: '1. What we collect',
       body: [
         'Account data (email, display name, handle), month and year of birth (used only for age eligibility and minor status — not shown on public profiles), content you upload, and usage analytics without email/name as event parameters.',
+        'Operational records needed to run the product are stored regardless of cookie choice: account creation, rooms and placements, generation jobs, likes and views, shopping-list items, and safety reports. These are not a pre-consent behavioral click log.',
+        'If you accept analytics cookies, we also record the same consented event stream in Google Analytics 4 and in Toova’s first-party analytics store (page views, sessions, feature events). Raw consented events are kept for up to 25 months; daily aggregates may be kept longer so we can see trends. Event history starts when this collection launched — we do not import historical Google Analytics data.',
       ],
     },
     {

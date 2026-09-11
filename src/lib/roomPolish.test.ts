@@ -101,6 +101,12 @@ describe('renderQuality', () => {
     expect(parseVisualSettings({})).toEqual(DEFAULT_VISUAL_SETTINGS);
     expect(parseVisualSettings({ quality: 'high' }).quality).toBe('high');
   });
+
+  it('does not restore a saved camera preset — rooms always open in Room view', () => {
+    expect(parseVisualSettings({ cameraPreset: 'window' }).cameraPreset).toBe('corner');
+    expect(parseVisualSettings({ cameraPreset: 'topDown' }).cameraPreset).toBe('corner');
+    expect(parseVisualSettings({ cameraPreset: 'catalog' }).cameraPreset).toBe('corner');
+  });
 });
 
 describe('presentationCameras', () => {

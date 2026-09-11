@@ -182,13 +182,8 @@ export function parseVisualSettings(raw: unknown): VisualSettings {
   const o = raw as Record<string, unknown>;
   return {
     quality: isRenderQualityTier(o.quality) ? o.quality : DEFAULT_VISUAL_SETTINGS.quality,
-    cameraPreset:
-      o.cameraPreset === 'corner' ||
-      o.cameraPreset === 'catalog' ||
-      o.cameraPreset === 'window' ||
-      o.cameraPreset === 'topDown'
-        ? o.cameraPreset
-        : DEFAULT_VISUAL_SETTINGS.cameraPreset,
+    // View presets (Room / Walk / Top) are per visit, not a saved preference.
+    cameraPreset: DEFAULT_VISUAL_SETTINGS.cameraPreset,
     cutaway:
       o.cutaway === 'orbit' || o.cutaway === 'openFront' || o.cutaway === 'topDown'
         ? o.cutaway
@@ -216,7 +211,13 @@ export function loadVisualSettings(): VisualSettings {
 
 export function saveVisualSettings(settings: VisualSettings): void {
   try {
-    localStorage.setItem(VISUAL_STORAGE_KEY, JSON.stringify(settings));
+    localStorage.setItem(
+      VISUAL_STORAGE_KEY,
+      JSON.stringify({
+        ...settings,
+        cameraPreset: DEFAULT_VISUAL_SETTINGS.cameraPreset,
+      }),
+    );
   } catch {
     /* ignore quota / private mode */
   }

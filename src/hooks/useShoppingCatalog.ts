@@ -40,6 +40,7 @@ import {
   isRoomLocalProductId,
 } from '../lib/ownedChecklistItems';
 import { isGuestWorkspaceId } from '../lib/guestDesignSnapshot';
+import { isStarterEditWorkspaceId } from '../lib/starterTemplateOverrides';
 import { trackChecklistItemAdded } from '../lib/analytics';
 import { buildPurchaseCartLines, purchaseCartTotalCents } from '../lib/purchaseCart';
 import {
@@ -63,7 +64,10 @@ export function useShoppingCatalog(roomId: string | null) {
   const order = useStore((s) => s.order);
   const persistRoomId = roomId?.trim() || null;
   const canSyncRemote =
-    !!user?.id && !!persistRoomId && !isGuestWorkspaceId(persistRoomId);
+    !!user?.id &&
+    !!persistRoomId &&
+    !isGuestWorkspaceId(persistRoomId) &&
+    !isStarterEditWorkspaceId(persistRoomId);
 
   const [publishedCategories, setPublishedCategories] = useState<
     ChecklistCategoryWithProducts[]
