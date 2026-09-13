@@ -97,6 +97,8 @@ export function MobileDesignerChrome({
   searchTriggerRef,
 }: MobileDesignerChromeProps) {
   const mobile = useMobileDesignerChrome(chrome);
+  const showDimensions = useStore((s) => s.visual.showDimensions);
+  const setShowDimensions = useStore((s) => s.setShowDimensions);
   const order = useStore((s) => s.order);
   const items = useStore((s) => s.items);
   const { categories, budgetSummary } = useShoppingCatalogContext();
@@ -299,6 +301,15 @@ export function MobileDesignerChrome({
             <IconEye />
             <span>{viewLabel}</span>
           </button>
+          <button
+            type="button"
+            className={`dgm-pill${showDimensions ? ' is-active' : ''}`}
+            aria-pressed={showDimensions}
+            aria-label={showDimensions ? 'Hide dimensions' : 'Show dimensions'}
+            onClick={() => setShowDimensions(!showDimensions)}
+          >
+            <span>Dims</span>
+          </button>
           <div className="dgm-scene-chips__spacer" />
           <button
             type="button"
@@ -314,7 +325,13 @@ export function MobileDesignerChrome({
         </div>
       ) : null}
 
-      {chrome.drawing ? <MobileDrawChrome /> : null}
+      {chrome.drawing ? (
+        <MobileDrawChrome
+          importMeasuring={chrome.importMeasuring}
+          onCancelMeasureFromImport={chrome.cancelMeasureFromImport}
+          onAcceptMeasureFromImport={chrome.acceptMeasureFromImport}
+        />
+      ) : null}
 
       {showSelection ? (
         <MobileSelectionActions
@@ -374,6 +391,7 @@ export function MobileDesignerChrome({
           onImport={onOpenImport}
           onOpenModel={onOpenModel}
           onStartDraw={chrome.startDraw}
+          onStartMeasure={chrome.startMeasure}
           onAddLight={() => {
             addLightSource();
             mobile.closeSheet();
@@ -408,6 +426,7 @@ export function MobileDesignerChrome({
       {mobile.sheet === 'import' || chrome.importOpen ? (
         <MobileImportSheet
           open
+          measuringHidden={chrome.importMeasuring}
           route={mobile.importRoute ?? chrome.importRoute}
           onRoute={(r) => {
             mobile.setImportRoute(r);
@@ -417,6 +436,7 @@ export function MobileDesignerChrome({
             mobile.closeSheet();
             chrome.closeImport();
           }}
+          onStartMeasure={chrome.startMeasureFromImport}
           isAdmin={isAdmin}
           onComplete={(model, meta) => {
             mobile.closeSheet();

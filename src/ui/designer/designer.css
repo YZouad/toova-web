@@ -1521,6 +1521,10 @@
   pointer-events: auto;
   animation: dgFade 0.18s ease both;
 }
+.dg-import.is-measuring-hidden {
+  visibility: hidden;
+  pointer-events: none;
+}
 .dg-import-panel {
   width: min(920px, 100%);
   max-height: min(85vh, 820px);
@@ -1665,6 +1669,105 @@
 .dg-import-dim__label {
   font: var(--type-mono-xs); letter-spacing: 0.08em;
   text-transform: uppercase; color: var(--ink-6);
+}
+.dg-import-measure-pick {
+  display: flex; flex-direction: column; gap: 8px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--paper-1);
+  border: 1px solid var(--rule-soft);
+  border-radius: 10px;
+}
+.dg-import-measure-pick__label {
+  font: var(--type-mono-xs); letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--ink-6);
+}
+.dg-import-measure-clearance {
+  margin-top: 8px;
+  font: 500 12px/1.2 var(--font-sans); color: var(--ink-4);
+  background: none; border: none; padding: 0;
+  text-decoration: underline; text-underline-offset: 2px;
+  cursor: pointer;
+}
+.dg-import-measure-clearance:hover { color: var(--ink-2); }
+.dg-import-measure-clearance:disabled { opacity: 0.45; cursor: default; }
+.dg-import-dim.is-just-measured .dg-import-input {
+  border-color: var(--accent-line);
+  box-shadow: 0 0 0 2px rgba(232, 168, 74, 0.25);
+  animation: dgMeasureFlash 1.5s ease both;
+}
+@keyframes dgMeasureFlash {
+  0%, 40% { background: rgba(232, 168, 74, 0.12); }
+  100% { background: var(--paper-0); }
+}
+
+.dg-measure-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font: 600 12px/1.2 var(--font-sans);
+  color: var(--ink-0);
+  background: rgba(248, 243, 234, 0.94);
+  border: 1px solid rgba(36, 31, 25, 0.12);
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: 0 4px 16px rgba(36, 31, 25, 0.12);
+  white-space: nowrap;
+}
+.dg-measure-label__primary { font: 600 12px/1.2 var(--font-sans); }
+.dg-measure-label__secondary {
+  font: 500 10px/1.2 var(--font-sans);
+  color: var(--ink-4);
+}
+
+.dg-dim-label {
+  font: 600 11px/1.2 var(--font-sans);
+  color: var(--ink-0);
+  background: rgba(248, 243, 234, 0.92);
+  border: 1px solid rgba(36, 31, 25, 0.1);
+  border-radius: 6px;
+  padding: 4px 8px;
+  box-shadow: 0 2px 10px rgba(36, 31, 25, 0.1);
+  white-space: nowrap;
+}
+.dg-dim-label--item {
+  font: 600 10px/1.2 var(--font-mono);
+  padding: 3px 7px;
+}
+
+.dg-measure-snap-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font: 600 10px/1.2 var(--font-sans);
+  color: var(--ink-0);
+  background: rgba(232, 168, 74, 0.9);
+  border: 1px solid rgba(36, 31, 25, 0.1);
+  border-radius: 6px;
+  padding: 3px 7px;
+  box-shadow: 0 2px 8px rgba(36, 31, 25, 0.1);
+  white-space: nowrap;
+  transform: translateY(-10px);
+}
+.dg-measure-snap-label__helper {
+  font: 500 10px/1.2 var(--font-sans);
+  color: rgba(36, 31, 25, 0.72);
+}
+
+.dg-measure-height {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+.dg-measure-height__label {
+  font: 500 11px/1.2 var(--font-sans);
+  color: var(--ink-4);
+}
+.dg-measure-height input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
 }
 
 .dg-import-shop { display: grid; gap: 10px; }

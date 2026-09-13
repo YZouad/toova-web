@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useStore, type HangingDecorKind } from '../../store';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useStore, type HangingDecorKind, type MeasureAcceptField } from '../../store';
+
+export type ImportMeasuringField = MeasureAcceptField | null;
 import {
   COMPACT_MQ,
   TOUR_STEPS,
@@ -32,8 +34,11 @@ export function useDesignerChrome() {
   const selectedItem = useStore((s) => (selectedId ? s.items[selectedId] : null));
   const designerTool = useStore((s) => s.designerTool);
   const hangingDraft = useStore((s) => s.hangingDraft);
+  const measureDraft = useStore((s) => s.measureDraft);
   const setDesignerTool = useStore((s) => s.setDesignerTool);
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
+  const cancelMeasure = useStore((s) => s.cancelMeasure);
+  const measureAcceptRef = useRef<((value: string) => void) | null>(null);
 
   const [panel, setPanelRaw] = useState<DesignerPanel>(null);
   const [overlay, setOverlay] = useState<DesignerOverlay>(null);
@@ -44,6 +49,8 @@ export function useDesignerChrome() {
   const [tourStep, setTourStep] = useState(0);
   const [importOpen, setImportOpen] = useState(false);
   const [importRoute, setImportRoute] = useState<ImportRoute>(null);
+  const [importMeasuring, setImportMeasuring] = useState(false);
+  const [importMeasuringField, setImportMeasuringField] = useState<ImportMeasuringField>(null);
   const [inspectorTab, setInspectorTab] = useState<InspectorTab>('fit');
   const [compact, setCompact] = useState(
     () => typeof window !== 'undefined' && window.matchMedia(COMPACT_MQ).matches,
@@ -59,7 +66,9 @@ export function useDesignerChrome() {
 
   const drawing = designerTool === 'hanging-leaves'
     || designerTool === 'hanging-lights'
-    || designerTool === 'hanging-led-strip';
+    || designerTool === 'hanging-led-strip'
+    || designerTool === 'measure';
+  const measuring = designerTool === 'measure';
 
   const setPanel = useCallback((next: DesignerPanel) => {
     setPanelRaw((cur) => (cur === next ? null : next));
@@ -126,11 +135,12 @@ export function useDesignerChrome() {
         setTourOn(false);
         setRadialOpen(false);
         if (hangingDraft) cancelHangingDraft();
+        if (measureDraft) cancelMeasure();
         setDesignerTool('select');
       }
       return next;
     });
-  }, [hangingDraft, cancelHangingDraft, setDesignerTool]);
+  }, [hangingDraft, measureDraft, cancelHangingDraft, cancelMeasure, setDesignerTool]);
 
   const endTour = useCallback(() => {
     setTourOn(false);
@@ -183,6 +193,12 @@ export function useDesignerChrome() {
   const closeImport = useCallback(() => {
     setImportOpen(false);
     setImportRoute(null);
+    setImportMeasuring(false);
+    setImportMeasuringField(null);
+    measureAcceptRef.current = null;
+    if (useStore.getState().designerTool === 'measure') {
+      useStore.getState().cancelMeasure();
+    }
   }, []);
 
   const startDraw = useCallback((kind: HangingDecorKind) => {
@@ -190,7 +206,53 @@ export function useDesignerChrome() {
     setPanelRaw(null);
     setOverlay(null);
     setRadialOpen(false);
+    setImportMeasuring(false);
+    setImportMeasuringField(null);
+    measureAcceptRef.current = null;
     useStore.getState().select(null);
+  }, []);
+
+  const startMeasure = useCallback(() => {
+    useStore.getState().beginMeasure(null);
+    setPanelRaw(null);
+    setOverlay(null);
+    setRadialOpen(false);
+    setImportMeasuring(false);
+    setImportMeasuringField(null);
+    measureAcceptRef.current = null;
+    useStore.getState().select(null);
+  }, []);
+
+  const startMeasureFromImport = useCallback(
+    (field: MeasureAcceptField, onAccept: (value: string) => void) => {
+      measureAcceptRef.current = onAccept;
+      setImportMeasuringField(field);
+      setImportMeasuring(true);
+      useStore.getState().beginMeasure(field, true);
+      setPanelRaw(null);
+      setOverlay(null);
+      setRadialOpen(false);
+      useStore.getState().select(null);
+    },
+    [],
+  );
+
+  const acceptMeasureFromImport = useCallback(() => {
+    const value = useStore.getState().getMeasureAcceptValue();
+    if (value != null && measureAcceptRef.current) {
+      measureAcceptRef.current(value);
+    }
+    measureAcceptRef.current = null;
+    setImportMeasuringField(null);
+    setImportMeasuring(false);
+    useStore.getState().finishMeasure();
+  }, []);
+
+  const cancelMeasureFromImport = useCallback(() => {
+    measureAcceptRef.current = null;
+    setImportMeasuringField(null);
+    setImportMeasuring(false);
+    useStore.getState().cancelMeasure();
   }, []);
 
   // Import is a modal over the room — keep chrome painted so the blurred
@@ -235,6 +297,12 @@ export function useDesignerChrome() {
       setImportRoute,
       openImport,
       closeImport,
+      importMeasuring,
+      importMeasuringField,
+      startMeasure,
+      startMeasureFromImport,
+      acceptMeasureFromImport,
+      cancelMeasureFromImport,
       inspectorTab,
       setInspectorTab,
       openInspector,
@@ -242,7 +310,9 @@ export function useDesignerChrome() {
       clearSelection,
       startDraw,
       drawing,
+      measuring,
       hangingDraft,
+      measureDraft,
       chromeOn,
       showContextBar,
       showActionSheet,
@@ -271,13 +341,21 @@ export function useDesignerChrome() {
       importRoute,
       openImport,
       closeImport,
+      importMeasuring,
+      importMeasuringField,
+      startMeasure,
+      startMeasureFromImport,
+      acceptMeasureFromImport,
+      cancelMeasureFromImport,
       inspectorTab,
       openInspector,
       openInspectorTab,
       clearSelection,
       startDraw,
       drawing,
+      measuring,
       hangingDraft,
+      measureDraft,
       chromeOn,
       showContextBar,
       showActionSheet,

@@ -55,13 +55,30 @@ export type {
   HangingDecorKind,
   HangingDecorationConfig,
 } from './lib/hangingDecorGeometry';
+import {
+  formatMeasureInches,
+  measureImportAcceptInches,
+  type MeasureAcceptField,
+  type MeasureVec3,
+} from './lib/measureDistance';
+import {
+  beginMeasureEndpointDrag,
+  endMeasureEndpointDrag,
+  setMeasureActiveEndpoint as applyMeasureActiveEndpoint,
+  setMeasureEndpoint as applyMeasureEndpoint,
+  spawnMeasureDraft,
+  type MeasureDraft,
+} from './lib/measureDraftState';
+
+export type { MeasureAcceptField, MeasureVec3, MeasureDraft };
 
 export type DesignerTool =
   | 'select'
   | 'hanging-leaves'
   | 'hanging-lights'
   | 'hanging-led-strip'
-  | 'place-light';
+  | 'place-light'
+  | 'measure';
 
 export function designerToolForHangingKind(kind: HangingDecorKind): DesignerTool {
   if (kind === 'lights') return 'hanging-lights';
@@ -78,6 +95,10 @@ export function hangingKindFromDesignerTool(tool: DesignerTool): HangingDecorKin
   if (tool === 'hanging-led-strip') return 'led-strip';
   if (tool === 'hanging-leaves') return 'leaves';
   return null;
+}
+
+export function isMeasureDesignerTool(tool: DesignerTool): boolean {
+  return tool === 'measure';
 }
 
 export interface HangingDraft {
@@ -219,6 +240,8 @@ interface StoreState {
   designerTool: DesignerTool;
   /** In-progress hanging path (not persisted until finished). */
   hangingDraft: HangingDraft | null;
+  /** In-progress tape measure (two click points). */
+  measureDraft: MeasureDraft | null;
 
   setTimeOfDay: (h: number) => void;
   setOrientation: (deg: number) => void;
@@ -232,6 +255,7 @@ interface StoreState {
   setVisualQuality: (q: RenderQualityTier) => void;
   setRelightImports: (on: boolean) => void;
   setAdvancedControls: (on: boolean) => void;
+  setShowDimensions: (on: boolean) => void;
   setCameraPreset: (p: CameraPresetId) => void;
   setCutaway: (m: CutawayMode) => void;
   setCaptureMode: (on: boolean) => void;
@@ -239,6 +263,14 @@ interface StoreState {
   setRoomHeight: (height: number) => void;
 
   setDesignerTool: (tool: DesignerTool) => void;
+  beginMeasure: (acceptField?: MeasureAcceptField | null, importAccept?: boolean) => void;
+  setMeasureEndpoint: (endpoint: 'a' | 'b', world: MeasureVec3) => void;
+  setMeasureActiveEndpoint: (endpoint: 'a' | 'b' | null) => void;
+  beginMeasureEndpointDrag: (endpoint: 'a' | 'b') => void;
+  endMeasureEndpointDrag: () => void;
+  cancelMeasure: () => void;
+  finishMeasure: () => void;
+  getMeasureAcceptValue: () => string | null;
   beginHangingDraft: (kind: HangingDecorKind) => void;
   appendHangingAnchor: (anchor: HangingAnchor) => void;
   popHangingAnchor: () => void;
@@ -415,6 +447,7 @@ export const useStore = create<StoreState>((set, get) => ({
   captureMode: false,
   designerTool: 'select',
   hangingDraft: null,
+  measureDraft: null,
 
   setTimeOfDay: (h) =>
     set((s) => ({ environment: { ...s.environment, timeOfDay: clamp(h, 0, 24) } })),
@@ -459,6 +492,12 @@ export const useStore = create<StoreState>((set, get) => ({
       saveVisualSettings(visual);
       return { visual };
     }),
+  setShowDimensions: (on) =>
+    set((s) => {
+      const visual = { ...s.visual, showDimensions: on };
+      saveVisualSettings(visual);
+      return { visual };
+    }),
   setCameraPreset: (p) =>
     set((s) => {
       const visual = { ...s.visual, cameraPreset: p };
@@ -483,26 +522,87 @@ export const useStore = create<StoreState>((set, get) => ({
   setDesignerTool: (tool) =>
     set(() => {
       if (tool === 'select') {
-        return { designerTool: tool, hangingDraft: null };
+        return { designerTool: tool, hangingDraft: null, measureDraft: null };
       }
       if (tool === 'place-light') {
         // Spawn is handled by addLightSource; keep tool as select.
-        return { designerTool: 'select', hangingDraft: null };
+        return { designerTool: 'select', hangingDraft: null, measureDraft: null };
+      }
+      if (tool === 'measure') {
+        const room = get().roomGeometry;
+        return {
+          designerTool: tool,
+          ...selectionOf([]),
+          hangingDraft: null,
+          measureDraft: spawnMeasureDraft(room, null),
+        };
       }
       const kind = hangingKindFromDesignerTool(tool);
-      if (!kind) return { designerTool: tool, hangingDraft: null };
+      if (!kind) return { designerTool: tool, hangingDraft: null, measureDraft: null };
       return {
         designerTool: tool,
         ...selectionOf([]),
         hangingDraft: { kind, anchors: [], cursorWorld: null },
+        measureDraft: null,
       };
     }),
+
+  beginMeasure: (acceptField = null, importAccept = false) =>
+    set((s) => ({
+      designerTool: 'measure',
+      ...selectionOf([]),
+      hangingDraft: null,
+      measureDraft: spawnMeasureDraft(s.roomGeometry, acceptField, importAccept),
+    })),
+
+  setMeasureEndpoint: (endpoint, world) =>
+    set((s) => {
+      if (!s.measureDraft) return s;
+      return {
+        measureDraft: applyMeasureEndpoint(s.measureDraft, endpoint, world, s.roomGeometry),
+      };
+    }),
+
+  setMeasureActiveEndpoint: (endpoint) =>
+    set((s) => {
+      if (!s.measureDraft) return s;
+      return { measureDraft: applyMeasureActiveEndpoint(s.measureDraft, endpoint) };
+    }),
+
+  beginMeasureEndpointDrag: (endpoint) =>
+    set((s) => {
+      if (!s.measureDraft) return s;
+      return { measureDraft: beginMeasureEndpointDrag(s.measureDraft, endpoint) };
+    }),
+
+  endMeasureEndpointDrag: () =>
+    set((s) => {
+      if (!s.measureDraft) return s;
+      return { measureDraft: endMeasureEndpointDrag(s.measureDraft) };
+    }),
+
+  cancelMeasure: () => set({ measureDraft: null, designerTool: 'select' }),
+
+  finishMeasure: () => set({ measureDraft: null, designerTool: 'select' }),
+
+  getMeasureAcceptValue: () => {
+    const draft = get().measureDraft;
+    if (!draft || !draft.acceptField) return null;
+    const inches = measureImportAcceptInches(
+      draft.a,
+      draft.b,
+      draft.acceptField,
+      draft.importAccept,
+    );
+    return formatMeasureInches(inches);
+  },
 
   beginHangingDraft: (kind) =>
     set({
       designerTool: designerToolForHangingKind(kind),
       ...selectionOf([]),
       hangingDraft: { kind, anchors: [], cursorWorld: null },
+      measureDraft: null,
     }),
 
   appendHangingAnchor: (anchor) =>
@@ -533,7 +633,8 @@ export const useStore = create<StoreState>((set, get) => ({
       return { hangingDraft: { ...s.hangingDraft, cursorWorld: world } };
     }),
 
-  cancelHangingDraft: () => set({ hangingDraft: null, designerTool: 'select' }),
+  cancelHangingDraft: () =>
+    set({ hangingDraft: null, measureDraft: null, designerTool: 'select' }),
 
   finishHangingDraft: () => {
     const draft = get().hangingDraft;

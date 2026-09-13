@@ -21,13 +21,16 @@ import { OrbitPointerGuard } from '../interaction/OrbitPointerGuard';
 import { MobileObjectGestureController } from '../interaction/MobileObjectGestureController';
 import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
 import { HangingPlacementController } from '../interaction/HangingPlacementController';
+import { MeasureController } from '../interaction/MeasureController';
 import { ArcMenu } from './ArcMenu';
 import { ObjectGizmo } from './ObjectGizmo';
 import { SelectionHud, type SelectionHudProps } from './SelectionHud';
 import { LongPressLift } from './LongPressLift';
 import { MobileSelectionHud } from './MobileSelectionHud';
 import { HangingDraftPreview } from '../furniture/HangingDecoration';
-import { isHangingDesignerTool, useStore, type CameraPresetId } from '../store';
+import { DimensionsOverlay } from './DimensionsOverlay';
+import { MeasureOverlay } from './MeasureOverlay';
+import { isHangingDesignerTool, isMeasureDesignerTool, useStore, type CameraPresetId } from '../store';
 import { applyWeather, isDaytime, sampleSun, indoorHorizonFill, grazingSunIndoor } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
 import { WindowLightShafts } from './WindowLightShafts';
@@ -551,6 +554,7 @@ function SceneInner({
   selectionHud,
   interactionMode,
   onMobileLiftInchesChange,
+  dimensionsOverlayHidden,
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
   apiRef: MutableRefObject<CaptureApi | null>;
@@ -564,6 +568,7 @@ function SceneInner({
   selectionHud?: SelectionHudProps | null;
   interactionMode: 'desktop' | 'mobile';
   onMobileLiftInchesChange?: (inches: number | null) => void;
+  dimensionsOverlayHidden?: boolean;
 }) {
   const deselect = useStore((s) => s.select);
   const skyMode = useStore((s) => s.environment.skyMode);
@@ -589,6 +594,8 @@ function SceneInner({
   const cheapGpu = q.tier === 'low' || q.tier === 'balanced';
   const designerTool = useStore((s) => s.designerTool);
   const hangingTool = !readOnly && !capturing && isHangingDesignerTool(designerTool);
+  const measureTool = !readOnly && !capturing && isMeasureDesignerTool(designerTool);
+  const showDimensionsOverlay = !readOnly && !capturing && !dimensionsOverlayHidden;
 
   return (
     <Canvas
@@ -602,7 +609,7 @@ function SceneInner({
         far: 2000,
       }}
       onPointerMissed={() => {
-        if (!readOnly) deselect(null);
+        if (!readOnly && useStore.getState().designerTool !== 'measure') deselect(null);
       }}
       gl={{
         antialias: q.tier !== 'low',
@@ -642,13 +649,20 @@ function SceneInner({
 
       <Room />
       <ItemsLayer />
+      {showDimensionsOverlay ? <DimensionsOverlay /> : null}
       {hangingTool ? (
         <>
           <HangingPlacementController />
           <HangingDraftPreview />
         </>
       ) : null}
-      {showChrome && !hangingTool ? (
+      {measureTool ? (
+        <>
+          <MeasureController />
+          <MeasureOverlay />
+        </>
+      ) : null}
+      {showChrome && !hangingTool && !measureTool ? (
         <>
           {/*
             Mobile: in-scene Html pills + touch gesture controller.
@@ -733,6 +747,8 @@ export interface SceneProps {
   /** Desktop keeps mouse drag + long-press bump; mobile uses coordinated touch controller. */
   interactionMode?: 'desktop' | 'mobile';
   onMobileLiftInchesChange?: (inches: number | null) => void;
+  /** Hide dimension overlay (present mode, etc.) without toggling the user preference. */
+  dimensionsOverlayHidden?: boolean;
 }
 
 export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
@@ -743,6 +759,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
     selectionHud = null,
     interactionMode = 'desktop',
     onMobileLiftInchesChange,
+    dimensionsOverlayHidden = false,
   },
   ref,
 ) {
@@ -798,6 +815,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
       selectionHud={selectionHud}
       interactionMode={interactionMode}
       onMobileLiftInchesChange={onMobileLiftInchesChange}
+      dimensionsOverlayHidden={dimensionsOverlayHidden}
     />
   );
 });

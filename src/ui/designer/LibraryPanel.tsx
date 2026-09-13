@@ -16,7 +16,7 @@ import {
 import type { GallerySort, GallerySource } from '../../lib/galleryCatalog';
 import type { CatalogModel } from './chromeTypes';
 import type { HangingDecorKind } from '../../store';
-import { IconFreeLight, IconHangingLeaves, IconHangingLights, IconLedStrip } from './icons';
+import { IconFreeLight, IconHangingLeaves, IconHangingLights, IconLedStrip, IconMeasure } from './icons';
 import { PanelShell } from './PanelShell';
 import { placeFromCatalog } from './placeCatalogModel';
 
@@ -40,6 +40,7 @@ export interface LibraryPanelProps {
   onImport: () => void;
   onOpenModel: (model: CatalogModel) => void;
   onStartDraw: (kind: HangingDecorKind) => void;
+  onStartMeasure: () => void;
   onAddLight: () => void;
 }
 
@@ -49,6 +50,7 @@ export function LibraryPanel({
   onImport,
   onOpenModel,
   onStartDraw,
+  onStartMeasure,
   onAddLight,
 }: LibraryPanelProps) {
   const { user } = useAuth();
@@ -153,6 +155,13 @@ export function LibraryPanel({
             Draw it in the room
           </span>
           {drawRow({
+            label: 'Measure in the room',
+            meta: 'click two points',
+            color: '#E8C27A',
+            Icon: IconMeasure,
+            run: onStartMeasure,
+          })}
+          {drawRow({
             label: 'Draw fairy lights',
             meta: 'draped path',
             color: '#E8C27A',
@@ -195,7 +204,7 @@ export function LibraryPanel({
         </div>
       </div>
     ),
-    [onAddLight, onStartDraw],
+    [onAddLight, onStartDraw, onStartMeasure],
   );
 
   const list = (

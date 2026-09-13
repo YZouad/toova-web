@@ -135,7 +135,10 @@ export function Designer({
   const builtinPreviews = useBuiltinPreviews();
 
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
+  const cancelMeasure = useStore((s) => s.cancelMeasure);
   const addLightSource = useStore((s) => s.addLightSource);
+  const showDimensions = useStore((s) => s.visual.showDimensions);
+  const setShowDimensions = useStore((s) => s.setShowDimensions);
 
   const openImportOrAuth = useCallback(
     (route: ImportRoute = null) => {
@@ -360,6 +363,7 @@ export function Designer({
         openImport: () => openImportOrAuth(null),
         togglePresent: chrome.togglePresent,
         startDraw: chrome.startDraw,
+        startMeasure: chrome.startMeasure,
         addLightSource: () => addLightSource(),
         handleSave: () => void handleSave(),
         onOpenChecklist,
@@ -382,6 +386,7 @@ export function Designer({
       openImportOrAuth,
       chrome.togglePresent,
       chrome.startDraw,
+      chrome.startMeasure,
       chrome.setOverlay,
       chrome.restartTour,
       chrome.selectedId,
@@ -397,6 +402,7 @@ export function Designer({
       onRequestSaveAuth,
       onRequestImportAuth,
       fixturesEpoch,
+      showDimensions,
     ],
   );
 
@@ -425,6 +431,11 @@ export function Designer({
 
       if (key === 'Escape') {
         if (editable && e.target instanceof HTMLElement) e.target.blur();
+        if (chrome.measuring) {
+          if (chrome.importMeasuring) chrome.cancelMeasureFromImport();
+          else cancelMeasure();
+          return;
+        }
         if (chrome.importOpen) {
           chrome.closeImport();
           return;
@@ -458,7 +469,7 @@ export function Designer({
       // Don't steal keystrokes from real text fields (including room rename).
       if (editable) return;
 
-      if (chrome.present || chrome.importOpen || chrome.overlay === 'cmdk') return;
+      if (chrome.present || (chrome.importOpen && !chrome.measuring) || chrome.overlay === 'cmdk') return;
       if (e.altKey) return;
 
       // ? → shortcuts overlay
@@ -522,7 +533,7 @@ export function Designer({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cancelHangingDraft, chrome, onEditFloorPlan, resetCamera, canShare]);
+  }, [cancelHangingDraft, cancelMeasure, chrome, onEditFloorPlan, resetCamera, canShare]);
 
   // Clicking the viewport takes focus off the room-name field so shortcuts work.
   useEffect(() => {
@@ -715,6 +726,7 @@ export function Designer({
             ref={sceneRef}
             orbitCssTargetRef={canvasWrapRef}
             interactionMode={isPhone ? 'mobile' : 'desktop'}
+            dimensionsOverlayHidden={chrome.present}
             selectionHud={{
               radialOpen: chrome.radialOpen,
               onToggleRadial: () => chrome.setRadialOpen(!chrome.radialOpen),
@@ -758,7 +770,11 @@ export function Designer({
           />
         ) : (
           <>
-            <DrawBanner />
+            <DrawBanner
+              importMeasuring={chrome.importMeasuring}
+              onCancelMeasureFromImport={chrome.cancelMeasureFromImport}
+              onAcceptMeasureFromImport={chrome.acceptMeasureFromImport}
+            />
 
             {chrome.chromeOn ? (
               <nav className="dg-rail" aria-label="Designer tools">
@@ -839,6 +855,15 @@ export function Designer({
                   <div className="dg-rule--v" aria-hidden />
                   <button
                     type="button"
+                    className={`dg-camera-btn${showDimensions ? ' is-active' : ''}`}
+                    aria-pressed={showDimensions}
+                    aria-label={showDimensions ? 'Hide dimensions' : 'Show dimensions'}
+                    onClick={() => setShowDimensions(!showDimensions)}
+                  >
+                    Dims
+                  </button>
+                  <button
+                    type="button"
                     className="dg-camera-btn"
                     aria-label="Reset camera"
                     onClick={resetCamera}
@@ -870,6 +895,7 @@ export function Designer({
                 onImport={() => openImportOrAuth(null)}
                 onOpenModel={openModel}
                 onStartDraw={chrome.startDraw}
+                onStartMeasure={chrome.startMeasure}
                 onAddLight={() => {
                   addLightSource();
                   chrome.closePanels();
@@ -931,9 +957,11 @@ export function Designer({
 
             <ImportFlow
               open={chrome.importOpen}
+              measuringHidden={chrome.importMeasuring}
               route={chrome.importRoute}
               onRoute={chrome.setImportRoute}
               onClose={chrome.closeImport}
+              onStartMeasure={chrome.startMeasureFromImport}
               isAdmin={isAdmin}
               compact={false}
               onComplete={(model, meta) => {
