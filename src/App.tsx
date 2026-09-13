@@ -12,6 +12,7 @@ import {
   galleryPath,
   timelinePath,
   profilePath,
+  resetPasswordPath,
   useRoute,
 } from './hooks/useRoute';
 import { supabase } from './lib/supabase';
@@ -45,7 +46,8 @@ import {
 } from './lib/guestDesignSnapshot';
 import { LandingPage } from './ui/LandingPage';
 import { PitchMadnessPage } from './ui/PitchMadnessPage';
-import { AuthPage } from './ui/AuthPage';
+import { AuthPage, type AuthPageMode } from './ui/AuthPage';
+import { ResetPasswordPage } from './ui/ResetPasswordPage';
 import { Dashboard } from './ui/Dashboard';
 import { Designer } from './ui/Designer';
 import { FloorPlanSetup } from './ui/FloorPlanSetup';
@@ -198,14 +200,14 @@ export default function App() {
 }
 
 function AppContent() {
-  const { loading, user, logout, refreshProfile, profile, avatarUrl } = useAuth();
+  const { loading, user, logout, refreshProfile, profile, avatarUrl, passwordRecovery } = useAuth();
   const { setRoomId } = useChecklistRoomScope();
   const route = useRoute();
   const [screen, setScreen] = useState<Screen>('landing');
   const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
   const [timelineScrollToDemos, setTimelineScrollToDemos] = useState(false);
-  const [authMode, setAuthMode] = useState<'signin' | 'signup'>('signin');
+  const [authMode, setAuthMode] = useState<AuthPageMode>('signin');
   const [workspace, setWorkspace] = useState<{ id: string; name: string; isOwner: boolean } | null>(null);
   const [floorPlanDraft, setFloorPlanDraft] = useState<FloorPlanDraft | null>(null);
   const [floorPlanBusy, setFloorPlanBusy] = useState(false);
@@ -241,7 +243,8 @@ function AppContent() {
     route.name === 'timeline' ||
     route.name === 'terms' ||
     route.name === 'privacy' ||
-    route.name === 'safety';
+    route.name === 'safety' ||
+    route.name === 'resetPassword';
 
   const {
     isAdmin,
@@ -304,6 +307,10 @@ function AppContent() {
       if (!routeIsPublic && !guestScreens.includes(screen)) {
         setScreen('landing');
       }
+      return;
+    }
+
+    if (route.name === 'resetPassword' || passwordRecovery) {
       return;
     }
 
@@ -382,7 +389,15 @@ function AppContent() {
     pendingShareToken,
     pendingPublicRoom,
     pendingGalleryModel,
+    passwordRecovery,
+    route.name,
   ]);
+
+  useEffect(() => {
+    if (!passwordRecovery) return;
+    if (route.name === 'resetPassword') return;
+    navigate(resetPasswordPath(), true);
+  }, [passwordRecovery, route.name]);
 
   useEffect(() => {
     if (screen === 'admin' && !adminStatsLoading && !isAdmin) {
@@ -778,6 +793,24 @@ function AppContent() {
       setScreen('pitch-madness');
     },
   };
+
+  if (route.name === 'resetPassword') {
+    return (
+      <ResetPasswordPage
+        onComplete={() => {
+          navigate('/', true);
+          setScreen('dashboard');
+        }}
+        onRequestNewLink={() => {
+          navigate('/', true);
+          setAuthMode('forgot');
+          setScreen('auth');
+        }}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
+      />
+    );
+  }
 
   // Auth overlay for share-link / public-room CTAs (URL may still be /r/… or /u/…)
   if (screen === 'auth' && !user) {

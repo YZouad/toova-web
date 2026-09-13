@@ -9,7 +9,11 @@ In **Authentication → URL configuration**:
 - **Site URL**: production origin (and local `http://localhost:5173` while developing)
 - **Redirect URLs** allowlist:
   - `http://localhost:5173/**`
-  - `https://<your-production-domain>/**`
+  - `https://toova.net/**`
+  - `https://www.toova.net/**`
+  - `http://localhost:5173/reset-password`
+  - `https://toova.net/reset-password`
+  - `https://www.toova.net/reset-password`
 
 Callback URL for providers (from Supabase → Authentication → Providers):
 
@@ -42,3 +46,7 @@ Docs: https://supabase.com/docs/guides/auth/social-login/auth-facebook
 - Email/password remains as a fallback.
 - Guests can checklist + design first; Save design stores a local snapshot and opens auth.
 - After redirect, App restores the guest snapshot into a new owned room.
+
+## 5. Forgot password
+
+Email/password reset uses Supabase Auth (`resetPasswordForEmail`). The reset email must redirect to `/reset-password` (allowlisted above). The app shows a new-password form on that route and calls `updateUser({ password })`.

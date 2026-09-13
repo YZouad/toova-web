@@ -1,6 +1,7 @@
 import { type FormEvent, useState } from 'react';
 import { trackLoggedIn, trackSignedUp } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
+import { resetPasswordRedirectTo } from '../hooks/useRoute';
 import { loadGuestDesignSnapshot } from '../lib/guestDesignSnapshot';
 import { dobIsoFromMonthYear, isAtLeast13, parseBirthMonthYear } from '../lib/ageGate';
 import { BirthMonthYearFields } from './BirthMonthYearFields';
@@ -24,11 +25,12 @@ import {
   Tabs,
 } from './kit';
 
-type Mode = 'signin' | 'signup';
+export type AuthPageMode = 'signin' | 'signup' | 'forgot';
+type Mode = AuthPageMode;
 
 interface AuthPageProps {
   onBack: () => void;
-  initialMode?: Mode;
+  initialMode?: AuthPageMode;
   onContact?: () => void;
   onPitchMadness?: () => void;
   /** Optional copy when auth is required to persist a guest design. */
@@ -63,7 +65,9 @@ function describeAuthFailure(err: unknown, mode: Mode): string {
   if (code === 'user_already_exists' || code === 'email_exists' || msg.includes('already registered')) {
     return 'That email is already registered. Try signing in instead.';
   }
-  if (code === 'user_not_found') return 'No account exists with this email address.';
+  if (code === 'user_not_found' && mode !== 'forgot') {
+    return 'No account exists with this email address.';
+  }
   if (code === 'invalid_credentials' || msg.includes('invalid login credentials')) {
     return mode === 'signin'
       ? 'Wrong password for this email, or no account uses this email.'
@@ -145,11 +149,43 @@ export function AuthPage({
     }
   }
 
+  async function handleForgot(emailTrimmed: string) {
+    const { error: err } = await supabase.auth.resetPasswordForEmail(emailTrimmed, {
+      redirectTo: resetPasswordRedirectTo(),
+    });
+    if (err) {
+      const code = typeof (err as AuthErrLike).code === 'string' ? err.code : '';
+      const msg = (err.message ?? '').toLowerCase();
+      if (code === 'user_not_found' || msg.includes('user not found')) {
+        setInfo('If an account exists for that email, we sent a reset link.');
+        return;
+      }
+      throw err;
+    }
+    setInfo('If an account exists for that email, we sent a reset link.');
+  }
+
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
     setError(null);
     setInfo(null);
     const emailTrimmed = email.trim();
+    if (mode === 'forgot') {
+      if (!emailTrimmed) { setError('Enter your email address.'); return; }
+      if (!EMAIL_RE.test(emailTrimmed)) {
+        setError('That email address isn\'t valid. Fix your email and try again.');
+        return;
+      }
+      setLoading(true);
+      try {
+        await handleForgot(emailTrimmed);
+      } catch (err: unknown) {
+        setError(describeAuthFailure(err, mode));
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
     const clientErr = validateFields(emailTrimmed, password, mode);
     if (clientErr) { setError(clientErr); return; }
 
@@ -228,19 +264,34 @@ export function AuthPage({
 
       <div className="auth-form-side">
         <div className="auth-form-wrap">
-          <Tabs
-            active={mode}
-            onChange={(id) => {
-              setMode(id as Mode);
-              setError(null);
-              setInfo(null);
-            }}
-            style={{ marginBottom: 24 }}
-            tabs={[
-              { id: 'signin', label: 'Sign in' },
-              { id: 'signup', label: 'Create account' },
-            ]}
-          />
+          {mode === 'forgot' ? (
+            <div style={{ marginBottom: 24 }}>
+              <Eyebrow level="page" style={{ marginBottom: 12 }}>
+                Account
+              </Eyebrow>
+              <DisplayHeading level={5} as="h2" style={{ marginBottom: 10 }}>
+                Reset your password
+              </DisplayHeading>
+              <MonoMeta size="sm" tone="subtle">
+                Enter the email on your account. If it exists, we&apos;ll send a reset link.
+                You can also sign in with Google or Facebook.
+              </MonoMeta>
+            </div>
+          ) : (
+            <Tabs
+              active={mode}
+              onChange={(id) => {
+                setMode(id as Mode);
+                setError(null);
+                setInfo(null);
+              }}
+              style={{ marginBottom: 24 }}
+              tabs={[
+                { id: 'signin', label: 'Sign in' },
+                { id: 'signup', label: 'Create account' },
+              ]}
+            />
+          )}
 
           {authReason ? (
             <Banner tone="info" style={{ marginBottom: 18 }}>
@@ -250,32 +301,36 @@ export function AuthPage({
           {info ? <Banner tone="info" style={{ marginBottom: 18 }}>{info}</Banner> : null}
           {error ? <Banner tone="error" style={{ marginBottom: 18 }}>{error}</Banner> : null}
 
-          <div className="auth-oauth-stack">
-            <Button
-              size="md"
-              full
-              variant="outline"
-              type="button"
-              disabled={busy || signupBlocked}
-              onClick={() => void handleOAuth('google')}
-            >
-              {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
-            </Button>
-            <Button
-              size="md"
-              full
-              variant="outline"
-              type="button"
-              disabled={busy || signupBlocked}
-              onClick={() => void handleOAuth('facebook')}
-            >
-              {oauthBusy === 'facebook' ? 'Redirecting…' : 'Continue with Facebook'}
-            </Button>
-          </div>
+          {mode !== 'forgot' ? (
+            <>
+              <div className="auth-oauth-stack">
+                <Button
+                  size="md"
+                  full
+                  variant="outline"
+                  type="button"
+                  disabled={busy || signupBlocked}
+                  onClick={() => void handleOAuth('google')}
+                >
+                  {oauthBusy === 'google' ? 'Redirecting…' : 'Continue with Google'}
+                </Button>
+                <Button
+                  size="md"
+                  full
+                  variant="outline"
+                  type="button"
+                  disabled={busy || signupBlocked}
+                  onClick={() => void handleOAuth('facebook')}
+                >
+                  {oauthBusy === 'facebook' ? 'Redirecting…' : 'Continue with Facebook'}
+                </Button>
+              </div>
 
-          <div className="auth-oauth-divider" role="separator">
-            <span>or use email</span>
-          </div>
+              <div className="auth-oauth-divider" role="separator">
+                <span>or use email</span>
+              </div>
+            </>
+          ) : null}
 
           <form onSubmit={(e) => void handleSubmit(e)} noValidate>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 22 }}>
@@ -299,19 +354,21 @@ export function AuthPage({
                   placeholder="you@school.edu"
                 />
               </Field>
-              <Field
-                label="Password"
-                hint={mode === 'signup' ? 'At least 6 characters.' : undefined}
-              >
-                <Input
-                  id="auth-pass"
-                  type="password"
-                  autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••"
-                />
-              </Field>
+              {mode !== 'forgot' ? (
+                <Field
+                  label="Password"
+                  hint={mode === 'signup' ? 'At least 6 characters.' : undefined}
+                >
+                  <Input
+                    id="auth-pass"
+                    type="password"
+                    autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="••••••••"
+                  />
+                </Field>
+              ) : null}
               {mode === 'signup' ? (
                 <>
                   <BirthMonthYearFields
@@ -342,12 +399,40 @@ export function AuthPage({
                 </>
               ) : null}
               <Button size="md" full type="submit" disabled={busy || signupBlocked}>
-                {loading ? 'Please wait…' : mode === 'signin' ? 'Sign in with email' : 'Create account'}
+                {loading
+                  ? 'Please wait…'
+                  : mode === 'signin'
+                    ? 'Sign in with email'
+                    : mode === 'signup'
+                      ? 'Create account'
+                      : 'Send reset link'}
               </Button>
               <div className="auth-form-footer">
-                <Button variant="mono" type="button">
-                  Forgot password →
-                </Button>
+                {mode === 'signin' ? (
+                  <Button
+                    variant="mono"
+                    type="button"
+                    onClick={() => {
+                      setMode('forgot');
+                      setError(null);
+                      setInfo(null);
+                    }}
+                  >
+                    Forgot password →
+                  </Button>
+                ) : mode === 'forgot' ? (
+                  <Button
+                    variant="mono"
+                    type="button"
+                    onClick={() => {
+                      setMode('signin');
+                      setError(null);
+                      setInfo(null);
+                    }}
+                  >
+                    ← Back to sign in
+                  </Button>
+                ) : null}
                 <MonoMeta size="sm" tone="subtle" upper className="auth-form-footer__card-note">
                   No card until you buy
                 </MonoMeta>
