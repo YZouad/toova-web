@@ -23,6 +23,11 @@ import {
   flushPendingLegalAcceptance,
   loadPendingLegalAcceptance,
 } from '../lib/legalAcceptance';
+import {
+  clearPasswordRecoveryFlag,
+  markPasswordRecovery,
+  readPasswordRecoveryFlag,
+} from '../lib/passwordRecovery';
 
 interface AuthCtxValue {
   loading: boolean;
@@ -30,6 +35,9 @@ interface AuthCtxValue {
   profile: Profile | null;
   profileLoading: boolean;
   avatarUrl: string | null;
+  /** True after a recovery email link until the password is updated or the user signs out. */
+  passwordRecovery: boolean;
+  endPasswordRecovery: () => void;
   refreshProfile: () => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -41,6 +49,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  const [passwordRecovery, setPasswordRecovery] = useState(readPasswordRecoveryFlag);
 
   const loadProfile = useCallback(async (uid: string | undefined) => {
     if (!uid) {
@@ -77,6 +86,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const next = session?.user ?? null;
+      if (event === 'PASSWORD_RECOVERY') {
+        markPasswordRecovery();
+        setPasswordRecovery(true);
+      }
+      if (event === 'USER_UPDATED' || event === 'SIGNED_OUT') {
+        clearPasswordRecoveryFlag();
+        setPasswordRecovery(false);
+      }
       if (event === 'SIGNED_OUT') {
         clearSignedUrlCache();
       }
@@ -124,10 +141,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await loadProfile(user === undefined ? undefined : user?.id);
   }, [loadProfile, user]);
 
+  const endPasswordRecovery = useCallback(() => {
+    clearPasswordRecoveryFlag();
+    setPasswordRecovery(false);
+  }, []);
+
   const logout = useCallback(async () => {
     clearSignedUrlCache();
+    endPasswordRecovery();
     await supabase.auth.signOut();
-  }, []);
+  }, [endPasswordRecovery]);
 
   const value = useMemo(
     (): AuthCtxValue => ({
@@ -136,10 +159,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       profile,
       profileLoading,
       avatarUrl,
+      passwordRecovery,
+      endPasswordRecovery,
       refreshProfile,
       logout,
     }),
-    [user, profile, profileLoading, avatarUrl, refreshProfile, logout],
+    [user, profile, profileLoading, avatarUrl, passwordRecovery, endPasswordRecovery, refreshProfile, logout],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

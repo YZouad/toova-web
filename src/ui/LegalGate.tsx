@@ -8,6 +8,7 @@ import {
   type LegalStatus,
 } from '../lib/legalAcceptance';
 import { useAuth } from '../hooks/useAuth';
+import { useRoute } from '../hooks/useRoute';
 import { Banner, Button } from './kit';
 
 /**
@@ -15,7 +16,9 @@ import { Banner, Button } from './kit';
  * Under-13 submissions sign the user out.
  */
 export function LegalGate({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, passwordRecovery } = useAuth();
+  const route = useRoute();
+  const skipGate = route.name === 'resetPassword' || passwordRecovery;
   const [status, setStatus] = useState<LegalStatus | null>(null);
   const [loading, setLoading] = useState(false);
   const [birthMonth, setBirthMonth] = useState('');
@@ -46,7 +49,7 @@ export function LegalGate({ children }: { children: ReactNode }) {
     };
   }, [user?.id]);
 
-  if (!user) return <>{children}</>;
+  if (!user || skipGate) return <>{children}</>;
   if (loading && !status) {
     return (
       <div className="legal-gate">

@@ -7,6 +7,7 @@ export type AppRoute =
   | { name: 'terms' }
   | { name: 'privacy' }
   | { name: 'safety' }
+  | { name: 'resetPassword' }
   | { name: 'shared'; token: string }
   | { name: 'profile'; handle: string }
   | { name: 'publicRoom'; handle: string; roomId: string };
@@ -20,6 +21,7 @@ const TIMELINE_PATH_RE = /^\/timeline\/?$/i;
 const TERMS_PATH_RE = /^\/terms\/?$/i;
 const PRIVACY_PATH_RE = /^\/privacy\/?$/i;
 const SAFETY_PATH_RE = /^\/safety\/?$/i;
+const RESET_PASSWORD_PATH_RE = /^\/reset-password\/?$/i;
 
 export function parsePathname(pathname: string): AppRoute {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -35,6 +37,7 @@ export function parsePathname(pathname: string): AppRoute {
   if (TERMS_PATH_RE.test(path)) return { name: 'terms' };
   if (PRIVACY_PATH_RE.test(path)) return { name: 'privacy' };
   if (SAFETY_PATH_RE.test(path)) return { name: 'safety' };
+  if (RESET_PASSWORD_PATH_RE.test(path)) return { name: 'resetPassword' };
 
   const room = path.match(PUBLIC_ROOM_PATH_RE);
   if (room?.[1] && room[2]) {
@@ -86,6 +89,14 @@ export function privacyPath(): string {
 
 export function safetyPath(): string {
   return '/safety';
+}
+
+export function resetPasswordPath(): string {
+  return '/reset-password';
+}
+
+export function resetPasswordRedirectTo(): string {
+  return `${window.location.origin}${resetPasswordPath()}`;
 }
 
 export function navigate(path: string, replace = false): void {

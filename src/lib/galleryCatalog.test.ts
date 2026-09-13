@@ -165,3 +165,10 @@ describe('parsePathname gallery', () => {
     expect(galleryPath('?source=toova')).toBe('/gallery?source=toova');
   });
 });
+
+describe('parsePathname reset password', () => {
+  it('recognizes /reset-password', () => {
+    expect(parsePathname('/reset-password')).toEqual({ name: 'resetPassword' });
+    expect(parsePathname('/reset-password/')).toEqual({ name: 'resetPassword' });
+  });
+});
