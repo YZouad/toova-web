@@ -19,6 +19,9 @@ import { clampPositionInRoom } from './interaction/collision';
 import type { Weather } from './lib/environment';
 import {
   DEFAULT_APPEARANCE,
+  applyWallPaint,
+  parseAppearance,
+  pruneWallColors,
   type RoomAppearance,
 } from './lib/roomAppearance';
 import {
@@ -207,6 +210,8 @@ interface StoreState {
   selectedId: string | null;
   /** All selected item ids (shift-click multi-select). Includes selectedId when set. */
   selectedIds: string[];
+  /** Floor-plan wall selected for independent paint. Cleared with furniture selection. */
+  selectedWallId: string | null;
   invalid: boolean;
 
   environment: RoomEnvironment;
@@ -229,6 +234,9 @@ interface StoreState {
   setShadowRoof: (on: boolean) => void;
   setAppearance: (patch: Partial<RoomAppearance>) => void;
   setAppearanceFull: (appearance: RoomAppearance) => void;
+  /** Paint every wall, or one wall when `wallId` is set. */
+  setWallPaint: (color: string, wallId?: string | null) => void;
+  selectWall: (wallId: string | null) => void;
   setVisualQuality: (q: RenderQualityTier) => void;
   setRelightImports: (on: boolean) => void;
   setAdvancedControls: (on: boolean) => void;
@@ -309,7 +317,7 @@ interface StoreState {
   setImportedSize: (id: string, size: [number, number, number]) => void;
   /**
    * Replace selection, or toggle membership when `additive` (shift-click).
-   * Pass null to clear.
+   * Pass null to clear furniture and wall selection.
    */
   select: (id: string | null, opts?: { additive?: boolean }) => void;
   setInvalid: (v: boolean) => void;
@@ -407,6 +415,7 @@ export const useStore = create<StoreState>((set, get) => ({
   order: [],
   selectedId: null,
   selectedIds: [],
+  selectedWallId: null,
   invalid: false,
 
   environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
@@ -431,16 +440,35 @@ export const useStore = create<StoreState>((set, get) => ({
   setShadowRoof: (on) =>
     set((s) => ({ environment: { ...s.environment, shadowRoof: on } })),
   setAppearance: (patch) =>
+    set((s) => {
+      let appearance = { ...s.environment.appearance, ...patch };
+      // Existing callers treat wallColor as "paint the whole room".
+      if (patch.wallColor !== undefined && patch.wallColors === undefined) {
+        appearance = { ...appearance, wallColors: undefined };
+      }
+      return {
+        environment: { ...s.environment, appearance },
+      };
+    }),
+  setAppearanceFull: (appearance) =>
+    set((s) => ({
+      environment: { ...s.environment, appearance: parseAppearance(appearance) },
+    })),
+  setWallPaint: (color, wallId) =>
     set((s) => ({
       environment: {
         ...s.environment,
-        appearance: { ...s.environment.appearance, ...patch },
+        appearance: applyWallPaint(s.environment.appearance, color, wallId),
       },
     })),
-  setAppearanceFull: (appearance) =>
-    set((s) => ({
-      environment: { ...s.environment, appearance: { ...appearance } },
-    })),
+  selectWall: (wallId) =>
+    set((s) => {
+      if (wallId === s.selectedWallId && s.selectedId === null) return s;
+      if (wallId && !s.roomGeometry.walls.some((w) => w.id === wallId)) {
+        return { selectedWallId: null, ...selectionOf([]) };
+      }
+      return { selectedWallId: wallId, ...selectionOf([]) };
+    }),
   setVisualQuality: (q) =>
     set((s) => {
       const visual = { ...s.visual, quality: q };
@@ -473,7 +501,22 @@ export const useStore = create<StoreState>((set, get) => ({
     }),
   setCaptureMode: (on) => set({ captureMode: on }),
 
-  setRoomGeometry: (geom) => set({ roomGeometry: normalizeRoomGeometry(geom) }),
+  setRoomGeometry: (geom) =>
+    set((s) => {
+      const roomGeometry = normalizeRoomGeometry(geom);
+      const wallIds = roomGeometry.walls.map((w) => w.id);
+      const appearance = pruneWallColors(s.environment.appearance, wallIds);
+      const selectedWallId =
+        s.selectedWallId && wallIds.includes(s.selectedWallId) ? s.selectedWallId : null;
+      return {
+        roomGeometry,
+        selectedWallId,
+        environment:
+          appearance === s.environment.appearance
+            ? s.environment
+            : { ...s.environment, appearance },
+      };
+    }),
 
   setRoomHeight: (height) =>
     set((s) => ({
@@ -629,6 +672,7 @@ export const useStore = create<StoreState>((set, get) => ({
         items,
         order: [...orderIds],
         ...selectionOf([]),
+        selectedWallId: null,
         invalid: false,
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
@@ -639,9 +683,10 @@ export const useStore = create<StoreState>((set, get) => ({
     set(() => ({
       environment: {
         ...environment,
-        appearance: { ...(environment.appearance ?? DEFAULT_APPEARANCE) },
+        appearance: parseAppearance(environment.appearance ?? DEFAULT_APPEARANCE),
       },
       roomGeometry: normalizeRoomGeometry(roomGeometry),
+      selectedWallId: null,
     })),
 
   resetLayout: () =>
@@ -651,6 +696,7 @@ export const useStore = create<StoreState>((set, get) => ({
         items: {},
         order: [],
         ...selectionOf([]),
+        selectedWallId: null,
         invalid: false,
         environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
         roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
@@ -1167,15 +1213,15 @@ export const useStore = create<StoreState>((set, get) => ({
 
   select: (id, opts) =>
     set((s) => {
-      if (id === null) return selectionOf([]);
+      if (id === null) return { selectedWallId: null, ...selectionOf([]) };
       if (!s.items[id]) return s;
       if (opts?.additive) {
         if (s.selectedIds.includes(id)) {
-          return selectionOf(s.selectedIds.filter((x) => x !== id));
+          return { selectedWallId: null, ...selectionOf(s.selectedIds.filter((x) => x !== id)) };
         }
-        return selectionOf([...s.selectedIds, id]);
+        return { selectedWallId: null, ...selectionOf([...s.selectedIds, id]) };
       }
-      return selectionOf([id]);
+      return { selectedWallId: null, ...selectionOf([id]) };
     }),
   setInvalid: (v) => set({ invalid: v }),
 }));

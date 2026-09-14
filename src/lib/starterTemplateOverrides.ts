@@ -13,8 +13,10 @@ import {
   type WallAnchor,
 } from './hangingDecorGeometry';
 import { signModelObjectPath, resolveBrowsableModelUrl } from './modelStorage';
+import { assignSignedTextureUrl, texturePathsToSign } from './furnitureFinish';
 import { patchImportedItemsFromCatalog } from './patchImportedFromCatalog';
 import { isMaterialPresetId, type MaterialPresetId } from './roomMaterials';
+import { parseWallColors } from './roomAppearance';
 import {
   ROOM_STARTER_TEMPLATES,
   type RoomStarterTemplate,
@@ -34,6 +36,7 @@ export interface StarterTemplateOverride {
   timeOfDay?: number;
   appearance?: {
     wallColor?: string;
+    wallColors?: Record<string, string>;
     floorPreset?: MaterialPresetId;
     recessedLights?: boolean;
   };
@@ -141,8 +144,13 @@ export function parseItemSnapshot(raw: unknown): Item | null {
   if (typeof o.beddingEnabled === 'boolean') item.beddingEnabled = o.beddingEnabled;
   if (isHexColor(o.blanketColor)) item.blanketColor = o.blanketColor;
   if (isHexColor(o.tintColor)) item.tintColor = o.tintColor;
+  if (isHexColor(o.mattressColor)) item.mattressColor = o.mattressColor;
+  if (isHexColor(o.topColor)) item.topColor = o.topColor;
   if (typeof o.blanketTexturePath === 'string' && o.blanketTexturePath.trim()) {
     item.blanketTexturePath = o.blanketTexturePath.trim();
+  }
+  if (typeof o.finishTexturePath === 'string' && o.finishTexturePath.trim()) {
+    item.finishTexturePath = o.finishTexturePath.trim();
   }
   if (typeof o.curatedProductId === 'string' && o.curatedProductId.trim()) {
     item.curatedProductId = o.curatedProductId.trim();
@@ -159,6 +167,7 @@ export function sanitizeItemSnapshot(item: Item): Item {
   const next = structuredClone(item);
   delete next.importedUrl;
   delete next.blanketTextureUrl;
+  delete next.finishTextureUrl;
   return next;
 }
 
@@ -226,6 +235,7 @@ export function overrideFromDesignerState(input: {
     timeOfDay: input.environment.timeOfDay,
     appearance: {
       wallColor: appearance.wallColor,
+      ...(appearance.wallColors ? { wallColors: { ...appearance.wallColors } } : {}),
       floorPreset: appearance.floorPreset,
       recessedLights: appearance.recessedLights,
     },
@@ -243,9 +253,9 @@ export async function resolveStarterItemAssets(items: Item[]): Promise<void> {
         const url = await resolveBrowsableModelUrl(item.importedStoragePath);
         if (url) item.importedUrl = url;
       }
-      if (item.kind === 'bed' && item.blanketTexturePath && !item.blanketTextureUrl) {
-        const signed = await signModelObjectPath(item.blanketTexturePath);
-        if (signed) item.blanketTextureUrl = signed;
+      for (const texturePath of texturePathsToSign(item)) {
+        const signed = await signModelObjectPath(texturePath);
+        if (signed) assignSignedTextureUrl(item, texturePath, signed);
       }
     }),
   );
@@ -323,6 +333,8 @@ export function parseStarterOverride(raw: unknown): StarterTemplateOverride {
     const a = o.appearance as Record<string, unknown>;
     const appearance: NonNullable<StarterTemplateOverride['appearance']> = {};
     if (isHexColor(a.wallColor)) appearance.wallColor = a.wallColor;
+    const wallColors = parseWallColors(a.wallColors);
+    if (wallColors) appearance.wallColors = wallColors;
     if (isMaterialPresetId(a.floorPreset)) appearance.floorPreset = a.floorPreset;
     if (typeof a.recessedLights === 'boolean') appearance.recessedLights = a.recessedLights;
     if (Object.keys(appearance).length) next.appearance = appearance;
@@ -474,6 +486,7 @@ export function snapshotOverrideFromTemplate(template: RoomStarterTemplate): Sta
     timeOfDay: env.timeOfDay,
     appearance: {
       wallColor: env.appearance.wallColor,
+      ...(env.appearance.wallColors ? { wallColors: { ...env.appearance.wallColors } } : {}),
       floorPreset: env.appearance.floorPreset,
       recessedLights: env.appearance.recessedLights,
     },

@@ -18,7 +18,7 @@ describe('starterTemplateOverrides', () => {
       label: '  Cozy twin  ',
       hidden: true,
       timeOfDay: 21,
-      appearance: { wallColor: '#6b7f6a', floorPreset: 'carpet', recessedLights: false },
+      appearance: { wallColor: '#6b7f6a', wallColors: { w1: '#1f4f4f' }, floorPreset: 'carpet', recessedLights: false },
       floorItems: [
         { kind: 'bed', position: [20, 0, 80], rotationY: 0 },
         { kind: 'imported', position: [1, 0, 1], rotationY: 0 },
@@ -29,6 +29,7 @@ describe('starterTemplateOverrides', () => {
     expect(parsed.label).toBe('Cozy twin');
     expect(parsed.hidden).toBe(true);
     expect(parsed.appearance?.floorPreset).toBe('carpet');
+    expect(parsed.appearance?.wallColors).toEqual({ w1: '#1f4f4f' });
     expect(parsed.floorItems).toHaveLength(1);
     expect(parsed.floorItems?.[0]?.kind).toBe('bed');
     expect(parsed.hanging).toHaveLength(1);

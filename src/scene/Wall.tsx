@@ -1,4 +1,5 @@
 import { useRef, useMemo, useEffect, useLayoutEffect } from 'react';
+import { type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { ROOM } from '../units';
 import { applyWallSlabUVs } from '../lib/shapeUVs';
@@ -19,6 +20,10 @@ interface WallProps {
   cutAway?: boolean;
   /** Free paint color; multiplies the shared plaster texture. */
   color: string;
+  /** Highlight this wall as the paint target. */
+  selected?: boolean;
+  /** Click to select this wall for independent paint. */
+  onSelect?: () => void;
 }
 
 type SlabRect = { x0: number; x1: number; y0: number; y1: number };
@@ -124,6 +129,8 @@ export function Wall({
   wallId,
   cutAway = false,
   color,
+  selected = false,
+  onSelect,
 }: WallProps) {
   const matRef = useRef<THREE.MeshStandardMaterial>(null!);
   const groupRef = useRef<THREE.Group>(null);
@@ -191,10 +198,12 @@ export function Wall({
   useEffect(() => {
     matRef.current = material;
     material.color.set(color);
+    material.emissive.set(selected ? '#c4a574' : '#000000');
+    material.emissiveIntensity = selected ? 0.22 : 0;
     return () => {
       material.dispose();
     };
-  }, [material, color]);
+  }, [material, color, selected]);
 
   useEffect(
     () => () => {
@@ -223,6 +232,15 @@ export function Wall({
   ];
 
   useOrbitFade([matRef], outwardNormal, center, { groupRef, hidden: cutAway, wallId });
+
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (!onSelect) return;
+    const pt = e.nativeEvent.pointerType;
+    if (pt === 'touch' || pt === 'pen') return;
+    e.stopPropagation();
+    e.nativeEvent.stopPropagation();
+    onSelect();
+  };
 
   return (
     <group>
@@ -253,6 +271,7 @@ export function Wall({
             frustumCulled={false}
             material={material}
             userData={wallId ? { wallId } : undefined}
+            onPointerDown={handlePointerDown}
           />
         </group>
       )}
