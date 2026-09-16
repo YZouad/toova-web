@@ -69,6 +69,43 @@ function fbm(x: number, y: number, seed: number, octaves = 4): number {
  * Seamless fbm over UV ∈ [0,1]. `basePeriod` is an integer tile period for the
  * coarsest octave; higher octaves use basePeriod·2^i so every layer wraps.
  */
+function paintSpeckledCarpetRgb(
+  u: number,
+  v: number,
+  seed: number,
+  yarns: [number, number, number][],
+  tuftScale = 96,
+  mixPow = 0.95,
+): { r: number; g: number; b: number; n: number } {
+  const heather = fbmSeamless(u, v, seed, 5, 4);
+  const fine = fbmSeamless(u, v, seed + 19, 11, 3);
+  const grain = fbmSeamless(u, v, seed + 41, 19, 2);
+  const micro = hash2Wrap(u * 72, v * 72, seed + 67, 72);
+  let mix = heather * 0.42 + fine * 0.34 + grain * 0.16 + micro * 0.08;
+  mix = Math.pow(Math.max(0, Math.min(1, mix)), mixPow);
+
+  const idx = mix * (yarns.length - 1);
+  const i0 = Math.floor(idx);
+  const i1 = Math.min(yarns.length - 1, i0 + 1);
+  const t = idx - i0;
+  const y0 = yarns[i0]!;
+  const y1 = yarns[i1]!;
+
+  const tuftU = u * tuftScale;
+  const tuftV = v * tuftScale;
+  const pile =
+    Math.sin(tuftU * Math.PI * 2) *
+    Math.sin(tuftV * Math.PI * 2) *
+    0.028;
+  const pileNoise =
+    (hash2Wrap(Math.floor(tuftU), Math.floor(tuftV), seed + 3, tuftScale) - 0.5) * 0.04;
+
+  const r = Math.round(y0[0] + (y1[0] - y0[0]) * t + (pile + pileNoise) * 255);
+  const g = Math.round(y0[1] + (y1[1] - y0[1]) * t + (pile + pileNoise) * 255);
+  const b = Math.round(y0[2] + (y1[2] - y0[2]) * t + (pile + pileNoise) * 255 * 1.06);
+  return { r, g, b, n: mix };
+}
+
 function fbmSeamless(u: number, v: number, seed: number, basePeriod: number, octaves = 4): number {
   let amp = 0.5;
   let sum = 0;
@@ -131,11 +168,64 @@ function paintAlbedo(
           n = fbm(u * 40, v * 40, seed, 2) * 0.6 + fbm(u * 8, v * 8, seed + 11, 3) * 0.4;
           break;
         }
+        case 'speckledCarpet': {
+          // Dense heathered dorm carpet: medium charcoal yarns with lighter speckles.
+          const yarns: [number, number, number][] = [
+            [58, 64, 74],
+            [72, 78, 90],
+            [86, 92, 104],
+            [100, 106, 118],
+            [116, 122, 132],
+            [132, 138, 146],
+            [154, 158, 166],
+            [182, 186, 192],
+          ];
+          ({ r, g, b, n } = paintSpeckledCarpetRgb(u, v, seed, yarns));
+          break;
+        }
+        case 'oatmealCarpet': {
+          // Warm beige heathered carpet with cream and brown flecks.
+          const yarns: [number, number, number][] = [
+            [118, 108, 94],
+            [142, 130, 114],
+            [155, 145, 128],
+            [168, 154, 136],
+            [185, 172, 152],
+            [198, 186, 168],
+            [210, 200, 182],
+            [222, 214, 198],
+          ];
+          ({ r, g, b, n } = paintSpeckledCarpetRgb(u, v, seed, yarns));
+          break;
+        }
+        case 'greySpeckleCarpet': {
+          // Salt-and-pepper commercial carpet: charcoal, grey, and off-white flecks.
+          const yarns: [number, number, number][] = [
+            [78, 76, 74],
+            [102, 100, 96],
+            [126, 122, 118],
+            [150, 146, 140],
+            [174, 170, 164],
+            [196, 192, 186],
+            [214, 210, 204],
+            [232, 228, 222],
+          ];
+          ({ r, g, b, n } = paintSpeckledCarpetRgb(u, v, seed, yarns, 128, 1.1));
+          break;
+        }
       }
 
       const delta = (n - 0.5) * 2 * varAmt * 255;
       const i = (y * size + x) * 4;
-      if (preset.style === 'concrete') {
+      if (
+        preset.style === 'speckledCarpet' ||
+        preset.style === 'oatmealCarpet' ||
+        preset.style === 'greySpeckleCarpet'
+      ) {
+        img.data[i] = Math.max(0, Math.min(255, r));
+        img.data[i + 1] = Math.max(0, Math.min(255, g));
+        img.data[i + 2] = Math.max(0, Math.min(255, b));
+      } else if (preset.style === 'concrete') {
         // Very slight cool/warm cast — still reads as one cement color.
         const tint = (fbmSeamless(u, v, seed + 101, 7, 3) - 0.5) * 8;
         img.data[i] = Math.max(0, Math.min(255, r + delta + tint * 0.2));
@@ -162,7 +252,16 @@ function paintNormalRoughness(
   const roughness = new ImageData(size, size);
   const baseR = Math.round(preset.roughness * 255);
   const strength =
-    preset.style === 'concrete' ? 1.15 : preset.style === 'wood' ? 1.35 : preset.style === 'carpet' ? 3 : 1.1;
+    preset.style === 'concrete'
+      ? 1.15
+      : preset.style === 'wood'
+        ? 1.35
+        : preset.style === 'carpet' ||
+            preset.style === 'speckledCarpet' ||
+            preset.style === 'oatmealCarpet' ||
+            preset.style === 'greySpeckleCarpet'
+          ? 3
+          : 1.1;
 
   const lum = (x: number, y: number) => {
     const xx = ((x % size) + size) % size;
@@ -229,7 +328,15 @@ export interface LoadedMaterialMaps {
 }
 
 function mapsFromPreset(id: string, preset: MaterialMaps): LoadedMaterialMaps {
-  const cached = cache.get(id);
+  const cacheKey =
+    id === 'charcoalCarpet'
+      ? `${id}:heather-v3`
+      : id === 'oatmealCarpet'
+        ? `${id}:heather-v1`
+        : id === 'greySpeckleCarpet'
+          ? `${id}:salt-v2`
+          : id;
+  const cached = cache.get(cacheKey);
   if (cached) {
     return {
       ...cached,
@@ -253,7 +360,7 @@ function mapsFromPreset(id: string, preset: MaterialMaps): LoadedMaterialMaps {
   const roughnessMap = imageDataToTexture(roughness, false, size);
 
   const entry = { map, normalMap, roughnessMap };
-  cache.set(id, entry);
+  cache.set(cacheKey, entry);
   return {
     ...entry,
     color: preset.color,

@@ -323,6 +323,10 @@ BEGIN
     SELECT NULLIF(trim(ri.blanket_texture_path), '') AS path
     FROM public.room_items ri
     WHERE ri.room_id = p_room_id
+    UNION
+    SELECT NULLIF(trim(ri.finish_texture_path), '') AS path
+    FROM public.room_items ri
+    WHERE ri.room_id = p_room_id
   ) paths
   WHERE path IS NOT NULL
     AND path !~* '^https?://'
@@ -563,6 +567,8 @@ BEGIN
     bed_leg_height, natural_w, natural_h, natural_d,
     sort_order, model_url,
     bedding_enabled, blanket_color, blanket_texture_path,
+    tint_color, finish_texture_path, mattress_color, top_color,
+    bedding_config,
     emitter, instance_key, hanging_config
   )
   SELECT
@@ -572,6 +578,8 @@ BEGIN
     bed_leg_height, natural_w, natural_h, natural_d,
     sort_order, model_url,
     bedding_enabled, blanket_color, blanket_texture_path,
+    tint_color, finish_texture_path, mattress_color, top_color,
+    bedding_config,
     emitter, instance_key, hanging_config
   FROM public.room_items
   WHERE room_id = room_row.id

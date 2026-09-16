@@ -15,7 +15,11 @@ export type MaterialPresetId =
   | 'lightOak'
   | 'darkOak'
   | 'carpet'
-  | 'whiteTrim';
+  | 'charcoalCarpet'
+  | 'greySpeckleCarpet'
+  | 'oatmealCarpet'
+  | 'whiteTrim'
+  | 'blackTrim';
 
 export interface MaterialMaps {
   /** Hex fallback / tint when no map is loaded. */
@@ -25,7 +29,7 @@ export interface MaterialMaps {
   /** Real-world tile size in inches for UV repeat. */
   repeatInches: number;
   /** Procedural texture seed / style. */
-  style: 'plaster' | 'concrete' | 'wood' | 'carpet' | 'paint' | 'trim';
+  style: 'plaster' | 'concrete' | 'wood' | 'carpet' | 'speckledCarpet' | 'greySpeckleCarpet' | 'oatmealCarpet' | 'paint' | 'trim';
   /** Optional subtle color variation amplitude 0..1. */
   variation?: number;
   /** Wood grain direction bias (radians in UV space). */
@@ -85,11 +89,11 @@ export const MATERIAL_PRESETS: Record<MaterialPresetId, MaterialMaps> = {
     attribution: 'Procedural light oak (original, CC0)',
   },
   darkOak: {
-    color: '#6b4a2e',
+    color: '#835a3a',
     roughness: 0.76,
     repeatInches: 24,
     style: 'wood',
-    variation: 0.07,
+    variation: 0.06,
     grainAngle: 0,
     attribution: 'Procedural dark oak (original, CC0)',
   },
@@ -101,12 +105,44 @@ export const MATERIAL_PRESETS: Record<MaterialPresetId, MaterialMaps> = {
     variation: 0.05,
     attribution: 'Procedural carpet (original, CC0)',
   },
+  charcoalCarpet: {
+    color: '#525c6e',
+    roughness: 0.98,
+    repeatInches: 12,
+    style: 'speckledCarpet',
+    variation: 0.06,
+    attribution: 'Procedural charcoal carpet (original, CC0)',
+  },
+  greySpeckleCarpet: {
+    color: '#b4b0aa',
+    roughness: 0.98,
+    repeatInches: 10,
+    style: 'greySpeckleCarpet',
+    variation: 0.035,
+    attribution: 'Procedural grey speckle carpet (original, CC0)',
+  },
+  oatmealCarpet: {
+    color: '#c8b8a0',
+    roughness: 0.98,
+    repeatInches: 12,
+    style: 'oatmealCarpet',
+    variation: 0.05,
+    attribution: 'Procedural oatmeal carpet (original, CC0)',
+  },
   whiteTrim: {
     color: '#f7f5f0',
     roughness: 0.55,
     repeatInches: 12,
     style: 'trim',
     variation: 0.01,
+    attribution: 'Procedural painted trim (original, CC0)',
+  },
+  blackTrim: {
+    color: '#1c1c1c',
+    roughness: 0.48,
+    repeatInches: 12,
+    style: 'trim',
+    variation: 0.008,
     attribution: 'Procedural painted trim (original, CC0)',
   },
 };
@@ -122,11 +158,14 @@ export const FLOOR_PRESET_OPTIONS: MaterialPresetId[] = [
   'lightOak',
   'darkOak',
   'carpet',
+  'charcoalCarpet',
+  'greySpeckleCarpet',
+  'oatmealCarpet',
 ];
 
 export const CEILING_PRESET_OPTIONS: MaterialPresetId[] = ['whiteCeiling', 'warmPlaster'];
 
-export const TRIM_PRESET_OPTIONS: MaterialPresetId[] = ['whiteTrim', 'warmPlaster'];
+export const TRIM_PRESET_OPTIONS: MaterialPresetId[] = ['whiteTrim', 'blackTrim', 'darkOak', 'warmPlaster'];
 
 export function isMaterialPresetId(v: unknown): v is MaterialPresetId {
   return typeof v === 'string' && v in MATERIAL_PRESETS;
@@ -150,8 +189,16 @@ export function materialLabel(id: MaterialPresetId): string {
       return 'Dark oak';
     case 'carpet':
       return 'Carpet';
+    case 'charcoalCarpet':
+      return 'Charcoal carpet';
+    case 'greySpeckleCarpet':
+      return 'Grey speckle carpet';
+    case 'oatmealCarpet':
+      return 'Oatmeal carpet';
     case 'whiteTrim':
       return 'White trim';
+    case 'blackTrim':
+      return 'Black trim';
     default:
       return id;
   }

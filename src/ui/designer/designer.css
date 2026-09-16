@@ -2167,6 +2167,29 @@
 .dg-swatch.is-active { outline: 2px solid var(--accent); outline-offset: 2px; }
 .dg-swatch-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 
+.dg-finish-photo { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.dg-finish-photo__input {
+  position: absolute;
+  width: 1px; height: 1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0);
+}
+.dg-finish-photo__preview {
+  width: 100%; height: 84px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--rule-soft);
+  background: var(--paper-1);
+}
+.dg-finish-photo__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.dg-finish-photo__hint,
+.dg-finish-photo__error {
+  margin: 0;
+  font: 400 12px/1.5 var(--font-sans);
+  color: var(--ink-4);
+  text-wrap: pretty;
+}
+.dg-finish-photo__error { color: var(--danger); }
+
 .dg-hang-palette { display: flex; flex-direction: column; gap: 10px; }
 .dg-hang-palette__presets { display: flex; flex-wrap: wrap; gap: 6px; }
 .dg-hang-palette__preset {
@@ -2218,8 +2241,36 @@
   background: linear-gradient(160deg, #b8b4ae, #8e8a84);
 }
 .dg-mat-card__preview--lightOak { background: linear-gradient(160deg, #d9c7a8, #c0a87f); }
-.dg-mat-card__preview--darkOak { background: linear-gradient(160deg, #9c8265, #75604a); }
+.dg-mat-card__preview--darkOak { background: linear-gradient(160deg, #b49472, #8a6848); }
 .dg-mat-card__preview--carpet { background: linear-gradient(160deg, #cfc7ba, #ada298); }
+.dg-mat-card__preview--charcoalCarpet {
+  background:
+    radial-gradient(circle at 12% 18%, #b8bec8 0.45px, transparent 0.55px),
+    radial-gradient(circle at 44% 62%, #98a2b0 0.4px, transparent 0.5px),
+    radial-gradient(circle at 78% 34%, #d0d4da 0.35px, transparent 0.45px),
+    radial-gradient(circle at 28% 82%, #7a8494 0.4px, transparent 0.5px),
+    linear-gradient(155deg, #687080, #525c6e);
+  background-size: 5px 5px, 6px 6px, 7px 7px, 8px 8px, 100% 100%;
+}
+.dg-mat-card__preview--oatmealCarpet {
+  background:
+    radial-gradient(circle at 14% 22%, #d8cec0 0.45px, transparent 0.55px),
+    radial-gradient(circle at 48% 58%, #b8a894 0.4px, transparent 0.5px),
+    radial-gradient(circle at 72% 36%, #ebe4d8 0.35px, transparent 0.45px),
+    radial-gradient(circle at 32% 78%, #9a8c78 0.4px, transparent 0.5px),
+    linear-gradient(155deg, #d4c4ae, #c8b8a0);
+  background-size: 5px 5px, 6px 6px, 7px 7px, 8px 8px, 100% 100%;
+}
+.dg-mat-card__preview--greySpeckleCarpet {
+  background:
+    radial-gradient(circle at 10% 16%, #f2f0ec 0.4px, transparent 0.5px),
+    radial-gradient(circle at 38% 54%, #8e8a84 0.42px, transparent 0.52px),
+    radial-gradient(circle at 66% 28%, #ccc8c2 0.38px, transparent 0.48px),
+    radial-gradient(circle at 24% 74%, #6a6662 0.4px, transparent 0.5px),
+    radial-gradient(circle at 82% 68%, #e4e0da 0.35px, transparent 0.45px),
+    linear-gradient(155deg, #c4c0ba, #b0aca6);
+  background-size: 4px 4px, 5px 5px, 6px 6px, 7px 7px, 8px 8px, 100% 100%;
+}
 .dg-mat-card__preview--concrete { background: linear-gradient(160deg, #b8b4ae, #8e8a84); }
 .dg-mat-card__label {
   font: 500 10px/1 var(--font-sans);

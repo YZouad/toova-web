@@ -1505,7 +1505,7 @@ BEGIN
         ) AS activity(ts)
       ),
       'last_sign_in_at', au.last_sign_in_at,
-      'plan', 'free'
+      'plan', CASE WHEN public.is_admin(p.id) THEN 'pro' ELSE 'free' END
     ),
     'rooms', COALESCE((
       SELECT jsonb_agg(

@@ -31,6 +31,7 @@ import {
   type RoomAttributionPayload,
 } from '../lib/profiles';
 import { mirrorRoomAssets } from '../lib/publicModelsMirror';
+import { texturePathsToSign, assignSignedTextureUrl, storedTexturePaths } from '../lib/furnitureFinish';
 import type { Item, RoomEnvironment } from '../store';
 import { DEFAULT_ENVIRONMENT, useStore } from '../store';
 
@@ -121,15 +122,9 @@ export async function loadRoomLayout(roomId: string): Promise<RoomLoadResult> {
           item.importedUrl = url;
         }
       }
-      if (
-        item.kind === 'bed' &&
-        item.blanketTexturePath &&
-        !item.blanketTextureUrl
-      ) {
-        const signed = await signModelObjectPath(item.blanketTexturePath);
-        if (signed) {
-          item.blanketTextureUrl = signed;
-        }
+      for (const texturePath of texturePathsToSign(item)) {
+        const signed = await signModelObjectPath(texturePath);
+        if (signed) assignSignedTextureUrl(item, texturePath, signed);
       }
     }),
   );
@@ -165,12 +160,23 @@ export async function loadSharedRoomLayout(token: string): Promise<SharedRoomLoa
         publicModelAssetUrl(item.importedStoragePath) ??
         signedAssets[item.importedStoragePath];
     }
-    if (item.kind === 'bed' && item.blanketTexturePath) {
-      const signed = signedAssets[item.blanketTexturePath];
-      if (signed) item.blanketTextureUrl = signed;
+    for (const texturePath of storedTexturePaths(item)) {
+      const signed = signedAssets[texturePath];
+      if (signed) assignSignedTextureUrl(item, texturePath, signed);
     }
     items.push(item);
     order.push(item.id);
+  }
+
+  const extraSharePaths = items.flatMap(storedTexturePaths).filter((p) => !signedAssets[p]);
+  if (extraSharePaths.length) {
+    Object.assign(signedAssets, await signGrantedAssetPaths(extraSharePaths));
+    for (const item of items) {
+      for (const texturePath of storedTexturePaths(item)) {
+        const signed = signedAssets[texturePath];
+        if (signed) assignSignedTextureUrl(item, texturePath, signed);
+      }
+    }
   }
 
   applyCatalogSizes(items, catalogDimsFromRpc(payload.catalog_dims));
@@ -250,16 +256,31 @@ export async function loadPublicRoomLayout(
         overrides,
       );
     }
-    if (item.kind === 'bed' && item.blanketTexturePath) {
+    for (const texturePath of storedTexturePaths(item)) {
       const url = resolveRoomAssetUrl(
-        item.blanketTexturePath,
+        texturePath,
         signedAssets,
         overrides,
       );
-      if (url) item.blanketTextureUrl = url;
+      if (url) assignSignedTextureUrl(item, texturePath, url);
     }
     items.push(item);
     order.push(item.id);
+  }
+
+  const extraPublicPaths = items.flatMap(storedTexturePaths).filter((p) => {
+    if (signedAssets[p] || overrides[p]) return false;
+    if (publicModelAssetUrl(p)) return false;
+    return true;
+  });
+  if (extraPublicPaths.length) {
+    Object.assign(signedAssets, await signPublicRoomAssetPaths(extraPublicPaths));
+    for (const item of items) {
+      for (const texturePath of storedTexturePaths(item)) {
+        const url = resolveRoomAssetUrl(texturePath, signedAssets, overrides);
+        if (url) assignSignedTextureUrl(item, texturePath, url);
+      }
+    }
   }
 
   applyCatalogSizes(items, catalogDimsFromRpc(payload.catalog_dims));

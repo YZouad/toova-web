@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { lampMinHeight } from './furniture/lampGeometry';
 import { DEFAULT_SHELF_COLOR, FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE, isWallShelfKind } from './furniture/registry';
+import { itemUsesCustomFinish, itemUsesTintColor } from './lib/furnitureFinish';
 import { defaultWallShelfPose, findValidElevation, resolveValidXZ, settleGravity, validatePlacement } from './interaction/collision';
 import { trackDesignItemAdded } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
@@ -183,12 +184,20 @@ export interface Item {
   beddingEnabled?: boolean;
   /** Hex color for blanket when bedding is enabled. */
   blanketColor?: string;
-  /** Hex tint for recolorable imports (checklist rug) and the wall shelf. */
+  /** Hex tint for recolorable imports, the wall shelf, and built-in wood furniture. */
   tintColor?: string;
+  /** Hex color for the builtin bed mattress (not sheets/comforter). */
+  mattressColor?: string;
+  /** Hex color for a dresser top that differs from the base. */
+  topColor?: string;
   /** Supabase Storage path for blanket pattern image (`model-files` bucket). */
   blanketTexturePath?: string;
   /** Signed URL for blanket texture (runtime only; not persisted). */
   blanketTextureUrl?: string;
+  /** Supabase Storage path for a photo wrap on built-in furniture (`model-files` bucket). */
+  finishTexturePath?: string;
+  /** Signed URL for the furniture photo wrap (runtime only; not persisted). */
+  finishTextureUrl?: string;
   /** Modular bedding layers (topper, sheets, comforter, pillows). */
   beddingConfig?: BeddingConfig;
   emitter?: EmitterConfig;
@@ -294,7 +303,13 @@ interface StoreState {
   setBeddingConfig: (id: string, patch: BeddingConfigPatch) => void;
   setBlanketColor: (id: string, hex: string) => void;
   setTintColor: (id: string, hex: string) => void;
+  setMattressColor: (id: string, hex: string) => void;
+  setTopColor: (id: string, hex: string) => void;
   setBlanketTexture: (
+    id: string,
+    tex: { path: string; url: string } | null,
+  ) => void;
+  setFinishTexture: (
     id: string,
     tex: { path: string; url: string } | null,
   ) => void;
@@ -1024,8 +1039,22 @@ export const useStore = create<StoreState>((set, get) => ({
   setTintColor: (id, hex) =>
     set((s) => {
       const it = s.items[id];
-      if (!it || (it.kind !== 'imported' && it.kind !== 'shelf')) return s;
+      if (!it || !itemUsesTintColor(it.kind)) return s;
       return { items: { ...s.items, [id]: { ...it, tintColor: hex } } };
+    }),
+
+  setMattressColor: (id, hex) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'bed') return s;
+      return { items: { ...s.items, [id]: { ...it, mattressColor: hex } } };
+    }),
+
+  setTopColor: (id, hex) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'dresser') return s;
+      return { items: { ...s.items, [id]: { ...it, topColor: hex } } };
     }),
 
   setBlanketTexture: (id, tex) =>
@@ -1051,6 +1080,34 @@ export const useStore = create<StoreState>((set, get) => ({
             ...it,
             blanketTexturePath: tex.path,
             blanketTextureUrl: tex.url,
+          },
+        },
+      };
+    }),
+
+  setFinishTexture: (id, tex) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || !itemUsesCustomFinish(it.kind)) return s;
+      if (!tex) {
+        return {
+          items: {
+            ...s.items,
+            [id]: {
+              ...it,
+              finishTexturePath: undefined,
+              finishTextureUrl: undefined,
+            },
+          },
+        };
+      }
+      return {
+        items: {
+          ...s.items,
+          [id]: {
+            ...it,
+            finishTexturePath: tex.path,
+            finishTextureUrl: tex.url,
           },
         },
       };

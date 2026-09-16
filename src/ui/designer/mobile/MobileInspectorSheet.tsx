@@ -12,14 +12,13 @@ import {
   resolveBeddingConfig,
 } from '../../../lib/bedding/config';
 import type { BeddingConfigPatch } from '../../../lib/bedding/types';
-import { DEFAULT_SHELF_COLOR, SHELF_COLOR_SWATCHES } from '../../../furniture/registry';
-import { DEFAULT_RUG_COLOR, isChecklistRug } from '../../../lib/checklistPublicGlbs';
 import { proportionalSizesFromMaxSide } from '../../../lib/uniformItemSize';
 import { planBounds } from '../../../lib/roomGeometry';
 import { useAuth } from '../../../hooks/useAuth';
 import { useCatalogThrixelLinked } from '../../../hooks/useCatalogThrixelLinked';
 import { DEFAULT_EMITTER, useStore } from '../../../store';
 import type { InspectorTab } from '../chromeTypes';
+import { FinishTab } from '../FinishEditor';
 import { HangingPaletteEditor } from '../HangingPaletteEditor';
 import { InspectorThrixelReviseSection } from '../InspectorThrixelReviseSection';
 import { inspectorTabsForKind } from '../inspectorTabs';
@@ -52,7 +51,6 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
   const setItemElevation = useStore((s) => s.setItemElevation);
   const setWallMounted = useStore((s) => s.setWallMounted);
   const setBedHeight = useStore((s) => s.setBedHeight);
-  const setTintColor = useStore((s) => s.setTintColor);
   const setBeddingConfig = useStore((s) => s.setBeddingConfig);
   const setHangingConfig = useStore((s) => s.setHangingConfig);
   const setEmitterConfig = useStore((s) => s.setEmitterConfig);
@@ -257,7 +255,7 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
         ) : null}
 
         {tab === 'finish' && isFurniture ? (
-          <MobileFinishTab item={item} onTint={(hex) => setTintColor(item.id, hex)} />
+          <FinishTab item={item} compact />
         ) : null}
 
         {tab === 'path' && isHanging && hang ? (
@@ -597,65 +595,5 @@ function MobileBeddingTab({
         ) : null}
       </section>
     </div>
-  );
-}
-
-function MobileFinishTab({
-  item,
-  onTint,
-}: {
-  item: NonNullable<ReturnType<typeof useStore.getState>['items'][string]>;
-  onTint: (hex: string) => void;
-}) {
-  const isShelf = item.kind === 'shelf';
-  const isRug = item.kind === 'imported' && isChecklistRug(item);
-  const canTint = isShelf || isRug || item.kind === 'imported';
-
-  if (!canTint) {
-    return (
-      <p className="dgm-note">
-        Finish options depend on the piece. Built-in furniture keeps its materials.
-      </p>
-    );
-  }
-
-  const swatches = isShelf
-    ? SHELF_COLOR_SWATCHES
-    : [
-        { label: 'Natural', color: DEFAULT_RUG_COLOR },
-        { label: 'Sage', color: '#6b7f6a' },
-        { label: 'Terracotta', color: '#C98A6B' },
-        { label: 'Charcoal', color: '#3a3a3a' },
-        { label: 'Cream', color: '#FBF7F0' },
-      ];
-  const current = item.tintColor ?? (isShelf ? DEFAULT_SHELF_COLOR : DEFAULT_RUG_COLOR);
-
-  return (
-    <section className="dgm-section">
-      <h3 className="dgm-section-title">Frame color</h3>
-      <div className="dgm-swatch-row">
-        {swatches.map((s) => (
-          <button
-            key={s.color}
-            type="button"
-            className={`dgm-swatch${current.toLowerCase() === s.color.toLowerCase() ? ' is-active' : ''}`}
-            style={{ background: s.color }}
-            title={s.label}
-            aria-label={s.label}
-            onClick={() => onTint(s.color)}
-          />
-        ))}
-        <input
-          type="color"
-          className="dgm-color-input"
-          value={current.length === 7 ? current : '#a98662'}
-          onChange={(e) => onTint(e.target.value)}
-          aria-label="Custom tint"
-        />
-      </div>
-      {item.kind === 'imported' && !isRug ? (
-        <p className="dgm-note">Imported models keep their own materials; tint multiplies the mesh color.</p>
-      ) : null}
-    </section>
   );
 }

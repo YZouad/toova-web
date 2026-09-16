@@ -275,7 +275,7 @@ function AppContent() {
       auth_method: authMethod,
       role: isAdmin ? 'admin' : 'user',
       is_guest: false,
-      subscription_tier: 'free',
+      subscription_tier: isAdmin ? 'pro' : 'free',
       created_at: user.created_at,
     });
   }, [user, isAdmin, adminStatsLoading]);

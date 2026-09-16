@@ -8,7 +8,7 @@ import { shouldStandImportedUpright, standUpRotationAxis } from '../lib/imported
 import { SelectionOutline } from './SelectionOutline';
 
 /** Bump to remount loaded GLBs after material-pass changes (useGLTF cache is sticky). */
-const IMPORT_MATERIAL_PASS = 19;
+const IMPORT_MATERIAL_PASS = 20;
 
 interface Props {
   item: Item;

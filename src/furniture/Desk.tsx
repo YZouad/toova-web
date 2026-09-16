@@ -1,5 +1,6 @@
 import { Item } from '../store';
 import { SelectionOutline } from './SelectionOutline';
+import { useFurnitureFinish } from './useFurnitureFinish';
 
 const TOP = '#8a6440';
 const LEG = '#2e261e';
@@ -15,6 +16,7 @@ export function Desk({ item, selected, invalid }: Props) {
   const legSize = 1.75;
   const legH = h - topT;
   const inset = 2;
+  const finish = useFurnitureFinish(item, TOP);
 
   const legPositions: [number, number][] = [
     [-w / 2 + inset + legSize / 2, -d / 2 + inset + legSize / 2],
@@ -31,10 +33,9 @@ export function Desk({ item, selected, invalid }: Props) {
           <meshStandardMaterial color={LEG} roughness={0.6} />
         </mesh>
       ))}
-      {/* tabletop */}
       <mesh position={[0, legH + topT / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[w, topT, d]} />
-        <meshStandardMaterial color={TOP} roughness={0.6} />
+        <meshStandardMaterial color={finish.color} map={finish.map ?? undefined} roughness={0.6} />
       </mesh>
       {selected && <SelectionOutline size={[w, h, d]} color={invalid ? '#ff5555' : '#4f8cff'} />}
     </group>
