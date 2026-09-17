@@ -169,16 +169,16 @@ function paintAlbedo(
           break;
         }
         case 'speckledCarpet': {
-          // Dense heathered dorm carpet: medium charcoal yarns with lighter speckles.
+          // Dense heathered dorm carpet: medium grey yarns with lighter speckles.
           const yarns: [number, number, number][] = [
-            [58, 64, 74],
-            [72, 78, 90],
-            [86, 92, 104],
-            [100, 106, 118],
-            [116, 122, 132],
-            [132, 138, 146],
-            [154, 158, 166],
-            [182, 186, 192],
+            [98, 104, 114],
+            [112, 118, 128],
+            [126, 132, 142],
+            [140, 146, 156],
+            [156, 162, 172],
+            [172, 178, 186],
+            [192, 196, 204],
+            [214, 218, 224],
           ];
           ({ r, g, b, n } = paintSpeckledCarpetRgb(u, v, seed, yarns));
           break;
@@ -199,18 +199,40 @@ function paintAlbedo(
           break;
         }
         case 'greySpeckleCarpet': {
-          // Salt-and-pepper commercial carpet: charcoal, grey, and off-white flecks.
+          // Salt-and-pepper commercial carpet: light grey and off-white flecks.
           const yarns: [number, number, number][] = [
-            [78, 76, 74],
-            [102, 100, 96],
-            [126, 122, 118],
-            [150, 146, 140],
-            [174, 170, 164],
-            [196, 192, 186],
-            [214, 210, 204],
-            [232, 228, 222],
+            [128, 126, 122],
+            [148, 146, 142],
+            [168, 164, 160],
+            [186, 182, 178],
+            [204, 200, 196],
+            [218, 214, 210],
+            [232, 228, 224],
+            [244, 242, 238],
           ];
           ({ r, g, b, n } = paintSpeckledCarpetRgb(u, v, seed, yarns, 128, 1.1));
+          break;
+        }
+        case 'plaidCarpet': {
+          // Woven dorm carpet: charcoal base with soft light-grey grid lines.
+          const weave = (fbmSeamless(u, v, seed, 8, 3) - 0.5) * 0.08;
+          const hf = (v * 36) % 1;
+          const vf = (u * 18) % 1;
+          const hDist = Math.min(hf, 1 - hf) * 2;
+          const vDist = Math.min(vf, 1 - vf) * 2;
+          const hLine = Math.max(0, 1 - hDist / 0.055);
+          const vLine = Math.max(0, 1 - vDist / 0.085) * 0.82;
+          const line = Math.max(hLine, vLine);
+          const baseR = 132;
+          const baseG = 134;
+          const baseB = 140;
+          const lineR = 210;
+          const lineG = 214;
+          const lineB = 218;
+          r = Math.round(baseR + weave * 255 + (lineR - baseR) * line);
+          g = Math.round(baseG + weave * 255 + (lineG - baseG) * line);
+          b = Math.round(baseB + weave * 255 + (lineB - baseB) * line);
+          n = 0.45 + weave + line * 0.35;
           break;
         }
       }
@@ -220,7 +242,8 @@ function paintAlbedo(
       if (
         preset.style === 'speckledCarpet' ||
         preset.style === 'oatmealCarpet' ||
-        preset.style === 'greySpeckleCarpet'
+        preset.style === 'greySpeckleCarpet' ||
+        preset.style === 'plaidCarpet'
       ) {
         img.data[i] = Math.max(0, Math.min(255, r));
         img.data[i + 1] = Math.max(0, Math.min(255, g));
@@ -259,7 +282,8 @@ function paintNormalRoughness(
         : preset.style === 'carpet' ||
             preset.style === 'speckledCarpet' ||
             preset.style === 'oatmealCarpet' ||
-            preset.style === 'greySpeckleCarpet'
+            preset.style === 'greySpeckleCarpet' ||
+            preset.style === 'plaidCarpet'
           ? 3
           : 1.1;
 
@@ -330,12 +354,16 @@ export interface LoadedMaterialMaps {
 function mapsFromPreset(id: string, preset: MaterialMaps): LoadedMaterialMaps {
   const cacheKey =
     id === 'charcoalCarpet'
-      ? `${id}:heather-v3`
+      ? `${id}:heather-v4`
       : id === 'oatmealCarpet'
         ? `${id}:heather-v1`
         : id === 'greySpeckleCarpet'
-          ? `${id}:salt-v2`
-          : id;
+          ? `${id}:salt-v3`
+          : id === 'plaidCarpet'
+            ? `${id}:grid-v2`
+            : id === 'carpet'
+              ? `${id}:loop-v2`
+              : id;
   const cached = cache.get(cacheKey);
   if (cached) {
     return {

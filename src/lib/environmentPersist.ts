@@ -1,6 +1,11 @@
 import type { Weather } from './environment';
 import type { RoomEnvironment } from '../store';
-import { DEFAULT_APPEARANCE, parseAppearance, type RoomAppearance } from './roomAppearance';
+import {
+  DEFAULT_APPEARANCE,
+  parseAppearance,
+  serializeAppearance,
+  type RoomAppearance,
+} from './roomAppearance';
 
 const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 const wrapDeg = (deg: number) => ((deg % 360) + 360) % 360;
@@ -53,6 +58,6 @@ export function serializeEnvironment(env: RoomEnvironment): Record<string, unkno
     weather: env.weather,
     godRays: env.godRays,
     shadowRoof: env.shadowRoof,
-    appearance: env.appearance,
+    appearance: serializeAppearance(env.appearance),
   };
 }

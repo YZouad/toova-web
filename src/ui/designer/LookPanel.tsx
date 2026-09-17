@@ -1,9 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useAuth } from '../../hooks/useAuth';
 import {
   WALL_COLOR_SWATCHES,
   uniqueWallLabels,
   wallPaintColor,
 } from '../../lib/roomAppearance';
+import { removeFloorTexture, uploadFloorTexture } from '../../lib/roomFloorStorage';
 import { allWallSegments } from '../../lib/roomGeometry';
 import {
   FLOOR_PRESET_OPTIONS,
@@ -32,7 +34,14 @@ export function LookPanel({ compact, onClose }: LookPanelProps) {
     >
       <WallPaintControls compact={false} />
 
-      <PanelSection title="Flooring" meta={materialLabel(appearance.floorPreset)}>
+      <PanelSection
+        title="Flooring"
+        meta={
+          appearance.floorTexturePath
+            ? 'Custom photo'
+            : materialLabel(appearance.floorPreset)
+        }
+      >
         <div className="dg-mat-grid">
           {FLOOR_PRESET_OPTIONS.map((id) => (
             <button
@@ -46,6 +55,7 @@ export function LookPanel({ compact, onClose }: LookPanelProps) {
             </button>
           ))}
         </div>
+        <FloorTextureControls compact={false} />
       </PanelSection>
 
       <PanelSection title="Trim & baseboards" meta={materialLabel(appearance.trimPreset)}>
@@ -76,6 +86,113 @@ export function LookPanel({ compact, onClose }: LookPanelProps) {
 
       <p className="dg-note">Changing the look never moves your furniture.</p>
     </PanelShell>
+  );
+}
+
+export function FloorTextureControls({ compact }: { compact: boolean }) {
+  const { user } = useAuth();
+  const appearance = useStore((s) => s.environment.appearance);
+  const setFloorTexture = useStore((s) => s.setFloorTexture);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const hasPhoto = Boolean(appearance.floorTextureUrl || appearance.floorTexturePath);
+
+  const onPick = async (file: File | undefined) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Choose a jpg, png, or webp.');
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const uploaded = await uploadFloorTexture(file);
+      const oldPath = appearance.floorTexturePath;
+      setFloorTexture({ path: uploaded.path, url: uploaded.signedUrl });
+      if (oldPath && oldPath !== uploaded.path) {
+        void removeFloorTexture(oldPath).catch(() => undefined);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not upload texture');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const onRemove = () => {
+    const oldPath = appearance.floorTexturePath;
+    setFloorTexture(null);
+    if (oldPath) void removeFloorTexture(oldPath).catch(() => undefined);
+  };
+
+  const photo = (
+    <div className="dg-finish-photo">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        className="dg-finish-photo__input"
+        disabled={busy || !user}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          void onPick(file);
+        }}
+      />
+      {hasPhoto && appearance.floorTextureUrl ? (
+        <img src={appearance.floorTextureUrl} alt="Floor texture" className="dg-finish-photo__preview" />
+      ) : null}
+      <div className="dg-finish-photo__actions">
+        <button
+          type="button"
+          className={compact ? 'dgm-action-btn' : 'dg-footer-btn'}
+          disabled={busy || !user}
+          onClick={() => inputRef.current?.click()}
+        >
+          {busy ? 'Uploading…' : hasPhoto ? 'Replace photo' : 'Upload photo'}
+        </button>
+        {hasPhoto ? (
+          <button
+            type="button"
+            className={compact ? 'dgm-action-btn' : 'dg-footer-btn'}
+            disabled={busy}
+            onClick={onRemove}
+          >
+            Remove
+          </button>
+        ) : null}
+      </div>
+      <p className={compact ? 'dgm-note' : 'dg-finish-photo__hint'}>
+        {user
+          ? 'Use a photo of real carpet or flooring. A flat, even shot tiles best across the room.'
+          : 'Sign in to wrap the floor with a photo of real carpet or flooring.'}
+      </p>
+      {error ? (
+        <p className={compact ? 'dgm-note' : 'dg-finish-photo__error'} role="status">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+
+  if (compact) {
+    return (
+      <section className="dgm-section">
+        <h3 className="dgm-section-title">Floor photo</h3>
+        {photo}
+      </section>
+    );
+  }
+
+  return (
+    <div style={{ marginTop: 12 }}>
+      <p className="dg-row__label" style={{ margin: '0 0 8px' }}>
+        Floor photo
+      </p>
+      {photo}
+    </div>
   );
 }
 

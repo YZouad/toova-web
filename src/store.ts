@@ -1,7 +1,11 @@
 import { create } from 'zustand';
 import { lampMinHeight } from './furniture/lampGeometry';
 import { DEFAULT_SHELF_COLOR, FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE, isWallShelfKind } from './furniture/registry';
-import { itemUsesCustomFinish, itemUsesTintColor } from './lib/furnitureFinish';
+import {
+  itemSupportsTopColor,
+  itemUsesCustomFinish,
+  itemUsesTintColor,
+} from './lib/furnitureFinish';
 import { defaultWallShelfPose, findValidElevation, resolveValidXZ, settleGravity, validatePlacement } from './interaction/collision';
 import { trackDesignItemAdded } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
@@ -243,6 +247,7 @@ interface StoreState {
   setShadowRoof: (on: boolean) => void;
   setAppearance: (patch: Partial<RoomAppearance>) => void;
   setAppearanceFull: (appearance: RoomAppearance) => void;
+  setFloorTexture: (tex: { path: string; url: string } | null) => void;
   /** Paint every wall, or one wall when `wallId` is set. */
   setWallPaint: (color: string, wallId?: string | null) => void;
   selectWall: (wallId: string | null) => void;
@@ -468,6 +473,17 @@ export const useStore = create<StoreState>((set, get) => ({
   setAppearanceFull: (appearance) =>
     set((s) => ({
       environment: { ...s.environment, appearance: parseAppearance(appearance) },
+    })),
+  setFloorTexture: (tex) =>
+    set((s) => ({
+      environment: {
+        ...s.environment,
+        appearance: {
+          ...s.environment.appearance,
+          floorTexturePath: tex?.path ?? undefined,
+          floorTextureUrl: tex?.url ?? undefined,
+        },
+      },
     })),
   setWallPaint: (color, wallId) =>
     set((s) => ({
@@ -1053,7 +1069,7 @@ export const useStore = create<StoreState>((set, get) => ({
   setTopColor: (id, hex) =>
     set((s) => {
       const it = s.items[id];
-      if (!it || it.kind !== 'dresser') return s;
+      if (!it || !itemSupportsTopColor(it)) return s;
       return { items: { ...s.items, [id]: { ...it, topColor: hex } } };
     }),
 

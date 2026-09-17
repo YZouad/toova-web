@@ -1,6 +1,6 @@
 import { FLOOR_PRESET_OPTIONS, materialLabel } from '../../../lib/roomMaterials';
 import { useStore } from '../../../store';
-import { WallPaintControls } from '../LookPanel';
+import { FloorTextureControls, WallPaintControls } from '../LookPanel';
 import { MobileSheet } from './MobileSheet';
 
 export interface MobileLookSheetProps {
@@ -34,6 +34,7 @@ export function MobileLookSheet({ onClose }: MobileLookSheetProps) {
             </button>
           ))}
         </div>
+        <FloorTextureControls compact />
       </section>
 
       <p className="dgm-note">Changing the look never moves your furniture.</p>

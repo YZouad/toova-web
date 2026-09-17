@@ -57,7 +57,11 @@ export function Room({ interactive = true }: { interactive?: boolean }) {
   return (
     <group>
       <OrbitCutawaySync geom={geom} />
-      <FloorMesh geom={geom} preset={appearance.floorPreset} />
+      <FloorMesh
+        geom={geom}
+        preset={appearance.floorPreset}
+        textureUrl={appearance.floorTextureUrl}
+      />
       <CeilingMesh
         geom={geom}
         preset={appearance.ceilingPreset}

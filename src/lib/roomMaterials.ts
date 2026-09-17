@@ -18,6 +18,7 @@ export type MaterialPresetId =
   | 'charcoalCarpet'
   | 'greySpeckleCarpet'
   | 'oatmealCarpet'
+  | 'plaidCarpet'
   | 'whiteTrim'
   | 'blackTrim';
 
@@ -29,7 +30,7 @@ export interface MaterialMaps {
   /** Real-world tile size in inches for UV repeat. */
   repeatInches: number;
   /** Procedural texture seed / style. */
-  style: 'plaster' | 'concrete' | 'wood' | 'carpet' | 'speckledCarpet' | 'greySpeckleCarpet' | 'oatmealCarpet' | 'paint' | 'trim';
+  style: 'plaster' | 'concrete' | 'wood' | 'carpet' | 'speckledCarpet' | 'greySpeckleCarpet' | 'oatmealCarpet' | 'plaidCarpet' | 'paint' | 'trim';
   /** Optional subtle color variation amplitude 0..1. */
   variation?: number;
   /** Wood grain direction bias (radians in UV space). */
@@ -98,7 +99,7 @@ export const MATERIAL_PRESETS: Record<MaterialPresetId, MaterialMaps> = {
     attribution: 'Procedural dark oak (original, CC0)',
   },
   carpet: {
-    color: '#8a7a68',
+    color: '#b8a898',
     roughness: 0.98,
     repeatInches: 18,
     style: 'carpet',
@@ -106,7 +107,7 @@ export const MATERIAL_PRESETS: Record<MaterialPresetId, MaterialMaps> = {
     attribution: 'Procedural carpet (original, CC0)',
   },
   charcoalCarpet: {
-    color: '#525c6e',
+    color: '#788498',
     roughness: 0.98,
     repeatInches: 12,
     style: 'speckledCarpet',
@@ -114,7 +115,7 @@ export const MATERIAL_PRESETS: Record<MaterialPresetId, MaterialMaps> = {
     attribution: 'Procedural charcoal carpet (original, CC0)',
   },
   greySpeckleCarpet: {
-    color: '#b4b0aa',
+    color: '#d4d0ca',
     roughness: 0.98,
     repeatInches: 10,
     style: 'greySpeckleCarpet',
@@ -128,6 +129,14 @@ export const MATERIAL_PRESETS: Record<MaterialPresetId, MaterialMaps> = {
     style: 'oatmealCarpet',
     variation: 0.05,
     attribution: 'Procedural oatmeal carpet (original, CC0)',
+  },
+  plaidCarpet: {
+    color: '#949aa4',
+    roughness: 0.97,
+    repeatInches: 14,
+    style: 'plaidCarpet',
+    variation: 0.03,
+    attribution: 'Procedural plaid carpet (original, CC0)',
   },
   whiteTrim: {
     color: '#f7f5f0',
@@ -161,6 +170,7 @@ export const FLOOR_PRESET_OPTIONS: MaterialPresetId[] = [
   'charcoalCarpet',
   'greySpeckleCarpet',
   'oatmealCarpet',
+  'plaidCarpet',
 ];
 
 export const CEILING_PRESET_OPTIONS: MaterialPresetId[] = ['whiteCeiling', 'warmPlaster'];
@@ -195,6 +205,8 @@ export function materialLabel(id: MaterialPresetId): string {
       return 'Grey speckle carpet';
     case 'oatmealCarpet':
       return 'Oatmeal carpet';
+    case 'plaidCarpet':
+      return 'Plaid carpet';
     case 'whiteTrim':
       return 'White trim';
     case 'blackTrim':

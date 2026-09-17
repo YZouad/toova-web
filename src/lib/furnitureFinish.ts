@@ -1,5 +1,7 @@
 import type { FurnitureKind } from '../furniture/registry';
 import { DEFAULT_SHELF_COLOR } from '../furniture/registry';
+import { importedDualToneFurniture } from './importedDualTone';
+import type { Item } from '../store';
 
 /** Built-in wood pieces that can take a tint and a photo wrap. */
 export const CUSTOM_FINISH_KINDS = [
@@ -78,12 +80,27 @@ export function mattressColor(hex?: string): string {
 }
 
 export function itemUsesTopColor(kind: FurnitureKind): boolean {
-  return kind === 'dresser';
+  return kind === 'dresser' || kind === 'desk';
 }
 
-/** Dresser top matches the base until the user picks a separate color. */
-export function dresserTopColor(hex: string | undefined, bodyColor: string): string {
-  return hex ?? bodyColor;
+/** Built-in or imported furniture with an independent top / desktop color. */
+export function itemSupportsTopColor(
+  item: Pick<Item, 'kind' | 'label' | 'catalogKind'>,
+): boolean {
+  return itemUsesTopColor(item.kind) || importedDualToneFurniture(item);
+}
+
+export const DEFAULT_LAMINATE_TOP = '#e8d8b0';
+
+/** Separate laminate top — defaults to beige until the user picks a color. */
+export function furnitureTopColor(
+  kind: 'dresser' | 'desk',
+  hex: string | undefined,
+  bodyColor: string,
+): string {
+  if (hex) return hex;
+  if (kind === 'dresser' || kind === 'desk') return DEFAULT_LAMINATE_TOP;
+  return bodyColor;
 }
 
 export function finishColor(item: Pick<FinishItem, 'kind' | 'tintColor'>, fallback?: string): string {

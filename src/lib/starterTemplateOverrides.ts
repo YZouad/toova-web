@@ -38,6 +38,11 @@ export interface StarterTemplateOverride {
     wallColor?: string;
     wallColors?: Record<string, string>;
     floorPreset?: MaterialPresetId;
+    trimPreset?: MaterialPresetId;
+    ceilingPreset?: MaterialPresetId;
+    floorTexturePath?: string;
+    showBaseboards?: boolean;
+    showCeiling?: boolean;
     recessedLights?: boolean;
   };
   floorItems?: StarterFloorSeed[];
@@ -237,6 +242,11 @@ export function overrideFromDesignerState(input: {
       wallColor: appearance.wallColor,
       ...(appearance.wallColors ? { wallColors: { ...appearance.wallColors } } : {}),
       floorPreset: appearance.floorPreset,
+      trimPreset: appearance.trimPreset,
+      ceilingPreset: appearance.ceilingPreset,
+      ...(appearance.floorTexturePath ? { floorTexturePath: appearance.floorTexturePath } : {}),
+      showBaseboards: appearance.showBaseboards,
+      showCeiling: appearance.showCeiling,
       recessedLights: appearance.recessedLights,
     },
     floorItems,
@@ -336,6 +346,13 @@ export function parseStarterOverride(raw: unknown): StarterTemplateOverride {
     const wallColors = parseWallColors(a.wallColors);
     if (wallColors) appearance.wallColors = wallColors;
     if (isMaterialPresetId(a.floorPreset)) appearance.floorPreset = a.floorPreset;
+    if (isMaterialPresetId(a.trimPreset)) appearance.trimPreset = a.trimPreset;
+    if (isMaterialPresetId(a.ceilingPreset)) appearance.ceilingPreset = a.ceilingPreset;
+    if (typeof a.floorTexturePath === 'string' && a.floorTexturePath.trim()) {
+      appearance.floorTexturePath = a.floorTexturePath.trim();
+    }
+    if (typeof a.showBaseboards === 'boolean') appearance.showBaseboards = a.showBaseboards;
+    if (typeof a.showCeiling === 'boolean') appearance.showCeiling = a.showCeiling;
     if (typeof a.recessedLights === 'boolean') appearance.recessedLights = a.recessedLights;
     if (Object.keys(appearance).length) next.appearance = appearance;
   }
@@ -488,6 +505,13 @@ export function snapshotOverrideFromTemplate(template: RoomStarterTemplate): Sta
       wallColor: env.appearance.wallColor,
       ...(env.appearance.wallColors ? { wallColors: { ...env.appearance.wallColors } } : {}),
       floorPreset: env.appearance.floorPreset,
+      trimPreset: env.appearance.trimPreset,
+      ceilingPreset: env.appearance.ceilingPreset,
+      ...(env.appearance.floorTexturePath
+        ? { floorTexturePath: env.appearance.floorTexturePath }
+        : {}),
+      showBaseboards: env.appearance.showBaseboards,
+      showCeiling: env.appearance.showCeiling,
       recessedLights: env.appearance.recessedLights,
     },
     floorItems: template.floorItems.map((s) => ({ ...s, position: [...s.position] as [number, number, number] })),

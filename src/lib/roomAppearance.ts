@@ -23,6 +23,10 @@ export interface RoomAppearance {
   recessedLights: boolean;
   /** Show baseboard trim. */
   showBaseboards: boolean;
+  /** User-uploaded floor photo texture (storage path). */
+  floorTexturePath?: string;
+  /** Signed URL for floorTexturePath — runtime only, not persisted. */
+  floorTextureUrl?: string;
 }
 
 export const DEFAULT_WALL_COLOR = '#d8d0c2';
@@ -57,6 +61,7 @@ export const WALL_COLOR_SWATCHES: { label: string; color: string }[] = [
   { label: 'Teal', color: '#1f4f4f' },
   { label: 'Sage', color: '#6b7f6a' },
   { label: 'Soft white', color: '#f2efe8' },
+  { label: 'Yellow', color: '#e8d8b0' },
   { label: 'Charcoal', color: '#3a3a3a' },
 ];
 
@@ -74,6 +79,27 @@ function normalizeHex(hex: string): string {
     return `#${h.split('').map((c) => c + c).join('').toLowerCase()}`;
   }
   return `#${h.toLowerCase()}`;
+}
+
+export function storedFloorTexturePath(
+  appearance: Pick<RoomAppearance, 'floorTexturePath'>,
+): string | undefined {
+  const path = appearance.floorTexturePath?.trim();
+  return path || undefined;
+}
+
+export function assignFloorTextureUrl(
+  appearance: RoomAppearance,
+  path: string,
+  url: string,
+): void {
+  if (appearance.floorTexturePath === path) appearance.floorTextureUrl = url;
+}
+
+/** Persisted appearance — strips signed URLs. */
+export function serializeAppearance(appearance: RoomAppearance): RoomAppearance {
+  const { floorTextureUrl: _url, ...rest } = appearance;
+  return rest;
 }
 
 export function parseWallColors(raw: unknown): Record<string, string> | undefined {
@@ -172,6 +198,10 @@ export function parseAppearance(raw: unknown): RoomAppearance {
     ? normalizeHex(o.wallColor)
     : normalizeHex(MATERIAL_PRESETS[wallPreset]?.color ?? DEFAULT_WALL_COLOR);
   const wallColors = parseWallColors(o.wallColors);
+  const floorTexturePath =
+    typeof o.floorTexturePath === 'string' && o.floorTexturePath.trim()
+      ? o.floorTexturePath.trim()
+      : undefined;
   return {
     wallPreset,
     wallColor,
@@ -184,5 +214,6 @@ export function parseAppearance(raw: unknown): RoomAppearance {
       o.recessedLights === undefined ? DEFAULT_APPEARANCE.recessedLights : o.recessedLights === true,
     showBaseboards:
       o.showBaseboards === undefined ? DEFAULT_APPEARANCE.showBaseboards : o.showBaseboards === true,
+    ...(floorTexturePath ? { floorTexturePath } : {}),
   };
 }

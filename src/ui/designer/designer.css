@@ -2242,14 +2242,14 @@
 }
 .dg-mat-card__preview--lightOak { background: linear-gradient(160deg, #d9c7a8, #c0a87f); }
 .dg-mat-card__preview--darkOak { background: linear-gradient(160deg, #b49472, #8a6848); }
-.dg-mat-card__preview--carpet { background: linear-gradient(160deg, #cfc7ba, #ada298); }
+.dg-mat-card__preview--carpet { background: linear-gradient(160deg, #e0d8cc, #c8b8a8); }
 .dg-mat-card__preview--charcoalCarpet {
   background:
-    radial-gradient(circle at 12% 18%, #b8bec8 0.45px, transparent 0.55px),
-    radial-gradient(circle at 44% 62%, #98a2b0 0.4px, transparent 0.5px),
-    radial-gradient(circle at 78% 34%, #d0d4da 0.35px, transparent 0.45px),
-    radial-gradient(circle at 28% 82%, #7a8494 0.4px, transparent 0.5px),
-    linear-gradient(155deg, #687080, #525c6e);
+    radial-gradient(circle at 12% 18%, #d8dce4 0.45px, transparent 0.55px),
+    radial-gradient(circle at 44% 62%, #b8c0cc 0.4px, transparent 0.5px),
+    radial-gradient(circle at 78% 34%, #eceef2 0.35px, transparent 0.45px),
+    radial-gradient(circle at 28% 82%, #98a4b4 0.4px, transparent 0.5px),
+    linear-gradient(155deg, #98a4b4, #788498);
   background-size: 5px 5px, 6px 6px, 7px 7px, 8px 8px, 100% 100%;
 }
 .dg-mat-card__preview--oatmealCarpet {
@@ -2263,13 +2263,31 @@
 }
 .dg-mat-card__preview--greySpeckleCarpet {
   background:
-    radial-gradient(circle at 10% 16%, #f2f0ec 0.4px, transparent 0.5px),
-    radial-gradient(circle at 38% 54%, #8e8a84 0.42px, transparent 0.52px),
-    radial-gradient(circle at 66% 28%, #ccc8c2 0.38px, transparent 0.48px),
-    radial-gradient(circle at 24% 74%, #6a6662 0.4px, transparent 0.5px),
-    radial-gradient(circle at 82% 68%, #e4e0da 0.35px, transparent 0.45px),
-    linear-gradient(155deg, #c4c0ba, #b0aca6);
+    radial-gradient(circle at 10% 16%, #faf8f4 0.4px, transparent 0.5px),
+    radial-gradient(circle at 38% 54%, #b8b4ae 0.42px, transparent 0.52px),
+    radial-gradient(circle at 66% 28%, #e4e0da 0.38px, transparent 0.48px),
+    radial-gradient(circle at 24% 74%, #a0a09a 0.4px, transparent 0.5px),
+    radial-gradient(circle at 82% 68%, #f0ece6 0.35px, transparent 0.45px),
+    linear-gradient(155deg, #e0dcd6, #d0ccc6);
   background-size: 4px 4px, 5px 5px, 6px 6px, 7px 7px, 8px 8px, 100% 100%;
+}
+.dg-mat-card__preview--plaidCarpet {
+  background:
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(228, 232, 238, 0.65) 3px,
+      rgba(228, 232, 238, 0.65) 4px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 7px,
+      rgba(228, 232, 238, 0.45) 7px,
+      rgba(228, 232, 238, 0.45) 8px
+    ),
+    linear-gradient(155deg, #a8acb4, #949aa4);
 }
 .dg-mat-card__preview--concrete { background: linear-gradient(160deg, #b8b4ae, #8e8a84); }
 .dg-mat-card__label {

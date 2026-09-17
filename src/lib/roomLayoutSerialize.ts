@@ -4,7 +4,11 @@
 
 import { DEFAULT_SHELF_COLOR, isWallShelfKind, type FurnitureKind } from '../furniture/registry';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './checklistPublicGlbs';
-import { itemUsesCustomFinish, itemUsesTintColor } from './furnitureFinish';
+import {
+  itemSupportsTopColor,
+  itemUsesCustomFinish,
+  itemUsesTintColor,
+} from './furnitureFinish';
 import { DEFAULT_BLANKET_COLOR, newAttachmentKey, type EmitterConfig, type Item } from '../store';
 import {
   comforterHexFromConfig,
@@ -222,9 +226,7 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
       : undefined;
 
   const topColor =
-    row.kind === 'dresser' &&
-    row.top_color != null &&
-    String(row.top_color).trim()
+    row.top_color != null && String(row.top_color).trim()
       ? String(row.top_color).trim()
       : undefined;
 
@@ -338,7 +340,7 @@ export function serializeLayoutForRoom(
       mattress_color:
         it.kind === 'bed' && it.mattressColor ? it.mattressColor : null,
       top_color:
-        it.kind === 'dresser' && it.topColor ? it.topColor : null,
+        itemSupportsTopColor(it) && it.topColor ? it.topColor : null,
 
       blanket_texture_path:
         it.kind === 'bed' && it.blanketTexturePath

@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { trackRoomCreated } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
-import { parseEnvironment } from '../lib/environmentPersist';
+import { parseEnvironment, serializeEnvironment } from '../lib/environmentPersist';
 import { parseFloorPlan, serializeFloorPlan, DEFAULT_ROOM_GEOMETRY, type RoomGeometry } from '../lib/roomGeometry';
 import {
   dbRowToItem,
@@ -32,6 +32,10 @@ import {
 } from '../lib/profiles';
 import { mirrorRoomAssets } from '../lib/publicModelsMirror';
 import { texturePathsToSign, assignSignedTextureUrl, storedTexturePaths } from '../lib/furnitureFinish';
+import {
+  assignFloorTextureUrl,
+  storedFloorTexturePath,
+} from '../lib/roomAppearance';
 import type { Item, RoomEnvironment } from '../store';
 import { DEFAULT_ENVIRONMENT, useStore } from '../store';
 
@@ -86,6 +90,11 @@ export async function loadRoomLayout(roomId: string): Promise<RoomLoadResult> {
 
   const environment = parseEnvironment(roomRow?.environment) ?? { ...DEFAULT_ENVIRONMENT };
   const roomGeometry = parseFloorPlan(roomRow?.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+  const floorTexturePath = storedFloorTexturePath(environment.appearance);
+  if (floorTexturePath && !environment.appearance.floorTextureUrl) {
+    const signed = await signModelObjectPath(floorTexturePath);
+    if (signed) assignFloorTextureUrl(environment.appearance, floorTexturePath, signed);
+  }
 
   let forkMeta: RoomAttributionPayload | null = null;
   try {
@@ -147,6 +156,12 @@ export async function loadSharedRoomLayout(token: string): Promise<SharedRoomLoa
 
   const environment = parseEnvironment(payload.room.environment) ?? { ...DEFAULT_ENVIRONMENT };
   const roomGeometry = parseFloorPlan(payload.room.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+  const sharedFloorPath = storedFloorTexturePath(environment.appearance);
+  if (sharedFloorPath) {
+    const floorUrl =
+      publicModelAssetUrl(sharedFloorPath) ?? signedAssets[sharedFloorPath];
+    if (floorUrl) assignFloorTextureUrl(environment.appearance, sharedFloorPath, floorUrl);
+  }
 
   const items: Item[] = [];
   const order: string[] = [];
@@ -241,6 +256,11 @@ export async function loadPublicRoomLayout(
 
   const environment = parseEnvironment(payload.room.environment) ?? { ...DEFAULT_ENVIRONMENT };
   const roomGeometry = parseFloorPlan(payload.room.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+  const publicFloorPath = storedFloorTexturePath(environment.appearance);
+  if (publicFloorPath) {
+    const floorUrl = resolveRoomAssetUrl(publicFloorPath, signedAssets, overrides);
+    if (floorUrl) assignFloorTextureUrl(environment.appearance, publicFloorPath, floorUrl);
+  }
 
   const items: Item[] = [];
   const order: string[] = [];
@@ -331,7 +351,7 @@ export async function saveRoomLayout(
   const roomUpdate: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
-  if (environment) roomUpdate.environment = environment;
+  if (environment) roomUpdate.environment = serializeEnvironment(environment);
   if (roomGeometry) roomUpdate.room_geometry = serializeFloorPlan(roomGeometry);
 
   const { error: upErr } = await supabase.from('rooms').update(roomUpdate).eq('id', roomId);
@@ -377,7 +397,7 @@ export async function createRoomWithGeometry(
       user_id: userId,
       name,
       room_geometry: serializeFloorPlan(roomGeometry),
-      environment,
+      environment: serializeEnvironment(environment),
     })
     .select('id,name')
     .single();

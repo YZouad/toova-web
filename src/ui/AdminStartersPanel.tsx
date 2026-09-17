@@ -39,6 +39,7 @@ const FLOOR_PRESETS: { value: MaterialPresetId; label: string }[] = [
   { value: 'charcoalCarpet', label: 'Charcoal carpet' },
   { value: 'greySpeckleCarpet', label: 'Grey speckle carpet' },
   { value: 'oatmealCarpet', label: 'Oatmeal carpet' },
+  { value: 'plaidCarpet', label: 'Plaid carpet' },
 ];
 
 const KIND_OPTIONS = floorItemKindOptions();

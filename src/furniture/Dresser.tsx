@@ -1,5 +1,5 @@
 import { Item } from '../store';
-import { dresserTopColor } from '../lib/furnitureFinish';
+import { furnitureTopColor } from '../lib/furnitureFinish';
 import { SelectionOutline } from './SelectionOutline';
 import { useFurnitureFinish } from './useFurnitureFinish';
 
@@ -14,8 +14,7 @@ export function Dresser({ item, selected, invalid }: Props) {
   const overhang = 0.55;
   const bodyH = Math.max(4, h - topT);
   const finish = useFurnitureFinish(item, BODY);
-  const topHex = dresserTopColor(item.topColor, finish.color);
-  const topMap = item.topColor ? undefined : finish.map ?? undefined;
+  const topHex = furnitureTopColor('dresser', item.topColor, finish.color);
 
   const drawerH = Math.max(0.6, (bodyH - 2.2) / 3);
   const drawers = [0, 1, 2].map((i) => {
@@ -42,7 +41,7 @@ export function Dresser({ item, selected, invalid }: Props) {
       </mesh>
       <mesh position={[0, bodyH + topT / 2, overhang * 0.2]} castShadow receiveShadow>
         <boxGeometry args={[w + overhang, topT, d + overhang]} />
-        <meshStandardMaterial color={topHex} map={topMap} roughness={0.62} />
+        <meshStandardMaterial color={topHex} roughness={0.62} />
       </mesh>
       {drawers}
       {selected && <SelectionOutline size={[w, h, d]} color={invalid ? '#ff5555' : '#4f8cff'} />}

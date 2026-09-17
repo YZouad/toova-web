@@ -108,6 +108,64 @@ describe('roomLayoutSerialize furniture finish', () => {
     expect(restored?.mattressColor).toBe('#d5d8df');
   });
 
+  it('round-trips a desk top color separately from the base', () => {
+    const desk: Item = {
+      id: 'dk1',
+      kind: 'desk',
+      position: [0, 0, 0],
+      rotationY: 0,
+      size: [48, 30, 24],
+      label: 'Desk',
+      attachmentKey: 'att-desk',
+      tintColor: '#8a6440',
+      topColor: '#f2efe8',
+    };
+    const rows = serializeLayoutForRoom('room-1', { [desk.id]: desk }, [desk.id]);
+    expect(rows[0]!.tint_color).toBe('#8a6440');
+    expect(rows[0]!.top_color).toBe('#f2efe8');
+
+    const restored = dbRowToItem({
+      id: 'dk1',
+      room_id: 'room-1',
+      kind: 'desk',
+      label: 'Desk',
+      pos_x: 0,
+      pos_y: 0,
+      pos_z: 0,
+      rotation_y: 0,
+      size_w: 48,
+      size_h: 30,
+      size_d: 24,
+      bed_leg_height: null,
+      natural_w: null,
+      natural_h: null,
+      natural_d: null,
+      sort_order: 0,
+      tint_color: '#8a6440',
+      top_color: '#f2efe8',
+      instance_key: 'att-desk',
+    });
+    expect(restored?.tintColor).toBe('#8a6440');
+    expect(restored?.topColor).toBe('#f2efe8');
+  });
+
+  it('round-trips an imported desk top color separately from the base', () => {
+    const desk: Item = {
+      id: 'imp1',
+      kind: 'imported',
+      position: [0, 0, 0],
+      rotationY: 0,
+      size: [44, 27, 22],
+      label: 'Max-P desk',
+      attachmentKey: 'att-maxp-desk',
+      tintColor: '#8a6440',
+      topColor: '#f2efe8',
+    };
+    const rows = serializeLayoutForRoom('room-1', { [desk.id]: desk }, [desk.id]);
+    expect(rows[0]!.tint_color).toBe('#8a6440');
+    expect(rows[0]!.top_color).toBe('#f2efe8');
+  });
+
   it('round-trips a dresser top color separately from the base', () => {
     const dresser: Item = {
       id: 'd1',

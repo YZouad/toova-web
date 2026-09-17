@@ -5,8 +5,14 @@
 
 import { DEFAULT_ENVIRONMENT, type RoomEnvironment } from '../store';
 import { DEFAULT_APPEARANCE } from './roomAppearance';
-import { inches } from '../units';
-import { planBounds, rectanglePlan, formatLength, type FloorPlan } from './floorPlanGeometry';
+import { DOOR, inches } from '../units';
+import {
+  genId,
+  planBounds,
+  rectanglePlan,
+  formatLength,
+  type FloorPlan,
+} from './floorPlanGeometry';
 import type { RoomStarterTemplate } from './roomStarterTemplates';
 
 export type UChicagoDormId =
@@ -18,7 +24,7 @@ export type UChicagoDormId =
   | 'rennee-granville-grossman'
   | 'snell-hitchcock';
 
-export type UChicagoLayoutType = 'single' | 'double' | 'apartment';
+export type UChicagoLayoutType = 'single' | 'double' | 'pass-through';
 
 export interface UChicagoDormMeta {
   dormId: UChicagoDormId;
@@ -34,14 +40,14 @@ export interface UChicagoDormDef {
 export const UCHICAGO_LAYOUT_LABELS: Record<UChicagoLayoutType, string> = {
   single: 'Single',
   double: 'Double',
-  apartment: 'Apartment',
+  'pass-through': 'BJ pass through',
 };
 
 export const UCHICAGO_DORMS: readonly UChicagoDormDef[] = [
-  { id: 'woodlawn', label: 'Woodlawn', layouts: ['single', 'double', 'apartment'] },
-  { id: 'north', label: 'North', layouts: ['single', 'double', 'apartment'] },
+  { id: 'woodlawn', label: 'Woodlawn', layouts: ['single', 'double'] },
+  { id: 'north', label: 'North', layouts: ['single', 'double'] },
   { id: 'max-p', label: 'Max P', layouts: ['single', 'double'] },
-  { id: 'burton-judson', label: 'Burton-Judson', layouts: ['single', 'double'] },
+  { id: 'burton-judson', label: 'Burton-Judson', layouts: ['single', 'double', 'pass-through'] },
   { id: 'i-house', label: 'I-House', layouts: ['single', 'double'] },
   {
     id: 'rennee-granville-grossman',
@@ -56,14 +62,47 @@ function dimensionsLabelFor(plan: FloorPlan): string {
   return `${formatLength(b.width, 'ft-in')} × ${formatLength(b.depth, 'ft-in')}`;
 }
 
+/** BJ pass-through double: doors on opposite ends so the room connects two hallways. */
+function passThroughPlan(): FloorPlan {
+  const width = inches(12, 0);
+  const depth = inches(14, 0);
+  const plan = rectanglePlan(width, depth, 96, false);
+  const south = plan.walls[0]!;
+  const north = plan.walls[2]!;
+  const doorOffset = width / 2 - DOOR.width / 2;
+  return {
+    ...plan,
+    openings: [
+      {
+        id: genId('o'),
+        wallId: south.id,
+        kind: 'door',
+        offset: doorOffset,
+        width: DOOR.width,
+        height: DOOR.height,
+        hinge: 'left',
+      },
+      {
+        id: genId('o'),
+        wallId: north.id,
+        kind: 'door',
+        offset: doorOffset,
+        width: DOOR.width,
+        height: DOOR.height,
+        hinge: 'right',
+      },
+    ],
+  };
+}
+
 function planForLayout(layout: UChicagoLayoutType): () => FloorPlan {
   switch (layout) {
     case 'single':
       return () => rectanglePlan(inches(10, 0), inches(12, 0), 96);
     case 'double':
       return () => rectanglePlan(inches(12, 0), inches(14, 0), 96);
-    case 'apartment':
-      return () => rectanglePlan(inches(14, 0), inches(16, 0), 96);
+    case 'pass-through':
+      return passThroughPlan;
   }
 }
 
@@ -79,6 +118,13 @@ function dormEnvironment(dormId: UChicagoDormId): RoomEnvironment {
   };
 }
 
+function layoutDescription(layout: UChicagoLayoutType): string {
+  if (layout === 'pass-through') {
+    return 'Blank pass-through double with doors on both ends — furnish from scratch.';
+  }
+  return `Blank ${UCHICAGO_LAYOUT_LABELS[layout].toLowerCase()} room — draw walls and furnish from scratch.`;
+}
+
 function starterFor(dorm: UChicagoDormDef, layout: UChicagoLayoutType): RoomStarterTemplate {
   const buildPlan = planForLayout(layout);
   const plan = buildPlan();
@@ -87,7 +133,7 @@ function starterFor(dorm: UChicagoDormDef, layout: UChicagoLayoutType): RoomStar
     goal: 'uchicago',
     tier: 'simple',
     label: `${dorm.label} · ${UCHICAGO_LAYOUT_LABELS[layout]}`,
-    description: `Blank ${UCHICAGO_LAYOUT_LABELS[layout].toLowerCase()} room — draw walls and furnish from scratch.`,
+    description: layoutDescription(layout),
     dimensionsLabel: dimensionsLabelFor(plan),
     buildPlan,
     buildEnvironment: () => dormEnvironment(dorm.id),

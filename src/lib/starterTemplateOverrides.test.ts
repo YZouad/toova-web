@@ -121,6 +121,7 @@ describe('starterTemplateOverrides', () => {
     });
     expect(payload.label).toBe('Night studio');
     expect(payload.timeOfDay).toBe(21);
+    expect(payload.appearance?.trimPreset).toBe('whiteTrim');
     expect(payload.plan?.walls.length).toBe(plan.walls.length);
     expect(payload.itemSnapshots?.some((it) => it.position[0] === 55)).toBe(true);
     expect(payload.floorItems?.some((s) => s.position[0] === 55)).toBe(true);
@@ -128,6 +129,18 @@ describe('starterTemplateOverrides', () => {
     if (hangingItem) {
       expect(hangingSeedFromItem(hangingItem, plan)?.wallIndex).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it('round-trips trim preset in starter overrides', () => {
+    const parsed = parseStarterOverride({
+      appearance: { trimPreset: 'blackTrim', floorPreset: 'plaidCarpet' },
+    });
+    expect(parsed.appearance?.trimPreset).toBe('blackTrim');
+    expect(parsed.appearance?.floorPreset).toBe('plaidCarpet');
+
+    const template = getRoomStarterTemplate('bedroom-simple')!;
+    const merged = applyStarterOverride(template, parsed);
+    expect(merged.buildEnvironment().appearance.trimPreset).toBe('blackTrim');
   });
 
   it('parses starter-edit workspace ids', () => {

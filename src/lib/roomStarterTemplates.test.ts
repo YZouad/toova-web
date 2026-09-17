@@ -25,7 +25,7 @@ describe('roomStarterTemplates', () => {
       'uchicago',
     ]);
     expect(ROOM_STARTER_TIERS).toHaveLength(3);
-    expect(ROOM_STARTER_TEMPLATES).toHaveLength(26);
+    expect(ROOM_STARTER_TEMPLATES).toHaveLength(25);
 
     const ids = ROOM_STARTER_TEMPLATES.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -38,7 +38,7 @@ describe('roomStarterTemplates', () => {
       expect(forGoal.map((t) => t.tier).sort()).toEqual(['balanced', 'decorated', 'simple']);
     }
     expect(templatesForGoal('studio')).toHaveLength(1);
-    expect(templatesForGoal('uchicago')).toHaveLength(16);
+    expect(templatesForGoal('uchicago')).toHaveLength(15);
     expect(getRoomStarterTemplate('studio-simple')?.buildPlan().walls.length).toBeGreaterThan(4);
   });
 

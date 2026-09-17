@@ -3,11 +3,12 @@ import { newAttachmentKey, type Item } from '../store';
 import {
   assignSignedTextureUrl,
   defaultFinishColor,
-  dresserTopColor,
+  furnitureTopColor,
   finishColor,
   mattressColor,
   itemUsesCustomFinish,
   itemUsesTintColor,
+  itemSupportsTopColor,
   itemUsesTopColor,
   shadeHex,
   storedTexturePaths,
@@ -50,10 +51,19 @@ describe('furnitureFinish', () => {
     expect(finishColor(wardrobe({ tintColor: '#5c6166' }))).toBe('#5c6166');
     expect(mattressColor(undefined)).toBe('#f1ece1');
     expect(mattressColor('#2c3a4f')).toBe('#2c3a4f');
-    expect(dresserTopColor(undefined, '#a98662')).toBe('#a98662');
-    expect(dresserTopColor('#f2efe8', '#a98662')).toBe('#f2efe8');
+    expect(furnitureTopColor('dresser', undefined, '#a98662')).toBe('#e8d8b0');
+    expect(furnitureTopColor('dresser', '#f2efe8', '#a98662')).toBe('#f2efe8');
+    expect(furnitureTopColor('desk', undefined, '#8a6440')).toBe('#e8d8b0');
+    expect(furnitureTopColor('desk', '#f2efe8', '#8a6440')).toBe('#f2efe8');
     expect(itemUsesTopColor('dresser')).toBe(true);
+    expect(itemUsesTopColor('desk')).toBe(true);
     expect(itemUsesTopColor('wardrobe')).toBe(false);
+    expect(
+      itemSupportsTopColor({ kind: 'imported', label: 'Max-P desk' }),
+    ).toBe(true);
+    expect(
+      itemSupportsTopColor({ kind: 'imported', label: 'Single Desk' }),
+    ).toBe(true);
   });
 
   it('shades trim darker than the body', () => {

@@ -2,13 +2,19 @@ import { Suspense, useEffect, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { Item, useStore } from '../store';
+import { furnitureTopColor } from '../lib/furnitureFinish';
+import {
+  applyImportedDualToneTint,
+  importedDualToneFurniture,
+  importedDualToneKind,
+} from '../lib/importedDualTone';
 import { normalizeImportedMaterials, applyImportedHorizonLook } from '../lib/normalizeImportedMaterials';
 import { importedMeshesReceiveShadows } from '../lib/environment';
 import { shouldStandImportedUpright, standUpRotationAxis } from '../lib/importedUpright';
 import { SelectionOutline } from './SelectionOutline';
 
 /** Bump to remount loaded GLBs after material-pass changes (useGLTF cache is sticky). */
-const IMPORT_MATERIAL_PASS = 20;
+const IMPORT_MATERIAL_PASS = 25;
 
 interface Props {
   item: Item;
@@ -85,8 +91,6 @@ function Inner({ item, selected, invalid, url }: Props & { url: string }) {
       relight: relightImports,
       log: import.meta.env.DEV,
     });
-    if (item.tintColor) applyMeshTint(cloned, item.tintColor);
-
     const box = new THREE.Box3().setFromObject(cloned);
     const s = new THREE.Vector3();
     box.getSize(s);
@@ -103,12 +107,26 @@ function Inner({ item, selected, invalid, url }: Props & { url: string }) {
     const c = new THREE.Vector3();
     oriented.getCenter(c);
     cloned.position.set(-c.x, -oriented.min.y, -c.z);
+    cloned.updateMatrixWorld(true);
+
+    if (importedDualToneFurniture(item)) {
+      const toneKind = importedDualToneKind(item);
+      const baseHex = item.tintColor;
+      const topHex =
+        item.topColor ?? (baseHex ? furnitureTopColor(toneKind, undefined, baseHex) : undefined);
+      applyImportedDualToneTint(cloned, {
+        ...(baseHex ? { baseHex } : {}),
+        ...(topHex ? { topHex } : {}),
+      });
+    } else if (item.tintColor) {
+      applyMeshTint(cloned, item.tintColor);
+    }
 
     return {
       centeredScene: cloned,
       meshNaturalSize: [size.x, size.y, size.z] as [number, number, number],
     };
-  }, [scene, relightImports, item.tintColor, item.label]);
+  }, [scene, relightImports, item.tintColor, item.topColor, item.label, item.catalogKind]);
 
   useEffect(() => {
     registerNatural(item.id, meshNaturalSize);
