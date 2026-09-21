@@ -96,6 +96,7 @@ export function RoomVolumetricHaze() {
       position={[cx, height / 2, cz]}
       scale={[bounds.width * 0.97, height * 0.97, bounds.depth * 0.97]}
       renderOrder={0}
+      userData={{ measurePick: false, hangingPick: false }}
     >
       <boxGeometry args={[1, 1, 1]} />
       <primitive object={material} attach="material" />

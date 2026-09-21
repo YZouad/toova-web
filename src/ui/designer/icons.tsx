@@ -156,3 +156,21 @@ export function IconFreeLight({ size = 14, stroke = 'currentColor' }: { size?: n
     </svg>
   );
 }
+
+export function IconRuler({ size = 14, stroke = 'currentColor' }: { size?: number; stroke?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <rect x="2.5" y="8" width="19" height="8" rx="1.5" />
+      <path d="M7 8v3.5M12 8v4.5M17 8v3.5" />
+    </svg>
+  );
+}
+
+export function IconMeasure({ size = 14, stroke = 'currentColor' }: { size?: number; stroke?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M4 20l16-16" />
+      <path d="M7 17l1.5-1.5M10.5 13.5 12 12M15 9l1.5-1.5M18 6l1.5-1.5" />
+    </svg>
+  );
+}

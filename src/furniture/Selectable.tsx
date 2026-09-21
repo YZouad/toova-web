@@ -17,6 +17,7 @@ export function Selectable({ id, children }: SelectableProps) {
   const select = useStore((s) => s.select);
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (useStore.getState().designerTool === 'measure') return;
     // Phone tap-to-select is handled by MobileObjectGestureController so drags orbit
     // the camera without opening the inspector on every touch.
     const pt = e.nativeEvent.pointerType;

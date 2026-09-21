@@ -1,4 +1,8 @@
-import { hangingKindFromDesignerTool, isHangingDesignerTool, useStore } from '../../../store';
+import {
+  hangingKindFromDesignerTool,
+  isHangingDesignerTool,
+  useStore,
+} from '../../../store';
 import type { HangingDecorKind } from '../../../lib/hangingDecorGeometry';
 
 function drawMeta(kind: HangingDecorKind): { title: string; swatch: string } {
@@ -9,6 +13,7 @@ function drawMeta(kind: HangingDecorKind): { title: string; swatch: string } {
 
 /**
  * Phone draw mode — top instruction card + bottom Cancel / Undo / Finish bar (52px).
+ * Measure uses MeasureBar instead.
  */
 export function MobileDrawChrome() {
   const hangingDraft = useStore((s) => s.hangingDraft);
@@ -18,7 +23,6 @@ export function MobileDrawChrome() {
   const finishHangingDraft = useStore((s) => s.finishHangingDraft);
 
   const drawing = hangingDraft != null || isHangingDesignerTool(designerTool);
-
   if (!drawing) return null;
 
   const kind = hangingDraft?.kind ?? hangingKindFromDesignerTool(designerTool) ?? 'lights';

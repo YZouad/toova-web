@@ -16,7 +16,7 @@ import {
 import type { GallerySort, GallerySource } from '../../../lib/galleryCatalog';
 import type { CatalogModel } from '../chromeTypes';
 import type { HangingDecorKind } from '../../../store';
-import { IconHangingLeaves, IconHangingLights, IconLedStrip } from '../icons';
+import { IconHangingLeaves, IconHangingLights, IconLedStrip, IconMeasure } from '../icons';
 import { placeFromCatalog } from '../placeCatalogModel';
 import { MobileSheet } from './MobileSheet';
 
@@ -39,6 +39,7 @@ export interface MobileLibrarySheetProps {
   onImport: () => void;
   onOpenModel: (model: CatalogModel) => void;
   onStartDraw: (kind: HangingDecorKind) => void;
+  onStartMeasure: () => void;
   onAddLight: () => void;
 }
 
@@ -47,6 +48,7 @@ export function MobileLibrarySheet({
   onImport,
   onOpenModel,
   onStartDraw,
+  onStartMeasure,
   onAddLight,
 }: MobileLibrarySheetProps) {
   const { user } = useAuth();
@@ -109,20 +111,22 @@ export function MobileLibrarySheet({
 
   const footer = (
     <div className="dgm-library-footer">
-      <div className="dgm-action-row">
+      <div className="dgm-action-row dgm-action-row--tools">
         <button
           type="button"
           className="dgm-action-btn is-dashed"
+          aria-label="Draw fairy lights"
           onClick={() => onStartDraw('lights')}
         >
           <span className="dgm-action-btn__dot" style={{ background: '#E8C27A', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
             <IconHangingLights size={10} />
           </span>
-          Fairy lights
+          Lights
         </button>
         <button
           type="button"
           className="dgm-action-btn is-dashed"
+          aria-label="Draw leaves"
           onClick={() => onStartDraw('leaves')}
         >
           <span className="dgm-action-btn__dot" style={{ background: '#7E8A60', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
@@ -130,17 +134,27 @@ export function MobileLibrarySheet({
           </span>
           Leaves
         </button>
-      </div>
-      <div className="dgm-action-row">
         <button
           type="button"
-          className="dgm-action-btn is-dashed is-full"
+          className="dgm-action-btn is-dashed"
+          aria-label="Measure in the room"
+          onClick={onStartMeasure}
+        >
+          <span className="dgm-action-btn__dot" style={{ background: '#E8C27A', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
+            <IconMeasure size={10} />
+          </span>
+          Measure
+        </button>
+        <button
+          type="button"
+          className="dgm-action-btn is-dashed"
+          aria-label="Draw LED strip"
           onClick={() => onStartDraw('led-strip')}
         >
           <span className="dgm-action-btn__dot" style={{ background: '#6EB5FF', display: 'grid', placeItems: 'center', color: 'rgba(36,31,25,0.72)' }}>
             <IconLedStrip size={10} />
           </span>
-          LED strip
+          LED
         </button>
       </div>
       <button type="button" className="dgm-action-btn is-outline is-full" onClick={onImport}>

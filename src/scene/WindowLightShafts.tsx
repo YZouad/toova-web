@@ -29,7 +29,12 @@ function BeamMesh({
 }) {
   return (
     <group ref={groupRef}>
-      <mesh geometry={beam.shaftGeometry} material={shaftMaterial} renderOrder={1} />
+      <mesh
+        geometry={beam.shaftGeometry}
+        material={shaftMaterial}
+        renderOrder={1}
+        userData={{ measurePick: false, hangingPick: false }}
+      />
     </group>
   );
 }

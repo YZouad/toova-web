@@ -40,6 +40,9 @@ export function OrbitPointerGuard() {
     const onDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
       if (e.pointerType !== 'mouse' && e.pointerType !== 'pen') return;
+      // Measure mode owns orbit for the press. Skipping here keeps the
+      // controls enabled until MeasureController records that and disables them.
+      if (useStore.getState().designerTool === 'measure') return;
       if (useStore.getState().captureMode) return;
       if (!hitFurniture(e.clientX, e.clientY)) return;
       if (controls) controls.enabled = false;

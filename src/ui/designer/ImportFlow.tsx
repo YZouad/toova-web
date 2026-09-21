@@ -28,6 +28,7 @@ import { ImageFileField } from '../ImageFileField';
 import { PhotoSubjectPrep } from '../PhotoSubjectPrep';
 import { PosterImageCrop } from '../PosterImageCrop';
 import type { CatalogModel, ImportRoute } from './chromeTypes';
+import type { MeasureAcceptField } from '../../store';
 import {
   buildPosterGlb,
   prepareGlbFile,
@@ -42,6 +43,9 @@ export interface ImportFlowProps {
   route: ImportRoute;
   onRoute: (r: ImportRoute) => void;
   onClose: () => void;
+  /** Hide scrim while measuring in the room; form state stays mounted. */
+  measuringHidden?: boolean;
+  onStartMeasure?: (field: MeasureAcceptField, onAccept: (value: string) => void) => void;
   isAdmin?: boolean;
   /** Compact / phone layout — route-first cards when route is null. */
   compact?: boolean;
@@ -101,11 +105,24 @@ function positiveInches(value: string): boolean {
 
 type CheckItem = { done: boolean; label: string; note: string; optional?: boolean };
 
+type SizeMeasureField = 'width' | 'height' | 'depth';
+
+const SIZE_MEASURE_FIELDS: {
+  label: string;
+  field: SizeMeasureField;
+}[] = [
+  { label: 'Width', field: 'width' },
+  { label: 'Height', field: 'height' },
+  { label: 'Depth', field: 'depth' },
+];
+
 export function ImportFlow({
   open,
   route,
   onRoute,
   onClose,
+  measuringHidden = false,
+  onStartMeasure,
   isAdmin = false,
   compact = false,
   onComplete,
@@ -155,6 +172,7 @@ export function ImportFlow({
   const [heightIn, setHeightIn] = useState('24');
   const [depthIn, setDepthIn] = useState('24');
   const [clearanceIn, setClearanceIn] = useState('');
+  const [justMeasuredField, setJustMeasuredField] = useState<SizeMeasureField | null>(null);
   const [listInGallery, setListInGallery] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -325,6 +343,8 @@ export function ImportFlow({
   const glbPreviewUrl = useGlbPreviewUrl(open && fileReady ? uploadFile : null);
 
   if (!open) return null;
+  // Unmount overlay while measuring so the canvas and measure nodes stay visible/interactive.
+  if (measuringHidden) return null;
 
   const handleClose = () => {
     if (busy) return;
@@ -946,16 +966,49 @@ export function ImportFlow({
           <span className="dg-import-field__label">Real size, in inches</span>
           <span className="dg-row__meta">read from the file; check it</span>
         </div>
+        {onStartMeasure ? (
+          <div className="dg-import-measure-pick">
+            <span className="dg-import-measure-pick__label">Measure size in room</span>
+            <div className="dg-chip-row">
+              {SIZE_MEASURE_FIELDS.map(({ label, field }) => (
+                <button
+                  key={field}
+                  type="button"
+                  className="dg-chip"
+                  disabled={busy}
+                  onClick={() => {
+                    const set =
+                      field === 'width'
+                        ? setWidthIn
+                        : field === 'height'
+                          ? setHeightIn
+                          : setDepthIn;
+                    onStartMeasure(field, (value) => {
+                      set(value);
+                      setJustMeasuredField(field);
+                      window.setTimeout(() => setJustMeasuredField(null), 1500);
+                    });
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="dg-import-dims">
           {(
             [
-              ['Width', widthIn, setWidthIn, false],
-              ['Height', heightIn, setHeightIn, false],
-              ['Depth', depthIn, setDepthIn, false],
-              ['Clearance', clearanceIn, setClearanceIn, true],
+              ['Width', widthIn, setWidthIn, false, 'width'],
+              ['Height', heightIn, setHeightIn, false, 'height'],
+              ['Depth', depthIn, setDepthIn, false, 'depth'],
+              ['Clearance', clearanceIn, setClearanceIn, true, null],
             ] as const
-          ).map(([label, value, set, optional]) => (
-            <label key={label} className="dg-import-dim">
+          ).map(([label, value, set, optional, fieldKey]) => (
+            <label
+              key={label}
+              className={`dg-import-dim${fieldKey && justMeasuredField === fieldKey ? ' is-just-measured' : ''}`}
+            >
               <span className="dg-import-dim__label">{label}</span>
               <input
                 className={`dg-import-input${optional ? ' dg-import-input--optional' : ''}`}
@@ -971,9 +1024,20 @@ export function ImportFlow({
           ))}
         </div>
         <span className="dg-import-field__hint">
-          Clearance is the walking room this piece needs in front of it. Leave it empty and we
-          use the room default.
+          {onStartMeasure
+            ? 'Pick a dimension, measure between two points in the room, then Accept. Clearance is walking room in front — leave empty for the room default.'
+            : 'Clearance is the walking room this piece needs in front of it. Leave it empty and we use the room default.'}
         </span>
+        {onStartMeasure ? (
+          <button
+            type="button"
+            className="dg-import-measure-clearance"
+            disabled={busy}
+            onClick={() => onStartMeasure('clearance', setClearanceIn)}
+          >
+            Measure clearance in room
+          </button>
+        ) : null}
       </div>
 
       <button

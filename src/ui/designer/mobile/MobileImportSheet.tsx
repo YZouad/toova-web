@@ -27,6 +27,7 @@ import { profilePath, navigate } from '../../../hooks/useRoute';
 import { PhotoSubjectPrep } from '../../PhotoSubjectPrep';
 import { PosterImageCrop } from '../../PosterImageCrop';
 import type { CatalogModel, ImportRoute } from '../chromeTypes';
+import type { MeasureAcceptField } from '../../../store';
 import {
   buildPosterGlb,
   prepareGlbFile,
@@ -51,6 +52,8 @@ export interface MobileImportSheetProps {
   route: ImportRoute;
   onRoute: (r: ImportRoute) => void;
   onClose: () => void;
+  measuringHidden?: boolean;
+  onStartMeasure?: (field: MeasureAcceptField, onAccept: (value: string) => void) => void;
   isAdmin?: boolean;
   onComplete?: (
     model: CatalogModel,
@@ -89,11 +92,21 @@ function sheetEyebrow(route: ImportRoute): string {
   return route ? 'Your models · private until you share' : 'Your models · add to library';
 }
 
+type SizeMeasureField = 'width' | 'height' | 'depth';
+
+const SIZE_MEASURE_FIELDS: { label: string; field: SizeMeasureField }[] = [
+  { label: 'Width', field: 'width' },
+  { label: 'Height', field: 'height' },
+  { label: 'Depth', field: 'depth' },
+];
+
 export function MobileImportSheet({
   open,
   route,
   onRoute,
   onClose,
+  measuringHidden = false,
+  onStartMeasure,
   isAdmin = false,
   onComplete,
 }: MobileImportSheetProps) {
@@ -142,6 +155,7 @@ export function MobileImportSheet({
   const [heightIn, setHeightIn] = useState('24');
   const [depthIn, setDepthIn] = useState('24');
   const [clearanceIn, setClearanceIn] = useState('');
+  const [justMeasuredField, setJustMeasuredField] = useState<SizeMeasureField | null>(null);
   const [listInGallery, setListInGallery] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -540,6 +554,7 @@ export function MobileImportSheet({
   const glbPreviewUrl = useGlbPreviewUrl(open && fileReady ? uploadFile : null);
 
   if (!open) return null;
+  if (measuringHidden) return null;
 
   const activeRoute = route;
   const busy = submitting || photoJob.generating || thrixelGenerating || decimating || creatingPoster;
@@ -733,15 +748,48 @@ export function MobileImportSheet({
 
       <div className="dgm-field">
         <span className="dgm-field__label">Real size, inches</span>
+        {onStartMeasure ? (
+          <div className="dgm-measure-pick">
+            <span className="dgm-measure-pick__label">Measure size in room</span>
+            <div className="dgm-chip-row">
+              {SIZE_MEASURE_FIELDS.map(({ label, field }) => (
+                <button
+                  key={field}
+                  type="button"
+                  className="dgm-chip"
+                  disabled={busy}
+                  onClick={() => {
+                    const set =
+                      field === 'width'
+                        ? setWidthIn
+                        : field === 'height'
+                          ? setHeightIn
+                          : setDepthIn;
+                    onStartMeasure(field, (value) => {
+                      set(value);
+                      setJustMeasuredField(field);
+                      window.setTimeout(() => setJustMeasuredField(null), 1500);
+                    });
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
         <div className="dgm-dims">
           {(
             [
-              ['Width', widthIn, setWidthIn],
-              ['Height', heightIn, setHeightIn],
-              ['Depth', depthIn, setDepthIn],
+              ['Width', widthIn, setWidthIn, 'width'],
+              ['Height', heightIn, setHeightIn, 'height'],
+              ['Depth', depthIn, setDepthIn, 'depth'],
             ] as const
-          ).map(([label, value, set]) => (
-            <label key={label} className="dgm-dim">
+          ).map(([label, value, set, fieldKey]) => (
+            <label
+              key={label}
+              className={`dgm-dim${justMeasuredField === fieldKey ? ' is-just-measured' : ''}`}
+            >
               <span className="dgm-dim__label">{label}</span>
               <input
                 className="dgm-input"
@@ -756,7 +804,9 @@ export function MobileImportSheet({
           ))}
         </div>
         <p className="dgm-field__hint">
-          Measured from the model — correct it against the real piece.
+          {onStartMeasure
+            ? 'Pick a dimension, measure between two points, then Accept.'
+            : 'Measured from the model — correct it against the real piece.'}
         </p>
       </div>
 
@@ -775,16 +825,28 @@ export function MobileImportSheet({
           </label>
           <label className="dgm-field">
             <span className="dgm-field__label">Clearance (optional)</span>
-            <input
-              className="dgm-input"
-              type="number"
-              min={0}
-              step="any"
-              value={clearanceIn}
-              disabled={busy}
-              placeholder="Walking room in front"
-              onChange={(e) => setClearanceIn(e.target.value)}
-            />
+            <div className="dgm-dim__row">
+              <input
+                className="dgm-input"
+                type="number"
+                min={0}
+                step="any"
+                value={clearanceIn}
+                disabled={busy}
+                placeholder="Walking room in front"
+                onChange={(e) => setClearanceIn(e.target.value)}
+              />
+              {onStartMeasure ? (
+                <button
+                  type="button"
+                  className="dgm-measure-clearance"
+                  disabled={busy}
+                  onClick={() => onStartMeasure('clearance', setClearanceIn)}
+                >
+                  Measure
+                </button>
+              ) : null}
+            </div>
           </label>
           <button
             type="button"
@@ -1237,13 +1299,14 @@ export function MobileImportSheet({
   );
 
   return (
-    <MobileSheet
-      kind="import"
-      title={sheetTitle(activeRoute)}
-      onClose={handleClose}
-      hideTitle
-      bodyClassName="dgm-import-body"
-    >
+    <div className="dgm-import-wrap">
+      <MobileSheet
+        kind="import"
+        title={sheetTitle(activeRoute)}
+        onClose={handleClose}
+        hideTitle
+        bodyClassName="dgm-import-body"
+      >
       <div className="dgm-sheet-custom-head">
         <div className="dgm-sheet-custom-head__copy">
           <span className="dgm-sheet-eyebrow">{sheetEyebrow(activeRoute)}</span>
@@ -1275,5 +1338,6 @@ export function MobileImportSheet({
         </button>
       </div>
     </MobileSheet>
+    </div>
   );
 }

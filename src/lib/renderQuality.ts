@@ -167,6 +167,8 @@ export interface VisualSettings {
   relightImports: boolean;
   /** Classic 3D move / scale / yaw gizmo on the selected object. */
   advancedControls: boolean;
+  /** Show CAD wall lengths and W×D×H labels on every object in the 3D view. */
+  showDimensions: boolean;
 }
 
 export const DEFAULT_VISUAL_SETTINGS: VisualSettings = {
@@ -175,6 +177,7 @@ export const DEFAULT_VISUAL_SETTINGS: VisualSettings = {
   cutaway: 'orbit',
   relightImports: true,
   advancedControls: false,
+  showDimensions: false,
 };
 
 export function parseVisualSettings(raw: unknown): VisualSettings {
@@ -196,6 +199,10 @@ export function parseVisualSettings(raw: unknown): VisualSettings {
       typeof o.advancedControls === 'boolean'
         ? o.advancedControls
         : DEFAULT_VISUAL_SETTINGS.advancedControls,
+    showDimensions:
+      typeof o.showDimensions === 'boolean'
+        ? o.showDimensions
+        : DEFAULT_VISUAL_SETTINGS.showDimensions,
   };
 }
 

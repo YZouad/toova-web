@@ -76,8 +76,8 @@ export function useMobileDesignerChrome(desktop: DesignerChrome): MobileDesigner
   }, [desktop.present]);
 
   useEffect(() => {
-    if (desktop.drawing) dispatch({ type: 'reset_for_draw' });
-  }, [desktop.drawing]);
+    if (desktop.drawing || desktop.measuring) dispatch({ type: 'reset_for_draw' });
+  }, [desktop.drawing, desktop.measuring]);
 
   useEffect(() => {
     if (!desktop.selectedId) dispatch({ type: 'clear_selection_chrome' });
@@ -158,11 +158,11 @@ export function useMobileDesignerChrome(desktop: DesignerChrome): MobileDesigner
   }, []);
 
   const showDock = useMemo(() => {
-    if (desktop.present || desktop.drawing) return false;
+    if (desktop.present || desktop.drawing || desktop.measuring) return false;
     if (state.sheet) return false;
     if (desktop.selectedId) return false;
     return true;
-  }, [desktop.present, desktop.drawing, desktop.selectedId, state.sheet]);
+  }, [desktop.present, desktop.drawing, desktop.measuring, desktop.selectedId, state.sheet]);
 
   const showSceneChips = useMemo(() => {
     if (desktop.present || desktop.drawing) return false;

@@ -1,4 +1,8 @@
-import { hangingKindFromDesignerTool, isHangingDesignerTool, useStore } from '../../store';
+import {
+  hangingKindFromDesignerTool,
+  isHangingDesignerTool,
+  useStore,
+} from '../../store';
 import type { HangingDecorKind } from '../../lib/hangingDecorGeometry';
 
 function drawTitle(kind: HangingDecorKind): string {
@@ -7,6 +11,7 @@ function drawTitle(kind: HangingDecorKind): string {
   return 'Drawing fairy lights';
 }
 
+/** Desktop banner for hanging-draw modes only. Measure uses MeasureBar. */
 export function DrawBanner() {
   const hangingDraft = useStore((s) => s.hangingDraft);
   const designerTool = useStore((s) => s.designerTool);

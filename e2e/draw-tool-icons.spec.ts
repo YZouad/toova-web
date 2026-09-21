@@ -29,11 +29,11 @@ test.describe('draw tool and rug icons', () => {
     await page.locator('.dg-rail-btn.is-primary').click();
     await expect(page.getByText('Draw it in the room')).toBeVisible({ timeout: 10_000 });
 
-    const drawRows = page.locator('.dg-row').filter({ hasText: /Draw hanging|Place a free light/ });
-    await expect(drawRows).toHaveCount(3);
+    const drawBtns = page.locator('.dg-draw-btn');
+    await expect(drawBtns).toHaveCount(5);
 
-    for (const row of await drawRows.all()) {
-      await expect(row.locator('svg')).toHaveCount(1);
+    for (const btn of await drawBtns.all()) {
+      await expect(btn.locator('svg')).toHaveCount(1);
     }
   });
 

@@ -16,6 +16,7 @@ export interface BuildCommandsInput {
   openImport: () => void;
   togglePresent: () => void;
   startDraw: (kind: HangingDecorKind) => void;
+  startMeasure: () => void;
   addLightSource: () => void;
   handleSave: () => void;
   onOpenChecklist: () => void;
@@ -89,6 +90,19 @@ export function buildDesignerCommands(input: BuildCommandsInput): CommandPalette
       hint: 'L',
       run: wrap('toggle-lamps', () => {
         useStore.getState().toggleRoomFixtures(!useStore.getState().roomFixturesLit());
+      }),
+    },
+    {
+      id: 'measure-room',
+      label: 'Measure in the room',
+      run: wrap('measure-room', () => input.startMeasure()),
+    },
+    {
+      id: 'toggle-dimensions',
+      label: useStore.getState().visual.showDimensions ? 'Hide dimensions' : 'Show dimensions',
+      run: wrap('toggle-dimensions', () => {
+        const on = !useStore.getState().visual.showDimensions;
+        useStore.getState().setShowDimensions(on);
       }),
     },
     {
