@@ -125,12 +125,13 @@ export async function mirrorRoomAssets(roomId: string, visibility: 'private' | '
     supabase.from('rooms').select('thumbnail_path').eq('id', roomId).maybeSingle(),
     supabase
       .from('room_items')
-      .select('model_url, blanket_texture_path')
+      .select('model_url, blanket_texture_path, finish_texture_path')
       .eq('room_id', roomId),
   ]);
   const modelPaths = (items ?? []).flatMap((row) => [
     row.model_url as string | null,
     row.blanket_texture_path as string | null,
+    row.finish_texture_path as string | null,
   ]);
   const thumb = (room?.thumbnail_path as string | null) ?? null;
   if (visibility === 'public') {

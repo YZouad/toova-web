@@ -34,8 +34,11 @@ import {
   Tabs,
 } from './kit';
 import { RoomGallery } from './RoomGallery';
-
-const MAX_ROOMS = 5;
+import {
+  FREE_PLAN_MAX_ROOMS,
+  isAtRoomLimit,
+  roomsRemaining,
+} from '../lib/roomLimits';
 
 const KNOWN_KINDS = new Set([
   'bed',
@@ -290,7 +293,9 @@ export function Dashboard({
   }, [fetchRooms, fetchSharedWithMe]);
 
   const totalPlacements = rooms.reduce((s, r) => s + r.item_count, 0);
-  const atLimit = rooms.length >= MAX_ROOMS;
+  const unlimitedRooms = Boolean(showAdmin);
+  const atLimit = isAtRoomLimit(rooms.length, { unlimited: unlimitedRooms });
+  const remainingRooms = roomsRemaining(rooms.length, { unlimited: unlimitedRooms });
   const forkRooms = rooms.filter((r) => r.forked_from);
   const hasSharedTab = sharedWithMe.length > 0;
   const hasForksTab = forkRooms.length > 0;
@@ -307,7 +312,7 @@ export function Dashboard({
 
   async function handleDuplicate(roomId: string, roomName: string) {
     if (atLimit) {
-      setActionError(`Room limit reached (${MAX_ROOMS} rooms).`);
+      setActionError(`Room limit reached (${FREE_PLAN_MAX_ROOMS} rooms).`);
       return;
     }
     setMenuRoomId(null);
@@ -402,7 +407,7 @@ export function Dashboard({
 
   function handleNewRoom() {
     if (atLimit) {
-      setActionError(`Room limit reached (${MAX_ROOMS} rooms).`);
+      setActionError(`Room limit reached (${FREE_PLAN_MAX_ROOMS} rooms).`);
       return;
     }
     setActionError(null);
@@ -605,7 +610,11 @@ export function Dashboard({
       <SectionOpener
         level={5}
         title="Your rooms."
-        note={`Free plan · ${rooms.length} of ${MAX_ROOMS} rooms${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`}
+        note={
+          unlimitedRooms
+            ? `Studio · ${rooms.length} room${rooms.length === 1 ? '' : 's'}${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`
+            : `Free plan · ${rooms.length} of ${FREE_PLAN_MAX_ROOMS} rooms${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`
+        }
       />
 
       <Tabs
@@ -702,7 +711,11 @@ export function Dashboard({
       {!atLimit && rooms.length > 0 && tab === 'mine' ? (
         <EmptyState
           style={{ marginTop: 72 }}
-          label={`${MAX_ROOMS - rooms.length} room${MAX_ROOMS - rooms.length === 1 ? '' : 's'} left`}
+          label={
+            remainingRooms == null
+              ? 'Unlimited rooms'
+              : `${remainingRooms} room${remainingRooms === 1 ? '' : 's'} left`
+          }
           title="Start with a room that fits your space."
           body="Choose a furnished template or draw your floor plan — every piece you place is measured against it."
           action={

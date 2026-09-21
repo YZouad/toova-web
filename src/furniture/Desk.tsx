@@ -1,8 +1,9 @@
+import { furnitureTopColor } from '../lib/furnitureFinish';
 import { Item } from '../store';
 import { SelectionOutline } from './SelectionOutline';
+import { useFurnitureFinish } from './useFurnitureFinish';
 
-const TOP = '#8a6440';
-const LEG = '#2e261e';
+const BODY = '#8a6440';
 
 interface Props { item: Item; selected: boolean; invalid: boolean; }
 
@@ -15,6 +16,8 @@ export function Desk({ item, selected, invalid }: Props) {
   const legSize = 1.75;
   const legH = h - topT;
   const inset = 2;
+  const finish = useFurnitureFinish(item, BODY);
+  const topHex = furnitureTopColor('desk', item.topColor, finish.color);
 
   const legPositions: [number, number][] = [
     [-w / 2 + inset + legSize / 2, -d / 2 + inset + legSize / 2],
@@ -28,13 +31,16 @@ export function Desk({ item, selected, invalid }: Props) {
       {legPositions.map(([lx, lz], i) => (
         <mesh key={i} position={[lx, legH / 2, lz]} castShadow>
           <boxGeometry args={[legSize, legH, legSize]} />
-          <meshStandardMaterial color={LEG} roughness={0.6} />
+          <meshStandardMaterial
+            color={finish.trim}
+            map={finish.map ?? undefined}
+            roughness={0.6}
+          />
         </mesh>
       ))}
-      {/* tabletop */}
       <mesh position={[0, legH + topT / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[w, topT, d]} />
-        <meshStandardMaterial color={TOP} roughness={0.6} />
+        <meshStandardMaterial color={topHex} roughness={0.55} />
       </mesh>
       {selected && <SelectionOutline size={[w, h, d]} color={invalid ? '#ff5555' : '#4f8cff'} />}
     </group>

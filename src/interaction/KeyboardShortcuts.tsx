@@ -32,9 +32,18 @@ export function KeyboardShortcuts() {
 
       const { selectedIds, items, updateRotation, removeItem, select, duplicateItem, setItemElevation } =
         state;
-      if (selectedIds.length === 0) return;
+      const selectedWallId = state.selectedWallId;
 
       const mod = e.metaKey || e.ctrlKey;
+
+      if (e.key === 'Escape') {
+        if (selectedIds.length === 0 && !selectedWallId) return;
+        e.preventDefault();
+        select(null);
+        return;
+      }
+
+      if (selectedIds.length === 0) return;
 
       if (mod && (e.key === 'd' || e.key === 'D')) {
         e.preventDefault();
@@ -69,8 +78,6 @@ export function KeyboardShortcuts() {
         for (const id of [...selectedIds]) {
           removeItem(id);
         }
-      } else if (e.key === 'Escape') {
-        select(null);
       }
     };
     window.addEventListener('keydown', onKeyDown);

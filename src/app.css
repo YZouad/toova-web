@@ -4449,6 +4449,12 @@ button.landing-nav-brand { cursor: pointer; }
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
+.room-preset-dorm-tabs {
+  margin-top: 4px;
+}
+.room-preset-grid--dorms {
+  margin-top: 16px;
+}
 .room-preset-goal-tabs::-webkit-scrollbar {
   display: none;
 }

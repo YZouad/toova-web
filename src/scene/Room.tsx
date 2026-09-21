@@ -14,6 +14,7 @@ import { FloorMesh, CeilingMesh, ShadowRoof, RecessedLights } from './FloorCeili
 import { Baseboards } from './Baseboards';
 import { DoorAssemblies, WindowAssemblies } from './Openings';
 import { resolveRenderQuality } from '../lib/renderQuality';
+import { wallPaintColor } from '../lib/roomAppearance';
 import { OrbitCutawaySync } from './useOrbitFade';
 
 /** Pick wall ids to hide for open-front / top-down cutaways. */
@@ -37,14 +38,18 @@ function cutAwayWallIds(geom: RoomGeometry, mode: string): Set<string> {
   return new Set([bestId]);
 }
 
-export function Room() {
+export function Room({ interactive = true }: { interactive?: boolean }) {
   const geom = useStore((s) => s.roomGeometry);
   const appearance = useStore((s) => s.environment.appearance);
   const cutaway = useStore((s) => s.visual.cutaway);
+  const selectedWallId = useStore((s) => s.selectedWallId);
+  const selectWall = useStore((s) => s.selectWall);
+  const designerTool = useStore((s) => s.designerTool);
 
   const H = geom.height;
   const segments = useMemo(() => allWallSegments(geom), [geom]);
   const hidden = useMemo(() => cutAwayWallIds(geom, cutaway), [geom, cutaway]);
+  const canSelectWall = interactive && designerTool === 'select';
 
   // Ceiling + roof slab are always on (except top-down cutaway for the finish plane).
   const showCeiling = cutaway !== 'topDown';
@@ -52,7 +57,11 @@ export function Room() {
   return (
     <group>
       <OrbitCutawaySync geom={geom} />
-      <FloorMesh geom={geom} preset={appearance.floorPreset} />
+      <FloorMesh
+        geom={geom}
+        preset={appearance.floorPreset}
+        textureUrl={appearance.floorTextureUrl}
+      />
       <CeilingMesh
         geom={geom}
         preset={appearance.ceilingPreset}
@@ -78,7 +87,9 @@ export function Room() {
             rotationY={seg.rotationY}
             holes={holes}
             cutAway={hidden.has(seg.wall.id)}
-            color={appearance.wallColor}
+            color={wallPaintColor(appearance, seg.wall.id)}
+            selected={canSelectWall && selectedWallId === seg.wall.id}
+            onSelect={canSelectWall ? () => selectWall(seg.wall.id) : undefined}
           />
         );
       })}

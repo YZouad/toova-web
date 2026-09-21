@@ -4,6 +4,11 @@
 
 import { DEFAULT_SHELF_COLOR, isWallShelfKind, type FurnitureKind } from '../furniture/registry';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './checklistPublicGlbs';
+import {
+  itemSupportsTopColor,
+  itemUsesCustomFinish,
+  itemUsesTintColor,
+} from './furnitureFinish';
 import { DEFAULT_BLANKET_COLOR, newAttachmentKey, type EmitterConfig, type Item } from '../store';
 import {
   comforterHexFromConfig,
@@ -58,6 +63,10 @@ export interface RoomItemRow {
   bedding_enabled?: boolean | null;
   blanket_color?: string | null;
   blanket_texture_path?: string | null;
+  finish_texture_path?: string | null;
+  tint_color?: string | null;
+  mattress_color?: string | null;
+  top_color?: string | null;
   bedding_config?: BeddingConfig | null;
   emitter?: EmitterConfig | null;
   curated_product_id?: string | null;
@@ -85,6 +94,10 @@ export type RoomItemInsert = {
   bedding_enabled?: boolean;
   blanket_color: string | null;
   blanket_texture_path: string | null;
+  finish_texture_path: string | null;
+  tint_color: string | null;
+  mattress_color: string | null;
+  top_color: string | null;
   bedding_config: BeddingConfig | null;
   emitter?: EmitterConfig | null;
   curated_product_id: string | null;
@@ -145,7 +158,16 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     return undefined;
   })();
   const tintColor = (() => {
-    if (row.kind !== 'imported' && row.kind !== 'shelf') return undefined;
+    if (!itemUsesTintColor(row.kind)) return undefined;
+    if (row.kind === 'bed') {
+      if (row.tint_color != null && String(row.tint_color).trim()) {
+        return String(row.tint_color).trim();
+      }
+      return undefined;
+    }
+    if (row.tint_color != null && String(row.tint_color).trim()) {
+      return String(row.tint_color).trim();
+    }
     if (row.blanket_color != null && String(row.blanket_color).trim()) {
       return String(row.blanket_color).trim();
     }
@@ -172,12 +194,18 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
       ? comforterHexFromConfig(resolvedBeddingConfig) ?? legacyBlanketColor
       : undefined;
 
-  const blanketTexturePath =
-    row.kind === 'bed' &&
-    row.blanket_texture_path != null &&
-    String(row.blanket_texture_path).trim()
+  const texturePath =
+    row.blanket_texture_path != null && String(row.blanket_texture_path).trim()
       ? String(row.blanket_texture_path).trim()
       : undefined;
+  const dedicatedFinishPath =
+    row.finish_texture_path != null && String(row.finish_texture_path).trim()
+      ? String(row.finish_texture_path).trim()
+      : undefined;
+  const blanketTexturePath = row.kind === 'bed' ? texturePath : undefined;
+  const finishTexturePath = itemUsesCustomFinish(row.kind)
+    ? dedicatedFinishPath ?? (row.kind === 'bed' ? undefined : texturePath)
+    : undefined;
 
   const emitter = parseEmitter(row.emitter);
   const curatedProductId =
@@ -189,6 +217,18 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     row.instance_key != null && String(row.instance_key).trim()
       ? String(row.instance_key).trim()
       : newAttachmentKey();
+
+  const mattressColor =
+    row.kind === 'bed' &&
+    row.mattress_color != null &&
+    String(row.mattress_color).trim()
+      ? String(row.mattress_color).trim()
+      : undefined;
+
+  const topColor =
+    row.top_color != null && String(row.top_color).trim()
+      ? String(row.top_color).trim()
+      : undefined;
 
   const hanging =
     row.kind === 'hanging' ? parseHangingConfig(row.hanging_config) : undefined;
@@ -206,9 +246,12 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     beddingEnabled,
     blanketColor,
     tintColor,
+    mattressColor,
+    topColor,
     beddingConfig: resolvedBeddingConfig,
 
     blanketTexturePath,
+    finishTexturePath,
     importedNaturalSize,
     importedUrl,
     importedStoragePath,
@@ -289,13 +332,25 @@ export function serializeLayoutForRoom(
           ? (it.beddingConfig
               ? comforterHexFromConfig(it.beddingConfig)
               : it.blanketColor) ?? null
-          : (it.kind === 'imported' || it.kind === 'shelf') && it.tintColor
+          : itemUsesTintColor(it.kind) && it.tintColor
             ? it.tintColor
             : null,
+      tint_color:
+        itemUsesTintColor(it.kind) && it.tintColor ? it.tintColor : null,
+      mattress_color:
+        it.kind === 'bed' && it.mattressColor ? it.mattressColor : null,
+      top_color:
+        itemSupportsTopColor(it) && it.topColor ? it.topColor : null,
 
       blanket_texture_path:
         it.kind === 'bed' && it.blanketTexturePath
           ? it.blanketTexturePath
+          : it.kind !== 'bed' && itemUsesCustomFinish(it.kind) && it.finishTexturePath
+            ? it.finishTexturePath
+            : null,
+      finish_texture_path:
+        itemUsesCustomFinish(it.kind) && it.finishTexturePath
+          ? it.finishTexturePath
           : null,
       bedding_config:
         it.kind === 'bed' && it.beddingConfig ? it.beddingConfig : null,

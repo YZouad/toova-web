@@ -18,7 +18,7 @@ describe('starterTemplateOverrides', () => {
       label: '  Cozy twin  ',
       hidden: true,
       timeOfDay: 21,
-      appearance: { wallColor: '#6b7f6a', floorPreset: 'carpet', recessedLights: false },
+      appearance: { wallColor: '#6b7f6a', wallColors: { w1: '#1f4f4f' }, floorPreset: 'carpet', recessedLights: false },
       floorItems: [
         { kind: 'bed', position: [20, 0, 80], rotationY: 0 },
         { kind: 'imported', position: [1, 0, 1], rotationY: 0 },
@@ -29,6 +29,7 @@ describe('starterTemplateOverrides', () => {
     expect(parsed.label).toBe('Cozy twin');
     expect(parsed.hidden).toBe(true);
     expect(parsed.appearance?.floorPreset).toBe('carpet');
+    expect(parsed.appearance?.wallColors).toEqual({ w1: '#1f4f4f' });
     expect(parsed.floorItems).toHaveLength(1);
     expect(parsed.floorItems?.[0]?.kind).toBe('bed');
     expect(parsed.hanging).toHaveLength(1);
@@ -120,6 +121,7 @@ describe('starterTemplateOverrides', () => {
     });
     expect(payload.label).toBe('Night studio');
     expect(payload.timeOfDay).toBe(21);
+    expect(payload.appearance?.trimPreset).toBe('whiteTrim');
     expect(payload.plan?.walls.length).toBe(plan.walls.length);
     expect(payload.itemSnapshots?.some((it) => it.position[0] === 55)).toBe(true);
     expect(payload.floorItems?.some((s) => s.position[0] === 55)).toBe(true);
@@ -127,6 +129,18 @@ describe('starterTemplateOverrides', () => {
     if (hangingItem) {
       expect(hangingSeedFromItem(hangingItem, plan)?.wallIndex).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  it('round-trips trim preset in starter overrides', () => {
+    const parsed = parseStarterOverride({
+      appearance: { trimPreset: 'blackTrim', floorPreset: 'plaidCarpet' },
+    });
+    expect(parsed.appearance?.trimPreset).toBe('blackTrim');
+    expect(parsed.appearance?.floorPreset).toBe('plaidCarpet');
+
+    const template = getRoomStarterTemplate('bedroom-simple')!;
+    const merged = applyStarterOverride(template, parsed);
+    expect(merged.buildEnvironment().appearance.trimPreset).toBe('blackTrim');
   });
 
   it('parses starter-edit workspace ids', () => {

@@ -23,6 +23,7 @@ type PendingTap = {
   startX: number;
   startY: number;
   itemId: string | null;
+  wallId: string | null;
 };
 
 type PendingObject = {
@@ -326,6 +327,25 @@ export function MobileObjectGestureController({
       return null;
     };
 
+    const hitAnyWallId = (clientX: number, clientY: number): string | null => {
+      const { roomGeometry } = useStore.getState();
+      const rect = canvas.getBoundingClientRect();
+      ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      const intersections = raycaster.intersectObjects(scene.children, true);
+      for (const ix of intersections) {
+        let obj: THREE.Object3D | null = ix.object;
+        while (obj) {
+          if (obj.userData?.itemId) return null;
+          const wallId = obj.userData?.wallId as string | undefined;
+          if (wallId && roomGeometry.walls.some((w) => w.id === wallId)) return wallId;
+          obj = obj.parent;
+        }
+      }
+      return null;
+    };
+
     const isTapMovement = (dx: number, dy: number) =>
       dx * dx + dy * dy < TAP_SELECT_PX * TAP_SELECT_PX;
 
@@ -410,12 +430,14 @@ export function MobileObjectGestureController({
         return;
       }
 
+      const itemId = hitAnyItemId(e.clientX, e.clientY);
       pendingRef.current = {
         kind: 'tap',
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
-        itemId: hitAnyItemId(e.clientX, e.clientY),
+        itemId,
+        wallId: itemId ? null : hitAnyWallId(e.clientX, e.clientY),
       };
     };
 
@@ -543,6 +565,8 @@ export function MobileObjectGestureController({
       if (!isTapMovement(dx, dy)) return;
       if (pending.itemId) {
         useStore.getState().select(pending.itemId);
+      } else if (pending.wallId) {
+        useStore.getState().selectWall(pending.wallId);
       } else {
         useStore.getState().select(null);
       }

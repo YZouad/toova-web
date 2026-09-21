@@ -10,8 +10,10 @@ export interface RoomAppearance {
    * Kept for older saved environments.
    */
   wallPreset: MaterialPresetId;
-  /** Free wall paint color (hex). Multiplies the shared plaster texture. */
+  /** Default paint for walls without a per-wall override. */
   wallColor: string;
+  /** Optional per-wall paint overrides keyed by floor-plan wall id. */
+  wallColors?: Record<string, string>;
   floorPreset: MaterialPresetId;
   ceilingPreset: MaterialPresetId;
   trimPreset: MaterialPresetId;
@@ -21,6 +23,10 @@ export interface RoomAppearance {
   recessedLights: boolean;
   /** Show baseboard trim. */
   showBaseboards: boolean;
+  /** User-uploaded floor photo texture (storage path). */
+  floorTexturePath?: string;
+  /** Signed URL for floorTexturePath — runtime only, not persisted. */
+  floorTextureUrl?: string;
 }
 
 export const DEFAULT_WALL_COLOR = '#d8d0c2';
@@ -55,6 +61,7 @@ export const WALL_COLOR_SWATCHES: { label: string; color: string }[] = [
   { label: 'Teal', color: '#1f4f4f' },
   { label: 'Sage', color: '#6b7f6a' },
   { label: 'Soft white', color: '#f2efe8' },
+  { label: 'Yellow', color: '#e8d8b0' },
   { label: 'Charcoal', color: '#3a3a3a' },
 ];
 
@@ -74,6 +81,114 @@ function normalizeHex(hex: string): string {
   return `#${h.toLowerCase()}`;
 }
 
+export function storedFloorTexturePath(
+  appearance: Pick<RoomAppearance, 'floorTexturePath'>,
+): string | undefined {
+  const path = appearance.floorTexturePath?.trim();
+  return path || undefined;
+}
+
+export function assignFloorTextureUrl(
+  appearance: RoomAppearance,
+  path: string,
+  url: string,
+): void {
+  if (appearance.floorTexturePath === path) appearance.floorTextureUrl = url;
+}
+
+/** Persisted appearance — strips signed URLs. */
+export function serializeAppearance(appearance: RoomAppearance): RoomAppearance {
+  const { floorTextureUrl: _url, ...rest } = appearance;
+  return rest;
+}
+
+export function parseWallColors(raw: unknown): Record<string, string> | undefined {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return undefined;
+  const out: Record<string, string> = {};
+  for (const [id, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (!id || !isHexColor(value)) continue;
+    out[id] = normalizeHex(value);
+  }
+  return Object.keys(out).length ? out : undefined;
+}
+
+/** Resolved paint for one wall — per-wall override, else the room default. */
+export function wallPaintColor(appearance: RoomAppearance, wallId: string): string {
+  return appearance.wallColors?.[wallId] ?? appearance.wallColor;
+}
+
+/**
+ * Paint every wall (`wallId` omitted) or a single wall. Painting all walls
+ * clears overrides so the room is uniform again.
+ */
+export function applyWallPaint(
+  appearance: RoomAppearance,
+  color: string,
+  wallId?: string | null,
+): RoomAppearance {
+  const hex = isHexColor(color) ? normalizeHex(color) : appearance.wallColor;
+  if (!wallId) {
+    return { ...appearance, wallColor: hex, wallColors: undefined };
+  }
+  const next = { ...(appearance.wallColors ?? {}) };
+  if (hex === appearance.wallColor) delete next[wallId];
+  else next[wallId] = hex;
+  const wallColors = Object.keys(next).length ? next : undefined;
+  return { ...appearance, wallColors };
+}
+
+/** Drop overrides for walls that no longer exist in the floor plan. */
+export function pruneWallColors(
+  appearance: RoomAppearance,
+  wallIds: Iterable<string>,
+): RoomAppearance {
+  const map = appearance.wallColors;
+  if (!map) return appearance;
+  const allowed = new Set(wallIds);
+  const next: Record<string, string> = {};
+  for (const [id, color] of Object.entries(map)) {
+    if (allowed.has(id)) next[id] = color;
+  }
+  if (Object.keys(next).length === Object.keys(map).length) {
+    let unchanged = true;
+    for (const id of Object.keys(map)) {
+      if (next[id] !== map[id]) {
+        unchanged = false;
+        break;
+      }
+    }
+    if (unchanged) return appearance;
+  }
+  return { ...appearance, wallColors: Object.keys(next).length ? next : undefined };
+}
+
+export type WallFacingName = 'North' | 'South' | 'East' | 'West';
+
+/** Compass label from a wall's outward (+X east, +Z south). */
+export function wallFacingName(outwardX: number, outwardZ: number): WallFacingName {
+  if (Math.abs(outwardZ) >= Math.abs(outwardX)) {
+    return outwardZ >= 0 ? 'South' : 'North';
+  }
+  return outwardX >= 0 ? 'East' : 'West';
+}
+
+/** Stable UI labels — "North", or "South 1" / "South 2" when several face the same way. */
+export function uniqueWallLabels(
+  walls: readonly { id: string; outward: readonly [number, number] }[],
+): { id: string; label: string }[] {
+  const facings = walls.map((w) => wallFacingName(w.outward[0], w.outward[1]));
+  const counts = new Map<string, number>();
+  for (const facing of facings) counts.set(facing, (counts.get(facing) ?? 0) + 1);
+  const seen = new Map<string, number>();
+  return walls.map((w, i) => {
+    const facing = facings[i]!;
+    if ((counts.get(facing) ?? 0) <= 1) return { id: w.id, label: facing };
+    const n = (seen.get(facing) ?? 0) + 1;
+    seen.set(facing, n);
+    return { id: w.id, label: `${facing} ${n}` };
+  });
+}
+
 /** Field-tolerant parse; never returns null — always merges with defaults. */
 export function parseAppearance(raw: unknown): RoomAppearance {
   if (!raw || typeof raw !== 'object') return { ...DEFAULT_APPEARANCE };
@@ -82,9 +197,15 @@ export function parseAppearance(raw: unknown): RoomAppearance {
   const wallColor = isHexColor(o.wallColor)
     ? normalizeHex(o.wallColor)
     : normalizeHex(MATERIAL_PRESETS[wallPreset]?.color ?? DEFAULT_WALL_COLOR);
+  const wallColors = parseWallColors(o.wallColors);
+  const floorTexturePath =
+    typeof o.floorTexturePath === 'string' && o.floorTexturePath.trim()
+      ? o.floorTexturePath.trim()
+      : undefined;
   return {
     wallPreset,
     wallColor,
+    ...(wallColors ? { wallColors } : {}),
     floorPreset: pickPreset(o.floorPreset, DEFAULT_APPEARANCE.floorPreset),
     ceilingPreset: pickPreset(o.ceilingPreset, DEFAULT_APPEARANCE.ceilingPreset),
     trimPreset: pickPreset(o.trimPreset, DEFAULT_APPEARANCE.trimPreset),
@@ -93,5 +214,6 @@ export function parseAppearance(raw: unknown): RoomAppearance {
       o.recessedLights === undefined ? DEFAULT_APPEARANCE.recessedLights : o.recessedLights === true,
     showBaseboards:
       o.showBaseboards === undefined ? DEFAULT_APPEARANCE.showBaseboards : o.showBaseboards === true,
+    ...(floorTexturePath ? { floorTexturePath } : {}),
   };
 }

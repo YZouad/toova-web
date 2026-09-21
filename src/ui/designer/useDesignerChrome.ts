@@ -30,6 +30,7 @@ function saveTourDone() {
 export function useDesignerChrome() {
   const selectedId = useStore((s) => s.selectedId);
   const selectedItem = useStore((s) => (selectedId ? s.items[selectedId] : null));
+  const selectedWallId = useStore((s) => s.selectedWallId);
   const designerTool = useStore((s) => s.designerTool);
   const hangingDraft = useStore((s) => s.hangingDraft);
   const setDesignerTool = useStore((s) => s.setDesignerTool);
@@ -97,6 +98,12 @@ export function useDesignerChrome() {
     setRadialOpen(false);
     if (!selectedId && panel === 'inspect') setPanelRaw(null);
   }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!selectedWallId || present || drawing || tourOn) return;
+    setPanelRaw('look');
+    setRadialOpen(false);
+  }, [selectedWallId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (panel !== 'inspect' || !selectedItem) return;

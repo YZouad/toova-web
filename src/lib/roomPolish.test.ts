@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { parseAppearance, DEFAULT_APPEARANCE, CATALOG_APPEARANCE } from './roomAppearance';
+import {
+  parseAppearance,
+  DEFAULT_APPEARANCE,
+  CATALOG_APPEARANCE,
+  wallPaintColor,
+  applyWallPaint,
+  pruneWallColors,
+  uniqueWallLabels,
+} from './roomAppearance';
 import {
   resolveRenderQuality,
   parseVisualSettings,
@@ -34,6 +42,67 @@ describe('parseAppearance', () => {
   it('catalog preset uses teal paint color + concrete', () => {
     expect(CATALOG_APPEARANCE.wallColor).toBe('#1f4f4f');
     expect(CATALOG_APPEARANCE.floorPreset).toBe('concrete');
+  });
+
+  it('parses per-wall paint overrides and ignores junk keys', () => {
+    const a = parseAppearance({
+      wallColor: '#d8d0c2',
+      wallColors: { wNorth: '#1f4f4f', wBad: 'red', '': '#000000' },
+    });
+    expect(a.wallColor).toBe('#d8d0c2');
+    expect(a.wallColors).toEqual({ wNorth: '#1f4f4f' });
+  });
+});
+
+describe('per-wall paint', () => {
+  it('resolves overrides then the room default', () => {
+    const a = parseAppearance({
+      wallColor: '#d8d0c2',
+      wallColors: { accent: '#6b7f6a' },
+    });
+    expect(wallPaintColor(a, 'accent')).toBe('#6b7f6a');
+    expect(wallPaintColor(a, 'plain')).toBe('#d8d0c2');
+  });
+
+  it('paints one wall without changing the default', () => {
+    const a = applyWallPaint(DEFAULT_APPEARANCE, '#1f4f4f', 'w1');
+    expect(a.wallColor).toBe(DEFAULT_APPEARANCE.wallColor);
+    expect(a.wallColors).toEqual({ w1: '#1f4f4f' });
+    const all = applyWallPaint(a, '#3a3a3a');
+    expect(all.wallColor).toBe('#3a3a3a');
+    expect(all.wallColors).toBeUndefined();
+  });
+
+  it('drops an override that matches the default', () => {
+    const a = applyWallPaint(
+      applyWallPaint(DEFAULT_APPEARANCE, '#1f4f4f', 'w1'),
+      DEFAULT_APPEARANCE.wallColor,
+      'w1',
+    );
+    expect(a.wallColors).toBeUndefined();
+  });
+
+  it('prunes colors for walls that were removed', () => {
+    const a = parseAppearance({
+      wallColor: '#d8d0c2',
+      wallColors: { keep: '#1f4f4f', gone: '#3a3a3a' },
+    });
+    expect(pruneWallColors(a, ['keep']).wallColors).toEqual({ keep: '#1f4f4f' });
+    expect(pruneWallColors(a, []).wallColors).toBeUndefined();
+  });
+
+  it('labels duplicate facings with a number', () => {
+    expect(
+      uniqueWallLabels([
+        { id: 'a', outward: [0, 1] },
+        { id: 'b', outward: [0, 1] },
+        { id: 'c', outward: [1, 0] },
+      ]),
+    ).toEqual([
+      { id: 'a', label: 'South 1' },
+      { id: 'b', label: 'South 2' },
+      { id: 'c', label: 'East' },
+    ]);
   });
 });
 

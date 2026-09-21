@@ -121,6 +121,10 @@ BEGIN
     FROM public.room_items ri
     WHERE ri.room_id = p_room_id
     UNION
+    SELECT NULLIF(trim(ri.finish_texture_path), '') AS path
+    FROM public.room_items ri
+    WHERE ri.room_id = p_room_id
+    UNION
     SELECT NULLIF(trim(r.thumbnail_path), '') AS path
     FROM public.rooms r
     WHERE r.id = p_room_id

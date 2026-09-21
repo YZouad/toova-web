@@ -29,9 +29,11 @@ import {
   type HangingDecorationConfig,
 } from './hangingDecorGeometry';
 import { DEFAULT_APPEARANCE, type RoomAppearance } from './roomAppearance';
+import { buildUChicagoDormStarters, type UChicagoDormMeta } from './uchicagoDormTemplates';
 import { ROOM } from '../units';
 
-export type RoomStarterGoal = 'bedroom' | 'office' | 'living' | 'studio';
+export type RoomStarterGoal = 'bedroom' | 'office' | 'living' | 'studio' | 'uchicago';
+export type { UChicagoDormMeta };
 export type RoomStarterTier = 'simple' | 'balanced' | 'decorated';
 
 export interface RoomStarterGoalDef {
@@ -84,6 +86,8 @@ export interface RoomStarterTemplate {
    * `hanging` so wall indices survive a plan remap.
    */
   itemSnapshots?: readonly Item[];
+  /** UChicago residence-hall picker metadata. */
+  dormMeta?: UChicagoDormMeta;
 }
 
 export const ROOM_STARTER_GOALS: readonly RoomStarterGoalDef[] = [
@@ -106,6 +110,11 @@ export const ROOM_STARTER_GOALS: readonly RoomStarterGoalDef[] = [
     id: 'studio',
     label: 'Studio',
     description: 'Sleep and work in one room',
+  },
+  {
+    id: 'uchicago',
+    label: 'UChicago dorms',
+    description: 'Residence hall layouts',
   },
 ];
 
@@ -452,6 +461,8 @@ export const ROOM_STARTER_TEMPLATES: readonly RoomStarterTemplate[] = [
       item('lamp', [104, DESK_Y, 28], FACE_IN_FROM_SOUTH),
     ],
   }),
+
+  ...buildUChicagoDormStarters(),
 ];
 
 /** Blank shape presets kept for the “Blank room” path. */
@@ -579,6 +590,7 @@ function cloneSnapshotItem(snap: Item, id: string): Item {
   cloned.id = id;
   delete cloned.importedUrl;
   delete cloned.blanketTextureUrl;
+  delete cloned.finishTextureUrl;
   if (!cloned.attachmentKey) cloned.attachmentKey = newAttachmentKey();
   return cloned;
 }
