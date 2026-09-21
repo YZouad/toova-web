@@ -72,10 +72,10 @@ export function measureFieldLabel(field: MeasureAcceptField): string {
 }
 
 export function measureFieldHint(field: MeasureAcceptField): string {
-  if (field === 'width') return 'Drag points side-to-side';
-  if (field === 'depth') return 'Drag points front-to-back';
-  if (field === 'height') return 'Drag points bottom-to-top';
-  return 'Drag points on the floor plane';
+  if (field === 'width') return 'Pick points side-to-side';
+  if (field === 'depth') return 'Pick points front-to-back';
+  if (field === 'height') return 'Pick points bottom-to-top';
+  return 'Pick points on the floor plane';
 }
 
 export type MeasureDominantAxis = 'width' | 'depth' | 'height' | 'multi';

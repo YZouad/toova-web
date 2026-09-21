@@ -29,7 +29,7 @@ import { LongPressLift } from './LongPressLift';
 import { MobileSelectionHud } from './MobileSelectionHud';
 import { HangingDraftPreview } from '../furniture/HangingDecoration';
 import { DimensionsOverlay } from './DimensionsOverlay';
-import { MeasureOverlay } from './MeasureOverlay';
+import { MeasurementsLayer } from './MeasurementsLayer';
 import { isHangingDesignerTool, isMeasureDesignerTool, useStore, type CameraPresetId } from '../store';
 import { applyWeather, isDaytime, sampleSun, indoorHorizonFill, grazingSunIndoor } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
@@ -650,18 +650,14 @@ function SceneInner({
       <Room />
       <ItemsLayer />
       {showDimensionsOverlay ? <DimensionsOverlay /> : null}
+      {!readOnly && !capturing ? <MeasurementsLayer /> : null}
       {hangingTool ? (
         <>
           <HangingPlacementController />
           <HangingDraftPreview />
         </>
       ) : null}
-      {measureTool ? (
-        <>
-          <MeasureController />
-          <MeasureOverlay />
-        </>
-      ) : null}
+      {measureTool ? <MeasureController /> : null}
       {showChrome && !hangingTool && !measureTool ? (
         <>
           {/*

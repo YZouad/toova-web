@@ -36,6 +36,7 @@ import { PiecesPanel } from './designer/PiecesPanel';
 import { InspectorPanel } from './designer/InspectorPanel';
 import { ChecklistTicker } from './designer/ChecklistTicker';
 import { DrawBanner } from './designer/DrawBanner';
+import { MeasureBar } from './designer/MeasureBar';
 import { CommandPalette } from './designer/CommandPalette';
 import { buildDesignerCommands } from './designer/commandPaletteCommands';
 import { KeysOverlay } from './designer/KeysOverlay';
@@ -55,6 +56,7 @@ import {
   IconPlay,
   IconPlus,
   IconReset,
+  IconRuler,
   IconRoomLook,
   IconSearch,
   IconUpload,
@@ -433,6 +435,7 @@ export function Designer({
         if (editable && e.target instanceof HTMLElement) e.target.blur();
         if (chrome.measuring) {
           if (chrome.importMeasuring) chrome.cancelMeasureFromImport();
+          else if (chrome.measurePending) chrome.cancelMeasurePending();
           else cancelMeasure();
           return;
         }
@@ -770,7 +773,8 @@ export function Designer({
           />
         ) : (
           <>
-            <DrawBanner
+            <DrawBanner />
+            <MeasureBar
               importMeasuring={chrome.importMeasuring}
               onCancelMeasureFromImport={chrome.cancelMeasureFromImport}
               onAcceptMeasureFromImport={chrome.acceptMeasureFromImport}
@@ -861,6 +865,18 @@ export function Designer({
                     onClick={() => setShowDimensions(!showDimensions)}
                   >
                     Dims
+                  </button>
+                  <button
+                    type="button"
+                    className={`dg-camera-btn${chrome.measuring ? ' is-active' : ''}`}
+                    aria-pressed={chrome.measuring}
+                    aria-label={chrome.measuring ? 'Exit measure tool' : 'Measure in the room'}
+                    onClick={() => {
+                      if (chrome.measuring) cancelMeasure();
+                      else chrome.startMeasure();
+                    }}
+                  >
+                    <IconRuler />
                   </button>
                   <button
                     type="button"

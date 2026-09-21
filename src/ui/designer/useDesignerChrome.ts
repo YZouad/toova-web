@@ -34,10 +34,12 @@ export function useDesignerChrome() {
   const selectedItem = useStore((s) => (selectedId ? s.items[selectedId] : null));
   const designerTool = useStore((s) => s.designerTool);
   const hangingDraft = useStore((s) => s.hangingDraft);
-  const measureDraft = useStore((s) => s.measureDraft);
+  const measurePending = useStore((s) => s.measurePending);
+  const measurements = useStore((s) => s.measurements);
   const setDesignerTool = useStore((s) => s.setDesignerTool);
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
   const cancelMeasure = useStore((s) => s.cancelMeasure);
+  const cancelMeasurePending = useStore((s) => s.cancelMeasurePending);
   const measureAcceptRef = useRef<((value: string) => void) | null>(null);
 
   const [panel, setPanelRaw] = useState<DesignerPanel>(null);
@@ -66,8 +68,7 @@ export function useDesignerChrome() {
 
   const drawing = designerTool === 'hanging-leaves'
     || designerTool === 'hanging-lights'
-    || designerTool === 'hanging-led-strip'
-    || designerTool === 'measure';
+    || designerTool === 'hanging-led-strip';
   const measuring = designerTool === 'measure';
 
   const setPanel = useCallback((next: DesignerPanel) => {
@@ -135,19 +136,19 @@ export function useDesignerChrome() {
         setTourOn(false);
         setRadialOpen(false);
         if (hangingDraft) cancelHangingDraft();
-        if (importMeasuring || measureDraft) {
+        if (importMeasuring || measuring) {
           measureAcceptRef.current = null;
           setImportMeasuring(false);
           setImportMeasuringField(null);
         }
-        if (measureDraft) cancelMeasure();
+        if (measuring) cancelMeasure();
         setDesignerTool('select');
       }
       return next;
     });
   }, [
     hangingDraft,
-    measureDraft,
+    measuring,
     importMeasuring,
     cancelHangingDraft,
     cancelMeasure,
@@ -324,7 +325,9 @@ export function useDesignerChrome() {
       drawing,
       measuring,
       hangingDraft,
-      measureDraft,
+      measurePending,
+      measurements,
+      cancelMeasurePending,
       chromeOn,
       showContextBar,
       showActionSheet,
@@ -367,7 +370,9 @@ export function useDesignerChrome() {
       drawing,
       measuring,
       hangingDraft,
-      measureDraft,
+      measurePending,
+      measurements,
+      cancelMeasurePending,
       chromeOn,
       showContextBar,
       showActionSheet,

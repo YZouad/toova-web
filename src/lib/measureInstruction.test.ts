@@ -1,28 +1,30 @@
 import { describe, expect, it } from 'vitest';
-import { spawnMeasureDraft } from './measureDraftState';
 import { measureBannerHint } from './measureInstruction';
-import { rectanglePlan } from './floorPlanGeometry';
 
 describe('measureBannerHint', () => {
-  it('tells the user to drag and adjust height when a point is selected', () => {
-    const draft = spawnMeasureDraft(rectanglePlan(120, 180), null);
-    expect(measureBannerHint(draft)).toBe(
-      'Drag points to measure · Adjust height on selected point · Done when ready',
+  it('prompts for first click when idle', () => {
+    expect(
+      measureBannerHint({ hasPending: false, acceptField: null, count: 0 }),
+    ).toBe('Click two points on any surface · Hold Alt to suspend snap');
+  });
+
+  it('prompts for second click while pending', () => {
+    expect(
+      measureBannerHint({ hasPending: true, acceptField: null, count: 0 }),
+    ).toBe('Click the second point to finish this tape');
+  });
+
+  it('includes field guidance for import measure', () => {
+    expect(
+      measureBannerHint({ hasPending: false, acceptField: 'depth', count: 0 }),
+    ).toBe(
+      'Click two points · Measuring Depth · Pick points front-to-back',
     );
   });
 
-  it('includes import-field context', () => {
-    const draft = spawnMeasureDraft(rectanglePlan(120, 180), 'depth');
-    expect(measureBannerHint(draft)).toBe(
-      'Measuring Depth · Drag points front-to-back · Drag points to measure',
-    );
-  });
-
-  it('shows drag hint while moving a point', () => {
-    const draft = {
-      ...spawnMeasureDraft(rectanglePlan(120, 180), null),
-      draggingEndpoint: 'b' as const,
-    };
-    expect(measureBannerHint(draft)).toBe('Drag to move point · Release to place');
+  it('offers another tape after one is committed', () => {
+    expect(
+      measureBannerHint({ hasPending: false, acceptField: null, count: 1 }),
+    ).toBe('Click two points for another tape · Esc exits');
   });
 });

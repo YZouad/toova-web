@@ -13,6 +13,7 @@ import {
   IconLight,
   IconPieces,
   IconPlus,
+  IconRuler,
   IconRoomLook,
   IconSearch,
   IconUpload,
@@ -20,6 +21,7 @@ import {
 import type { DesignerChrome } from '../useDesignerChrome';
 import { MobileChecklistSheet } from './MobileChecklistSheet';
 import { MobileDrawChrome } from './MobileDrawChrome';
+import { MeasureBar } from '../MeasureBar';
 import { MobileImportSheet } from './MobileImportSheet';
 import { MobileInspectorSheet } from './MobileInspectorSheet';
 import { MobileLibrarySheet } from './MobileLibrarySheet';
@@ -310,6 +312,21 @@ export function MobileDesignerChrome({
           >
             <span>Dims</span>
           </button>
+          <button
+            type="button"
+            className={`dgm-pill${chrome.measuring ? ' is-active' : ''}`}
+            aria-pressed={chrome.measuring}
+            aria-label={chrome.measuring ? 'Exit measure tool' : 'Measure in the room'}
+            onClick={() => {
+              if (chrome.measuring) {
+                useStore.getState().cancelMeasure();
+              } else {
+                chrome.startMeasure();
+              }
+            }}
+          >
+            <IconRuler />
+          </button>
           <div className="dgm-scene-chips__spacer" />
           <button
             type="button"
@@ -325,8 +342,9 @@ export function MobileDesignerChrome({
         </div>
       ) : null}
 
-      {chrome.drawing ? (
-        <MobileDrawChrome
+      {chrome.drawing ? <MobileDrawChrome /> : null}
+      {chrome.measuring || chrome.importMeasuring ? (
+        <MeasureBar
           importMeasuring={chrome.importMeasuring}
           onCancelMeasureFromImport={chrome.cancelMeasureFromImport}
           onAcceptMeasureFromImport={chrome.acceptMeasureFromImport}

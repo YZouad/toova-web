@@ -61,16 +61,21 @@ import {
   type MeasureAcceptField,
   type MeasureVec3,
 } from './lib/measureDistance';
-import {
-  beginMeasureEndpointDrag,
-  endMeasureEndpointDrag,
-  setMeasureActiveEndpoint as applyMeasureActiveEndpoint,
-  setMeasureEndpoint as applyMeasureEndpoint,
-  spawnMeasureDraft,
-  type MeasureDraft,
-} from './lib/measureDraftState';
+import type { MeasureHit } from './lib/measurePick';
 
-export type { MeasureAcceptField, MeasureVec3, MeasureDraft };
+export type { MeasureAcceptField, MeasureVec3 };
+export type { MeasureHit, MeasureSnapKind } from './lib/measurePick';
+
+export interface Measurement {
+  id: string;
+  a: MeasureVec3;
+  b: MeasureVec3;
+}
+
+let nextMeasureId = 1;
+function createMeasurementId(): string {
+  return `m-${nextMeasureId++}`;
+}
 
 export type DesignerTool =
   | 'select'
@@ -240,8 +245,18 @@ interface StoreState {
   designerTool: DesignerTool;
   /** In-progress hanging path (not persisted until finished). */
   hangingDraft: HangingDraft | null;
-  /** In-progress tape measure (two click points). */
-  measureDraft: MeasureDraft | null;
+  /** Session-only committed tape measurements (cleared on reload). */
+  measurements: Measurement[];
+  /** Point A while awaiting point B; null when idle or between measurements. */
+  measurePending: MeasureVec3 | null;
+  /** Live reticle under the cursor while the measure tool is active. */
+  measureHover: MeasureHit | null;
+  /** Optional surface snapping (default on). */
+  measureSnap: boolean;
+  /** Import-flow field being filled; null for free measure. */
+  measureImportField: MeasureAcceptField | null;
+  /** True when measuring to fill an import form field (Enter/Escape owned by banner). */
+  measureImportAccept: boolean;
 
   setTimeOfDay: (h: number) => void;
   setOrientation: (deg: number) => void;
@@ -264,10 +279,13 @@ interface StoreState {
 
   setDesignerTool: (tool: DesignerTool) => void;
   beginMeasure: (acceptField?: MeasureAcceptField | null, importAccept?: boolean) => void;
-  setMeasureEndpoint: (endpoint: 'a' | 'b', world: MeasureVec3) => void;
-  setMeasureActiveEndpoint: (endpoint: 'a' | 'b' | null) => void;
-  beginMeasureEndpointDrag: (endpoint: 'a' | 'b') => void;
-  endMeasureEndpointDrag: () => void;
+  setMeasureHover: (hit: MeasureHit | null) => void;
+  placeMeasurePoint: (point: MeasureVec3) => void;
+  cancelMeasurePending: () => void;
+  removeMeasurement: (id: string) => void;
+  clearMeasurements: () => void;
+  toggleMeasureSnap: () => void;
+  setMeasureSnap: (on: boolean) => void;
   cancelMeasure: () => void;
   finishMeasure: () => void;
   getMeasureAcceptValue: () => string | null;
@@ -447,7 +465,12 @@ export const useStore = create<StoreState>((set, get) => ({
   captureMode: false,
   designerTool: 'select',
   hangingDraft: null,
-  measureDraft: null,
+  measurements: [],
+  measurePending: null,
+  measureHover: null,
+  measureSnap: true,
+  measureImportField: null,
+  measureImportAccept: false,
 
   setTimeOfDay: (h) =>
     set((s) => ({ environment: { ...s.environment, timeOfDay: clamp(h, 0, 24) } })),
@@ -522,73 +545,127 @@ export const useStore = create<StoreState>((set, get) => ({
   setDesignerTool: (tool) =>
     set(() => {
       if (tool === 'select') {
-        return { designerTool: tool, hangingDraft: null, measureDraft: null };
+        return {
+          designerTool: tool,
+          hangingDraft: null,
+          measurePending: null,
+          measureHover: null,
+          measureImportField: null,
+          measureImportAccept: false,
+        };
       }
       if (tool === 'place-light') {
         // Spawn is handled by addLightSource; keep tool as select.
-        return { designerTool: 'select', hangingDraft: null, measureDraft: null };
+        return {
+          designerTool: 'select',
+          hangingDraft: null,
+          measurePending: null,
+          measureHover: null,
+          measureImportField: null,
+          measureImportAccept: false,
+        };
       }
       if (tool === 'measure') {
-        const room = get().roomGeometry;
         return {
           designerTool: tool,
           ...selectionOf([]),
           hangingDraft: null,
-          measureDraft: spawnMeasureDraft(room, null),
+          measurePending: null,
+          measureHover: null,
+          measureImportField: null,
+          measureImportAccept: false,
         };
       }
       const kind = hangingKindFromDesignerTool(tool);
-      if (!kind) return { designerTool: tool, hangingDraft: null, measureDraft: null };
+      if (!kind) {
+        return {
+          designerTool: tool,
+          hangingDraft: null,
+          measurePending: null,
+          measureHover: null,
+          measureImportField: null,
+          measureImportAccept: false,
+        };
+      }
       return {
         designerTool: tool,
         ...selectionOf([]),
         hangingDraft: { kind, anchors: [], cursorWorld: null },
-        measureDraft: null,
+        measurePending: null,
+        measureHover: null,
+        measureImportField: null,
+        measureImportAccept: false,
       };
     }),
 
   beginMeasure: (acceptField = null, importAccept = false) =>
-    set((s) => ({
+    set({
       designerTool: 'measure',
       ...selectionOf([]),
       hangingDraft: null,
-      measureDraft: spawnMeasureDraft(s.roomGeometry, acceptField, importAccept),
-    })),
+      measurePending: null,
+      measureHover: null,
+      measureImportField: acceptField,
+      measureImportAccept: importAccept,
+      ...(importAccept ? { measurements: [] } : {}),
+    }),
 
-  setMeasureEndpoint: (endpoint, world) =>
+  setMeasureHover: (hit) => set({ measureHover: hit }),
+
+  placeMeasurePoint: (point) =>
     set((s) => {
-      if (!s.measureDraft) return s;
+      if (s.designerTool !== 'measure') return s;
+      if (!s.measurePending) {
+        return { measurePending: point, measureHover: null };
+      }
+      const measurement: Measurement = {
+        id: createMeasurementId(),
+        a: s.measurePending,
+        b: point,
+      };
       return {
-        measureDraft: applyMeasureEndpoint(s.measureDraft, endpoint, world, s.roomGeometry),
+        measurements: [...s.measurements, measurement],
+        measurePending: null,
+        measureHover: null,
       };
     }),
 
-  setMeasureActiveEndpoint: (endpoint) =>
-    set((s) => {
-      if (!s.measureDraft) return s;
-      return { measureDraft: applyMeasureActiveEndpoint(s.measureDraft, endpoint) };
+  cancelMeasurePending: () => set({ measurePending: null, measureHover: null }),
+
+  removeMeasurement: (id) =>
+    set((s) => ({
+      measurements: s.measurements.filter((m) => m.id !== id),
+    })),
+
+  clearMeasurements: () => set({ measurements: [], measurePending: null, measureHover: null }),
+
+  toggleMeasureSnap: () => set((s) => ({ measureSnap: !s.measureSnap })),
+
+  setMeasureSnap: (on) => set({ measureSnap: on }),
+
+  cancelMeasure: () =>
+    set({
+      measurePending: null,
+      measureHover: null,
+      measureImportField: null,
+      measureImportAccept: false,
+      designerTool: 'select',
     }),
 
-  beginMeasureEndpointDrag: (endpoint) =>
-    set((s) => {
-      if (!s.measureDraft) return s;
-      return { measureDraft: beginMeasureEndpointDrag(s.measureDraft, endpoint) };
+  finishMeasure: () =>
+    set({
+      measurePending: null,
+      measureHover: null,
+      measureImportField: null,
+      measureImportAccept: false,
+      designerTool: 'select',
     }),
-
-  endMeasureEndpointDrag: () =>
-    set((s) => {
-      if (!s.measureDraft) return s;
-      return { measureDraft: endMeasureEndpointDrag(s.measureDraft) };
-    }),
-
-  cancelMeasure: () => set({ measureDraft: null, designerTool: 'select' }),
-
-  finishMeasure: () => set({ measureDraft: null, designerTool: 'select' }),
 
   getMeasureAcceptValue: () => {
-    const draft = get().measureDraft;
-    if (!draft || !draft.acceptField) return null;
-    const inches = measureImportAcceptInches(draft.a, draft.b, draft.acceptField);
+    const { measurements, measureImportField } = get();
+    if (!measureImportField || measurements.length === 0) return null;
+    const last = measurements[measurements.length - 1]!;
+    const inches = measureImportAcceptInches(last.a, last.b, measureImportField);
     return formatMeasureInches(inches);
   },
 
@@ -597,7 +674,10 @@ export const useStore = create<StoreState>((set, get) => ({
       designerTool: designerToolForHangingKind(kind),
       ...selectionOf([]),
       hangingDraft: { kind, anchors: [], cursorWorld: null },
-      measureDraft: null,
+      measurePending: null,
+      measureHover: null,
+      measureImportField: null,
+      measureImportAccept: false,
     }),
 
   appendHangingAnchor: (anchor) =>
@@ -629,7 +709,14 @@ export const useStore = create<StoreState>((set, get) => ({
     }),
 
   cancelHangingDraft: () =>
-    set({ hangingDraft: null, measureDraft: null, designerTool: 'select' }),
+    set({
+      hangingDraft: null,
+      measurePending: null,
+      measureHover: null,
+      measureImportField: null,
+      measureImportAccept: false,
+      designerTool: 'select',
+    }),
 
   finishHangingDraft: () => {
     const draft = get().hangingDraft;

@@ -90,116 +90,84 @@ export function LibraryPanel({
     setCategories((cur) => toggleCatalogCategory(cur, slug));
   }, []);
 
-  const drawRow = (
-    row: {
-      label: string;
-      meta: string;
-      color: string;
-      Icon: typeof IconHangingLights;
-      run: () => void;
-    },
-  ) => (
+  const drawBtn = (row: {
+    label: string;
+    aria: string;
+    meta: string;
+    color: string;
+    Icon: typeof IconHangingLights;
+    run: () => void;
+    wide?: boolean;
+  }) => (
     <button
       key={row.label}
       type="button"
-      className="dg-row"
-      style={{
-        padding: '8px 9px',
-        border: '1px solid var(--rule-soft)',
-        borderRadius: 8,
-        background: 'var(--paper-0)',
-        cursor: 'pointer',
-        textAlign: 'left',
-        width: '100%',
-      }}
+      className={`dg-draw-btn${row.wide ? ' dg-draw-btn--wide' : ''}`}
+      aria-label={row.aria}
+      title={row.meta}
       onClick={row.run}
     >
-      <span
-        style={{
-          width: 28,
-          height: 28,
-          borderRadius: 6,
-          background: row.color,
-          display: 'inline-flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          color: 'var(--ink-1)',
-        }}
-      >
-        <row.Icon size={14} stroke="currentColor" />
+      <span className="dg-draw-btn__dot" style={{ background: row.color }}>
+        <row.Icon size={11} stroke="currentColor" />
       </span>
-      <span style={{ marginLeft: 8 }}>
-        <span style={{ display: 'block', font: 'var(--type-body-sm)', color: 'var(--ink-1)' }}>
-          {row.label}
-        </span>
-        <span style={{ display: 'block', font: 'var(--type-mono-xs)', color: 'var(--ink-5)' }}>
-          {row.meta}
-        </span>
-      </span>
+      <span className="dg-draw-btn__label">{row.label}</span>
     </button>
   );
 
   const createRows = useMemo(
     () => (
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 12 }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span
-            style={{
-              font: 'var(--type-mono-xs)',
-              letterSpacing: 'var(--tracking-eyebrow)',
-              textTransform: 'uppercase',
-              color: 'var(--ink-6)',
-            }}
-          >
-            Draw it in the room
-          </span>
-          {drawRow({
-            label: 'Measure in the room',
-            meta: 'click two points',
-            color: '#E8C27A',
-            Icon: IconMeasure,
-            run: onStartMeasure,
-          })}
-          {drawRow({
-            label: 'Draw fairy lights',
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+        <span
+          style={{
+            font: 'var(--type-mono-xs)',
+            letterSpacing: 'var(--tracking-eyebrow)',
+            textTransform: 'uppercase',
+            color: 'var(--ink-6)',
+          }}
+        >
+          Draw it in the room
+        </span>
+        <div className="dg-draw-grid">
+          {drawBtn({
+            label: 'Fairy lights',
+            aria: 'Draw fairy lights',
             meta: 'draped path',
             color: '#E8C27A',
             Icon: IconHangingLights,
             run: () => onStartDraw('lights'),
           })}
-          {drawRow({
-            label: 'Draw hanging leaves',
+          {drawBtn({
+            label: 'Leaves',
+            aria: 'Draw hanging leaves',
             meta: 'draped path',
             color: '#7E8A60',
             Icon: IconHangingLeaves,
             run: () => onStartDraw('leaves'),
           })}
-          {drawRow({
-            label: 'Place a free light',
+          {drawBtn({
+            label: 'LED strip',
+            aria: 'Draw LED strip',
+            meta: 'straight runs between points',
+            color: '#6EB5FF',
+            Icon: IconLedStrip,
+            run: () => onStartDraw('led-strip'),
+          })}
+          {drawBtn({
+            label: 'Free light',
+            aria: 'Place a free light',
             meta: 'drops in, then lift',
             color: '#F0DCA8',
             Icon: IconFreeLight,
             run: onAddLight,
           })}
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          <span
-            style={{
-              font: 'var(--type-mono-xs)',
-              letterSpacing: 'var(--tracking-eyebrow)',
-              textTransform: 'uppercase',
-              color: 'var(--ink-6)',
-            }}
-          >
-            LED strips
-          </span>
-          {drawRow({
-            label: 'Draw LED strip',
-            meta: 'straight runs between points',
-            color: '#6EB5FF',
-            Icon: IconLedStrip,
-            run: () => onStartDraw('led-strip'),
+          {drawBtn({
+            label: 'Measure in the room',
+            aria: 'Measure in the room',
+            meta: 'click two points',
+            color: '#E8C27A',
+            Icon: IconMeasure,
+            run: onStartMeasure,
+            wide: true,
           })}
         </div>
       </div>

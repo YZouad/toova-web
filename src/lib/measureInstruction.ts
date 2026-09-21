@@ -1,23 +1,29 @@
 import { measureFieldHint, measureFieldLabel, type MeasureAcceptField } from './measureDistance';
-import type { MeasureDraft } from './measureDraftState';
 
-export function measureBannerHint(draft: MeasureDraft): string {
-  const field = draft.acceptField;
-  const measuringField = field ? `Measuring ${measureFieldLabel(field)}` : null;
+export interface MeasureHintState {
+  hasPending: boolean;
+  acceptField: MeasureAcceptField | null;
+  count: number;
+}
 
-  if (draft.draggingEndpoint) {
-    return 'Drag to move point · Release to place';
+export function measureBannerHint(state: MeasureHintState): string {
+  const field = state.acceptField;
+  if (state.hasPending) {
+    if (field) {
+      return `Click the second point · ${measureFieldHint(field)}`;
+    }
+    return 'Click the second point to finish this tape';
   }
 
-  if (measuringField && field) {
-    return `${measuringField} · ${measureFieldHint(field)} · Drag points to measure`;
+  if (field) {
+    return `Click two points · Measuring ${measureFieldLabel(field)} · ${measureFieldHint(field)}`;
   }
 
-  if (draft.activeEndpoint) {
-    return 'Drag points to measure · Adjust height on selected point · Done when ready';
+  if (state.count > 0) {
+    return 'Click two points for another tape · Esc exits';
   }
 
-  return 'Drag either point to measure · Click a point to select it';
+  return 'Click two points on any surface · Hold Alt to suspend snap';
 }
 
 export function measureEndpointLabel(endpoint: 'a' | 'b'): string {

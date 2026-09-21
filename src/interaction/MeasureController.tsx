@@ -1,227 +1,118 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import type { MeasureVec3 } from '../lib/measureDistance';
-import { worldToScreen } from '../lib/measureScreen';
+import { pickMeasureSurface } from '../lib/measurePick';
+import {
+  MEASURE_SNAP_PX_DESKTOP,
+  MEASURE_SNAP_PX_TOUCH,
+  applyMeasureSnap,
+} from '../lib/measureSnap';
 import { useStore } from '../store';
 
-const DRAG_START_PX = 5;
-const ENDPOINT_HIT_PX = 18;
+const CLICK_MAX_PX = 5;
+const CLICK_MAX_PX_TOUCH = 10;
 
 /**
- * Free-floating measure endpoints — XZ drag on a horizontal plane (like free lights).
- * Orbit stays enabled except while dragging a point.
+ * Click-to-place tape measure: hover reticle on real surfaces, click A then B.
+ * Orbit stays enabled — only a short click (not a drag) places a point.
  */
 export function MeasureController() {
   const { camera, gl, scene } = useThree();
-  const controls = useThree((s) => s.controls) as { enabled?: boolean } | null;
   const active = useStore((s) => s.designerTool === 'measure');
 
-  const pendingRef = useRef<{
+  const pointerDownRef = useRef<{
     pointerId: number;
-    startX: number;
-    startY: number;
-    endpoint: 'a' | 'b';
-    grabOffset: THREE.Vector3;
-    planeY: number;
+    x: number;
+    y: number;
+    isTouch: boolean;
   } | null>(null);
-
-  const draggingRef = useRef<{
-    pointerId: number;
-    endpoint: 'a' | 'b';
-    grabOffset: THREE.Vector3;
-    planeY: number;
-  } | null>(null);
-
-  const orbitWasEnabledRef = useRef(true);
-  /** Height-arrow press: orbit is locked, but the arrow mesh owns the gesture. */
-  const arrowPressRef = useRef<number | null>(null);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      useStore.getState().setMeasureHover(null);
+      return;
+    }
 
     const canvas = gl.domElement;
     const raycaster = new THREE.Raycaster();
     const ndc = new THREE.Vector2();
-    const plane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
-    const hit = new THREE.Vector3();
 
-    const setOrbitEnabled = (on: boolean) => {
-      if (!controls || typeof controls.enabled !== 'boolean') return;
-      controls.enabled = on;
-    };
-
-    const screenToPlane = (clientX: number, clientY: number, planeY: number): MeasureVec3 | null => {
+    const setNdc = (clientX: number, clientY: number) => {
       const rect = canvas.getBoundingClientRect();
       ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
-      plane.constant = -planeY;
-      if (!raycaster.ray.intersectPlane(plane, hit)) return null;
-      return [hit.x, planeY, hit.z];
     };
 
-    const hitsHeightArrow = (clientX: number, clientY: number): boolean => {
+    const resolveHit = (clientX: number, clientY: number, snapEnabled: boolean) => {
+      setNdc(clientX, clientY);
+      const raw = pickMeasureSurface(raycaster, scene);
+      if (!raw) return null;
+      if (!snapEnabled) return { ...raw, snapKind: null };
+
+      const state = useStore.getState();
       const rect = canvas.getBoundingClientRect();
-      ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
-      ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
-      raycaster.setFromCamera(ndc, camera);
-      const hits = raycaster.intersectObjects(scene.children, true);
-      const closest = hits[0];
-      if (!closest) return false;
-      let obj: THREE.Object3D | null = closest.object;
-      while (obj) {
-        if (obj.userData?.heightArrow) return true;
-        obj = obj.parent;
-      }
-      return false;
+      const isTouch = window.matchMedia('(pointer: coarse)').matches;
+      return applyMeasureSnap(
+        raw,
+        state.roomGeometry,
+        state.items,
+        camera,
+        rect,
+        isTouch ? MEASURE_SNAP_PX_TOUCH : MEASURE_SNAP_PX_DESKTOP,
+      );
     };
 
-    const lockOrbit = () => {
-      orbitWasEnabledRef.current = controls?.enabled !== false;
-      setOrbitEnabled(false);
-    };
-
-    const unlockOrbit = () => {
-      setOrbitEnabled(orbitWasEnabledRef.current);
-    };
-
-    const endpointUnderPointer = (clientX: number, clientY: number): 'a' | 'b' | null => {
-      const draft = useStore.getState().measureDraft;
-      if (!draft) return null;
-      const rect = canvas.getBoundingClientRect();
-      let best: 'a' | 'b' | null = null;
-      let bestDist = ENDPOINT_HIT_PX + 1;
-      const consider = (id: 'a' | 'b', world: MeasureVec3) => {
-        const screen = worldToScreen(world, camera, rect);
-        const dist = Math.hypot(screen[0] - clientX, screen[1] - clientY);
-        if (dist < bestDist) {
-          best = id;
-          bestDist = dist;
-        }
-      };
-      consider('a', draft.a);
-      consider('b', draft.b);
-      return best;
-    };
-
-    const setCursor = (kind: 'crosshair' | 'grab' | 'grabbing') => {
-      canvas.style.cursor = kind;
+    const updateHover = (clientX: number, clientY: number, altKey: boolean) => {
+      const state = useStore.getState();
+      const snapOn = state.measureSnap && !altKey;
+      const hit = resolveHit(clientX, clientY, snapOn);
+      useStore.getState().setMeasureHover(hit);
     };
 
     const onPointerMove = (e: PointerEvent) => {
-      const pending = pendingRef.current;
-      if (pending && pending.pointerId === e.pointerId && !draggingRef.current) {
-        const dist = Math.hypot(e.clientX - pending.startX, e.clientY - pending.startY);
-        if (dist > DRAG_START_PX) {
-          draggingRef.current = {
-            pointerId: e.pointerId,
-            endpoint: pending.endpoint,
-            grabOffset: pending.grabOffset,
-            planeY: pending.planeY,
-          };
-          pendingRef.current = null;
-          useStore.getState().beginMeasureEndpointDrag(pending.endpoint);
-          setCursor('grabbing');
-        }
-      }
-
-      const drag = draggingRef.current;
-      if (!drag || drag.pointerId !== e.pointerId) {
-        const handle = endpointUnderPointer(e.clientX, e.clientY);
-        setCursor(handle ? 'grab' : 'crosshair');
+      if (pointerDownRef.current && pointerDownRef.current.pointerId === e.pointerId) {
+        // Still tracking a potential click — keep updating hover for rubber band.
+        updateHover(e.clientX, e.clientY, e.altKey);
         return;
       }
-
-      const planeHit = screenToPlane(e.clientX, e.clientY, drag.planeY);
-      if (!planeHit) return;
-      useStore.getState().setMeasureEndpoint(drag.endpoint, [
-        planeHit[0] + drag.grabOffset.x,
-        drag.planeY,
-        planeHit[2] + drag.grabOffset.z,
-      ]);
-      setCursor('grabbing');
+      updateHover(e.clientX, e.clientY, e.altKey);
     };
 
     const onPointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
-      const draft = useStore.getState().measureDraft;
-      if (!draft) return;
-
-      // Capture phase, before OrbitControls. A height-arrow press keeps the
-      // event so the arrow can drag; an endpoint press consumes it.
-      if (hitsHeightArrow(e.clientX, e.clientY)) {
-        lockOrbit();
-        arrowPressRef.current = e.pointerId;
-        return;
-      }
-
-      const endpoint = endpointUnderPointer(e.clientX, e.clientY);
-      if (!endpoint) return;
-
-      e.stopPropagation();
-      const world = endpoint === 'a' ? draft.a : draft.b;
-      const planeHit = screenToPlane(e.clientX, e.clientY, world[1]);
-      if (!planeHit) return;
-
-      useStore.getState().setMeasureActiveEndpoint(endpoint);
-      lockOrbit();
-
-      pendingRef.current = {
+      pointerDownRef.current = {
         pointerId: e.pointerId,
-        startX: e.clientX,
-        startY: e.clientY,
-        endpoint,
-        grabOffset: new THREE.Vector3(world[0] - planeHit[0], 0, world[2] - planeHit[2]),
-        planeY: world[1],
+        x: e.clientX,
+        y: e.clientY,
+        isTouch: e.pointerType === 'touch',
       };
-      setCursor('grabbing');
     };
 
     const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
+      const down = pointerDownRef.current;
+      pointerDownRef.current = null;
+      if (!down || down.pointerId !== e.pointerId) return;
 
-      if (arrowPressRef.current === e.pointerId) {
-        arrowPressRef.current = null;
-        unlockOrbit();
-        return;
-      }
+      const threshold = down.isTouch ? CLICK_MAX_PX_TOUCH : CLICK_MAX_PX;
+      const dist = Math.hypot(e.clientX - down.x, e.clientY - down.y);
+      if (dist > threshold) return;
 
-      const pending = pendingRef.current;
-      if (pending?.pointerId === e.pointerId) {
-        pendingRef.current = null;
-        useStore.getState().setMeasureActiveEndpoint(pending.endpoint);
-        unlockOrbit();
-        setCursor('grab');
-        return;
-      }
+      const state = useStore.getState();
+      const snapOn = state.measureSnap && !e.altKey;
+      const hit = resolveHit(e.clientX, e.clientY, snapOn);
+      if (!hit) return;
 
-      const drag = draggingRef.current;
-      if (!drag || drag.pointerId !== e.pointerId) return;
-
-      draggingRef.current = null;
-      useStore.getState().endMeasureEndpointDrag();
-      unlockOrbit();
-      setCursor(endpointUnderPointer(e.clientX, e.clientY) ? 'grab' : 'crosshair');
+      useStore.getState().placeMeasurePoint(hit.point);
+      // Keep reticle for next point.
+      useStore.getState().setMeasureHover(hit);
     };
 
-    const onPointerCancel = (e: PointerEvent) => {
-      if (arrowPressRef.current != null && arrowPressRef.current !== e.pointerId) return;
-      if (
-        arrowPressRef.current == null &&
-        pendingRef.current?.pointerId !== e.pointerId &&
-        draggingRef.current?.pointerId !== e.pointerId
-      ) {
-        return;
+    const onPointerLeave = () => {
+      if (!pointerDownRef.current) {
+        useStore.getState().setMeasureHover(null);
       }
-      arrowPressRef.current = null;
-      pendingRef.current = null;
-      if (draggingRef.current) {
-        draggingRef.current = null;
-        useStore.getState().endMeasureEndpointDrag();
-      }
-      unlockOrbit();
-      setCursor('crosshair');
     };
 
     const onKeyDown = (e: KeyboardEvent) => {
@@ -234,39 +125,41 @@ export function MeasureController() {
       ) {
         return;
       }
-      const draft = useStore.getState().measureDraft;
-      if (!draft) return;
-      if (draft.importAccept) return;
+      const state = useStore.getState();
+      if (state.measureImportAccept) return;
 
       if (e.key === 'Escape') {
         e.preventDefault();
-        useStore.getState().cancelMeasure();
+        e.stopPropagation();
+        if (state.measurePending) {
+          useStore.getState().cancelMeasurePending();
+        } else {
+          useStore.getState().cancelMeasure();
+        }
       } else if (e.key === 'Enter') {
         e.preventDefault();
-        if (!draft.draggingEndpoint) useStore.getState().finishMeasure();
+        useStore.getState().finishMeasure();
       }
     };
 
-    setCursor('crosshair');
-    canvas.addEventListener('pointerdown', onPointerDown, true);
-    window.addEventListener('pointermove', onPointerMove);
+    canvas.style.cursor = 'crosshair';
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerdown', onPointerDown);
     window.addEventListener('pointerup', onPointerUp);
-    window.addEventListener('pointercancel', onPointerCancel);
-    window.addEventListener('keydown', onKeyDown);
+    canvas.addEventListener('pointerleave', onPointerLeave);
+    window.addEventListener('keydown', onKeyDown, true);
 
     return () => {
-      canvas.removeEventListener('pointerdown', onPointerDown, true);
-      window.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerdown', onPointerDown);
       window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('pointercancel', onPointerCancel);
-      window.removeEventListener('keydown', onKeyDown);
+      canvas.removeEventListener('pointerleave', onPointerLeave);
+      window.removeEventListener('keydown', onKeyDown, true);
       canvas.style.cursor = '';
-      pendingRef.current = null;
-      draggingRef.current = null;
-      arrowPressRef.current = null;
-      setOrbitEnabled(true);
+      pointerDownRef.current = null;
+      useStore.getState().setMeasureHover(null);
     };
-  }, [active, camera, controls, gl, scene]);
+  }, [active, camera, gl, scene]);
 
   return null;
 }
