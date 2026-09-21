@@ -1,6 +1,11 @@
 import { create } from 'zustand';
 import { lampMinHeight } from './furniture/lampGeometry';
 import { DEFAULT_SHELF_COLOR, FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE, isWallShelfKind } from './furniture/registry';
+import {
+  itemSupportsTopColor,
+  itemUsesCustomFinish,
+  itemUsesTintColor,
+} from './lib/furnitureFinish';
 import { defaultWallShelfPose, findValidElevation, resolveValidXZ, settleGravity, validatePlacement } from './interaction/collision';
 import { trackDesignItemAdded } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
@@ -19,6 +24,9 @@ import { clampPositionInRoom } from './interaction/collision';
 import type { Weather } from './lib/environment';
 import {
   DEFAULT_APPEARANCE,
+  applyWallPaint,
+  parseAppearance,
+  pruneWallColors,
   type RoomAppearance,
 } from './lib/roomAppearance';
 import {
@@ -206,12 +214,20 @@ export interface Item {
   beddingEnabled?: boolean;
   /** Hex color for blanket when bedding is enabled. */
   blanketColor?: string;
-  /** Hex tint for recolorable imports (checklist rug) and the wall shelf. */
+  /** Hex tint for recolorable imports, the wall shelf, and built-in wood furniture. */
   tintColor?: string;
+  /** Hex color for the builtin bed mattress (not sheets/comforter). */
+  mattressColor?: string;
+  /** Hex color for a dresser top that differs from the base. */
+  topColor?: string;
   /** Supabase Storage path for blanket pattern image (`model-files` bucket). */
   blanketTexturePath?: string;
   /** Signed URL for blanket texture (runtime only; not persisted). */
   blanketTextureUrl?: string;
+  /** Supabase Storage path for a photo wrap on built-in furniture (`model-files` bucket). */
+  finishTexturePath?: string;
+  /** Signed URL for the furniture photo wrap (runtime only; not persisted). */
+  finishTextureUrl?: string;
   /** Modular bedding layers (topper, sheets, comforter, pillows). */
   beddingConfig?: BeddingConfig;
   emitter?: EmitterConfig;
@@ -233,6 +249,8 @@ interface StoreState {
   selectedId: string | null;
   /** All selected item ids (shift-click multi-select). Includes selectedId when set. */
   selectedIds: string[];
+  /** Floor-plan wall selected for independent paint. Cleared with furniture selection. */
+  selectedWallId: string | null;
   invalid: boolean;
 
   environment: RoomEnvironment;
@@ -267,6 +285,10 @@ interface StoreState {
   setShadowRoof: (on: boolean) => void;
   setAppearance: (patch: Partial<RoomAppearance>) => void;
   setAppearanceFull: (appearance: RoomAppearance) => void;
+  setFloorTexture: (tex: { path: string; url: string } | null) => void;
+  /** Paint every wall, or one wall when `wallId` is set. */
+  setWallPaint: (color: string, wallId?: string | null) => void;
+  selectWall: (wallId: string | null) => void;
   setVisualQuality: (q: RenderQualityTier) => void;
   setRelightImports: (on: boolean) => void;
   setAdvancedControls: (on: boolean) => void;
@@ -336,7 +358,13 @@ interface StoreState {
   setBeddingConfig: (id: string, patch: BeddingConfigPatch) => void;
   setBlanketColor: (id: string, hex: string) => void;
   setTintColor: (id: string, hex: string) => void;
+  setMattressColor: (id: string, hex: string) => void;
+  setTopColor: (id: string, hex: string) => void;
   setBlanketTexture: (
+    id: string,
+    tex: { path: string; url: string } | null,
+  ) => void;
+  setFinishTexture: (
     id: string,
     tex: { path: string; url: string } | null,
   ) => void;
@@ -359,7 +387,7 @@ interface StoreState {
   setImportedSize: (id: string, size: [number, number, number]) => void;
   /**
    * Replace selection, or toggle membership when `additive` (shift-click).
-   * Pass null to clear.
+   * Pass null to clear furniture and wall selection.
    */
   select: (id: string | null, opts?: { additive?: boolean }) => void;
   setInvalid: (v: boolean) => void;
@@ -457,6 +485,7 @@ export const useStore = create<StoreState>((set, get) => ({
   order: [],
   selectedId: null,
   selectedIds: [],
+  selectedWallId: null,
   invalid: false,
 
   environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
@@ -487,16 +516,46 @@ export const useStore = create<StoreState>((set, get) => ({
   setShadowRoof: (on) =>
     set((s) => ({ environment: { ...s.environment, shadowRoof: on } })),
   setAppearance: (patch) =>
+    set((s) => {
+      let appearance = { ...s.environment.appearance, ...patch };
+      // Existing callers treat wallColor as "paint the whole room".
+      if (patch.wallColor !== undefined && patch.wallColors === undefined) {
+        appearance = { ...appearance, wallColors: undefined };
+      }
+      return {
+        environment: { ...s.environment, appearance },
+      };
+    }),
+  setAppearanceFull: (appearance) =>
+    set((s) => ({
+      environment: { ...s.environment, appearance: parseAppearance(appearance) },
+    })),
+  setFloorTexture: (tex) =>
     set((s) => ({
       environment: {
         ...s.environment,
-        appearance: { ...s.environment.appearance, ...patch },
+        appearance: {
+          ...s.environment.appearance,
+          floorTexturePath: tex?.path ?? undefined,
+          floorTextureUrl: tex?.url ?? undefined,
+        },
       },
     })),
-  setAppearanceFull: (appearance) =>
+  setWallPaint: (color, wallId) =>
     set((s) => ({
-      environment: { ...s.environment, appearance: { ...appearance } },
+      environment: {
+        ...s.environment,
+        appearance: applyWallPaint(s.environment.appearance, color, wallId),
+      },
     })),
+  selectWall: (wallId) =>
+    set((s) => {
+      if (wallId === s.selectedWallId && s.selectedId === null) return s;
+      if (wallId && !s.roomGeometry.walls.some((w) => w.id === wallId)) {
+        return { selectedWallId: null, ...selectionOf([]) };
+      }
+      return { selectedWallId: wallId, ...selectionOf([]) };
+    }),
   setVisualQuality: (q) =>
     set((s) => {
       const visual = { ...s.visual, quality: q };
@@ -535,7 +594,22 @@ export const useStore = create<StoreState>((set, get) => ({
     }),
   setCaptureMode: (on) => set({ captureMode: on }),
 
-  setRoomGeometry: (geom) => set({ roomGeometry: normalizeRoomGeometry(geom) }),
+  setRoomGeometry: (geom) =>
+    set((s) => {
+      const roomGeometry = normalizeRoomGeometry(geom);
+      const wallIds = roomGeometry.walls.map((w) => w.id);
+      const appearance = pruneWallColors(s.environment.appearance, wallIds);
+      const selectedWallId =
+        s.selectedWallId && wallIds.includes(s.selectedWallId) ? s.selectedWallId : null;
+      return {
+        roomGeometry,
+        selectedWallId,
+        environment:
+          appearance === s.environment.appearance
+            ? s.environment
+            : { ...s.environment, appearance },
+      };
+    }),
 
   setRoomHeight: (height) =>
     set((s) => ({
@@ -812,6 +886,7 @@ export const useStore = create<StoreState>((set, get) => ({
         items,
         order: [...orderIds],
         ...selectionOf([]),
+        selectedWallId: null,
         invalid: false,
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
@@ -822,9 +897,10 @@ export const useStore = create<StoreState>((set, get) => ({
     set(() => ({
       environment: {
         ...environment,
-        appearance: { ...(environment.appearance ?? DEFAULT_APPEARANCE) },
+        appearance: parseAppearance(environment.appearance ?? DEFAULT_APPEARANCE),
       },
       roomGeometry: normalizeRoomGeometry(roomGeometry),
+      selectedWallId: null,
     })),
 
   resetLayout: () =>
@@ -834,6 +910,7 @@ export const useStore = create<StoreState>((set, get) => ({
         items: {},
         order: [],
         ...selectionOf([]),
+        selectedWallId: null,
         invalid: false,
         environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
         roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
@@ -1161,8 +1238,22 @@ export const useStore = create<StoreState>((set, get) => ({
   setTintColor: (id, hex) =>
     set((s) => {
       const it = s.items[id];
-      if (!it || (it.kind !== 'imported' && it.kind !== 'shelf')) return s;
+      if (!it || !itemUsesTintColor(it.kind)) return s;
       return { items: { ...s.items, [id]: { ...it, tintColor: hex } } };
+    }),
+
+  setMattressColor: (id, hex) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'bed') return s;
+      return { items: { ...s.items, [id]: { ...it, mattressColor: hex } } };
+    }),
+
+  setTopColor: (id, hex) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || !itemSupportsTopColor(it)) return s;
+      return { items: { ...s.items, [id]: { ...it, topColor: hex } } };
     }),
 
   setBlanketTexture: (id, tex) =>
@@ -1188,6 +1279,34 @@ export const useStore = create<StoreState>((set, get) => ({
             ...it,
             blanketTexturePath: tex.path,
             blanketTextureUrl: tex.url,
+          },
+        },
+      };
+    }),
+
+  setFinishTexture: (id, tex) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || !itemUsesCustomFinish(it.kind)) return s;
+      if (!tex) {
+        return {
+          items: {
+            ...s.items,
+            [id]: {
+              ...it,
+              finishTexturePath: undefined,
+              finishTextureUrl: undefined,
+            },
+          },
+        };
+      }
+      return {
+        items: {
+          ...s.items,
+          [id]: {
+            ...it,
+            finishTexturePath: tex.path,
+            finishTextureUrl: tex.url,
           },
         },
       };
@@ -1350,15 +1469,15 @@ export const useStore = create<StoreState>((set, get) => ({
 
   select: (id, opts) =>
     set((s) => {
-      if (id === null) return selectionOf([]);
+      if (id === null) return { selectedWallId: null, ...selectionOf([]) };
       if (!s.items[id]) return s;
       if (opts?.additive) {
         if (s.selectedIds.includes(id)) {
-          return selectionOf(s.selectedIds.filter((x) => x !== id));
+          return { selectedWallId: null, ...selectionOf(s.selectedIds.filter((x) => x !== id)) };
         }
-        return selectionOf([...s.selectedIds, id]);
+        return { selectedWallId: null, ...selectionOf([...s.selectedIds, id]) };
       }
-      return selectionOf([id]);
+      return { selectedWallId: null, ...selectionOf([id]) };
     }),
   setInvalid: (v) => set({ invalid: v }),
 }));

@@ -141,8 +141,11 @@ function tunePbrMaterial(mat: THREE.MeshStandardMaterial, relight: boolean, stat
       mat.transmission = 0;
       mat.thickness = 0;
     }
-    // DoubleSide shows inner hulls as black on blob meshes (sofas, plants).
-    mat.side = THREE.FrontSide;
+    // Keep glTF doubleSided — thin furniture panels (chair seats, backs) go
+    // invisible when forced to FrontSide. Only clamp default meshes to FrontSide.
+    if (mat.side !== THREE.DoubleSide) {
+      mat.side = THREE.FrontSide;
+    }
     if (mat.opacity >= 0.98) {
       mat.transparent = false;
       mat.opacity = 1;
@@ -201,11 +204,10 @@ function ensureMeshNormals(mesh: THREE.Mesh, stats: ImportedMaterialSummary, rel
   const geo = mesh.geometry;
   if (!geo) return;
   const normals = geo.getAttribute('normal');
-  if (!normals || normals.count === 0 || relight) {
+  if (!normals || normals.count === 0) {
     geo.computeVertexNormals();
-    if (!normals || normals.count === 0) stats.missingNormalsRepaired += 1;
-  }
-  if (relight && geometryNormalsPointInward(geo)) {
+    stats.missingNormalsRepaired += 1;
+  } else if (relight && geometryNormalsPointInward(geo)) {
     flipGeometryWinding(geo);
   }
 }

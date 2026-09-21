@@ -1,5 +1,6 @@
 import { Item } from '../store';
 import { SelectionOutline } from './SelectionOutline';
+import { useFurnitureFinish } from './useFurnitureFinish';
 
 const SEAT = '#4a5a6c';
 const FRAME = '#1a1a1a';
@@ -15,10 +16,10 @@ export function Chair({ item, selected, invalid }: Props) {
   const seatT = Math.min(1.5, Math.max(0.5, h * 0.12));
   const legSize = 1.2;
   const backH = Math.max(1, h - seatH);
+  const finish = useFurnitureFinish(item, SEAT);
 
   return (
     <group>
-      {/* legs */}
       {[
         [-w / 2 + 1, -d / 2 + 1],
         [w / 2 - 1, -d / 2 + 1],
@@ -30,15 +31,13 @@ export function Chair({ item, selected, invalid }: Props) {
           <meshStandardMaterial color={FRAME} roughness={0.5} />
         </mesh>
       ))}
-      {/* seat */}
       <mesh position={[0, seatH + seatT / 2, 0]} castShadow>
         <boxGeometry args={[w, seatT, d]} />
-        <meshStandardMaterial color={SEAT} roughness={0.8} />
+        <meshStandardMaterial color={finish.color} map={finish.map ?? undefined} roughness={0.8} />
       </mesh>
-      {/* backrest at +Z end */}
       <mesh position={[0, seatH + backH / 2, d / 2 - 1]} castShadow>
         <boxGeometry args={[w, backH, 1]} />
-        <meshStandardMaterial color={SEAT} roughness={0.8} />
+        <meshStandardMaterial color={finish.color} map={finish.map ?? undefined} roughness={0.8} />
       </mesh>
       {selected && <SelectionOutline size={[w, h, d]} color={invalid ? '#ff5555' : '#4f8cff'} />}
     </group>

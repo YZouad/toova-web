@@ -12,14 +12,13 @@ import {
   resolveBeddingConfig,
 } from '../../lib/bedding/config';
 import type { BeddingConfigPatch } from '../../lib/bedding/types';
-import { DEFAULT_SHELF_COLOR, SHELF_COLOR_SWATCHES } from '../../furniture/registry';
-import { DEFAULT_RUG_COLOR, isChecklistRug } from '../../lib/checklistPublicGlbs';
 import { proportionalSizesFromMaxSide } from '../../lib/uniformItemSize';
 import { planBounds } from '../../lib/roomGeometry';
 import { useAuth } from '../../hooks/useAuth';
 import { useCatalogThrixelLinked } from '../../hooks/useCatalogThrixelLinked';
 import { DEFAULT_EMITTER, useStore } from '../../store';
 import type { InspectorTab } from './chromeTypes';
+import { FinishTab } from './FinishEditor';
 import { HangingPaletteEditor } from './HangingPaletteEditor';
 import { InspectorThrixelReviseSection } from './InspectorThrixelReviseSection';
 import { PanelSection } from './PanelShell';
@@ -62,7 +61,6 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
   const setItemElevation = useStore((s) => s.setItemElevation);
   const setWallMounted = useStore((s) => s.setWallMounted);
   const setBedHeight = useStore((s) => s.setBedHeight);
-  const setTintColor = useStore((s) => s.setTintColor);
   const setBeddingConfig = useStore((s) => s.setBeddingConfig);
   const setHangingConfig = useStore((s) => s.setHangingConfig);
   const setEmitterConfig = useStore((s) => s.setEmitterConfig);
@@ -307,10 +305,7 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
           ) : null}
 
           {tab === 'finish' && isFurniture ? (
-            <FinishTab
-              item={item}
-              onTint={(hex) => setTintColor(item.id, hex)}
-            />
+            <FinishTab item={item} compact={compact} />
           ) : null}
 
           {tab === 'path' && isHanging && hang ? (
@@ -625,74 +620,5 @@ function BeddingTab({
         ) : null}
       </PanelSection>
     </div>
-  );
-}
-
-function FinishTab({
-  item,
-  onTint,
-}: {
-  item: NonNullable<ReturnType<typeof useStore.getState>['items'][string]>;
-  onTint: (hex: string) => void;
-}) {
-  const isShelf = item.kind === 'shelf';
-  const isRug = item.kind === 'imported' && isChecklistRug(item);
-  const canTint = isShelf || isRug || item.kind === 'imported';
-
-  if (!canTint) {
-    return (
-      <div
-        style={{
-          padding: '11px 12px',
-          background: 'var(--paper-1)',
-          border: '1px solid var(--rule-soft)',
-          borderRadius: 9,
-          font: '400 12px/1.5 var(--font-sans)',
-          color: 'var(--ink-4)',
-        }}
-      >
-        Finish options depend on the piece. Built-in furniture keeps its materials.
-      </div>
-    );
-  }
-
-  const swatches = isShelf
-    ? SHELF_COLOR_SWATCHES
-    : [
-        { label: 'Natural', color: DEFAULT_RUG_COLOR },
-        { label: 'Sage', color: '#6b7f6a' },
-        { label: 'Terracotta', color: '#C98A6B' },
-        { label: 'Charcoal', color: '#3a3a3a' },
-        { label: 'Cream', color: '#FBF7F0' },
-      ];
-  const current = item.tintColor ?? (isShelf ? DEFAULT_SHELF_COLOR : DEFAULT_RUG_COLOR);
-
-  return (
-    <PanelSection title="Frame color">
-      <div className="dg-swatch-grid">
-        {swatches.map((s) => (
-          <button
-            key={s.color}
-            type="button"
-            className={`dg-swatch${current.toLowerCase() === s.color.toLowerCase() ? ' is-active' : ''}`}
-            style={{ background: s.color }}
-            title={s.label}
-            onClick={() => onTint(s.color)}
-          />
-        ))}
-        <input
-          type="color"
-          value={current.length === 7 ? current : '#a98662'}
-          onChange={(e) => onTint(e.target.value)}
-          aria-label="Custom tint"
-          style={{ width: 36, height: 36, border: 'none', padding: 0, background: 'transparent' }}
-        />
-      </div>
-      {item.kind === 'imported' && !isRug ? (
-        <p style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--ink-4)', margin: '8px 0 0' }}>
-          Imported models keep their own materials; tint multiplies the mesh color.
-        </p>
-      ) : null}
-    </PanelSection>
   );
 }

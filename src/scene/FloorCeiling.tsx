@@ -2,7 +2,7 @@ import { useMemo, useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { floorFaceLoops, planBounds, planCentroid, type RoomGeometry } from '../lib/roomGeometry';
 import { applyFloorShapeUVs, applyWallSlabUVs } from '../lib/shapeUVs';
-import { useRoomSurfaceMaterial, disposeMaterial } from './useRoomMaterial';
+import { useFloorSurfaceMaterial, useRoomSurfaceMaterial, disposeMaterial } from './useRoomMaterial';
 import type { MaterialPresetId } from '../lib/roomMaterials';
 import { useStore } from '../store';
 import { useOrbitFade } from './useOrbitFade';
@@ -42,11 +42,13 @@ export function floorShapesFromGeometry(geom: RoomGeometry): THREE.Shape[] {
 function FloorMeshInner({
   geom,
   preset,
+  textureUrl,
 }: {
   geom: RoomGeometry;
   preset: MaterialPresetId;
+  textureUrl?: string;
 }) {
-  const mat = useRoomSurfaceMaterial(preset, { side: THREE.DoubleSide });
+  const mat = useFloorSurfaceMaterial(preset, textureUrl);
   const shapes = useMemo(() => floorShapesFromGeometry(geom), [geom]);
   const geos = useMemo(() => {
     return shapes.map((shape) => {
@@ -81,11 +83,13 @@ function FloorMeshInner({
 export function FloorMesh({
   geom,
   preset,
+  textureUrl,
 }: {
   geom: RoomGeometry;
   preset: MaterialPresetId;
+  textureUrl?: string;
 }) {
-  return <FloorMeshInner geom={geom} preset={preset} />;
+  return <FloorMeshInner geom={geom} preset={preset} textureUrl={textureUrl} />;
 }
 
 /** Visible ceiling finish — thin underside. Casting is done by ShadowRoof. */

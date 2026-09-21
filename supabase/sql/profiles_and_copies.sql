@@ -370,6 +370,7 @@ AS $$
       AND (
         NULLIF(trim(ri.model_url), '') = p_object_path
         OR NULLIF(trim(ri.blanket_texture_path), '') = p_object_path
+        OR NULLIF(trim(ri.finish_texture_path), '') = p_object_path
       )
       AND p_object_path !~* '^https?://'
       AND p_object_path !~* '^blob:'
@@ -573,7 +574,7 @@ BEGIN
   FROM public.rooms
   WHERE user_id = p_uid;
 
-  IF room_count >= max_rooms THEN
+  IF room_count >= max_rooms AND NOT public.has_unlimited_rooms(p_uid) THEN
     RAISE EXCEPTION 'room limit reached (% rooms)', max_rooms
       USING ERRCODE = 'P0001';
   END IF;
@@ -604,6 +605,8 @@ BEGIN
     bed_leg_height, natural_w, natural_h, natural_d,
     sort_order, model_url,
     bedding_enabled, blanket_color, blanket_texture_path,
+    tint_color, finish_texture_path, mattress_color, top_color,
+    bedding_config,
     emitter, curated_product_id,
     instance_key, hanging_config
   )
@@ -614,6 +617,8 @@ BEGIN
     bed_leg_height, natural_w, natural_h, natural_d,
     sort_order, model_url,
     bedding_enabled, blanket_color, blanket_texture_path,
+    tint_color, finish_texture_path, mattress_color, top_color,
+    bedding_config,
     emitter, curated_product_id,
     instance_key, hanging_config
   FROM public.room_items
@@ -912,6 +917,10 @@ BEGIN
       WHERE ri.room_id = room_row.id
       UNION
       SELECT NULLIF(trim(ri.blanket_texture_path), '') AS path
+      FROM public.room_items ri
+      WHERE ri.room_id = room_row.id
+      UNION
+      SELECT NULLIF(trim(ri.finish_texture_path), '') AS path
       FROM public.room_items ri
       WHERE ri.room_id = room_row.id
     ) raw

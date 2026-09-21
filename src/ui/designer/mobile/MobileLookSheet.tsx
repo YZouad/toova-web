@@ -1,6 +1,6 @@
-import { WALL_COLOR_SWATCHES } from '../../../lib/roomAppearance';
 import { FLOOR_PRESET_OPTIONS, materialLabel } from '../../../lib/roomMaterials';
 import { useStore } from '../../../store';
+import { FloorTextureControls, WallPaintControls } from '../LookPanel';
 import { MobileSheet } from './MobileSheet';
 
 export interface MobileLookSheetProps {
@@ -13,23 +13,7 @@ export function MobileLookSheet({ onClose }: MobileLookSheetProps) {
 
   return (
     <MobileSheet kind="look" title="Room look" onClose={onClose}>
-      <section className="dgm-section">
-        <h3 className="dgm-section-title">Wall paint</h3>
-        <div className="dgm-swatch-row">
-          {WALL_COLOR_SWATCHES.map((s) => (
-            <button
-              key={s.color}
-              type="button"
-              className={`dgm-swatch${appearance.wallColor.toLowerCase() === s.color.toLowerCase() ? ' is-active' : ''}`}
-              style={{ background: s.color }}
-              title={s.label}
-              aria-label={s.label}
-              aria-pressed={appearance.wallColor.toLowerCase() === s.color.toLowerCase()}
-              onClick={() => setAppearance({ wallColor: s.color })}
-            />
-          ))}
-        </div>
-      </section>
+      <WallPaintControls compact />
 
       <section className="dgm-section">
         <div className="dgm-section-head">
@@ -45,11 +29,12 @@ export function MobileLookSheet({ onClose }: MobileLookSheetProps) {
               aria-pressed={appearance.floorPreset === id}
               onClick={() => setAppearance({ floorPreset: id })}
             >
-              <span className={`dgm-mat-card__preview dgm-mat-card__preview--${id}`} />
+              <span className={`dgm-mat-card__preview dg-mat-card__preview--${id}`} />
               <span className="dgm-mat-card__label">{materialLabel(id)}</span>
             </button>
           ))}
         </div>
+        <FloorTextureControls compact />
       </section>
 
       <p className="dgm-note">Changing the look never moves your furniture.</p>

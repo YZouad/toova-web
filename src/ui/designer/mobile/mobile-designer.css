@@ -536,6 +536,16 @@
   color: var(--accent-text);
 }
 
+.dg-page.is-phone .dgm-wall-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  border: 1px solid rgba(36, 31, 25, 0.18);
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
 .dg-page.is-phone .dgm-btn {
   height: var(--dgm-bar-h);
   padding: 0 16px;
@@ -1871,7 +1881,17 @@
 }
 
 .dg-page.is-phone .dgm-mat-card__preview--carpet {
-  background: linear-gradient(160deg, #cfc7ba, #ada298);
+  background: linear-gradient(160deg, #e0d8cc, #c8b8a8);
+}
+
+.dg-page.is-phone .dgm-mat-card__preview--charcoalCarpet {
+  background:
+    radial-gradient(circle at 12% 18%, #d8dce4 0.45px, transparent 0.55px),
+    radial-gradient(circle at 44% 62%, #b8c0cc 0.4px, transparent 0.5px),
+    radial-gradient(circle at 78% 34%, #eceef2 0.35px, transparent 0.45px),
+    radial-gradient(circle at 28% 82%, #98a4b4 0.4px, transparent 0.5px),
+    linear-gradient(155deg, #98a4b4, #788498);
+  background-size: 5px 5px, 6px 6px, 7px 7px, 8px 8px, 100% 100%;
 }
 
 .dg-page.is-phone .dgm-sheet-body--checklist,

@@ -35,4 +35,20 @@ describe('toggleRoomFixtures', () => {
     useStore.getState().resetLayout();
     expect(useStore.getState().visual.cameraPreset).toBe('corner');
   });
+
+  it('paints walls independently and clears overrides on a full-room paint', async () => {
+    const { useStore } = await import('./store');
+    useStore.getState().resetLayout();
+    const wallId = useStore.getState().roomGeometry.walls[0]!.id;
+    useStore.getState().setWallPaint('#1f4f4f', wallId);
+    expect(useStore.getState().environment.appearance.wallColors?.[wallId]).toBe('#1f4f4f');
+    expect(useStore.getState().environment.appearance.wallColor).not.toBe('#1f4f4f');
+
+    useStore.getState().selectWall(wallId);
+    expect(useStore.getState().selectedWallId).toBe(wallId);
+
+    useStore.getState().setAppearance({ wallColor: '#3a3a3a' });
+    expect(useStore.getState().environment.appearance.wallColor).toBe('#3a3a3a');
+    expect(useStore.getState().environment.appearance.wallColors).toBeUndefined();
+  });
 });

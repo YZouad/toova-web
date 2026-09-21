@@ -4,6 +4,7 @@ import { useAuth } from '../hooks/useAuth';
 import { WALL_COLOR_SWATCHES } from '../lib/roomAppearance';
 import type { MaterialPresetId } from '../lib/roomMaterials';
 import { ROOM_STARTER_TEMPLATES, starterTierLabel } from '../lib/roomStarterTemplates';
+import { uChicagoDormLabel, uChicagoLayoutLabel } from '../lib/uchicagoDormTemplates';
 import type { StarterFloorSeed, StarterHangingSeed } from '../lib/roomStarterTemplates';
 import {
   floorItemKindOptions,
@@ -35,6 +36,10 @@ const FLOOR_PRESETS: { value: MaterialPresetId; label: string }[] = [
   { value: 'darkOak', label: 'Dark oak' },
   { value: 'concrete', label: 'Concrete' },
   { value: 'carpet', label: 'Carpet' },
+  { value: 'charcoalCarpet', label: 'Charcoal carpet' },
+  { value: 'greySpeckleCarpet', label: 'Grey speckle carpet' },
+  { value: 'oatmealCarpet', label: 'Oatmeal carpet' },
+  { value: 'plaidCarpet', label: 'Plaid carpet' },
 ];
 
 const KIND_OPTIONS = floorItemKindOptions();
@@ -199,7 +204,9 @@ export function AdminStartersPanel({
               >
                 <span className="admin-starters__row-name">{live.label}</span>
                 <MonoMeta size="xs" tone="dense" upper>
-                  {t.goal} · {starterTierLabel(t.tier)}
+                  {t.dormMeta
+                    ? `${uChicagoDormLabel(t.dormMeta.dormId)} · ${uChicagoLayoutLabel(t.dormMeta.layout)}`
+                    : `${t.goal} · ${starterTierLabel(t.tier)}`}
                   {live.hidden ? ' · hidden' : ''}
                 </MonoMeta>
               </button>

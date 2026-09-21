@@ -647,7 +647,7 @@ function SceneInner({
       <ProceduralSky />
       {showWeatherFx ? <WeatherSystem /> : null}
 
-      <Room />
+      <Room interactive={showChrome && !hangingTool} />
       <ItemsLayer />
       {showDimensionsOverlay ? <DimensionsOverlay /> : null}
       {!readOnly && !capturing ? <MeasurementsLayer /> : null}

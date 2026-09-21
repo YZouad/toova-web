@@ -14,6 +14,12 @@ import {
   type RoomStarterGoal,
   type RoomStarterTemplate,
 } from '../lib/roomStarterTemplates';
+import {
+  UCHICAGO_DORMS,
+  templatesForUChicagoDorm,
+  uChicagoLayoutLabel,
+  type UChicagoDormId,
+} from '../lib/uchicagoDormTemplates';
 import { useStarterTemplatesForGoal } from '../hooks/useStarterTemplates';
 import type { RoomGallerySortParam } from '../lib/galleryCatalog';
 import { Button, Field, Input, Modal, Plate, Tabs } from './kit';
@@ -64,6 +70,7 @@ export function RoomPresetPicker({
   const active = isPage || open;
   const [roomName, setRoomName] = useState(defaultName);
   const [goal, setGoal] = useState<RoomStarterGoal>('bedroom');
+  const [dormId, setDormId] = useState<UChicagoDormId>(UCHICAGO_DORMS[0]!.id);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [gallerySort, setGallerySort] = useState<RoomGallerySortParam>('hot');
@@ -73,6 +80,7 @@ export function RoomPresetPicker({
     if (!active) return;
     setRoomName(defaultName);
     setGoal('bedroom');
+    setDormId(UCHICAGO_DORMS[0]!.id);
     setBusy(false);
     setError(null);
     setGallerySort('hot');
@@ -80,13 +88,18 @@ export function RoomPresetPicker({
   }, [active, defaultName]);
 
   const liveForGoal = useStarterTemplatesForGoal(goal);
+  const isUChicago = goal === 'uchicago';
+  const uchicagoTemplates = useMemo(
+    () => (isUChicago ? templatesForUChicagoDorm(liveForGoal, dormId) : []),
+    [isUChicago, liveForGoal, dormId],
+  );
   const starterPreviews = useMemo<StarterPreview[]>(
     () =>
-      liveForGoal.map((template) => ({
+      (isUChicago ? uchicagoTemplates : liveForGoal).map((template) => ({
         template,
         plan: template.buildPlan(),
       })),
-    [liveForGoal],
+    [isUChicago, liveForGoal, uchicagoTemplates],
   );
 
   const blankPreviews = useMemo<BlankPreview[]>(() => {
@@ -137,7 +150,65 @@ export function RoomPresetPicker({
   };
 
   const handleGoalChange = (id: string) => {
-    setGoal(id as RoomStarterGoal);
+    const next = id as RoomStarterGoal;
+    setGoal(next);
+    if (next === 'uchicago') setDormId(UCHICAGO_DORMS[0]!.id);
+  };
+
+  const renderStarterCard = ({ template, plan }: StarterPreview) => {
+    const pieces = starterPieceCount(template);
+    const isBlankDorm = Boolean(template.dormMeta);
+    return (
+      <div
+        key={template.id}
+        className={[
+          'kit-plate-card',
+          'kit-plate-card--interactive',
+          'room-preset-card',
+          disabled ? 'room-preset-card--disabled' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        role="listitem"
+      >
+        <button
+          type="button"
+          className="room-preset-card-btn"
+          disabled={disabled}
+          aria-label={`${template.label}: ${template.description}`}
+          onClick={() => handleStarter(template)}
+        >
+          <Plate height={148} topCaption={isBlankDorm ? `${template.dormMeta!.layout}.plan` : `${template.tier}.plan`}>
+            <div className="app-ledger-plate-preview room-preset-preview">
+              <RoomPreview geometry={plan} items={starterPreviewItems(template)} />
+            </div>
+          </Plate>
+          <div className="kit-plate-card__caption">
+            <div className="room-preset-card-copy">
+              <div className="kit-plate-card__name">
+                {isBlankDorm ? uChicagoLayoutLabel(template.dormMeta!.layout) : template.label}
+              </div>
+              <div className="kit-plate-card__author">{template.description}</div>
+            </div>
+            <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense room-preset-card-dims">
+              {isBlankDorm
+                ? `Blank · ${template.dimensionsLabel}`
+                : `${starterTierLabel(template.tier)} · ${pieces} pcs · ${template.dimensionsLabel}`}
+            </span>
+          </div>
+        </button>
+        <div className="room-preset-card-actions">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={disabled}
+            onClick={() => handleCustomizeStarter(template)}
+          >
+            Customize
+          </Button>
+        </div>
+      </div>
+    );
   };
 
   const actions = (
@@ -176,68 +247,41 @@ export function RoomPresetPicker({
               </p>
             </div>
 
-            <div className="room-preset-section">
-              <div className="room-preset-section-label">Starting look</div>
-              <div className="room-preset-tier-blurb-row" aria-hidden>
-                {ROOM_STARTER_TIERS.map((t) => (
-                  <span key={t.id} className="room-preset-tier-chip">
-                    <strong>{t.label}</strong> — {t.blurb}
-                  </span>
-                ))}
+            {isUChicago ? (
+              <div className="room-preset-section">
+                <div className="room-preset-section-label">Residence hall</div>
+                <Tabs
+                  className="room-preset-goal-tabs room-preset-dorm-tabs"
+                  active={dormId}
+                  onChange={(id) => setDormId(id as UChicagoDormId)}
+                  tabs={UCHICAGO_DORMS.map((d) => ({ id: d.id, label: d.label }))}
+                />
+                <p className="room-preset-goal-hint">
+                  Pick a layout — each starts as a blank room you can furnish.
+                </p>
+                <div
+                  className="room-preset-grid room-preset-grid--blank room-preset-grid--dorms"
+                  role="list"
+                  aria-label="Dorm layout"
+                >
+                  {starterPreviews.map(renderStarterCard)}
+                </div>
               </div>
-              <div className="room-preset-grid room-preset-grid--tiers" role="list" aria-label="Furnishing tier">
-                {starterPreviews.map(({ template, plan }) => {
-                  const pieces = starterPieceCount(template);
-                  return (
-                    <div
-                      key={template.id}
-                      className={[
-                        'kit-plate-card',
-                        'kit-plate-card--interactive',
-                        'room-preset-card',
-                        disabled ? 'room-preset-card--disabled' : '',
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                      role="listitem"
-                    >
-                      <button
-                        type="button"
-                        className="room-preset-card-btn"
-                        disabled={disabled}
-                        aria-label={`${template.label}: ${template.description}`}
-                        onClick={() => handleStarter(template)}
-                      >
-                        <Plate height={148} topCaption={`${template.tier}.plan`}>
-                          <div className="app-ledger-plate-preview room-preset-preview">
-                            <RoomPreview geometry={plan} items={starterPreviewItems(template)} />
-                          </div>
-                        </Plate>
-                        <div className="kit-plate-card__caption">
-                          <div className="room-preset-card-copy">
-                            <div className="kit-plate-card__name">{template.label}</div>
-                            <div className="kit-plate-card__author">{template.description}</div>
-                          </div>
-                          <span className="kit-mono-meta kit-mono-meta--sm kit-mono-meta--dense room-preset-card-dims">
-                            {starterTierLabel(template.tier)} · {pieces} pcs · {template.dimensionsLabel}
-                          </span>
-                        </div>
-                      </button>
-                      <div className="room-preset-card-actions">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          disabled={disabled}
-                          onClick={() => handleCustomizeStarter(template)}
-                        >
-                          Customize
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
+            ) : (
+              <div className="room-preset-section">
+                <div className="room-preset-section-label">Starting look</div>
+                <div className="room-preset-tier-blurb-row" aria-hidden>
+                  {ROOM_STARTER_TIERS.map((t) => (
+                    <span key={t.id} className="room-preset-tier-chip">
+                      <strong>{t.label}</strong> — {t.blurb}
+                    </span>
+                  ))}
+                </div>
+                <div className="room-preset-grid room-preset-grid--tiers" role="list" aria-label="Furnishing tier">
+                  {starterPreviews.map(renderStarterCard)}
+                </div>
               </div>
-            </div>
+            )}
           </>
         )}
 

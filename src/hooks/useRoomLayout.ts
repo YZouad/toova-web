@@ -1,7 +1,7 @@
 import { useCallback, useState } from 'react';
 import { trackRoomCreated } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
-import { parseEnvironment } from '../lib/environmentPersist';
+import { parseEnvironment, serializeEnvironment } from '../lib/environmentPersist';
 import { parseFloorPlan, serializeFloorPlan, DEFAULT_ROOM_GEOMETRY, type RoomGeometry } from '../lib/roomGeometry';
 import {
   dbRowToItem,
@@ -31,6 +31,11 @@ import {
   type RoomAttributionPayload,
 } from '../lib/profiles';
 import { mirrorRoomAssets } from '../lib/publicModelsMirror';
+import { texturePathsToSign, assignSignedTextureUrl, storedTexturePaths } from '../lib/furnitureFinish';
+import {
+  assignFloorTextureUrl,
+  storedFloorTexturePath,
+} from '../lib/roomAppearance';
 import type { Item, RoomEnvironment } from '../store';
 import { DEFAULT_ENVIRONMENT, useStore } from '../store';
 
@@ -85,6 +90,11 @@ export async function loadRoomLayout(roomId: string): Promise<RoomLoadResult> {
 
   const environment = parseEnvironment(roomRow?.environment) ?? { ...DEFAULT_ENVIRONMENT };
   const roomGeometry = parseFloorPlan(roomRow?.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+  const floorTexturePath = storedFloorTexturePath(environment.appearance);
+  if (floorTexturePath && !environment.appearance.floorTextureUrl) {
+    const signed = await signModelObjectPath(floorTexturePath);
+    if (signed) assignFloorTextureUrl(environment.appearance, floorTexturePath, signed);
+  }
 
   let forkMeta: RoomAttributionPayload | null = null;
   try {
@@ -121,15 +131,9 @@ export async function loadRoomLayout(roomId: string): Promise<RoomLoadResult> {
           item.importedUrl = url;
         }
       }
-      if (
-        item.kind === 'bed' &&
-        item.blanketTexturePath &&
-        !item.blanketTextureUrl
-      ) {
-        const signed = await signModelObjectPath(item.blanketTexturePath);
-        if (signed) {
-          item.blanketTextureUrl = signed;
-        }
+      for (const texturePath of texturePathsToSign(item)) {
+        const signed = await signModelObjectPath(texturePath);
+        if (signed) assignSignedTextureUrl(item, texturePath, signed);
       }
     }),
   );
@@ -152,6 +156,12 @@ export async function loadSharedRoomLayout(token: string): Promise<SharedRoomLoa
 
   const environment = parseEnvironment(payload.room.environment) ?? { ...DEFAULT_ENVIRONMENT };
   const roomGeometry = parseFloorPlan(payload.room.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+  const sharedFloorPath = storedFloorTexturePath(environment.appearance);
+  if (sharedFloorPath) {
+    const floorUrl =
+      publicModelAssetUrl(sharedFloorPath) ?? signedAssets[sharedFloorPath];
+    if (floorUrl) assignFloorTextureUrl(environment.appearance, sharedFloorPath, floorUrl);
+  }
 
   const items: Item[] = [];
   const order: string[] = [];
@@ -165,12 +175,23 @@ export async function loadSharedRoomLayout(token: string): Promise<SharedRoomLoa
         publicModelAssetUrl(item.importedStoragePath) ??
         signedAssets[item.importedStoragePath];
     }
-    if (item.kind === 'bed' && item.blanketTexturePath) {
-      const signed = signedAssets[item.blanketTexturePath];
-      if (signed) item.blanketTextureUrl = signed;
+    for (const texturePath of storedTexturePaths(item)) {
+      const signed = signedAssets[texturePath];
+      if (signed) assignSignedTextureUrl(item, texturePath, signed);
     }
     items.push(item);
     order.push(item.id);
+  }
+
+  const extraSharePaths = items.flatMap(storedTexturePaths).filter((p) => !signedAssets[p]);
+  if (extraSharePaths.length) {
+    Object.assign(signedAssets, await signGrantedAssetPaths(extraSharePaths));
+    for (const item of items) {
+      for (const texturePath of storedTexturePaths(item)) {
+        const signed = signedAssets[texturePath];
+        if (signed) assignSignedTextureUrl(item, texturePath, signed);
+      }
+    }
   }
 
   applyCatalogSizes(items, catalogDimsFromRpc(payload.catalog_dims));
@@ -235,6 +256,11 @@ export async function loadPublicRoomLayout(
 
   const environment = parseEnvironment(payload.room.environment) ?? { ...DEFAULT_ENVIRONMENT };
   const roomGeometry = parseFloorPlan(payload.room.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
+  const publicFloorPath = storedFloorTexturePath(environment.appearance);
+  if (publicFloorPath) {
+    const floorUrl = resolveRoomAssetUrl(publicFloorPath, signedAssets, overrides);
+    if (floorUrl) assignFloorTextureUrl(environment.appearance, publicFloorPath, floorUrl);
+  }
 
   const items: Item[] = [];
   const order: string[] = [];
@@ -250,16 +276,31 @@ export async function loadPublicRoomLayout(
         overrides,
       );
     }
-    if (item.kind === 'bed' && item.blanketTexturePath) {
+    for (const texturePath of storedTexturePaths(item)) {
       const url = resolveRoomAssetUrl(
-        item.blanketTexturePath,
+        texturePath,
         signedAssets,
         overrides,
       );
-      if (url) item.blanketTextureUrl = url;
+      if (url) assignSignedTextureUrl(item, texturePath, url);
     }
     items.push(item);
     order.push(item.id);
+  }
+
+  const extraPublicPaths = items.flatMap(storedTexturePaths).filter((p) => {
+    if (signedAssets[p] || overrides[p]) return false;
+    if (publicModelAssetUrl(p)) return false;
+    return true;
+  });
+  if (extraPublicPaths.length) {
+    Object.assign(signedAssets, await signPublicRoomAssetPaths(extraPublicPaths));
+    for (const item of items) {
+      for (const texturePath of storedTexturePaths(item)) {
+        const url = resolveRoomAssetUrl(texturePath, signedAssets, overrides);
+        if (url) assignSignedTextureUrl(item, texturePath, url);
+      }
+    }
   }
 
   applyCatalogSizes(items, catalogDimsFromRpc(payload.catalog_dims));
@@ -310,7 +351,7 @@ export async function saveRoomLayout(
   const roomUpdate: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
   };
-  if (environment) roomUpdate.environment = environment;
+  if (environment) roomUpdate.environment = serializeEnvironment(environment);
   if (roomGeometry) roomUpdate.room_geometry = serializeFloorPlan(roomGeometry);
 
   const { error: upErr } = await supabase.from('rooms').update(roomUpdate).eq('id', roomId);
@@ -356,7 +397,7 @@ export async function createRoomWithGeometry(
       user_id: userId,
       name,
       room_geometry: serializeFloorPlan(roomGeometry),
-      environment,
+      environment: serializeEnvironment(environment),
     })
     .select('id,name')
     .single();
