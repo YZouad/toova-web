@@ -27,7 +27,7 @@ function importMeasurePreview(
   b: MeasureVec3,
   field: MeasureAcceptField,
 ): string {
-  const inches = measureImportAcceptInches(a, b, field, true);
+  const inches = measureImportAcceptInches(a, b, field);
   return `${measureFieldLabel(field)} ${formatLength(inches, 'ft-in')}`;
 }
 

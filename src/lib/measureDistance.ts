@@ -46,16 +46,16 @@ export function measureValueForField(
   return measureDistances(a, b).diagonal3d;
 }
 
-/** Value written when accepting an import measure session. */
+/**
+ * Inches written into an import field on Accept.
+ * Same number as the labeled field value: width |dx|, depth |dz|, height |dy|,
+ * clearance the floor span.
+ */
 export function measureImportAcceptInches(
   a: MeasureVec3,
   b: MeasureVec3,
   field: MeasureAcceptField,
-  importAccept: boolean,
 ): number {
-  if (importAccept && field !== 'clearance') {
-    return measureDistances(a, b).diagonal3d;
-  }
   return measureValueForField(a, b, field);
 }
 

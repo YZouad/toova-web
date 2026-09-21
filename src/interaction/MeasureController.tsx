@@ -13,7 +13,7 @@ const ENDPOINT_HIT_PX = 18;
  * Orbit stays enabled except while dragging a point.
  */
 export function MeasureController() {
-  const { camera, gl } = useThree();
+  const { camera, gl, scene } = useThree();
   const controls = useThree((s) => s.controls) as { enabled?: boolean } | null;
   const active = useStore((s) => s.designerTool === 'measure');
 
@@ -34,6 +34,8 @@ export function MeasureController() {
   } | null>(null);
 
   const orbitWasEnabledRef = useRef(true);
+  /** Height-arrow press: orbit is locked, but the arrow mesh owns the gesture. */
+  const arrowPressRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!active) return;
@@ -57,6 +59,31 @@ export function MeasureController() {
       plane.constant = -planeY;
       if (!raycaster.ray.intersectPlane(plane, hit)) return null;
       return [hit.x, planeY, hit.z];
+    };
+
+    const hitsHeightArrow = (clientX: number, clientY: number): boolean => {
+      const rect = canvas.getBoundingClientRect();
+      ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      const hits = raycaster.intersectObjects(scene.children, true);
+      const closest = hits[0];
+      if (!closest) return false;
+      let obj: THREE.Object3D | null = closest.object;
+      while (obj) {
+        if (obj.userData?.heightArrow) return true;
+        obj = obj.parent;
+      }
+      return false;
+    };
+
+    const lockOrbit = () => {
+      orbitWasEnabledRef.current = controls?.enabled !== false;
+      setOrbitEnabled(false);
+    };
+
+    const unlockOrbit = () => {
+      setOrbitEnabled(orbitWasEnabledRef.current);
     };
 
     const endpointUnderPointer = (clientX: number, clientY: number): 'a' | 'b' | null => {
@@ -121,6 +148,14 @@ export function MeasureController() {
       const draft = useStore.getState().measureDraft;
       if (!draft) return;
 
+      // Capture phase, before OrbitControls. A height-arrow press keeps the
+      // event so the arrow can drag; an endpoint press consumes it.
+      if (hitsHeightArrow(e.clientX, e.clientY)) {
+        lockOrbit();
+        arrowPressRef.current = e.pointerId;
+        return;
+      }
+
       const endpoint = endpointUnderPointer(e.clientX, e.clientY);
       if (!endpoint) return;
 
@@ -130,8 +165,7 @@ export function MeasureController() {
       if (!planeHit) return;
 
       useStore.getState().setMeasureActiveEndpoint(endpoint);
-      orbitWasEnabledRef.current = controls?.enabled !== false;
-      setOrbitEnabled(false);
+      lockOrbit();
 
       pendingRef.current = {
         pointerId: e.pointerId,
@@ -147,11 +181,17 @@ export function MeasureController() {
     const onPointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
 
+      if (arrowPressRef.current === e.pointerId) {
+        arrowPressRef.current = null;
+        unlockOrbit();
+        return;
+      }
+
       const pending = pendingRef.current;
       if (pending?.pointerId === e.pointerId) {
         pendingRef.current = null;
         useStore.getState().setMeasureActiveEndpoint(pending.endpoint);
-        setOrbitEnabled(orbitWasEnabledRef.current);
+        unlockOrbit();
         setCursor('grab');
         return;
       }
@@ -161,17 +201,26 @@ export function MeasureController() {
 
       draggingRef.current = null;
       useStore.getState().endMeasureEndpointDrag();
-      setOrbitEnabled(orbitWasEnabledRef.current);
+      unlockOrbit();
       setCursor(endpointUnderPointer(e.clientX, e.clientY) ? 'grab' : 'crosshair');
     };
 
-    const onPointerCancel = () => {
+    const onPointerCancel = (e: PointerEvent) => {
+      if (arrowPressRef.current != null && arrowPressRef.current !== e.pointerId) return;
+      if (
+        arrowPressRef.current == null &&
+        pendingRef.current?.pointerId !== e.pointerId &&
+        draggingRef.current?.pointerId !== e.pointerId
+      ) {
+        return;
+      }
+      arrowPressRef.current = null;
       pendingRef.current = null;
       if (draggingRef.current) {
         draggingRef.current = null;
         useStore.getState().endMeasureEndpointDrag();
       }
-      setOrbitEnabled(orbitWasEnabledRef.current);
+      unlockOrbit();
       setCursor('crosshair');
     };
 
@@ -199,24 +248,25 @@ export function MeasureController() {
     };
 
     setCursor('crosshair');
-    canvas.addEventListener('pointerdown', onPointerDown);
-    canvas.addEventListener('pointermove', onPointerMove);
-    canvas.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('pointercancel', onPointerCancel);
+    canvas.addEventListener('pointerdown', onPointerDown, true);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
     window.addEventListener('keydown', onKeyDown);
 
     return () => {
-      canvas.removeEventListener('pointerdown', onPointerDown);
-      canvas.removeEventListener('pointermove', onPointerMove);
-      canvas.removeEventListener('pointerup', onPointerUp);
-      canvas.removeEventListener('pointercancel', onPointerCancel);
+      canvas.removeEventListener('pointerdown', onPointerDown, true);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
       window.removeEventListener('keydown', onKeyDown);
       canvas.style.cursor = '';
       pendingRef.current = null;
       draggingRef.current = null;
+      arrowPressRef.current = null;
       setOrbitEnabled(true);
     };
-  }, [active, camera, controls, gl]);
+  }, [active, camera, controls, gl, scene]);
 
   return null;
 }

@@ -588,12 +588,7 @@ export const useStore = create<StoreState>((set, get) => ({
   getMeasureAcceptValue: () => {
     const draft = get().measureDraft;
     if (!draft || !draft.acceptField) return null;
-    const inches = measureImportAcceptInches(
-      draft.a,
-      draft.b,
-      draft.acceptField,
-      draft.importAccept,
-    );
+    const inches = measureImportAcceptInches(draft.a, draft.b, draft.acceptField);
     return formatMeasureInches(inches);
   },
 

@@ -49,25 +49,18 @@ describe('formatMeasureInches', () => {
 });
 
 describe('measureImportAcceptInches', () => {
-  it('uses straight-line distance for import width, height, and depth', () => {
+  it('writes the axis component for width, height, and depth', () => {
     const a: [number, number, number] = [0, 0, 0];
-    const b: [number, number, number] = [3, 4, 0];
-    expect(measureImportAcceptInches(a, b, 'width', true)).toBe(5);
-    expect(measureImportAcceptInches(a, b, 'height', true)).toBe(5);
-    expect(measureImportAcceptInches(a, b, 'depth', true)).toBe(5);
+    const b: [number, number, number] = [3, 4, 12];
+    expect(measureImportAcceptInches(a, b, 'width')).toBe(3);
+    expect(measureImportAcceptInches(a, b, 'height')).toBe(4);
+    expect(measureImportAcceptInches(a, b, 'depth')).toBe(12);
   });
 
-  it('uses axis components when not importing', () => {
-    const a: [number, number, number] = [0, 0, 0];
-    const b: [number, number, number] = [3, 4, 0];
-    expect(measureImportAcceptInches(a, b, 'width', false)).toBe(3);
-    expect(measureImportAcceptInches(a, b, 'height', false)).toBe(4);
-  });
-
-  it('keeps floor-plane span for clearance during import', () => {
+  it('writes the floor-plane span for clearance', () => {
     const a: [number, number, number] = [10, 48, 20];
     const b: [number, number, number] = [10, 60, 32];
-    expect(measureImportAcceptInches(a, b, 'clearance', true)).toBe(12);
+    expect(measureImportAcceptInches(a, b, 'clearance')).toBe(12);
   });
 });
 

@@ -87,6 +87,7 @@ export function HeightArrow({
   return (
     <group position={position}>
       <mesh
+        userData={{ heightArrow: true }}
         position={[0, shaftH / 2 + coneH * 0.15, 0]}
         onPointerOver={(e) => {
           e.stopPropagation();

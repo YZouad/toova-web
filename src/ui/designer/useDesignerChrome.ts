@@ -135,12 +135,24 @@ export function useDesignerChrome() {
         setTourOn(false);
         setRadialOpen(false);
         if (hangingDraft) cancelHangingDraft();
+        if (importMeasuring || measureDraft) {
+          measureAcceptRef.current = null;
+          setImportMeasuring(false);
+          setImportMeasuringField(null);
+        }
         if (measureDraft) cancelMeasure();
         setDesignerTool('select');
       }
       return next;
     });
-  }, [hangingDraft, measureDraft, cancelHangingDraft, cancelMeasure, setDesignerTool]);
+  }, [
+    hangingDraft,
+    measureDraft,
+    importMeasuring,
+    cancelHangingDraft,
+    cancelMeasure,
+    setDesignerTool,
+  ]);
 
   const endTour = useCallback(() => {
     setTourOn(false);
