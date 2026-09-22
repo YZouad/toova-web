@@ -4,8 +4,13 @@ import * as THREE from 'three';
 import { ROOM } from '../units';
 import { applyWallSlabUVs } from '../lib/shapeUVs';
 import { getTintableWallMaps } from '../lib/proceduralTextures';
+import { getOrbitHiddenWallIds } from '../lib/orbitCutaway';
+import { useStore } from '../store';
 import { useOrbitFade } from './useOrbitFade';
 import { createShadowOnlyMaterials } from './shadowLayers';
+
+/** Max pointer travel (px) for a press to count as a wall paint click, not an orbit drag. */
+const WALL_CLICK_PX = 6;
 
 interface WallProps {
   length: number;
@@ -233,14 +238,59 @@ export function Wall({
 
   useOrbitFade([matRef], outwardNormal, center, { groupRef, hidden: cutAway, wallId });
 
+  // R3F raycasts interactive meshes directly (ignores parent visibility). Drop
+  // the pointer handler while orbit-hidden so the wall leaves the interaction
+  // list. Always keep a real raycast fn — `raycast={undefined}` clears
+  // Mesh.raycast and breaks all scene picking.
+  const orbitHidden = useStore((s) =>
+    wallId ? s.orbitHiddenWallIds.includes(wallId) : false,
+  );
+  const wallRaycast = useMemo(() => {
+    return function orbitAwareWallRaycast(
+      this: THREE.Mesh,
+      raycaster: THREE.Raycaster,
+      intersects: THREE.Intersection[],
+    ) {
+      if (wallId && getOrbitHiddenWallIds().has(wallId)) return;
+      THREE.Mesh.prototype.raycast.call(this, raycaster, intersects);
+    };
+  }, [wallId]);
+
+  // Select only on a short click — pointerdown used to fire immediately and
+  // steal every orbit drag that started on a wall.
+  const pendingClick = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+
+  const clearPendingClick = () => {
+    pendingClick.current = null;
+  };
+
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
     if (!onSelect) return;
+    if (wallId && getOrbitHiddenWallIds().has(wallId)) return;
     const pt = e.nativeEvent.pointerType;
     if (pt === 'touch' || pt === 'pen') return;
+    // Do not stopPropagation — OrbitControls needs this press to rotate.
+    pendingClick.current = {
+      pointerId: e.nativeEvent.pointerId,
+      x: e.nativeEvent.clientX,
+      y: e.nativeEvent.clientY,
+    };
+  };
+
+  const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
+    const pending = pendingClick.current;
+    clearPendingClick();
+    if (!pending || !onSelect) return;
+    if (pending.pointerId !== e.nativeEvent.pointerId) return;
+    if (wallId && getOrbitHiddenWallIds().has(wallId)) return;
+    const dx = e.nativeEvent.clientX - pending.x;
+    const dy = e.nativeEvent.clientY - pending.y;
+    if (dx * dx + dy * dy > WALL_CLICK_PX * WALL_CLICK_PX) return;
     e.stopPropagation();
-    e.nativeEvent.stopPropagation();
     onSelect();
   };
+
+  const canClick = !orbitHidden && !!onSelect;
 
   return (
     <group>
@@ -271,7 +321,11 @@ export function Wall({
             frustumCulled={false}
             material={material}
             userData={wallId ? { wallId } : undefined}
-            onPointerDown={handlePointerDown}
+            raycast={wallRaycast}
+            onPointerDown={canClick ? handlePointerDown : undefined}
+            onPointerUp={canClick ? handlePointerUp : undefined}
+            onPointerCancel={canClick ? clearPendingClick : undefined}
+            onPointerLeave={canClick ? clearPendingClick : undefined}
           />
         </group>
       )}
