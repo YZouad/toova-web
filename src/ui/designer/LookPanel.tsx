@@ -259,6 +259,8 @@ export function WallPaintControls({ compact }: { compact: boolean }) {
             type="button"
             className={`${compact ? 'dgm-chip' : 'dg-chip'}${paintWallId === w.id ? ' is-active' : ''}`}
             aria-pressed={paintWallId === w.id}
+            title={w.title}
+            aria-label={w.title}
             onClick={() => selectWall(w.id)}
           >
             <span
@@ -277,7 +279,7 @@ export function WallPaintControls({ compact }: { compact: boolean }) {
       <section className="dgm-section">
         <div className="dgm-section-head">
           <h3 className="dgm-section-title">Wall paint</h3>
-          <span className="dgm-section-meta">{activeWall?.label ?? 'All walls'}</span>
+          <span className="dgm-section-meta">{activeWall?.title ?? 'All walls'}</span>
         </div>
         {chips}
         {swatches}
@@ -289,7 +291,7 @@ export function WallPaintControls({ compact }: { compact: boolean }) {
   }
 
   return (
-    <PanelSection title="Wall paint" meta={activeWall?.label ?? 'All walls'}>
+    <PanelSection title="Wall paint" meta={activeWall?.title ?? 'All walls'}>
       {chips}
       {swatches}
       {walls.length > 1 ? (

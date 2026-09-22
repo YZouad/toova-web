@@ -162,30 +162,45 @@ export function pruneWallColors(
   return { ...appearance, wallColors: Object.keys(next).length ? next : undefined };
 }
 
-export type WallFacingName = 'North' | 'South' | 'East' | 'West';
+export type WallFacingName = 'N' | 'S' | 'E' | 'W';
 
-/** Compass label from a wall's outward (+X east, +Z south). */
+/** Compass abbreviation from a wall's outward (+X east, +Z south). */
 export function wallFacingName(outwardX: number, outwardZ: number): WallFacingName {
   if (Math.abs(outwardZ) >= Math.abs(outwardX)) {
-    return outwardZ >= 0 ? 'South' : 'North';
+    return outwardZ >= 0 ? 'S' : 'N';
   }
-  return outwardX >= 0 ? 'East' : 'West';
+  return outwardX >= 0 ? 'E' : 'W';
 }
 
-/** Stable UI labels — "North", or "South 1" / "South 2" when several face the same way. */
+const WALL_FACING_FULL: Record<WallFacingName, string> = {
+  N: 'North',
+  S: 'South',
+  E: 'East',
+  W: 'West',
+};
+
+/** Full compass word for tooltips / a11y (chips show the abbreviation). */
+export function wallFacingFullName(facing: WallFacingName): string {
+  return WALL_FACING_FULL[facing];
+}
+
+/** Stable UI labels — "N", or "S 1" / "S 2" when several face the same way. */
 export function uniqueWallLabels(
   walls: readonly { id: string; outward: readonly [number, number] }[],
-): { id: string; label: string }[] {
+): { id: string; label: string; title: string }[] {
   const facings = walls.map((w) => wallFacingName(w.outward[0], w.outward[1]));
   const counts = new Map<string, number>();
   for (const facing of facings) counts.set(facing, (counts.get(facing) ?? 0) + 1);
   const seen = new Map<string, number>();
   return walls.map((w, i) => {
     const facing = facings[i]!;
-    if ((counts.get(facing) ?? 0) <= 1) return { id: w.id, label: facing };
+    const full = wallFacingFullName(facing);
+    if ((counts.get(facing) ?? 0) <= 1) {
+      return { id: w.id, label: facing, title: full };
+    }
     const n = (seen.get(facing) ?? 0) + 1;
     seen.set(facing, n);
-    return { id: w.id, label: `${facing} ${n}` };
+    return { id: w.id, label: `${facing} ${n}`, title: `${full} ${n}` };
   });
 }
 

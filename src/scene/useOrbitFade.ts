@@ -3,11 +3,17 @@ import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
   getOrbitHiddenWallIds,
+  orbitHiddenIdsEqual,
   pickOrbitHiddenWallIds,
   setOrbitHiddenWallIds,
 } from '../lib/orbitCutaway';
 import { allWallSegments, planCentroid, type RoomGeometry } from '../lib/roomGeometry';
 import { useStore } from '../store';
+
+/** Stops Raycaster recursion into children (scene-rooted picks). */
+function blockGroupRaycast(): false {
+  return false;
+}
 
 /**
  * Orbit cutaway: hide surfaces whose outward normal faces the camera.
@@ -16,6 +22,9 @@ import { useStore } from '../store';
  *
  * Walls pass `wallId` so hide is decided per segment (position + orientation),
  * not per shared facing bucket. Ceilings omit `wallId` and keep the facing test.
+ *
+ * R3F raycasts interactive meshes directly, so Wall.tsx also drops its
+ * pointer handler while orbit-hidden (via orbitHiddenWallIds in the store).
  */
 export function useOrbitFade(
   matRefs: Array<React.RefObject<THREE.Material | null> | React.MutableRefObject<THREE.Material | null>>,
@@ -34,11 +43,24 @@ export function useOrbitFade(
     toCamera: new THREE.Vector3(),
     center: new THREE.Vector3(),
   }).current;
+  const lastPickable = useRef<boolean | null>(null);
+  const lastGroup = useRef<THREE.Object3D | null>(null);
 
   useFrame(({ camera }) => {
-    const group = opts?.groupRef?.current;
+    const group = opts?.groupRef?.current ?? null;
+    if (group !== lastGroup.current) {
+      lastGroup.current = group;
+      lastPickable.current = null;
+    }
+
     if (opts?.hidden) {
-      if (group) group.visible = false;
+      if (group) {
+        group.visible = false;
+        if (lastPickable.current !== false) {
+          group.raycast = blockGroupRaycast;
+          lastPickable.current = false;
+        }
+      }
       return;
     }
 
@@ -58,6 +80,13 @@ export function useOrbitFade(
     if (group) {
       group.visible = !hide;
       group.renderOrder = 0;
+      const pickable = !hide;
+      if (lastPickable.current !== pickable) {
+        group.raycast = pickable
+          ? THREE.Object3D.prototype.raycast
+          : blockGroupRaycast;
+        lastPickable.current = pickable;
+      }
     }
 
     for (const ref of matRefs) {
@@ -82,6 +111,7 @@ export function useOrbitFadeActive(): boolean {
 /** Runs before wall fades (priority 0) so every segment sees the same hidden set. */
 export function OrbitCutawaySync({ geom }: { geom: RoomGeometry }) {
   const cutaway = useStore((s) => s.visual.cutaway);
+  const setStoreHidden = useStore((s) => s.setOrbitHiddenWallIds);
   const walls = useMemo(
     () =>
       allWallSegments(geom).map((s) => ({
@@ -99,9 +129,16 @@ export function OrbitCutawaySync({ geom }: { geom: RoomGeometry }) {
   useFrame(({ camera }) => {
     if (cutaway !== 'orbit') {
       setOrbitHiddenWallIds(new Set());
+      if (useStore.getState().orbitHiddenWallIds.length > 0) {
+        setStoreHidden([]);
+      }
       return;
     }
-    setOrbitHiddenWallIds(pickOrbitHiddenWallIds(walls, camera.position, centroid));
+    const next = pickOrbitHiddenWallIds(walls, camera.position, centroid);
+    const prev = getOrbitHiddenWallIds();
+    if (orbitHiddenIdsEqual(prev, next)) return;
+    setOrbitHiddenWallIds(next);
+    setStoreHidden([...next].sort());
   }, 0);
 
   return null;

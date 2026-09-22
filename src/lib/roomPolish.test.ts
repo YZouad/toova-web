@@ -99,9 +99,9 @@ describe('per-wall paint', () => {
         { id: 'c', outward: [1, 0] },
       ]),
     ).toEqual([
-      { id: 'a', label: 'South 1' },
-      { id: 'b', label: 'South 2' },
-      { id: 'c', label: 'East' },
+      { id: 'a', label: 'S 1', title: 'South 1' },
+      { id: 'b', label: 'S 2', title: 'South 2' },
+      { id: 'c', label: 'E', title: 'East' },
     ]);
   });
 });

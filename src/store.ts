@@ -251,6 +251,17 @@ interface StoreState {
   selectedIds: string[];
   /** Floor-plan wall selected for independent paint. Cleared with furniture selection. */
   selectedWallId: string | null;
+  /**
+   * Bumped on every wall click (including re-clicking the same wall) so the
+   * Look panel can reopen after the user closed it or orbited away.
+   */
+  wallSelectEpoch: number;
+  /**
+   * Wall segment ids currently hidden by orbit cutaway (sorted).
+   * Mirrored from the frame loop so React can drop pointer handlers — R3F
+   * raycasts interactive meshes directly and ignores parent visibility.
+   */
+  orbitHiddenWallIds: string[];
   invalid: boolean;
 
   environment: RoomEnvironment;
@@ -289,6 +300,7 @@ interface StoreState {
   /** Paint every wall, or one wall when `wallId` is set. */
   setWallPaint: (color: string, wallId?: string | null) => void;
   selectWall: (wallId: string | null) => void;
+  setOrbitHiddenWallIds: (ids: string[]) => void;
   setVisualQuality: (q: RenderQualityTier) => void;
   setRelightImports: (on: boolean) => void;
   setAdvancedControls: (on: boolean) => void;
@@ -486,6 +498,8 @@ export const useStore = create<StoreState>((set, get) => ({
   selectedId: null,
   selectedIds: [],
   selectedWallId: null,
+  wallSelectEpoch: 0,
+  orbitHiddenWallIds: [],
   invalid: false,
 
   environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
@@ -550,11 +564,29 @@ export const useStore = create<StoreState>((set, get) => ({
     })),
   selectWall: (wallId) =>
     set((s) => {
-      if (wallId === s.selectedWallId && s.selectedId === null) return s;
       if (wallId && !s.roomGeometry.walls.some((w) => w.id === wallId)) {
         return { selectedWallId: null, ...selectionOf([]) };
       }
-      return { selectedWallId: wallId, ...selectionOf([]) };
+      if (wallId === null) {
+        if (s.selectedWallId === null && s.selectedId === null) return s;
+        return { selectedWallId: null, ...selectionOf([]) };
+      }
+      // Always bump epoch so re-clicking the same wall re-opens Look.
+      return {
+        selectedWallId: wallId,
+        wallSelectEpoch: s.wallSelectEpoch + 1,
+        ...selectionOf([]),
+      };
+    }),
+  setOrbitHiddenWallIds: (ids) =>
+    set((s) => {
+      if (
+        s.orbitHiddenWallIds.length === ids.length &&
+        s.orbitHiddenWallIds.every((id, i) => id === ids[i])
+      ) {
+        return s;
+      }
+      return { orbitHiddenWallIds: ids };
     }),
   setVisualQuality: (q) =>
     set((s) => {

@@ -69,3 +69,12 @@ export function getOrbitHiddenWallIds(): Set<string> {
 export function setOrbitHiddenWallIds(next: Set<string>): void {
   orbitHiddenWallIds = next;
 }
+
+/** True when both collections contain the same ids. */
+export function orbitHiddenIdsEqual(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) {
+    if (!b.has(id)) return false;
+  }
+  return true;
+}

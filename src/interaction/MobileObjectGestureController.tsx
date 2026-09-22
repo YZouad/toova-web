@@ -10,6 +10,7 @@ import {
   validatePlacement,
   type DragMover,
 } from './collision';
+import { getOrbitHiddenWallIds } from '../lib/orbitCutaway';
 
 const LONG_PRESS_MS = 450;
 const MOVE_START_PX = 8;
@@ -339,7 +340,13 @@ export function MobileObjectGestureController({
         while (obj) {
           if (obj.userData?.itemId) return null;
           const wallId = obj.userData?.wallId as string | undefined;
-          if (wallId && roomGeometry.walls.some((w) => w.id === wallId)) return wallId;
+          if (
+            wallId &&
+            roomGeometry.walls.some((w) => w.id === wallId) &&
+            !getOrbitHiddenWallIds().has(wallId)
+          ) {
+            return wallId;
+          }
           obj = obj.parent;
         }
       }
