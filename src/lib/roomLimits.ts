@@ -1,18 +1,32 @@
-/** Free-plan room cap. Studio / admin accounts skip this via `unlimited`. */
+/** @deprecated Prefer useEntitlements().maxRooms — kept for call sites during migration. */
 export const FREE_PLAN_MAX_ROOMS = 5;
 
 export function isAtRoomLimit(
   roomCount: number,
-  options?: { unlimited?: boolean },
+  options?: { unlimited?: boolean; maxRooms?: number | null },
 ): boolean {
   if (options?.unlimited) return false;
-  return roomCount >= FREE_PLAN_MAX_ROOMS;
+  if (options && 'maxRooms' in (options ?? {}) && options.maxRooms == null) return false;
+  const cap = options?.maxRooms ?? FREE_PLAN_MAX_ROOMS;
+  return roomCount >= cap;
+}
+
+export function isOverRoomLimit(
+  roomCount: number,
+  options?: { unlimited?: boolean; maxRooms?: number | null },
+): boolean {
+  if (options?.unlimited) return false;
+  if (options && 'maxRooms' in (options ?? {}) && options.maxRooms == null) return false;
+  const cap = options?.maxRooms ?? FREE_PLAN_MAX_ROOMS;
+  return roomCount > cap;
 }
 
 export function roomsRemaining(
   roomCount: number,
-  options?: { unlimited?: boolean },
+  options?: { unlimited?: boolean; maxRooms?: number | null },
 ): number | null {
   if (options?.unlimited) return null;
-  return Math.max(0, FREE_PLAN_MAX_ROOMS - roomCount);
+  if (options && 'maxRooms' in (options ?? {}) && options.maxRooms == null) return null;
+  const cap = options?.maxRooms ?? FREE_PLAN_MAX_ROOMS;
+  return Math.max(0, cap - roomCount);
 }

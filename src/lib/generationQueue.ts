@@ -11,6 +11,12 @@ import {
   updateConversionJob,
 } from './conversionJobs';
 import {
+  holdCreditsForJob,
+  recordTrellisUsage,
+  releaseCreditsHold,
+  settleCreditsHold,
+} from './credits';
+import {
   deleteGenerationAsset,
   fileFromAsset,
   listGenerationAssets,
@@ -37,6 +43,7 @@ export type GenerationQueueItem = {
   error: string | null;
   sourceFile: File | null;
   glbFile: File | null;
+  creditHoldId: string | null;
 };
 
 export type GenerationQueueSnapshot = {
@@ -170,6 +177,7 @@ export async function enqueuePhotoGenerate(input: {
       error: null,
       sourceFile: input.file,
       glbFile: null,
+      creditHoldId: null,
     };
     upsertItem(item);
     try {
@@ -218,9 +226,27 @@ async function drainQueue(): Promise<void> {
 
       const waiter = waiters.get(next.jobId);
       const startedAt = Date.now();
+      let holdId: string | null = next.creditHoldId;
 
       try {
         if (!next.sourceFile) throw new Error('Missing source image for queued generation.');
+
+        if (!holdId) {
+          try {
+            holdId = await holdCreditsForJob(next.jobId);
+            patchItem(next.jobId, { creditHoldId: holdId });
+          } catch (creditErr) {
+            const message =
+              creditErr instanceof Error ? creditErr.message : 'Insufficient credits.';
+            await updateConversionJob(next.jobId, { status: 'failed', error: message });
+            patchItem(next.jobId, { status: 'failed', error: message });
+            waiters.delete(next.jobId);
+            waiter?.reject(creditErr);
+            await deleteGenerationAsset(next.jobId);
+            continue;
+          }
+        }
+
         let lastBeat = 0;
         const glbFile = await generateGlbFromPhoto(
           next.sourceFile,
@@ -233,6 +259,8 @@ async function drainQueue(): Promise<void> {
             void updateConversionJob(next.jobId, {});
           },
         );
+        await settleCreditsHold(holdId);
+        await recordTrellisUsage(next.jobId);
         await updateConversionJob(next.jobId, { status: 'completed', label: next.label });
         trackModelGenerationSucceeded({ job_id: next.jobId, duration_ms: Date.now() - startedAt });
         const ready: GenerationQueueItem = {
@@ -241,6 +269,7 @@ async function drainQueue(): Promise<void> {
           error: null,
           glbFile,
           sourceFile: null,
+          creditHoldId: null,
         };
         upsertItem(ready);
         await persistAsset(ready, 'result');
@@ -255,6 +284,7 @@ async function drainQueue(): Promise<void> {
           patchItem(next.jobId, { status: 'queued' });
           break;
         }
+        await releaseCreditsHold(holdId);
         const message = isAbort
           ? 'Cancelled'
           : err instanceof Error
@@ -267,7 +297,7 @@ async function drainQueue(): Promise<void> {
             failure_reason: classifyFailure(message),
           });
         }
-        patchItem(next.jobId, { status: 'failed', error: message });
+        patchItem(next.jobId, { status: 'failed', error: message, creditHoldId: null });
         waiters.delete(next.jobId);
         waiter?.reject(err);
         await deleteGenerationAsset(next.jobId);
@@ -318,6 +348,7 @@ async function recoverGenerationQueueOnce(userId: string): Promise<void> {
         error: null,
         sourceFile: null,
         glbFile: fileFromAsset(asset),
+        creditHoldId: null,
       });
       if (job.status === 'queued' || job.status === 'processing') {
         await updateConversionJob(job.id, { status: 'completed', error: null });
@@ -333,6 +364,7 @@ async function recoverGenerationQueueOnce(userId: string): Promise<void> {
         error: null,
         sourceFile: fileFromAsset(asset),
         glbFile: null,
+        creditHoldId: null,
       });
       if (job.status === 'processing') {
         await updateConversionJob(job.id, { status: 'queued', error: null });
@@ -357,6 +389,7 @@ async function recoverGenerationQueueOnce(userId: string): Promise<void> {
         error: null,
         sourceFile: null,
         glbFile: fileFromAsset(asset),
+        creditHoldId: null,
       });
     }
   }

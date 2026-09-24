@@ -86,9 +86,21 @@ Deno.serve(async (req: Request) => {
       if (caller.userID !== ownerID || !glbPath.startsWith(`${caller.userID}/`)) {
         return json({ error: "GLB path is not owned by the caller." }, 403);
       }
+      const allowed = await userHasArUsdzExport(supabaseURL, serviceKey, caller.userID);
+      if (!allowed) {
+        return json(
+          { error: "AR / USDZ export requires the Studio plan.", code: "entitlement_ar_usdz_export" },
+          403,
+        );
+      }
     } else if (caller.kind === "automation") {
       if (body.user_id !== ownerID || !glbPath.startsWith(`${ownerID}/`)) {
         return json({ error: "Automation payload does not match catalog ownership." }, 403);
+      }
+      // Soft-skip for free/lite owners so catalog upload automation does not fail.
+      const allowed = await userHasArUsdzExport(supabaseURL, serviceKey, ownerID);
+      if (!allowed) {
+        return json({ skipped: true, reason: "owner_lacks_ar_usdz_export" });
       }
     }
 
@@ -160,6 +172,29 @@ function requiredString(value: unknown, field: string): string {
     throw new Error(`Missing required field: ${field}`);
   }
   return value.trim();
+}
+
+/** Studio entitlement check via get_entitlements RPC (service role). */
+async function userHasArUsdzExport(
+  supabaseURL: string,
+  serviceKey: string,
+  userID: string,
+): Promise<boolean> {
+  const res = await fetch(`${supabaseURL}/rest/v1/rpc/get_entitlements`, {
+    method: "POST",
+    headers: {
+      apikey: serviceKey,
+      authorization: `Bearer ${serviceKey}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ p_uid: userID }),
+  });
+  if (!res.ok) {
+    console.warn("get_entitlements failed for AR gate", await res.text());
+    return false;
+  }
+  const data = await res.json() as { features?: { ar_usdz_export?: boolean } };
+  return Boolean(data?.features?.ar_usdz_export);
 }
 
 async function authorizeCaller(

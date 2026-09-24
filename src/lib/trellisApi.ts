@@ -1,4 +1,18 @@
+import { supabase } from './supabase';
+
 const raw = import.meta.env.VITE_TRELLIS_GENERATE_URL;
+
+/** Bearer header from the current Supabase session (required by the Trellis BFF). */
+export async function trellisAuthHeaders(): Promise<HeadersInit> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) {
+    throw new Error('Sign in to use photo → 3D generation.');
+  }
+  return {
+    authorization: `Bearer ${token}`,
+  };
+}
 
 /**
  * Mesh generation endpoint.
@@ -82,7 +96,13 @@ export async function ensureTrellisReady(
 ): Promise<void> {
   onProgress?.(TRELLIS_STARTING_STATUS);
 
-  const wakeRes = await fetch(trellisSiblingUrl('wake'), { method: 'POST', signal });
+  const authHeaders = await trellisAuthHeaders();
+
+  const wakeRes = await fetch(trellisSiblingUrl('wake'), {
+    method: 'POST',
+    headers: authHeaders,
+    signal,
+  });
   if (!wakeRes.ok) {
     const text = await wakeRes.text();
     throw new Error(formatTrellisError(text, `Could not start the model instance (${wakeRes.status})`));
@@ -92,7 +112,10 @@ export async function ensureTrellisReady(
   while (Date.now() < deadline) {
     throwIfAborted(signal);
 
-    const statusRes = await fetch(trellisSiblingUrl('status'), { signal });
+    const statusRes = await fetch(trellisSiblingUrl('status'), {
+      headers: authHeaders,
+      signal,
+    });
     if (!statusRes.ok) {
       const text = await statusRes.text();
       throw new Error(formatTrellisError(text, `Could not start the model instance (${statusRes.status})`));

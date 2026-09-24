@@ -1,4 +1,9 @@
-import { ensureTrellisReady, formatTrellisError, TRELLIS_GENERATE_URL } from './trellisApi';
+import {
+  ensureTrellisReady,
+  formatTrellisError,
+  trellisAuthHeaders,
+  TRELLIS_GENERATE_URL,
+} from './trellisApi';
 import { ensureJpegForTrellis } from './webpToJpeg';
 
 function isInvalidGlbContentType(contentType: string): boolean {
@@ -24,8 +29,12 @@ export async function generateGlbFromPhoto(
   const fd = new FormData();
   fd.append('file', file);
 
+  // FormData: set only Authorization — let the browser own Content-Type/boundary.
+  const auth = await trellisAuthHeaders();
+
   const res = await fetch(TRELLIS_GENERATE_URL, {
     method: 'POST',
+    headers: auth,
     body: fd,
     signal,
   });

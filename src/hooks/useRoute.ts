@@ -8,6 +8,8 @@ export type AppRoute =
   | { name: 'privacy' }
   | { name: 'safety' }
   | { name: 'resetPassword' }
+  | { name: 'pricing' }
+  | { name: 'billing' }
   | { name: 'shared'; token: string }
   | { name: 'profile'; handle: string }
   | { name: 'publicRoom'; handle: string; roomId: string };
@@ -22,6 +24,8 @@ const TERMS_PATH_RE = /^\/terms\/?$/i;
 const PRIVACY_PATH_RE = /^\/privacy\/?$/i;
 const SAFETY_PATH_RE = /^\/safety\/?$/i;
 const RESET_PASSWORD_PATH_RE = /^\/reset-password\/?$/i;
+const PRICING_PATH_RE = /^\/pricing\/?$/i;
+const BILLING_PATH_RE = /^\/billing\/?$/i;
 
 export function parsePathname(pathname: string): AppRoute {
   const path = pathname.replace(/\/+$/, '') || '/';
@@ -38,6 +42,8 @@ export function parsePathname(pathname: string): AppRoute {
   if (PRIVACY_PATH_RE.test(path)) return { name: 'privacy' };
   if (SAFETY_PATH_RE.test(path)) return { name: 'safety' };
   if (RESET_PASSWORD_PATH_RE.test(path)) return { name: 'resetPassword' };
+  if (PRICING_PATH_RE.test(path)) return { name: 'pricing' };
+  if (BILLING_PATH_RE.test(path)) return { name: 'billing' };
 
   const room = path.match(PUBLIC_ROOM_PATH_RE);
   if (room?.[1] && room[2]) {
@@ -93,6 +99,14 @@ export function safetyPath(): string {
 
 export function resetPasswordPath(): string {
   return '/reset-password';
+}
+
+export function pricingPath(): string {
+  return '/pricing';
+}
+
+export function billingPath(): string {
+  return '/billing';
 }
 
 export function resetPasswordRedirectTo(): string {

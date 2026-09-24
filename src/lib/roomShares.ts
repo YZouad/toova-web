@@ -121,8 +121,8 @@ export async function listRoomShares(roomId: string): Promise<RoomShareRow[]> {
 export async function createRoomShare(
   roomId: string,
   userId: string,
-  opts: { role?: ShareRole; allowCopy?: boolean } = {},
-): Promise<{ token: string; url: string }> {
+  opts: { role?: ShareRole; allowCopy?: boolean; expiresAt?: string | null } = {},
+): Promise<{ token: string; url: string; expires_at: string | null }> {
   const { data, error } = await supabase
     .from('room_shares')
     .insert({
@@ -130,13 +130,18 @@ export async function createRoomShare(
       created_by: userId,
       role: opts.role ?? 'viewer',
       allow_copy: opts.allowCopy ?? true,
+      expires_at: opts.expiresAt ?? null,
     })
-    .select('token')
+    .select('token, expires_at')
     .single();
   if (error) throw new Error(error.message);
   const token = data.token as string;
   void requestUnfurlDeploy();
-  return { token, url: buildShareUrl(token) };
+  return {
+    token,
+    url: buildShareUrl(token),
+    expires_at: (data.expires_at as string | null) ?? null,
+  };
 }
 
 export async function revokeRoomShare(token: string): Promise<void> {

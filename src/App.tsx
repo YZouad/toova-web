@@ -4,6 +4,7 @@ import { ChecklistRoomProvider, useChecklistRoomScope } from './context/Checklis
 import { getActiveChecklistRoomId } from './lib/dormChecklist';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
+import { useEntitlements } from './hooks/useEntitlements';
 import { createRoomWithGeometry, saveRoomLayout, useRoomLoad } from './hooks/useRoomLayout';
 import {
   navigate,
@@ -13,6 +14,8 @@ import {
   timelinePath,
   profilePath,
   resetPasswordPath,
+  pricingPath,
+  billingPath,
   useRoute,
 } from './hooks/useRoute';
 import { supabase } from './lib/supabase';
@@ -67,6 +70,9 @@ import { CreationsPage } from './ui/CreationsPage';
 import { GenerationQueueHost } from './ui/GenerationQueueHost';
 import { AppRailChrome } from './ui/AppRailChrome';
 import { LegalPage } from './ui/LegalPage';
+import { PricingPage } from './ui/PricingPage';
+import { BillingPage } from './ui/BillingPage';
+import { ArExportGate } from './ui/ArExportGate';
 import { CookieConsentBanner } from './ui/CookieConsentBanner';
 import { SafetyReportForm } from './ui/SafetyReportForm';
 import { getLegalDocument } from './legal';
@@ -166,26 +172,28 @@ function AuthSplash() {
 
 function ARPage() {
   return (
-    <main className="ar-main" style={{ position: 'relative', zIndex: 2, flex: 1 }}>
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 460,
-        }}
-      >
-        <DisplayHeading level={4} as="div" style={{ marginBottom: 12 }}>
-          AR experience
-        </DisplayHeading>
-        <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 28, maxWidth: 'var(--measure-body)' }}>
-          Scan the QR code to download the Toova app on iPhone and start using AR.
-        </MonoMeta>
-        <Plate
-          height={280}
-          placeholder={<DecorativeQrGraphic />}
-          topCaption="iPhone only"
-        />
-      </div>
-    </main>
+    <ArExportGate>
+      <main className="ar-main" style={{ position: 'relative', zIndex: 2, flex: 1 }}>
+        <div
+          style={{
+            width: '100%',
+            maxWidth: 460,
+          }}
+        >
+          <DisplayHeading level={4} as="div" style={{ marginBottom: 12 }}>
+            AR experience
+          </DisplayHeading>
+          <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 28, maxWidth: 'var(--measure-body)' }}>
+            Scan the QR code to download the Toova app on iPhone and start using AR.
+          </MonoMeta>
+          <Plate
+            height={280}
+            placeholder={<DecorativeQrGraphic />}
+            topCaption="iPhone only"
+          />
+        </div>
+      </main>
+    </ArExportGate>
   );
 }
 
@@ -201,6 +209,7 @@ export default function App() {
 
 function AppContent() {
   const { loading, user, logout, refreshProfile, profile, avatarUrl, passwordRecovery } = useAuth();
+  const { entitlements } = useEntitlements();
   const { setRoomId } = useChecklistRoomScope();
   const route = useRoute();
   const [screen, setScreen] = useState<Screen>('landing');
@@ -244,7 +253,9 @@ function AppContent() {
     route.name === 'terms' ||
     route.name === 'privacy' ||
     route.name === 'safety' ||
-    route.name === 'resetPassword';
+    route.name === 'resetPassword' ||
+    route.name === 'pricing' ||
+    route.name === 'billing';
 
   const {
     isAdmin,
@@ -275,10 +286,10 @@ function AppContent() {
       auth_method: authMethod,
       role: isAdmin ? 'admin' : 'user',
       is_guest: false,
-      subscription_tier: isAdmin ? 'pro' : 'free',
+      subscription_tier: entitlements.plan_code === 'free' ? 'free' : 'pro',
       created_at: user.created_at,
     });
-  }, [user, isAdmin, adminStatsLoading]);
+  }, [user, isAdmin, adminStatsLoading, entitlements.plan_code]);
 
   useEffect(() => {
     const path = typeof window === 'undefined'
@@ -880,6 +891,40 @@ function AppContent() {
       >
         {route.name === 'safety' ? <SafetyReportForm /> : null}
       </LegalPage>
+    );
+  }
+
+  if (route.name === 'pricing') {
+    return (
+      <PricingPage
+        onBack={() => {
+          navigate('/');
+          setScreen(user ? 'dashboard' : 'landing');
+        }}
+      />
+    );
+  }
+
+  if (route.name === 'billing') {
+    if (!user) {
+      return (
+        <AuthPage
+          initialMode={authMode}
+          authReason="Sign in to manage billing."
+          onBack={() => {
+            navigate('/');
+            setScreen('landing');
+          }}
+        />
+      );
+    }
+    return (
+      <BillingPage
+        onBack={() => {
+          navigate('/');
+          setScreen('dashboard');
+        }}
+      />
     );
   }
 

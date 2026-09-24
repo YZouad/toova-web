@@ -15,7 +15,7 @@ import { FeedbackModal } from './FeedbackModal';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
 import { listSharedWithMeRooms, type PublicAttribution, type ShareRole } from '../lib/roomShares';
 import { fetchRoomAttribution, setRoomVisibility } from '../lib/profiles';
-import { navigate, profilePath } from '../hooks/useRoute';
+import { navigate, pricingPath, profilePath } from '../hooks/useRoute';
 import type { RoomGallerySortParam } from '../lib/galleryCatalog';
 import type { Profile } from '../lib/profiles';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
@@ -34,11 +34,8 @@ import {
   Tabs,
 } from './kit';
 import { RoomGallery } from './RoomGallery';
-import {
-  FREE_PLAN_MAX_ROOMS,
-  isAtRoomLimit,
-  roomsRemaining,
-} from '../lib/roomLimits';
+import { roomsRemaining } from '../lib/roomLimits';
+import { useEntitlements } from '../hooks/useEntitlements';
 
 const KNOWN_KINDS = new Set([
   'bed',
@@ -154,6 +151,8 @@ export function Dashboard({
   onContact,
   onPitchMadness,
 }: DashboardProps) {
+  const { entitlements, maxRooms, isUnlimitedRooms, atRoomLimit, overRoomLimit } =
+    useEntitlements();
   const [rooms, setRooms] = useState<ListedRoomRow[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -293,9 +292,14 @@ export function Dashboard({
   }, [fetchRooms, fetchSharedWithMe]);
 
   const totalPlacements = rooms.reduce((s, r) => s + r.item_count, 0);
-  const unlimitedRooms = Boolean(showAdmin);
-  const atLimit = isAtRoomLimit(rooms.length, { unlimited: unlimitedRooms });
-  const remainingRooms = roomsRemaining(rooms.length, { unlimited: unlimitedRooms });
+  const unlimitedRooms = isUnlimitedRooms;
+  const roomCap = maxRooms;
+  const atLimit = atRoomLimit(rooms.length);
+  const overLimit = overRoomLimit(rooms.length);
+  const remainingRooms = roomsRemaining(rooms.length, {
+    unlimited: unlimitedRooms,
+    maxRooms: roomCap,
+  });
   const forkRooms = rooms.filter((r) => r.forked_from);
   const hasSharedTab = sharedWithMe.length > 0;
   const hasForksTab = forkRooms.length > 0;
@@ -312,7 +316,11 @@ export function Dashboard({
 
   async function handleDuplicate(roomId: string, roomName: string) {
     if (atLimit) {
-      setActionError(`Room limit reached (${FREE_PLAN_MAX_ROOMS} rooms).`);
+      setActionError(
+        roomCap == null
+          ? 'Room limit reached.'
+          : `Room limit reached (${roomCap} rooms).`,
+      );
       return;
     }
     setMenuRoomId(null);
@@ -407,7 +415,11 @@ export function Dashboard({
 
   function handleNewRoom() {
     if (atLimit) {
-      setActionError(`Room limit reached (${FREE_PLAN_MAX_ROOMS} rooms).`);
+      setActionError(
+        roomCap == null
+          ? 'Room limit reached.'
+          : `Room limit reached (${roomCap} rooms). Upgrade for more.`,
+      );
       return;
     }
     setActionError(null);
@@ -612,10 +624,20 @@ export function Dashboard({
         title="Your rooms."
         note={
           unlimitedRooms
-            ? `Studio · ${rooms.length} room${rooms.length === 1 ? '' : 's'}${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`
-            : `Free plan · ${rooms.length} of ${FREE_PLAN_MAX_ROOMS} rooms${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`
+            ? `${entitlements.plan_code} · ${rooms.length} room${rooms.length === 1 ? '' : 's'}${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`
+            : `${entitlements.plan_code} · ${rooms.length} of ${roomCap} rooms${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`
         }
       />
+
+      {overLimit ? (
+        <Banner tone="info" label="PLAN" style={{ marginTop: 16 }}>
+          You have {rooms.length} rooms on a plan that allows {roomCap}. Archive or delete rooms, or{' '}
+          <button type="button" className="text-btn" onClick={() => navigate(pricingPath())}>
+            upgrade
+          </button>{' '}
+          to create new ones.
+        </Banner>
+      ) : null}
 
       <Tabs
         style={{ marginTop: 28 }}

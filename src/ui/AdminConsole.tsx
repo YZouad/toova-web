@@ -13,6 +13,7 @@ import { AdminAnalyticsPanel } from './AdminAnalyticsPanel';
 import { AdminShoppingPanel } from './AdminShoppingPanel';
 import { AdminReportsPanel } from './AdminReportsPanel';
 import { AdminStartersPanel } from './AdminStartersPanel';
+import { AdminBillingPanel } from './AdminBillingPanel';
 import { AdminUserViewer } from './AdminUserViewer';
 import {
   Badge,
@@ -28,7 +29,7 @@ import {
   Spinner,
 } from './kit';
 
-export type AdminTab = 'overview' | 'analytics' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping' | 'reports' | 'starters';
+export type AdminTab = 'overview' | 'analytics' | 'users' | 'rooms' | 'jobs' | 'usage' | 'shopping' | 'reports' | 'starters' | 'billing';
 
 type SortDir = 'asc' | 'desc';
 
@@ -46,6 +47,7 @@ const NAV: { id: AdminTab; label: string }[] = [
   { id: 'jobs', label: 'Jobs' },
   { id: 'usage', label: 'Usage' },
   { id: 'shopping', label: 'Shopping' },
+  { id: 'billing', label: 'Billing' },
 ];
 
 const KIND_COLORS: Record<string, string> = {
@@ -739,6 +741,7 @@ export function AdminConsole({
           ) : null}
 
           {tab === 'shopping' ? <AdminShoppingPanel /> : null}
+          {tab === 'billing' ? <AdminBillingPanel /> : null}
           {tab === 'starters' ? (
             <AdminStartersPanel onEnterRoom={onEnterStarter} initialSelectedId={initialStarterId} />
           ) : null}

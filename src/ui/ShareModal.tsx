@@ -15,7 +15,8 @@ import {
   listRoomCollaboratorProfiles,
   type CollaboratorProfileRow,
 } from '../lib/profiles';
-import { navigate, profilePath } from '../hooks/useRoute';
+import { navigate, profilePath, pricingPath } from '../hooks/useRoute';
+import { featureLimit, useEntitlements } from '../hooks/useEntitlements';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
 import { Field } from './kit/Field';
@@ -32,6 +33,8 @@ interface ShareModalProps {
 }
 
 export function ShareModal({ roomId, userId, onClose }: ShareModalProps) {
+  const { entitlements } = useEntitlements();
+  const shareMaxDays = featureLimit(entitlements, 'share_link_max_days');
   const [shares, setShares] = useState<RoomShareRow[]>([]);
   const [collaborators, setCollaborators] = useState<CollaboratorProfileRow[]>([]);
   const [forkCount, setForkCount] = useState(0);
@@ -69,9 +72,14 @@ export function ShareModal({ roomId, userId, onClose }: ShareModalProps) {
     setBusy(true);
     setError(null);
     try {
+      const expiresAt =
+        shareMaxDays == null
+          ? null
+          : new Date(Date.now() + shareMaxDays * 24 * 60 * 60 * 1000).toISOString();
       const { token, url } = await createRoomShare(roomId, userId, {
         role: newRole,
         allowCopy,
+        expiresAt,
       });
       trackRoomShared({ room_id: roomId, role: newRole });
       await navigator.clipboard.writeText(url);
@@ -143,6 +151,19 @@ export function ShareModal({ roomId, userId, onClose }: ShareModalProps) {
       <p style={{ font: 'var(--type-body-sm)', color: 'var(--text-secondary)', margin: '0 0 20px' }}>
         Anyone with a link can view this room. Editor links grant write access when redeemed — treat them like passwords.
         {forkCount > 0 ? ` ${forkCount} copies have been made of this room.` : ''}
+        {' '}
+        {shareMaxDays == null
+          ? 'Your plan keeps share links until you revoke them.'
+          : `Your plan expires new share links after ${shareMaxDays} days.`}
+        {shareMaxDays != null && shareMaxDays < 90 ? (
+          <>
+            {' '}
+            <button type="button" className="text-btn" onClick={() => navigate(pricingPath())}>
+              Upgrade for longer links
+            </button>
+            .
+          </>
+        ) : null}
       </p>
 
       {error ? (
