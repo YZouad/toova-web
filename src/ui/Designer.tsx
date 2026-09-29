@@ -23,7 +23,10 @@ import { isStarterEditWorkspaceId } from '../lib/starterTemplateOverrides';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
-import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
+import { navigate, pricingPath, profilePath, publicRoomPath } from '../hooks/useRoute';
+import { CreditBalanceChip } from './billing/CreditBalanceChip';
+import { UpgradeModal, type PaywallReason } from './billing/UpgradeModal';
+import { useEntitlements } from '../hooks/useEntitlements';
 import './designer/designer.css';
 import './designer/mobile/mobile-designer.css';
 import { useDesignerChrome } from './designer/useDesignerChrome';
@@ -120,8 +123,11 @@ export function Designer({
   const chrome = useDesignerChrome();
   const roomGeometry = useStore((s) => s.roomGeometry);
 
+  const { refresh: refreshBilling } = useEntitlements();
   const [shareOpen, setShareOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  const [paywallOpen, setPaywallOpen] = useState(false);
+  const [paywallReason, setPaywallReason] = useState<PaywallReason>('credits');
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [importAuthOpen, setImportAuthOpen] = useState(false);
@@ -662,6 +668,18 @@ export function Designer({
                 Present
               </button>
             </div>
+            {user?.id ? (
+              <>
+                <div className="dg-rule--v" aria-hidden />
+                <CreditBalanceChip
+                  compact
+                  onNeedCredits={() => {
+                    setPaywallReason('credits');
+                    setPaywallOpen(true);
+                  }}
+                />
+              </>
+            ) : null}
             <div className="dg-rule--v" aria-hidden />
             <div className="dg-more">
               <button
@@ -980,8 +998,13 @@ export function Designer({
               onStartMeasure={chrome.startMeasureFromImport}
               isAdmin={isAdmin}
               compact={false}
+              onInsufficientCredits={() => {
+                setPaywallReason('credits');
+                setPaywallOpen(true);
+              }}
               onComplete={(model, meta) => {
                 chrome.closeImport();
+                void refreshBilling();
                 setDetailFocusThrixel(meta?.fromThrixel ?? false);
                 setDetailModel(model);
               }}
@@ -1060,6 +1083,15 @@ export function Designer({
       {exportOpen ? (
         <ExportRenderDialog sceneRef={sceneRef} onClose={() => setExportOpen(false)} />
       ) : null}
+      <UpgradeModal
+        open={paywallOpen}
+        reason={paywallReason}
+        onClose={() => setPaywallOpen(false)}
+        onViewPricing={() => {
+          setPaywallOpen(false);
+          navigate(pricingPath());
+        }}
+      />
       <FeedbackModal
         open={feedbackOpen}
         pageSource="designer"

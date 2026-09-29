@@ -15,6 +15,7 @@ import {
   parsePriceDollarsToCents,
 } from '../../lib/shoppingCatalogAdmin';
 import { parseImportedShopDetails } from '../../lib/localRoomChecklist';
+import { TrellisInsufficientCreditsError } from '../../lib/trellisAuth';
 import { TRELLIS_GENERATE_URL, TRELLIS_STARTING_STATUS, trellisUsesRemoteUrl } from '../../lib/trellisApi';
 import { fetchThrixelConnectionStatus } from '../../lib/thrixelApi';
 import { useGlbPreviewUrl } from '../../hooks/useGlbPreviewUrl';
@@ -50,6 +51,7 @@ export interface ImportFlowProps {
   /** Compact / phone layout — route-first cards when route is null. */
   compact?: boolean;
   onComplete?: (model: CatalogModel, meta?: { fromThrixel: boolean; thrixelLinkFailed?: boolean }) => void;
+  onInsufficientCredits?: () => void;
 }
 
 export type ImportCompleteMeta = NonNullable<ImportFlowProps['onComplete']> extends (
@@ -126,6 +128,7 @@ export function ImportFlow({
   isAdmin = false,
   compact = false,
   onComplete,
+  onInsufficientCredits,
 }: ImportFlowProps) {
   const { user, profile } = useAuth();
   const userId = user?.id ?? null;
@@ -389,6 +392,11 @@ export function ImportFlow({
       onRoute('upload');
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
+      if (err instanceof TrellisInsufficientCreditsError) {
+        onInsufficientCredits?.();
+        setGenerateError(err.message);
+        return;
+      }
       const message = err instanceof Error ? err.message : 'Generation failed';
       setGenerateError(message);
     } finally {
