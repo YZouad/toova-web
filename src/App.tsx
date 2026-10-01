@@ -55,6 +55,8 @@ import {
   RoomPresetPicker,
   type RoomPresetPickerSelection,
 } from './ui/RoomPresetPicker';
+import { applyAgenticShoppingList } from './lib/agenticRoomApplyChecklist';
+import type { ShoppingListEntry } from './lib/dormChecklist';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole, type AdminTab } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
@@ -478,8 +480,10 @@ function AppContent() {
         seedItems?: Item[];
         seedOrder?: string[];
         starterId?: string;
+        agenticShoppingList?: ShoppingListEntry[];
+        agenticBudgetCents?: number | null;
       },
-    ) => {
+    ): Promise<string> => {
       const environment = {
         ...(options?.environment ?? DEFAULT_ENVIRONMENT),
         appearance: {
@@ -491,14 +495,23 @@ function AppContent() {
 
       // Guest path: design locally until save requires auth.
       if (!user?.id) {
+        const guestId = `guest-${Date.now()}`;
+        if (options?.agenticShoppingList?.length) {
+          await applyAgenticShoppingList(
+            guestId,
+            options.agenticShoppingList,
+            null,
+            options.agenticBudgetCents,
+          );
+        }
         resetLayout();
         hydrateLayout(seedItems, seedOrder);
         hydrateRoomSettings(environment, plan);
         setGuestTemplateId(options?.starterId);
-        setWorkspace({ id: `guest-${Date.now()}`, name, isOwner: true });
+        setWorkspace({ id: guestId, name, isOwner: true });
         setFloorPlanDraft(null);
         setScreen('designer');
-        return;
+        return guestId;
       }
 
       setFloorPlanBusy(true);
@@ -507,6 +520,14 @@ function AppContent() {
           templateId: options?.starterId,
           isGuestOrigin: false,
         });
+        if (options?.agenticShoppingList?.length) {
+          await applyAgenticShoppingList(
+            room.id,
+            options.agenticShoppingList,
+            user.id,
+            options.agenticBudgetCents,
+          );
+        }
         resetLayout();
         hydrateLayout(seedItems, seedOrder);
         hydrateRoomSettings(environment, plan);
@@ -517,6 +538,7 @@ function AppContent() {
         setWorkspace({ id: room.id, name: room.name, isOwner: true });
         setFloorPlanDraft(null);
         setScreen('designer');
+        return room.id;
       } finally {
         setFloorPlanBusy(false);
       }
@@ -568,6 +590,14 @@ function AppContent() {
         await handleCreateWithPlan(name, selection.plan);
         return;
       }
+      if (selection.kind === 'agentic') {
+        await handleCreateWithPlan(name, selection.plan, {
+          environment: selection.environment,
+          agenticShoppingList: selection.shoppingList,
+          agenticBudgetCents: selection.budgetCents,
+        });
+        return;
+      }
       if (selection.kind === 'customize') {
         handleCustomizePresetPlan(name, selection.plan, selection.template);
         return;
@@ -579,6 +609,7 @@ function AppContent() {
       handleCreateWithPlan,
       handleCustomizeOwnPlan,
       handleCustomizePresetPlan,
+      user?.id,
     ],
   );
 

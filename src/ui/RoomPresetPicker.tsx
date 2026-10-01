@@ -22,15 +22,27 @@ import {
 } from '../lib/uchicagoDormTemplates';
 import { useStarterTemplatesForGoal } from '../hooks/useStarterTemplates';
 import type { RoomGallerySortParam } from '../lib/galleryCatalog';
+import type { ShoppingListEntry } from '../lib/dormChecklist';
+import type { RoomEnvironment } from '../store';
 import { Button, Field, Input, Modal, Plate, Tabs } from './kit';
 import { RoomGallery } from './RoomGallery';
 import { RoomPreview } from './RoomPreview';
+import { AgenticRoomFlow, type AgenticRoomConfirmPayload } from './AgenticRoomFlow';
 
 export type RoomPresetPickerSelection =
   | { kind: 'starter'; template: RoomStarterTemplate }
   | { kind: 'blank'; plan: FloorPlan; presetId: BlankPlanPresetId }
   | { kind: 'customize'; plan: FloorPlan; template?: RoomStarterTemplate }
-  | { kind: 'custom' };
+  | { kind: 'custom' }
+  | {
+      kind: 'agentic';
+      plan: FloorPlan;
+      environment: RoomEnvironment;
+      shoppingList: ShoppingListEntry[];
+      budgetCents?: number | null;
+    };
+
+type PickerMode = 'presets' | 'describe';
 
 interface RoomPresetPickerProps {
   open?: boolean;
@@ -75,6 +87,7 @@ export function RoomPresetPicker({
   const [error, setError] = useState<string | null>(null);
   const [gallerySort, setGallerySort] = useState<RoomGallerySortParam>('hot');
   const [galleryQuery, setGalleryQuery] = useState('');
+  const [mode, setMode] = useState<PickerMode>('presets');
 
   useEffect(() => {
     if (!active) return;
@@ -85,6 +98,7 @@ export function RoomPresetPicker({
     setError(null);
     setGallerySort('hot');
     setGalleryQuery('');
+    setMode('presets');
   }, [active, defaultName]);
 
   const liveForGoal = useStarterTemplatesForGoal(goal);
@@ -147,6 +161,28 @@ export function RoomPresetPicker({
 
   const handleCustom = () => {
     void runSelect({ kind: 'custom' });
+  };
+
+  const handleAgenticConfirm = async (payload: AgenticRoomConfirmPayload) => {
+    if (disabled) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSelect(
+        {
+          kind: 'agentic',
+          plan: payload.plan,
+          environment: payload.environment,
+          shoppingList: payload.shoppingList,
+          budgetCents: payload.budgetCents,
+        },
+        resolvedName,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create room');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleGoalChange = (id: string) => {
@@ -226,13 +262,33 @@ export function RoomPresetPicker({
               onChange={(e) => setRoomName(e.target.value)}
               placeholder={defaultName}
               disabled={disabled}
-              autoFocus
+              autoFocus={mode === 'presets'}
               aria-label="Room name"
             />
           </Field>
         </div>
 
-        {guestSimple ? null : (
+        <div className="room-preset-section">
+          <Tabs
+            className="room-preset-mode-tabs"
+            active={mode}
+            onChange={(id) => setMode(id as PickerMode)}
+            tabs={[
+              { id: 'presets', label: 'Pick a template' },
+              { id: 'describe', label: 'Describe your room' },
+            ]}
+          />
+        </div>
+
+        {mode === 'describe' ? (
+          <AgenticRoomFlow
+            disabled={disabled}
+            onBack={() => setMode('presets')}
+            onConfirm={handleAgenticConfirm}
+          />
+        ) : null}
+
+        {mode === 'presets' && guestSimple ? null : mode === 'presets' ? (
           <>
             <div className="room-preset-section">
               <div className="room-preset-section-label">What kind of room?</div>
@@ -283,8 +339,9 @@ export function RoomPresetPicker({
               </div>
             )}
           </>
-        )}
+        ) : null}
 
+        {mode === 'presets' ? (
         <div className={guestSimple ? 'room-preset-section' : 'room-preset-section room-preset-section--blank'}>
           <div className="room-preset-section-label">
             {guestSimple ? 'How do you want to start?' : 'Blank room'}
@@ -397,6 +454,7 @@ export function RoomPresetPicker({
             </div>
           </div>
         </div>
+        ) : null}
 
         {error ? (
           <p className="room-preset-error" role="alert">
