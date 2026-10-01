@@ -251,9 +251,6 @@ $$;
 REVOKE ALL ON FUNCTION public.get_entitlements(uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.get_entitlements(uuid) TO authenticated, service_role;
 
-GRANT EXECUTE ON FUNCTION public.ensure_credit_wallet(uuid) TO service_role;
-GRANT EXECUTE ON FUNCTION public.refresh_monthly_credits_if_due(uuid) TO service_role;
-
 CREATE OR REPLACE FUNCTION public.has_unlimited_rooms(uid uuid)
 RETURNS boolean
 LANGUAGE sql
@@ -313,6 +310,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.ensure_credit_wallet(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ensure_credit_wallet(uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.refresh_monthly_credits_if_due(p_uid uuid)
 RETURNS void
@@ -348,6 +346,7 @@ END;
 $$;
 
 REVOKE ALL ON FUNCTION public.refresh_monthly_credits_if_due(uuid) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.refresh_monthly_credits_if_due(uuid) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.apply_subscription_period(
   p_uid uuid,
