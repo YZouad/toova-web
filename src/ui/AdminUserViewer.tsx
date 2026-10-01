@@ -4,6 +4,9 @@ import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
 import { parseAdminUserAnalyticsExtras } from '../lib/adminAnalytics';
 import {
+  adminGrantCredits,
+  adminGrantPlan,
+  adminRevokePlan,
   fetchAdminUserOverview,
   type AdminUserAnalyticsSeries,
   type AdminUserModelRow,
@@ -21,10 +24,13 @@ import {
   Banner,
   Button,
   EmptyState,
+  Field,
+  Input,
   KeyValueRow,
   MonoMeta,
   RuledTable,
   SectionOpener,
+  Select,
   Spinner,
   Tabs,
 } from './kit';
@@ -204,6 +210,17 @@ export function AdminUserViewer({
   const [openingRoomId, setOpeningRoomId] = useState<string | null>(null);
   const [detailModel, setDetailModel] = useState<GalleryModel | null>(null);
   const [modelBusyKind, setModelBusyKind] = useState<string | null>(null);
+  const [grantTier, setGrantTier] = useState<'lite' | 'pro'>('pro');
+  const [grantMonths, setGrantMonths] = useState<'permanent' | '1' | '5' | '12'>('permanent');
+  const [creditAmount, setCreditAmount] = useState('100');
+  const [billingBusy, setBillingBusy] = useState(false);
+  const [billingMsg, setBillingMsg] = useState<string | null>(null);
+  const [billingErr, setBillingErr] = useState<string | null>(null);
+
+  const reloadOverview = async () => {
+    const data = await fetchAdminUserOverview(userId);
+    setOverview(data);
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -213,6 +230,8 @@ export function AdminUserViewer({
     setAvatarUrl(null);
     setRoomThumbs({});
     setTab('overview');
+    setBillingMsg(null);
+    setBillingErr(null);
 
     void (async () => {
       try {
@@ -369,7 +388,39 @@ export function AdminUserViewer({
                   ))}
                 </div>
                 <KeyValueRow label="Email" value={user.email ?? '—'} />
-                <KeyValueRow label="Plan" value={<Badge tone="accent">{user.plan}</Badge>} />
+                <KeyValueRow
+                  label="Plan"
+                  value={
+                    <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                      <Badge tone="accent">{user.plan}</Badge>
+                      {user.is_admin ? <Badge tone="neutral">admin</Badge> : null}
+                    </span>
+                  }
+                />
+                {overview.billing ? (
+                  <>
+                    <KeyValueRow
+                      label="Credits"
+                      value={`${overview.billing.monthly_balance} monthly · ${overview.billing.purchased_balance} purchased`}
+                    />
+                    <KeyValueRow
+                      label="Subscription"
+                      value={
+                        overview.billing.subscription
+                          ? `${overview.billing.subscription.source} · ${overview.billing.subscription.status}${
+                              overview.billing.subscription.current_period_end
+                                ? ` · ends ${formatRelativeTime(overview.billing.subscription.current_period_end)}`
+                                : overview.billing.subscription.source === 'admin'
+                                  ? ' · permanent'
+                                  : ''
+                            }`
+                          : user.is_admin
+                            ? 'Platform admin (Pro)'
+                            : 'None (free)'
+                      }
+                    />
+                  </>
+                ) : null}
                 <KeyValueRow
                   label="Profile"
                   value={
@@ -394,6 +445,166 @@ export function AdminUserViewer({
                 {user.bio ? (
                   <KeyValueRow label="Bio" value={user.bio} last />
                 ) : null}
+
+                <div
+                  className="admin-user-viewer__billing"
+                  style={{
+                    marginTop: 24,
+                    padding: 16,
+                    border: '1px solid var(--rule-soft)',
+                    background: 'var(--bg-raised)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12,
+                  }}
+                >
+                  <MonoMeta size="xs" tone="dense" upper>
+                    Complimentary billing
+                  </MonoMeta>
+                  <p style={{ margin: 0, font: 'var(--type-body-sm)', color: 'var(--text-secondary)' }}>
+                    Grant Lite/Pro without Stripe, or add purchased credits. Platform admins already get Pro
+                    and unlimited Trellis generations.
+                  </p>
+                  {overview.billing?.subscription?.has_stripe ? (
+                    <Banner tone="info">
+                      This user has a Stripe subscription. Cancel it in the portal before granting a
+                      complimentary plan.
+                    </Banner>
+                  ) : null}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+                    <Field label="Tier">
+                      <Select
+                        value={grantTier}
+                        onChange={(v) => setGrantTier(v as 'lite' | 'pro')}
+                        disabled={billingBusy}
+                        options={[
+                          { value: 'lite', label: 'Lite' },
+                          { value: 'pro', label: 'Pro' },
+                        ]}
+                      />
+                    </Field>
+                    <Field label="Duration">
+                      <Select
+                        value={grantMonths}
+                        onChange={(v) => setGrantMonths(v as typeof grantMonths)}
+                        disabled={billingBusy}
+                        options={[
+                          { value: 'permanent', label: 'Permanent' },
+                          { value: '1', label: '1 month' },
+                          { value: '5', label: '5 months' },
+                          { value: '12', label: '12 months' },
+                        ]}
+                      />
+                    </Field>
+                    <Button
+                      size="sm"
+                      disabled={billingBusy || Boolean(overview.billing?.subscription?.has_stripe)}
+                      onClick={() => {
+                        void (async () => {
+                          setBillingBusy(true);
+                          setBillingErr(null);
+                          setBillingMsg(null);
+                          try {
+                            const months =
+                              grantMonths === 'permanent' ? null : Number(grantMonths);
+                            const res = await adminGrantPlan(userId, grantTier, months);
+                            if (!res.ok) {
+                              setBillingErr(res.message ?? res.error ?? 'Grant failed');
+                            } else {
+                              setBillingMsg(`Granted ${grantTier}${months ? ` for ${months} months` : ' permanently'}.`);
+                              await reloadOverview();
+                            }
+                          } catch (e) {
+                            setBillingErr(e instanceof Error ? e.message : 'Grant failed');
+                          } finally {
+                            setBillingBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      Grant plan
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        billingBusy ||
+                        (overview.billing?.subscription?.source !== 'admin' &&
+                          overview.billing?.subscription?.source !== 'semester_pass')
+                      }
+                      onClick={() => {
+                        void (async () => {
+                          setBillingBusy(true);
+                          setBillingErr(null);
+                          setBillingMsg(null);
+                          try {
+                            const res = await adminRevokePlan(userId);
+                            if (!res.ok) {
+                              setBillingErr(res.message ?? res.error ?? 'Revoke failed');
+                            } else {
+                              setBillingMsg('Complimentary plan revoked. User is on Free.');
+                              await reloadOverview();
+                            }
+                          } catch (e) {
+                            setBillingErr(e instanceof Error ? e.message : 'Revoke failed');
+                          } finally {
+                            setBillingBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      Revoke grant
+                    </Button>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+                    <Field label="Credits to add">
+                      <Input
+                        type="number"
+                        min={1}
+                        max={100000}
+                        value={creditAmount}
+                        disabled={billingBusy}
+                        onChange={(e) => setCreditAmount(e.target.value)}
+                        style={{ width: 120 }}
+                      />
+                    </Field>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={billingBusy}
+                      onClick={() => {
+                        void (async () => {
+                          const n = Number(creditAmount);
+                          if (!Number.isFinite(n) || n <= 0) {
+                            setBillingErr('Enter a positive credit amount.');
+                            return;
+                          }
+                          setBillingBusy(true);
+                          setBillingErr(null);
+                          setBillingMsg(null);
+                          try {
+                            const res = await adminGrantCredits(userId, Math.floor(n));
+                            if (!res.ok) {
+                              setBillingErr('Could not add credits.');
+                            } else {
+                              setBillingMsg(`Added ${Math.floor(n)} purchased credits.`);
+                              await reloadOverview();
+                            }
+                          } catch (e) {
+                            setBillingErr(e instanceof Error ? e.message : 'Could not add credits');
+                          } finally {
+                            setBillingBusy(false);
+                          }
+                        })();
+                      }}
+                    >
+                      Add credits
+                    </Button>
+                  </div>
+                  {billingMsg ? <Banner tone="success">{billingMsg}</Banner> : null}
+                  {billingErr ? <Banner tone="error">{billingErr}</Banner> : null}
+                </div>
+
                 <div className="admin-user-viewer__actions">
                   {user.handle ? (
                     <Button

@@ -44,6 +44,38 @@ export function amazonSearchUrl(query: string): string {
   return `https://www.amazon.com/s?${params.toString()}`;
 }
 
+export interface AmazonCartLine {
+  asin: string;
+  quantity: number;
+  label?: string;
+}
+
+/** Amazon Cart API — adds multiple ASINs in one affiliate-tagged cart URL. */
+export function amazonMultiAddCartUrl(lines: AmazonCartLine[]): string | null {
+  const withAsin = lines.filter((l) => l.asin.trim().length === 10);
+  if (withAsin.length === 0) return null;
+
+  const params = new URLSearchParams();
+  const tag = amazonTag();
+  if (tag) params.set('AssociateTag', tag);
+
+  withAsin.forEach((line, index) => {
+    const n = index + 1;
+    params.set(`ASIN.${n}`, line.asin.trim().toUpperCase());
+    params.set(`Quantity.${n}`, String(Math.max(1, line.quantity)));
+  });
+
+  return `https://www.amazon.com/gp/aws/cart/add.html?${params.toString()}`;
+}
+
+export function parseAsinFromAffiliateUrl(url: string): string | null {
+  const dp = url.match(/\/dp\/([A-Za-z0-9]{10})/i);
+  if (dp?.[1]) return dp[1].toUpperCase();
+  const gp = url.match(/\/gp\/product\/([A-Za-z0-9]{10})/i);
+  if (gp?.[1]) return gp[1].toUpperCase();
+  return null;
+}
+
 function sanitizeLabel(label: string | undefined | null): string {
   const cleaned = (label ?? '')
     .replace(/[^\w\s\-&.']/g, ' ')

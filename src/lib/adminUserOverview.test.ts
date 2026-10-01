@@ -18,6 +18,14 @@ const sample: AdminUserOverview = {
     last_active_at: '2026-09-10T12:00:00.000Z',
     last_sign_in_at: '2026-09-10T11:00:00.000Z',
     plan: 'free',
+    is_admin: false,
+  },
+  billing: {
+    effective_tier: 'free',
+    monthly_balance: 15,
+    purchased_balance: 0,
+    monthly_period_end: '2026-10-01T00:00:00.000Z',
+    subscription: null,
   },
   rooms: [
     {

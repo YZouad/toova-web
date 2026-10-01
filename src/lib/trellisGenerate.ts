@@ -1,3 +1,8 @@
+import {
+  newGenerationRef,
+  trellisAuthHeaders,
+  TrellisInsufficientCreditsError,
+} from './trellisAuth';
 import { ensureTrellisReady, formatTrellisError, TRELLIS_GENERATE_URL } from './trellisApi';
 import { ensureJpegForTrellis } from './webpToJpeg';
 
@@ -24,14 +29,39 @@ export async function generateGlbFromPhoto(
   const fd = new FormData();
   fd.append('file', file);
 
+  const generationRef = newGenerationRef();
+  const authHeaders = await trellisAuthHeaders(generationRef);
+
   const res = await fetch(TRELLIS_GENERATE_URL, {
     method: 'POST',
     body: fd,
     signal,
+    headers: authHeaders,
   });
 
   if (!res.ok) {
     const errText = await res.text();
+    if (res.status === 402) {
+      try {
+        const parsed = JSON.parse(errText) as {
+          error?: string;
+          cost?: number;
+          monthly_balance?: number;
+          purchased_balance?: number;
+        };
+        throw new TrellisInsufficientCreditsError(
+          'You need more credits to generate a model.',
+          {
+            cost: parsed.cost,
+            monthlyBalance: parsed.monthly_balance,
+            purchasedBalance: parsed.purchased_balance,
+          },
+        );
+      } catch (err) {
+        if (err instanceof TrellisInsufficientCreditsError) throw err;
+        throw new TrellisInsufficientCreditsError('You need more credits to generate a model.');
+      }
+    }
     if (res.status === 503) {
       try {
         const parsed = JSON.parse(errText) as { message?: string; error?: string };

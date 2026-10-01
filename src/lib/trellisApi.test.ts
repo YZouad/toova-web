@@ -1,5 +1,25 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('./trellisAuth', () => ({
+  trellisAuthHeaders: vi.fn(async (generationRef?: string) => {
+    const headers: Record<string, string> = {
+      Authorization: 'Bearer test-token',
+    };
+    if (generationRef) {
+      headers['X-Toova-Generation-Ref'] = generationRef;
+    }
+    return headers;
+  }),
+  TrellisInsufficientCreditsError: class TrellisInsufficientCreditsError extends Error {
+    readonly code = 'insufficient_credits' as const;
+    constructor(message: string) {
+      super(message);
+      this.name = 'TrellisInsufficientCreditsError';
+    }
+  },
+  newGenerationRef: () => 'test-generation-ref',
+}));
+
 describe('trellisSiblingUrl', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -47,7 +67,7 @@ describe('ensureTrellisReady', () => {
 
   it('wakes and polls on the same-origin dev proxy URL', async () => {
     vi.stubEnv('VITE_TRELLIS_GENERATE_URL', '');
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
       if (url.endsWith('/wake') || url.endsWith('/status')) {
         return new Response(JSON.stringify({ ready: true, ec2: 'running', trellis: 'ready' }), {
@@ -59,6 +79,12 @@ describe('ensureTrellisReady', () => {
 
     const { ensureTrellisReady } = await import('./trellisApi');
     await expect(ensureTrellisReady()).resolves.toBeUndefined();
+
+    const wakeCall = fetchSpy.mock.calls.find(([url]) => String(url).endsWith('/wake'));
+    expect(wakeCall?.[1]).toMatchObject({
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-token' },
+    });
   });
 
   it('polls status until ready and respects abort before generate', async () => {

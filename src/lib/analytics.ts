@@ -249,7 +249,7 @@ export function identifyUser(
     auth_method: AuthMethod;
     role: 'user' | 'admin';
     is_guest: boolean;
-    subscription_tier: 'free' | 'pro';
+    subscription_tier: 'free' | 'lite' | 'pro';
     created_at: string;
   },
 ): void {
@@ -401,6 +401,62 @@ export function trackPlanCancelled(params: { from_plan: 'pro'; reason?: string }
 
 export function trackLimitReached(params: { limit_type: 'ai_generations' | 'render_quality' }): void {
   track(EVENTS.LIMIT_REACHED, params);
+}
+
+export function trackCheckoutStarted(params: {
+  kind: string;
+  context?: string;
+}): void {
+  track(EVENTS.CHECKOUT_STARTED, {
+    kind: params.kind,
+    context: params.context ?? 'unknown',
+  });
+}
+
+export function trackCheckoutCompleted(params: { kind: string }): void {
+  track(EVENTS.CHECKOUT_COMPLETED, { kind: params.kind });
+}
+
+export function trackCreditsSpent(params: {
+  cost: number;
+  credits_remaining?: number;
+  source?: string;
+}): void {
+  track(EVENTS.CREDITS_SPENT, {
+    cost: params.cost,
+    ...(params.credits_remaining != null
+      ? { credits_remaining: params.credits_remaining }
+      : {}),
+    source: params.source ?? 'trellis',
+  });
+}
+
+export function trackPaywallShown(params: { reason: string }): void {
+  track(EVENTS.PAYWALL_SHOWN, { reason: params.reason });
+}
+
+export function trackBundleViewed(params: { bundle_slug: string }): void {
+  track(EVENTS.BUNDLE_VIEWED, { bundle_slug: params.bundle_slug });
+}
+
+export function trackBundleAddedToRoom(params: {
+  bundle_slug: string;
+  item_count: number;
+}): void {
+  track(EVENTS.BUNDLE_ADDED_TO_ROOM, {
+    bundle_slug: params.bundle_slug,
+    item_count: params.item_count,
+  });
+}
+
+export function trackBundleCartClicked(params: {
+  bundle_slug: string;
+  item_count: number;
+}): void {
+  track(EVENTS.BUNDLE_CART_CLICKED, {
+    bundle_slug: params.bundle_slug,
+    item_count: params.item_count,
+  });
 }
 
 export function resetAnalyticsRuntimeForTests(): void {

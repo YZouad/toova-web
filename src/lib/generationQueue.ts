@@ -1,6 +1,7 @@
 import {
   trackModelGenerationFailed,
   trackModelGenerationStarted,
+  trackCreditsSpent,
   trackModelGenerationSucceeded,
 } from './analytics';
 import {
@@ -235,6 +236,7 @@ async function drainQueue(): Promise<void> {
         );
         await updateConversionJob(next.jobId, { status: 'completed', label: next.label });
         trackModelGenerationSucceeded({ job_id: next.jobId, duration_ms: Date.now() - startedAt });
+        trackCreditsSpent({ cost: 5, source: 'trellis' });
         const ready: GenerationQueueItem = {
           ...next,
           status: 'ready',
