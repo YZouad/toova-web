@@ -8,6 +8,8 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:cursor-proxy": "node scripts/cursor-agentic-dev-server.mjs",
+    "dev:agentic": "node scripts/cursor-agentic-dev-server.mjs & vite",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

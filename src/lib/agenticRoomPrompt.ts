@@ -7,6 +7,8 @@ export interface AgenticItemAsk {
   /** Raw phrase from the prompt (“nightstand”, “desk lamp”). */
   query: string;
   qty: number;
+  /** Rough USD-cent estimate for this line (qty included). From Cursor shopping list. */
+  estimatedCents?: number;
 }
 
 export interface AgenticRoomRequest {

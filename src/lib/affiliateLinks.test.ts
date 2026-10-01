@@ -9,7 +9,12 @@ import {
   type ChecklistCategoryWithProducts,
   type CuratedProduct,
 } from './dormChecklist';
-import { amazonSearchUrl, resolveAffiliateForItem } from './affiliateLinks';
+import {
+  amazonSearchUrl,
+  googleShoppingSearchUrl,
+  resolveAffiliateForItem,
+  searchOffersForQuery,
+} from './affiliateLinks';
 import {
   countRoomPlacementsForProduct,
   findRoomItemForProduct,
@@ -504,6 +509,21 @@ describe('shopping checklist helpers', () => {
     const url = amazonSearchUrl('dorm desk lamp');
     expect(url).toContain('https://www.amazon.com/s?');
     expect(url).toContain('k=dorm');
+  });
+
+  it('builds google shopping search urls', () => {
+    const url = googleShoppingSearchUrl('queen bed frame');
+    expect(url).toContain('https://www.google.com/search?');
+    expect(url).toContain('tbm=shop');
+    expect(url).toContain('queen');
+  });
+
+  it('returns amazon and google search offers for a query', () => {
+    const offers = searchOffersForQuery('area rug');
+    expect(offers).toHaveLength(2);
+    expect(offers[0]?.approximate).toBe(true);
+    expect(offers[0]?.url).toContain('amazon.com');
+    expect(offers[1]?.url).toContain('google.com');
   });
 
   it('uses exact offer when curated product is present', () => {

@@ -370,7 +370,8 @@ export function trackAffiliateClicked(params: {
     | 'purchase_review'
     | 'shared_tobuy'
     | 'designer_checklist_ticker'
-    | 'designer_checklist_mobile';
+    | 'designer_checklist_mobile'
+    | 'agentic_room';
 }): void {
   track(EVENTS.PRODUCT_AFFILIATE_CLICKED, params);
 }

@@ -44,6 +44,33 @@ export function amazonSearchUrl(query: string): string {
   return `https://www.amazon.com/s?${params.toString()}`;
 }
 
+export function googleShoppingSearchUrl(query: string): string {
+  const params = new URLSearchParams({ q: query, tbm: 'shop' });
+  return `https://www.google.com/search?${params.toString()}`;
+}
+
+/** Free search fallbacks when no curated catalog product is matched. */
+export function searchOffersForQuery(query: string): AffiliateOffer[] {
+  const trimmed = query.trim();
+  if (!trimmed) return [];
+  return [
+    {
+      label: 'Search Amazon',
+      url: amazonSearchUrl(trimmed),
+      approximate: true,
+      retailer: 'Amazon',
+      description: 'Live Amazon search — results may not match exactly.',
+    },
+    {
+      label: 'Search Google Shopping',
+      url: googleShoppingSearchUrl(trimmed),
+      approximate: true,
+      retailer: 'Google',
+      description: 'Live Google Shopping search — results may not match exactly.',
+    },
+  ];
+}
+
 function sanitizeLabel(label: string | undefined | null): string {
   const cleaned = (label ?? '')
     .replace(/[^\w\s\-&.']/g, ' ')
