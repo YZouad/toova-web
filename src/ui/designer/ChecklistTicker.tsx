@@ -406,7 +406,25 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
   if (!open) {
     return (
       <div data-tour-id="ticker" className="dg-ticker">
-        <div className="dg-ticker-card dg-ticker-card--collapsed">{head}</div>
+        <div className="dg-ticker-card dg-ticker-card--collapsed">
+          {head}
+          {purchaseCartLines.length > 0 ? (
+            <button
+              type="button"
+              className="dg-ticker-cta dg-ticker-cta--checkout dg-ticker-cta--collapsed"
+              onClick={() => setCheckoutOpen(true)}
+            >
+              Checkout · {purchaseCartLines.length} item{purchaseCartLines.length === 1 ? '' : 's'}
+            </button>
+          ) : null}
+        </div>
+        {checkoutOpen ? (
+          <ChecklistCheckoutPanel
+            lines={purchaseCartLines}
+            onClose={() => setCheckoutOpen(false)}
+            onRemoveFromList={(productId) => void removeFromList(productId)}
+          />
+        ) : null}
       </div>
     );
   }
@@ -715,6 +733,11 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
                     <div className="dg-ticker-group__list">
                       {group.lines.map((line) => {
                         const statusChip = checklistLineStatusLabel(line.status);
+                        const topPick =
+                          line.products.find((p) => p.affiliateUrl?.trim()) ?? line.products[0] ?? null;
+                        const onList = topPick
+                          ? list.some((e) => e.productId === topPick.id)
+                          : false;
                         return (
                         <div
                           key={line.categoryId}
@@ -738,6 +761,18 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
                               </span>
                             </span>
                           </button>
+                          {topPick ? (
+                            <button
+                              type="button"
+                              className="dg-ticker-item__shop"
+                              disabled={onList}
+                              onClick={() => {
+                                if (!onList) void addToList(topPick.id);
+                              }}
+                            >
+                              {onList ? 'On list' : '+ List'}
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="dg-ticker-item__shop"

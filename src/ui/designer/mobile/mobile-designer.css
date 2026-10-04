@@ -1968,18 +1968,44 @@
   gap: 4px;
 }
 
+.dg-page.is-phone .dgm-checklist-item-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
 .dg-page.is-phone .dgm-checklist-item {
   display: flex;
   align-items: center;
   gap: 11px;
   min-height: 60px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 10px 11px;
   background: var(--paper-0);
   border: 1px solid var(--rule-soft);
   border-radius: 13px;
   cursor: pointer;
   text-align: left;
+}
+
+.dg-page.is-phone .dgm-checklist-item__list {
+  flex: none;
+  align-self: center;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 99px;
+  background: var(--paper-1);
+  border: 1px solid var(--rule-soft);
+  font: 600 12px/1 var(--font-sans);
+  color: var(--accent-text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dg-page.is-phone .dgm-checklist-item__list:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .dg-page.is-phone .dgm-checklist-item.is-placed .dgm-checklist-item__name {

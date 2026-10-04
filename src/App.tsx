@@ -44,6 +44,7 @@ import {
   setGuestAuthIntent,
   type GuestDesignSnapshot,
 } from './lib/guestDesignSnapshot';
+import { consumePostAuthRedirect } from './lib/postAuthRedirect';
 import { LandingPage } from './ui/LandingPage';
 import { PitchMadnessPage } from './ui/PitchMadnessPage';
 import { AuthPage, type AuthPageMode } from './ui/AuthPage';
@@ -229,6 +230,24 @@ function AppContent() {
   const hydrateRoomSettings = useStore((s) => s.hydrateRoomSettings);
   const { load, loading: layoutLoading } = useRoomLoad();
 
+  /** After auth: open the template picker when the user has no rooms yet. */
+  const routeSignedInUser = useCallback(async (userId: string) => {
+    navigate('/', true);
+    try {
+      const { count, error } = await supabase
+        .from('rooms')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+      if (error) throw error;
+      if ((count ?? 0) === 0) {
+        setFloorPlanDraft({ name: 'Room 1', mode: 'create' });
+      }
+    } catch (err) {
+      console.warn('[toova] could not count rooms for post-auth route', err);
+    }
+    setScreen('dashboard');
+  }, []);
+
   useEffect(() => {
     void loadStarterTemplateOverrides();
   }, []);
@@ -390,9 +409,14 @@ function AppContent() {
         navigate('/');
         setScreen('dashboard');
       } else {
-        setScreen('dashboard');
-        if (routeIsPublic) navigate('/', true);
+        void routeSignedInUser(user.id);
       }
+      return;
+    }
+
+    // OAuth / email-confirm return lands on marketing page with a marker.
+    if (screen === 'landing' && consumePostAuthRedirect()) {
+      void routeSignedInUser(user.id);
     }
   }, [
     user,
@@ -406,6 +430,7 @@ function AppContent() {
     pendingGalleryModel,
     passwordRecovery,
     route.name,
+    routeSignedInUser,
   ]);
 
   useEffect(() => {
@@ -786,14 +811,26 @@ function AppContent() {
 
   const landingCallbacks = {
     loggedIn: !!user,
-    onGoDashboard: () => setScreen('dashboard'),
+    onGoDashboard: () => {
+      if (user) {
+        void routeSignedInUser(user.id);
+        return;
+      }
+      setScreen('dashboard');
+    },
     onGetStarted: () => {
-      if (user) { setScreen('dashboard'); return; }
+      if (user) {
+        void routeSignedInUser(user.id);
+        return;
+      }
       // Frictionless: design first, authenticate when saving.
       setScreen('dashboard');
     },
     onLogin: () => {
-      if (user) { setScreen('dashboard'); return; }
+      if (user) {
+        void routeSignedInUser(user.id);
+        return;
+      }
       setAuthReason(null);
       setAuthMode('signin');
       setScreen('auth');
@@ -871,10 +908,17 @@ function AppContent() {
   if (route.name === 'pricing') {
     return (
       <PricingPage
-        onBack={() => {
+        loggedIn={Boolean(user)}
+        onGoHome={() => {
           navigate('/');
           setScreen(user ? 'dashboard' : 'landing');
         }}
+        onGetStarted={landingCallbacks.onGetStarted}
+        onLogin={landingCallbacks.onLogin}
+        onGoDashboard={user ? () => setScreen('dashboard') : undefined}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
+        onAdmin={landingCallbacks.onAdmin}
       />
     );
   }
@@ -1326,7 +1370,7 @@ function AppContent() {
                 Start with a room that fits your space.
               </DisplayHeading>
               <p className="room-preset-page__lede">
-                Choose a rectangle, or draw your floor plan. You can sign in later when you want to save.
+                Pick a furnished starter, a rectangle, or draw your own. You can sign in later when you want to save.
               </p>
             </header>
             <RoomPresetPicker

@@ -232,57 +232,53 @@ export function RoomPresetPicker({
           </Field>
         </div>
 
-        {guestSimple ? null : (
-          <>
-            <div className="room-preset-section">
-              <div className="room-preset-section-label">What kind of room?</div>
-              <Tabs
-                className="room-preset-goal-tabs"
-                active={goal}
-                onChange={handleGoalChange}
-                tabs={ROOM_STARTER_GOALS.map((g) => ({ id: g.id, label: g.label }))}
-              />
-              <p className="room-preset-goal-hint">
-                {ROOM_STARTER_GOALS.find((g) => g.id === goal)?.description}
-              </p>
-            </div>
+        <div className="room-preset-section">
+          <div className="room-preset-section-label">What kind of room?</div>
+          <Tabs
+            className="room-preset-goal-tabs"
+            active={goal}
+            onChange={handleGoalChange}
+            tabs={ROOM_STARTER_GOALS.map((g) => ({ id: g.id, label: g.label }))}
+          />
+          <p className="room-preset-goal-hint">
+            {ROOM_STARTER_GOALS.find((g) => g.id === goal)?.description}
+          </p>
+        </div>
 
-            {isUChicago ? (
-              <div className="room-preset-section">
-                <div className="room-preset-section-label">Residence hall</div>
-                <Tabs
-                  className="room-preset-goal-tabs room-preset-dorm-tabs"
-                  active={dormId}
-                  onChange={(id) => setDormId(id as UChicagoDormId)}
-                  tabs={UCHICAGO_DORMS.map((d) => ({ id: d.id, label: d.label }))}
-                />
-                <p className="room-preset-goal-hint">
-                  Pick a layout — each starts as a blank room you can furnish.
-                </p>
-                <div
-                  className="room-preset-grid room-preset-grid--blank room-preset-grid--dorms"
-                  role="list"
-                  aria-label="Dorm layout"
-                >
-                  {starterPreviews.map(renderStarterCard)}
-                </div>
-              </div>
-            ) : (
-              <div className="room-preset-section">
-                <div className="room-preset-section-label">Starting look</div>
-                <div className="room-preset-tier-blurb-row" aria-hidden>
-                  {ROOM_STARTER_TIERS.map((t) => (
-                    <span key={t.id} className="room-preset-tier-chip">
-                      <strong>{t.label}</strong> — {t.blurb}
-                    </span>
-                  ))}
-                </div>
-                <div className="room-preset-grid room-preset-grid--tiers" role="list" aria-label="Furnishing tier">
-                  {starterPreviews.map(renderStarterCard)}
-                </div>
-              </div>
-            )}
-          </>
+        {isUChicago ? (
+          <div className="room-preset-section">
+            <div className="room-preset-section-label">Residence hall</div>
+            <Tabs
+              className="room-preset-goal-tabs room-preset-dorm-tabs"
+              active={dormId}
+              onChange={(id) => setDormId(id as UChicagoDormId)}
+              tabs={UCHICAGO_DORMS.map((d) => ({ id: d.id, label: d.label }))}
+            />
+            <p className="room-preset-goal-hint">
+              Pick a layout — each starts as a blank room you can furnish.
+            </p>
+            <div
+              className="room-preset-grid room-preset-grid--blank room-preset-grid--dorms"
+              role="list"
+              aria-label="Dorm layout"
+            >
+              {starterPreviews.map(renderStarterCard)}
+            </div>
+          </div>
+        ) : (
+          <div className="room-preset-section">
+            <div className="room-preset-section-label">Starting look</div>
+            <div className="room-preset-tier-blurb-row" aria-hidden>
+              {ROOM_STARTER_TIERS.map((t) => (
+                <span key={t.id} className="room-preset-tier-chip">
+                  <strong>{t.label}</strong> — {t.blurb}
+                </span>
+              ))}
+            </div>
+            <div className="room-preset-grid room-preset-grid--tiers" role="list" aria-label="Furnishing tier">
+              {starterPreviews.map(renderStarterCard)}
+            </div>
+          </div>
         )}
 
         <div className={guestSimple ? 'room-preset-section' : 'room-preset-section room-preset-section--blank'}>

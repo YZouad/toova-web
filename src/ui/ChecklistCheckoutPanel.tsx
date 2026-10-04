@@ -1,4 +1,9 @@
 import { useEffect, useMemo } from 'react';
+import {
+  amazonMultiAddCartUrl,
+  parseAsinFromAffiliateUrl,
+  type AmazonCartLine,
+} from '../lib/affiliateLinks';
 import { trackAffiliateClicked } from '../lib/analytics';
 import { formatPriceCents } from '../lib/dormChecklist';
 import type { PurchaseCartLine } from '../lib/purchaseCart';
@@ -21,6 +26,10 @@ interface ChecklistCheckoutPanelProps {
   onRemoveFromList: (productId: string) => void;
 }
 
+function isAmazonRetailer(retailer: string): boolean {
+  return retailer.trim().toLowerCase() === 'amazon';
+}
+
 export function ChecklistCheckoutPanel({
   lines,
   onClose,
@@ -39,6 +48,30 @@ export function ChecklistCheckoutPanel({
     }
     return Array.from(map.entries());
   }, [lines]);
+
+  const amazonCartUrl = useMemo(() => {
+    const amazonLines: AmazonCartLine[] = [];
+    for (const line of lines) {
+      if (!isAmazonRetailer(line.product.retailer ?? '')) continue;
+      const asin = parseAsinFromAffiliateUrl(line.product.affiliateUrl);
+      if (!asin) continue;
+      amazonLines.push({
+        asin,
+        quantity: Math.max(1, line.quantity),
+        label: line.product.name,
+      });
+    }
+    return amazonMultiAddCartUrl(amazonLines);
+  }, [lines]);
+
+  const amazonItemCount = useMemo(
+    () =>
+      lines
+        .filter((line) => isAmazonRetailer(line.product.retailer ?? ''))
+        .filter((line) => parseAsinFromAffiliateUrl(line.product.affiliateUrl))
+        .reduce((n, line) => n + Math.max(1, line.quantity), 0),
+    [lines],
+  );
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -90,6 +123,29 @@ export function ChecklistCheckoutPanel({
               {known ? totalLabel : `${totalLabel}+`}
             </span>
           </div>
+
+          {amazonCartUrl ? (
+            <div style={{ marginBottom: 20 }}>
+              <a
+                className="kit-btn kit-btn--primary kit-btn--md"
+                href={amazonCartUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'inline-flex', width: '100%', justifyContent: 'center' }}
+                onClick={() =>
+                  trackAffiliateClicked({
+                    retailer: 'Amazon',
+                    is_price_approximate: lines.some(
+                      (l) => isAmazonRetailer(l.product.retailer ?? '') && l.approximate,
+                    ),
+                    source: 'checklist_checkout_amazon_cart',
+                  })
+                }
+              >
+                Add all {amazonItemCount} to Amazon cart
+              </a>
+            </div>
+          ) : null}
 
           {groups.map(([retailer, groupLines]) => (
             <div key={retailer} style={{ marginBottom: 24 }}>

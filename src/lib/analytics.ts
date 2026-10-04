@@ -366,6 +366,7 @@ export function trackAffiliateClicked(params: {
   is_price_approximate: boolean;
   source:
     | 'checklist_checkout'
+    | 'checklist_checkout_amazon_cart'
     | 'product_drawer'
     | 'purchase_review'
     | 'shared_tobuy'

@@ -409,9 +409,16 @@
 }
 .dg-ticker-card--collapsed {
   width: auto;
-  max-width: min(320px, calc(100vw - 40px));
+  max-width: min(360px, calc(100vw - 40px));
   border-radius: var(--dg-pill);
   margin-left: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+.dg-ticker-cta--collapsed {
+  margin: 0 10px 10px;
+  width: calc(100% - 20px);
 }
 
 .dg-ticker-head {
@@ -586,9 +593,14 @@
   background: var(--accent-bg);
   color: var(--accent-text);
   white-space: nowrap;
+  cursor: pointer;
 }
-.dg-ticker-item__shop:hover {
+.dg-ticker-item__shop:hover:not(:disabled) {
   background: rgba(176, 90, 60, 0.18);
+}
+.dg-ticker-item__shop:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 /* Detail drill-down */

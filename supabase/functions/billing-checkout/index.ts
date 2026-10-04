@@ -96,8 +96,13 @@ Deno.serve(async (req: Request) => {
       "line_items[0][quantity]": 1,
       "metadata[user_id]": userId,
       "metadata[kind]": metadataKind,
-      "automatic_tax[enabled]": true,
     };
+
+    // Requires a head office address in Stripe Tax settings
+    // (Dashboard → Settings → Tax). Opt in with STRIPE_AUTOMATIC_TAX=true.
+    if (Deno.env.get("STRIPE_AUTOMATIC_TAX")?.trim() === "true") {
+      sessionBody["automatic_tax[enabled]"] = true;
+    }
 
     if (mode === "subscription" && tier) {
       sessionBody["subscription_data[metadata][user_id]"] = userId;

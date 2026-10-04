@@ -573,8 +573,13 @@ export function MobileChecklistSheet({
               <ul className="dgm-checklist-group__list">
                 {group.lines.map((line) => {
                   const statusChip = checklistLineStatusLabel(line.status);
+                  const topPick =
+                    line.products.find((p) => p.affiliateUrl?.trim()) ?? line.products[0] ?? null;
+                  const onList = topPick
+                    ? list.some((e) => e.productId === topPick.id)
+                    : false;
                   return (
-                  <li key={line.categoryId}>
+                  <li key={line.categoryId} className="dgm-checklist-item-row">
                     <button
                       type="button"
                       className={`dgm-checklist-item${line.placed ? ' is-placed' : ''}${line.status === 'have' || line.status === 'skip' ? ' is-resolved' : ''}`}
@@ -591,6 +596,18 @@ export function MobileChecklistSheet({
                       </span>
                       <span className="dgm-checklist-item__cue">Shop ›</span>
                     </button>
+                    {topPick ? (
+                      <button
+                        type="button"
+                        className="dgm-checklist-item__list"
+                        disabled={onList}
+                        onClick={() => {
+                          if (!onList) void addToList(topPick.id);
+                        }}
+                      >
+                        {onList ? 'On list' : '+ List'}
+                      </button>
+                    ) : null}
                   </li>
                   );
                 })}
