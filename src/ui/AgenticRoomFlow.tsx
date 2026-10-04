@@ -17,8 +17,13 @@ import { shoppingEntriesFromResolved } from '../lib/agenticRoomApplyChecklist';
 import { fetchPublishedShoppingCatalog } from '../lib/shoppingCatalog';
 import { searchOffersForQuery, type AffiliateOffer } from '../lib/affiliateLinks';
 import type { CuratedProduct, ShoppingListEntry } from '../lib/dormChecklist';
-import { FURNITURE } from '../furniture/registry';
+import {
+  communityGallerySearchPath,
+  fetchCommunityMatchesByQuery,
+  type AgenticCommunityMatch,
+} from '../lib/agenticCommunityMatch';
 import { trackAffiliateClicked } from '../lib/analytics';
+import { galleryPath, navigate } from '../hooks/useRoute';
 import {
   applySavedResolvedPicks,
   buildAgenticChecklistDraft,
@@ -47,15 +52,10 @@ interface AgenticRoomFlowProps {
   onBack: () => void;
 }
 
-const EXAMPLE_PROMPT =
-  '12×10 dorm bedroom, gothic theme, under $800 — queen bed, corner desk, shelves';
-
-const PROMPT_HINTS = [
-  'Room size — e.g. 10×12, 12 by 10 feet',
-  'Room type — dorm, bedroom, studio, home office',
-  'Theme or style — gothic, minimalist, cozy, sage',
-  'Budget — under $500, $800 total',
-  'Must-haves — any items you already know you want',
+const EXAMPLE_PROMPTS = [
+  'minecraft dorm — twin xl bed, desk, maybe $700 total',
+  'small gothic bedroom, dark and moody, need a queen bed',
+  'studio apartment, minimal work + sleep setup',
 ];
 
 const VIBE_OPTIONS: { id: AgenticVibeId; label: string }[] = [
@@ -77,22 +77,94 @@ function trackOfferClick(offer: AffiliateOffer, productId?: string) {
   });
 }
 
-function SearchLinks({ query }: { query: string }) {
-  const offers = searchOffersForQuery(query);
-  if (offers.length === 0) return null;
+function CommunityMatches({
+  query,
+  matches,
+  loading,
+}: {
+  query: string;
+  matches: AgenticCommunityMatch[];
+  loading?: boolean;
+}) {
+  if (loading) {
+    return (
+      <p className="agentic-room-item__community-status">
+        <Spinner /> Checking community gallery…
+      </p>
+    );
+  }
+  if (matches.length === 0) return null;
+
+  const browseHref = galleryPath(communityGallerySearchPath(query));
+
   return (
-    <div className="agentic-room-item__meta agentic-room-item__meta--links">
-      {offers.map((offer) => (
-        <a
-          key={offer.url}
-          href={offer.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          onClick={() => trackOfferClick(offer)}
-        >
-          {offer.label}
-        </a>
-      ))}
+    <div className="agentic-room-item__community">
+      <p className="agentic-room-item__community-title">Similar in community gallery</p>
+      <ul className="agentic-room-item__community-list">
+        {matches.map((match) => (
+          <li key={match.kind}>
+            <button
+              type="button"
+              className="agentic-room-item__community-card"
+              onClick={() => navigate(browseHref)}
+            >
+              {match.previewUrl ? (
+                <img src={match.previewUrl} alt="" className="agentic-room-item__community-img" />
+              ) : (
+                <div className="agentic-room-item__community-img agentic-room-item__community-img--empty" aria-hidden />
+              )}
+              <span className="agentic-room-item__community-copy">
+                <span className="agentic-room-item__community-label">{match.label}</span>
+                {match.creatorHandle ? (
+                  <span className="agentic-room-item__community-creator">@{match.creatorHandle}</span>
+                ) : null}
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+      <a className="agentic-room-item__community-browse" href={browseHref} onClick={(e) => { e.preventDefault(); navigate(browseHref); }}>
+        Browse all community results
+      </a>
+    </div>
+  );
+}
+
+function SearchLinks({
+  query,
+  communityMatches,
+  communityLoading,
+}: {
+  query: string;
+  communityMatches?: AgenticCommunityMatch[];
+  communityLoading?: boolean;
+}) {
+  const offers = searchOffersForQuery(query);
+  const hasCommunity = communityLoading || (communityMatches?.length ?? 0) > 0;
+  if (offers.length === 0 && !hasCommunity) return null;
+  return (
+    <div className="agentic-room-item__search-fallback">
+      {offers.length > 0 ? (
+        <>
+          <p className="agentic-room-item__search-approx">
+            No catalog match — search results may not match exactly.
+          </p>
+          <div className="agentic-room-item__meta agentic-room-item__meta--links">
+            {offers.map((offer) => (
+              <a
+                key={offer.url}
+                href={offer.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => trackOfferClick(offer)}
+              >
+                {offer.label}
+              </a>
+            ))}
+          </div>
+        </>
+      ) : null}
+      <CommunityMatches query={query} matches={communityMatches ?? []} loading={communityLoading} />
     </div>
   );
 }
@@ -104,6 +176,8 @@ function FurnitureListRow({
   onQuery,
   onQty,
   onRemove,
+  communityMatches,
+  communityLoading,
 }: {
   item: AgenticItemAsk;
   index: number;
@@ -111,6 +185,8 @@ function FurnitureListRow({
   onQuery: (query: string) => void;
   onQty: (qty: number) => void;
   onRemove: () => void;
+  communityMatches?: AgenticCommunityMatch[];
+  communityLoading?: boolean;
 }) {
   return (
     <div className="agentic-room-item agentic-room-item--list">
@@ -124,7 +200,11 @@ function FurnitureListRow({
               aria-label={`Furniture item ${index + 1}`}
             />
           </Field>
-          <SearchLinks query={item.query} />
+          <SearchLinks
+            query={item.query}
+            communityMatches={communityMatches}
+            communityLoading={communityLoading}
+          />
         </div>
       </div>
       <div className="agentic-room-item__actions">
@@ -158,17 +238,22 @@ function ProductRow({
   onSwap,
   onQty,
   onRemove,
+  communityMatches,
+  communityLoading,
 }: {
   item: ResolvedAgenticItemWithOffers;
   disabled?: boolean;
   onSwap: (productId: string) => void;
   onQty: (qty: number) => void;
   onRemove: () => void;
+  communityMatches?: AgenticCommunityMatch[];
+  communityLoading?: boolean;
 }) {
   const product = item.product;
-  const label =
-    product?.name ?? (item.builtinKind ? FURNITURE[item.builtinKind].label : item.query);
   const price = product ? formatAgenticPrice(product.priceCents) : '—';
+  const showCatalogMatch =
+    Boolean(product) &&
+    product!.name.trim().toLowerCase() !== item.query.trim().toLowerCase();
 
   return (
     <div className="agentic-room-item">
@@ -179,10 +264,12 @@ function ProductRow({
           <div className="agentic-room-item__img agentic-room-item__img--empty" aria-hidden />
         )}
         <div className="agentic-room-item__copy">
-          <div className="agentic-room-item__query">You asked for: {item.query}</div>
-          <div className="agentic-room-item__name">{label}</div>
+          <div className="agentic-room-item__name">{item.query}</div>
+          {showCatalogMatch ? (
+            <div className="agentic-room-item__query">Catalog match: {product!.name}</div>
+          ) : null}
           <div className="agentic-room-item__meta">
-            <span>{price}</span>
+            {product ? <span>{price}</span> : null}
             {product?.affiliateUrl ? (
               <a
                 href={product.affiliateUrl}
@@ -203,7 +290,13 @@ function ProductRow({
                 Shop at {product.retailer?.trim() || 'retailer'}
               </a>
             ) : null}
-            {!product?.affiliateUrl ? <SearchLinks query={item.query} /> : null}
+            {!product?.affiliateUrl ? (
+              <SearchLinks
+                query={item.query}
+                communityMatches={communityMatches}
+                communityLoading={communityLoading}
+              />
+            ) : null}
           </div>
           {item.warnings.map((w) => (
             <p key={w} className="agentic-room-item__warn">
@@ -271,6 +364,8 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   const [saveTitle, setSaveTitle] = useState('');
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savedPicks, setSavedPicks] = useState<SavedAgenticResolvedPick[] | undefined>();
+  const [communityByQuery, setCommunityByQuery] = useState<Record<string, AgenticCommunityMatch[]>>({});
+  const [communityLoading, setCommunityLoading] = useState(false);
 
   const itemsKey = useMemo(
     () => items.map((i) => `${i.query.trim().toLowerCase()}:${i.qty}`).join('|'),
@@ -346,6 +441,36 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     setOverBudget(overBudget);
     setTotalCents(totalCents);
   }, [result, catalogLoading, products, itemsKey, savedPicks]);
+
+  const communityQueryKey = useMemo(() => {
+    if (!result || items.length === 0) return '';
+    const queries =
+      !catalogLoading && resolved.length > 0
+        ? resolved
+            .filter((row) => !row.product?.affiliateUrl?.trim())
+            .map((row) => row.query.trim())
+        : items.map((row) => row.query.trim());
+    return [...new Set(queries.filter((q) => q.length >= 2))].sort().join('|');
+  }, [result, items, resolved, catalogLoading, itemsKey]);
+
+  useEffect(() => {
+    if (!communityQueryKey) {
+      setCommunityByQuery({});
+      setCommunityLoading(false);
+      return;
+    }
+    const queries = communityQueryKey.split('|');
+    let cancelled = false;
+    setCommunityLoading(true);
+    void fetchCommunityMatchesByQuery(queries).then((next) => {
+      if (cancelled) return;
+      setCommunityByQuery(next);
+      setCommunityLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [communityQueryKey]);
 
   const updateItem = useCallback(
     (index: number, patch: Partial<ResolvedAgenticItemWithOffers>) => {
@@ -492,8 +617,8 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
           ← Back
         </Button>
         <p className="room-preset-goal-hint">
-          Describe your room, generate a shopping list, then match products from the catalog or
-          search Amazon and Google.
+          Tell us about your room in your own words — size, vibe, budget, whatever you know. We&apos;ll
+          build a shopping list and match catalog or search links.
         </p>
       </div>
 
@@ -535,25 +660,33 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
         )}
       </div>
 
-      <div className="agentic-room-flow__prompt-guide">
-        <p className="agentic-room-flow__prompt-guide-title">Include in your description:</p>
-        <ul className="agentic-room-flow__prompt-hints">
-          {PROMPT_HINTS.map((hint) => (
-            <li key={hint}>{hint}</li>
-          ))}
-        </ul>
-      </div>
-
-      <Field label="Room description">
+      <Field label="Tell us about your room">
         <textarea
           className="kit-input agentic-room-flow__textarea"
           value={prompt}
           onChange={(e) => setPrompt(e.target.value)}
-          placeholder={EXAMPLE_PROMPT}
+          placeholder="e.g. minecraft dorm with a desk and somewhere to sleep, around $600"
           rows={4}
           disabled={disabled || generating || submitting}
         />
       </Field>
+
+      <div className="agentic-room-flow__examples">
+        <span className="agentic-room-flow__examples-label">Try an example:</span>
+        <div className="agentic-room-flow__examples-list">
+          {EXAMPLE_PROMPTS.map((example) => (
+            <button
+              key={example}
+              type="button"
+              className="agentic-room-flow__example-chip"
+              disabled={disabled || generating || submitting}
+              onClick={() => setPrompt(example)}
+            >
+              {example}
+            </button>
+          ))}
+        </div>
+      </div>
 
       {catalogLoading ? (
         <p className="agentic-room-flow__status">
@@ -670,7 +803,8 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
 
           {showProductRows && !hasCatalogMatch ? (
             <Banner tone="info">
-              No catalog matches — use Search Amazon / Search Google Shopping on each item below.
+              No catalog matches — check community gallery links, or search Amazon / Google Shopping
+              on each item below.
             </Banner>
           ) : null}
 
@@ -681,6 +815,10 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                     key={`${item.query}-${index}`}
                     item={item}
                     disabled={disabled || submitting}
+                    communityMatches={communityByQuery[item.query.trim()]}
+                    communityLoading={
+                      communityLoading && communityByQuery[item.query.trim()] == null
+                    }
                     onSwap={(productId) => swapProduct(index, productId)}
                     onQty={(qty) => {
                       updateItem(index, { qty });
@@ -700,6 +838,10 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                     item={item}
                     index={index}
                     disabled={disabled || generating || submitting}
+                    communityMatches={communityByQuery[item.query.trim()]}
+                    communityLoading={
+                      communityLoading && communityByQuery[item.query.trim()] == null
+                    }
                     onQuery={(query) =>
                       setItems((prev) =>
                         prev.map((row, i) => (i === index ? { ...row, query } : row)),

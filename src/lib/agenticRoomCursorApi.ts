@@ -1,4 +1,5 @@
 import type { AgenticFurnitureListResult } from './agenticRoomListTypes';
+import { enrichFurnitureListWithTheme } from './agenticRoomParseJson';
 
 const PARSE_URL = '/api/agentic-room/parse';
 const CLIENT_TIMEOUT_MS = 95_000;
@@ -44,11 +45,14 @@ export async function fetchFurnitureListFromCursor(
     };
 
     if (res.ok && data.ok && data.result?.items?.length) {
-      return {
-        ...data.result,
-        source: 'cursor',
-        warnings: data.result.warnings ?? [],
-      };
+      return enrichFurnitureListWithTheme(
+        {
+          ...data.result,
+          source: 'cursor',
+          warnings: data.result.warnings ?? [],
+        },
+        trimmed,
+      );
     }
 
     const errMsg = data.error ?? `Proxy returned ${res.status}`;

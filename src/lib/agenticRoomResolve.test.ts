@@ -82,6 +82,48 @@ describe('resolveAgenticItems', () => {
     expect(result.items.every((i) => i.score >= AGENTIC_MATCH_MIN_SCORE || i.builtinKind)).toBe(true);
   });
 
+  it('does not match bed frame queries to pillow products', () => {
+    const withPillow = [
+      ...catalog,
+      mockProduct({
+        id: 'p-pillow',
+        name: 'Pillows',
+        description: 'work in bed pillow set',
+        priceCents: 1200,
+      }),
+    ];
+    const result = resolveAgenticItems(
+      {
+        widthIn: 120,
+        depthIn: 144,
+        items: [{ query: 'twin XL bed frame', qty: 1 }],
+      },
+      withPillow,
+    );
+    expect(result.items[0]?.product?.id).not.toBe('p-pillow');
+  });
+
+  it('matches queen bed frame to bed catalog product', () => {
+    const withFrame = [
+      ...catalog,
+      mockProduct({
+        id: 'p-bed-frame',
+        name: 'Queen Metal Bed Frame',
+        description: 'queen size bed frame',
+        placeBuiltinKind: 'bed',
+      }),
+    ];
+    const result = resolveAgenticItems(
+      {
+        widthIn: 120,
+        depthIn: 144,
+        items: [{ query: 'queen bed frame', qty: 1 }],
+      },
+      withFrame,
+    );
+    expect(result.items[0]?.product?.id).toBe('p-bed-frame');
+  });
+
   it('flags over budget when total cannot be optimized down', () => {
     const request: AgenticRoomRequest = {
       widthIn: 120,
@@ -95,6 +137,39 @@ describe('resolveAgenticItems', () => {
     const result = resolveAgenticItems(request, catalog);
     expect(result.totalCents).toBeGreaterThan(100);
     expect(result.overBudget).toBe(true);
+  });
+
+  it('does not attach a themed search to an unrelated catalog product', () => {
+    const withCutlery = [
+      ...catalog,
+      mockProduct({
+        id: 'p-cutlery',
+        name: 'Cutlery / plates',
+        description: 'dinnerware set',
+        priceCents: 2200,
+      }),
+      mockProduct({
+        id: 'p-comforter',
+        name: 'Bed comforter',
+        description: 'twin bedding',
+        priceCents: 4500,
+        placeBuiltinKind: 'bed',
+      }),
+    ];
+    const result = resolveAgenticItems(
+      {
+        widthIn: 144,
+        depthIn: 120,
+        items: [
+          { query: 'Minecraft twin XL bedding set', qty: 1 },
+          { query: 'twin XL bed frame', qty: 1 },
+        ],
+      },
+      withCutlery,
+    );
+    expect(result.items[0]?.product).toBeNull();
+    expect(result.items[1]?.product?.id).not.toBe('p-comforter');
+    expect(result.items[1]?.product?.id).not.toBe('p-cutlery');
   });
 
   it('falls back to builtin when no product match', () => {

@@ -46,7 +46,14 @@ describe('fetchFurnitureListFromCursor', () => {
 
     const result = await fetchFurnitureListFromCursor('12×10 dorm bedroom, gothic theme');
     expect(result.source).toBe('cursor');
-    expect(result.items).toHaveLength(2);
-    expect(result.estimatedTotalCents).toBe(33000);
+    expect(result.items.map((item) => item.query)).toEqual(
+      expect.arrayContaining([
+        'queen bed frame',
+        'gothic area rug',
+        'gothic wall poster',
+        'gothic string lights',
+        'gothic bedding set',
+      ]),
+    );
   });
 });

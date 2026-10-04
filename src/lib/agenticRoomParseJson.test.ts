@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyNamedThemeToList,
+  enrichFurnitureListWithTheme,
   extractJsonFromAgentText,
   extractRunTextFromCursorResponse,
+  inferThemeFromPrompt,
   parseAgentTextToFurnitureList,
   validateFurnitureListJson,
 } from './agenticRoomParseJson';
@@ -44,12 +47,49 @@ describe('validateFurnitureListJson', () => {
         { query: 'area rug', qty: 1, estimatedCents: 50000 },
       ],
     });
-    expect(result?.items).toHaveLength(2);
+    expect(result?.items[0]?.query).toBe('queen bed frame');
+    expect(result?.items[1]?.query).toBe('gothic area rug');
+    expect(result?.items.map((item) => item.query)).toEqual(
+      expect.arrayContaining([
+        'gothic wall poster',
+        'gothic string lights',
+        'gothic bedding set',
+      ]),
+    );
     expect(result?.items[0]?.estimatedCents).toBe(25000);
     expect(result?.roomType).toBe('dorm bedroom');
     expect(result?.theme).toBe('gothic');
-    expect(result?.estimatedTotalCents).toBe(75000);
+    expect(result?.estimatedTotalCents).toBe(75000 + 1500 + 1800 + 4500);
     expect(result?.source).toBe('cursor');
+  });
+
+  it('leaves generic vibes alone and does not double-apply a theme', () => {
+    const once = applyNamedThemeToList({
+      theme: 'Minecraft',
+      items: [
+        { query: 'twin XL bed frame', qty: 1, estimatedCents: 20000 },
+        { query: 'area rug', qty: 1, estimatedCents: 4000 },
+      ],
+      warnings: [],
+      source: 'cursor',
+    });
+    expect(once.items.map((item) => item.query)).toEqual(
+      expect.arrayContaining([
+        'twin XL bed frame',
+        'Minecraft area rug',
+        'Minecraft wall poster',
+        'Minecraft string lights',
+        'Minecraft bedding set',
+      ]),
+    );
+    const twice = applyNamedThemeToList(once);
+    expect(twice.items).toEqual(once.items);
+
+    const cozy = validateFurnitureListJson({
+      theme: 'cozy',
+      items: [{ query: 'area rug', qty: 1, estimatedCents: 4000 }],
+    });
+    expect(cozy?.items.map((item) => item.query)).toEqual(['area rug']);
   });
 
   it('sums line estimates when total omitted', () => {
@@ -64,6 +104,39 @@ describe('validateFurnitureListJson', () => {
 
   it('rejects empty items', () => {
     expect(validateFurnitureListJson({ items: [] })).toBeNull();
+  });
+});
+
+describe('inferThemeFromPrompt', () => {
+  it('finds named themes in casual phrasing', () => {
+    expect(inferThemeFromPrompt('minecraft dorm with a desk')).toBe('minecraft');
+    expect(inferThemeFromPrompt('small room, gothic vibe, queen bed')).toBe('gothic');
+    expect(inferThemeFromPrompt('theme is cottagecore')).toBe('cottagecore');
+  });
+
+  it('ignores generic style words', () => {
+    expect(inferThemeFromPrompt('minimal cozy dorm')).toBeUndefined();
+    expect(inferThemeFromPrompt('modern studio apartment')).toBeUndefined();
+  });
+});
+
+describe('enrichFurnitureListWithTheme', () => {
+  it('infers theme from user prompt when Cursor omits theme field', () => {
+    const enriched = enrichFurnitureListWithTheme(
+      {
+        items: [
+          { query: 'twin xl bed frame', qty: 1, estimatedCents: 20000 },
+          { query: 'area rug', qty: 1, estimatedCents: 4000 },
+        ],
+        warnings: [],
+        source: 'cursor',
+      },
+      'minecraft dorm, need desk and bed',
+    );
+    expect(enriched.theme).toBe('minecraft');
+    expect(enriched.items.map((item) => item.query)).toEqual(
+      expect.arrayContaining(['minecraft area rug', 'minecraft wall poster']),
+    );
   });
 });
 

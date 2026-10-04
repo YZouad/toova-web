@@ -36,12 +36,9 @@ function buildCursorFurniturePrompt(userPrompt) {
 
 Return ONLY valid JSON. No markdown fences, no commentary, no prose before or after the JSON.
 
-The user may describe:
-- Room size (e.g. 10x12 feet, 12 by 10)
-- Room type (dorm, bedroom, studio apartment, home office, living room, etc.)
-- Theme or style (gothic, minimalist, cozy, modern, sage, moody, etc.)
-- Budget (e.g. under $500, $800 total)
-- Must-have items they already know they want
+The user writes in casual, natural language — no fixed format. They may mention size, budget, theme, and must-haves in any order, or leave details out. Infer reasonable defaults for anything missing (typical dorm/bedroom size, common essentials for the room type).
+
+Listen for themes even when casually phrased ("minecraft stuff", "dark gothic vibes", "coastal aesthetic", "anime room"). Always copy a specific named theme into the "theme" field and into decor search phrases.
 
 Your job: infer a complete shopping list of physical items they should search for and buy to furnish that room, even if not every item was named explicitly.
 
@@ -67,7 +64,9 @@ Rules for items:
 - Each item must be a buyable furniture or decor product (queen bed, desk lamp, area rug, hangers, shelf unit, dresser, mirror, etc.)
 - query = short search phrase you'd type into a store (e.g. "queen bed frame", "blackout curtains", "over-door hooks")
 - Include commonly needed pieces for the room type and size, not only words copied from the description
-- NEVER list adjectives, room types, themes, or vibes as items (bad: "gothic", "bedroom", "cozy")
+- NEVER list the theme, room type, or vibe as its own item (bad: "gothic", "minecraft", "bedroom", "cozy")
+- When a specific theme is named (Minecraft, gothic, coastal, etc.), put that theme in the search phrase for decor and textiles: bedding, rug, curtains, pillows, posters, string lights. Examples: "Minecraft twin XL bedding set", "Minecraft creeper wall poster", "Minecraft area rug", "Minecraft string lights"
+- Include at least three theme-specific decor items. Keep structural furniture generic (bed frame, desk, chair, mattress) so a normal catalog can match it
 - NEVER list built-in architecture as items unless shopping for organizers (bad: "closet" — good: "closet organizer")
 - qty defaults to 1
 - estimatedCents = rough USD cents for that entire line (unit price × qty). Use realistic budget-store estimates, not luxury pricing.

@@ -1,11 +1,116 @@
 import { FURNITURE, type FurnitureKind, type GalleryFurnitureKind } from '../furniture/registry';
 import type { CuratedProduct } from './dormChecklist';
 import type { AgenticItemAsk, AgenticRoomRequest } from './agenticRoomPrompt';
-import { normalizeSearchText, scoreCandidate, tokenize } from './designerSearch';
+import { normalizeSearchText, scoreCandidate, singularize, tokenize } from './designerSearch';
 import type { ScoredCandidate } from '../ui/designer/commandSearchTypes';
 
 /** Minimum score to accept a catalog product match (palette boosts disabled). */
 export const AGENTIC_MATCH_MIN_SCORE = 45;
+
+/**
+ * Size, color, and filler words. A catalog product must still contain every
+ * other query word, so "Minecraft bedding set" cannot match "Cutlery / plates".
+ */
+const QUERY_FILLER = new Set([
+  'twin',
+  'xl',
+  'queen',
+  'king',
+  'full',
+  'single',
+  'set',
+  'pack',
+  'piece',
+  'dorm',
+  'teen',
+  'boy',
+  'girl',
+  'extra',
+  'large',
+  'small',
+  'mini',
+  'college',
+  'kids',
+  'new',
+  'soft',
+  'basic',
+  'standard',
+  'size',
+  'inch',
+  'inches',
+  'black',
+  'white',
+  'green',
+  'blue',
+  'grey',
+  'gray',
+  'red',
+  'pink',
+  'area',
+  'wall',
+  'corner',
+  'compact',
+  'tall',
+  'short',
+  'with',
+  'and',
+  'for',
+  'the',
+]);
+
+function contentTokens(query: string): string[] {
+  let normalized = normalizeSearchText(query);
+  if (/\bbed\b/.test(normalized)) {
+    normalized = normalized.replace(/\bframes?\b/g, ' ');
+  }
+  return [
+    ...new Set(
+      tokenize(normalized)
+        .map(singularize)
+        .filter((token) => token.length >= 3 && !QUERY_FILLER.has(token)),
+    ),
+  ];
+}
+
+function productSearchBlob(product: CuratedProduct): string {
+  return normalizeSearchText(
+    [
+      product.name,
+      product.description,
+      product.brand ?? '',
+      ...(product.featureBullets ?? []),
+      product.placeBuiltinKind ?? '',
+      product.placeCatalogKind ?? '',
+    ].join(' '),
+  );
+}
+
+const BEDDING_PRODUCT =
+  /\b(bedding|comforter|sheets|duvet|pillows?|mattress|blanket|throw)\b/i;
+
+function hayContainsToken(hay: string, token: string): boolean {
+  const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`).test(hay);
+}
+
+function isBeddingProduct(product: CuratedProduct): boolean {
+  return BEDDING_PRODUCT.test(productSearchBlob(product));
+}
+
+function productCoversQuery(product: CuratedProduct, query: string): boolean {
+  const normalized = normalizeSearchText(query);
+  const isBedFrame = /\bbed\s+frames?\b/.test(normalized);
+  const hay = productSearchBlob(product);
+
+  if (isBedFrame) {
+    if (isBeddingProduct(product) || product.placeBeddingKind) return false;
+    if (!/\bframes?\b/.test(hay)) return false;
+  }
+
+  const tokens = contentTokens(query);
+  if (tokens.length === 0) return true;
+  return tokens.every((token) => hayContainsToken(hay, token));
+}
 
 const BUILTIN_KINDS = Object.keys(FURNITURE) as GalleryFurnitureKind[];
 
@@ -86,7 +191,10 @@ function rankProductsForQuery(
       const score = scoreCandidate(c, query);
       return { product, score };
     })
-    .filter((x): x is { product: CuratedProduct; score: number } => x != null && x.score > 0)
+    .filter(
+      (x): x is { product: CuratedProduct; score: number } =>
+        x != null && x.score > 0 && productCoversQuery(x.product, query),
+    )
     .sort((a, b) => b.score - a.score || a.product.name.localeCompare(b.product.name));
 
   return scored;
