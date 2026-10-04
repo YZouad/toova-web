@@ -1,21 +1,11 @@
 import { FURNITURE, isWallShelfKind, type FurnitureKind, type GalleryFurnitureKind } from '../furniture/registry';
-import { defaultWallShelfPose } from '../interaction/collision';
 import { DEFAULT_BLANKET_COLOR, newAttachmentKey, type Item } from '../store';
 import { CHECKLIST_RUG_MODEL_PATH, DEFAULT_RUG_COLOR } from './checklistPublicGlbs';
 import type { AgenticReviewRow } from './agenticRoomResolveFromList';
 export { defaultPlaceInRoom, rowCanPlaceInRoom } from './agenticRoomPlacement';
-import {
-  aabbsOverlap,
-  doorFootprintAABBs,
-  footprintBlocksDoor,
-  rotatedFootprintAabb,
-  type FootprintAabb,
-} from './floorClearance';
-import {
-  allWallSegments,
-  type FloorPlan,
-  type WallSegment,
-} from './floorPlanGeometry';
+import { type FloorPlan } from './floorPlanGeometry';
+import { arrangeRoomItems, type LayoutVariant } from './roomLayoutArrange';
+export { WALL_POSTER_CENTER_Y } from './roomLayoutArrange';
 import { bedFrameSpecificity, isBedFrameQuery, resolveBedFootprint } from './agenticBedSize';
 import { parseInchDims } from './importedItemSize';
 import { shouldStandImportedUpright, standUpFlatBounds } from './importedUpright';
@@ -45,10 +35,6 @@ export interface AgenticPackResult {
   skipped: string[];
 }
 
-const WALL_INSET = 4;
-const PIECE_GAP = 6;
-/** Center of wall poster art from floor (inches). */
-export const WALL_POSTER_CENTER_Y = 57;
 async function catalogRowForKind(catalogKind: string): Promise<{
   model_url: string;
   label: string;
@@ -245,58 +231,6 @@ export async function buildAgenticPackPieces(rows: AgenticPackRow[]): Promise<Ag
   return pieces;
 }
 
-interface PlacedPiece {
-  piece: AgenticPackPiece;
-  cx: number;
-  cz: number;
-  rotationY: number;
-  positionY: number;
-  aabb: FootprintAabb;
-}
-
-function inwardRotationY(seg: WallSegment): number {
-  return Math.atan2(-seg.outward[0], -seg.outward[1]);
-}
-
-function doorBlockedIntervals(plan: FloorPlan, seg: WallSegment): Array<{ start: number; end: number }> {
-  const doors = doorFootprintAABBs(plan);
-  const intervals: Array<{ start: number; end: number }> = [];
-  const [tx, tz] = seg.tangent;
-  const sx = seg.start.x;
-  const sz = seg.start.z;
-
-  for (const door of doors) {
-    const corners: Array<[number, number]> = [
-      [door.minX, door.minZ],
-      [door.maxX, door.minZ],
-      [door.maxX, door.maxZ],
-      [door.minX, door.maxZ],
-    ];
-    let minT = Infinity;
-    let maxT = -Infinity;
-    for (const [x, z] of corners) {
-      const t = (x - sx) * tx + (z - sz) * tz;
-      if (t < minT) minT = t;
-      if (t > maxT) maxT = t;
-    }
-    if (maxT > 0 && minT < seg.length) {
-      intervals.push({
-        start: Math.max(0, minT - PIECE_GAP),
-        end: Math.min(seg.length, maxT + PIECE_GAP),
-      });
-    }
-  }
-  return intervals;
-}
-
-function intervalOverlaps(
-  start: number,
-  end: number,
-  blocked: Array<{ start: number; end: number }>,
-): boolean {
-  return blocked.some((b) => start < b.end && end > b.start);
-}
-
 function pieceToItem(piece: AgenticPackPiece, id: string, position: [number, number, number], rotationY: number): Item {
   if (piece.kind === 'imported') {
     const isRug =
@@ -314,6 +248,7 @@ function pieceToItem(piece: AgenticPackPiece, id: string, position: [number, num
       label: piece.label,
       curatedProductId: piece.curatedProductId,
       importedStoragePath: piece.importedStoragePath,
+      catalogTags: piece.wallPoster ? ['poster'] : undefined,
       tintColor: isRug ? DEFAULT_RUG_COLOR : undefined,
       wallMounted: piece.wallPoster ? true : undefined,
       attachmentKey: newAttachmentKey(),
@@ -344,279 +279,24 @@ function pieceToItem(piece: AgenticPackPiece, id: string, position: [number, num
   };
 }
 
-function findLampHost(
-  hosts: PlacedPiece[],
-  usedHostKeys: Set<string>,
-): PlacedPiece | null {
-  const priority: GalleryFurnitureKind[] = ['desk', 'nightstand', 'dresser'];
-  for (const kind of priority) {
-    const host = hosts.find(
-      (h) => h.piece.kind === kind && !usedHostKeys.has(`${h.cx},${h.cz}`),
-    );
-    if (host) return host;
-  }
-  return null;
-}
-
-/** Place CC0 bank posters on walls at eye level; avoids door spans. */
-export function packAgenticWallPosters(
+/** Role-aware floor packing; lamps snap onto hosts, posters prefer the bed wall. */
+export function packAgenticFloorItems(
   plan: FloorPlan,
-  posterPieces: AgenticPackPiece[],
-  placedFloor: PlacedPiece[] = [],
-): { placed: PlacedPiece[]; skipped: string[] } {
-  const skipped: string[] = [];
-  const placed: PlacedPiece[] = [];
-  const walls = allWallSegments(plan).sort((a, b) => b.length - a.length);
-  const wallCursors = new Map<string, number>();
-  const usedPosterKinds = new Set<string>();
-
-  for (const piece of posterPieces) {
-    if (piece.catalogKind && usedPosterKinds.has(piece.catalogKind)) {
-      skipped.push(piece.query);
-      continue;
-    }
-    const widthAlong = piece.size[0];
-    const depthIn = piece.size[2];
-    const bottomY = Math.max(0, WALL_POSTER_CENTER_Y - piece.size[1] / 2);
-    let packed = false;
-
-    for (const seg of walls) {
-      const rotationY = inwardRotationY(seg);
-      const blocked = doorBlockedIntervals(plan, seg);
-      let cursor = wallCursors.get(seg.wall.id) ?? PIECE_GAP + widthAlong / 2;
-      const [tx, tz] = seg.tangent;
-      const interiorX = -seg.outward[0];
-      const interiorZ = -seg.outward[1];
-      const inset = depthIn / 2 + WALL_INSET;
-
-      while (cursor + widthAlong / 2 + PIECE_GAP <= seg.length) {
-        const tStart = cursor - widthAlong / 2;
-        const tEnd = cursor + widthAlong / 2;
-        if (intervalOverlaps(tStart, tEnd, blocked)) {
-          const nextBlock = blocked.find((b) => tStart < b.end && tEnd > b.start);
-          cursor = (nextBlock?.end ?? tEnd) + PIECE_GAP + widthAlong / 2;
-          continue;
-        }
-
-        const cx = seg.start.x + tx * cursor + interiorX * inset;
-        const cz = seg.start.z + tz * cursor + interiorZ * inset;
-        const aabb = rotatedFootprintAabb(cx, cz, piece.size[0], piece.size[2], rotationY);
-
-        const overlapsFloor = placedFloor.some((p) => aabbsOverlap(aabb, p.aabb));
-        const overlapsPoster = placed.some((p) => aabbsOverlap(aabb, p.aabb));
-        if (overlapsFloor || overlapsPoster) {
-          cursor += widthAlong + PIECE_GAP;
-          continue;
-        }
-
-        placed.push({
-          piece,
-          cx,
-          cz,
-          rotationY,
-          positionY: bottomY,
-          aabb,
-        });
-        wallCursors.set(seg.wall.id, tEnd + PIECE_GAP + widthAlong / 2);
-        if (piece.catalogKind) usedPosterKinds.add(piece.catalogKind);
-        packed = true;
-        break;
-      }
-      if (packed) break;
-    }
-
-    if (!packed) skipped.push(piece.query);
-  }
-
-  return { placed, skipped };
-}
-
-interface FloorOrientation {
-  widthAlong: number;
-  depthIn: number;
-  rotationOffset: number;
-  size: [number, number, number];
-}
-
-function floorOrientations(piece: AgenticPackPiece): FloorOrientation[] {
-  const [w, h, d] = piece.size;
-  if (piece.kind !== 'bed') {
-    return [{ widthAlong: w, depthIn: d, rotationOffset: 0, size: [w, h, d] }];
-  }
-  return [
-    { widthAlong: w, depthIn: d, rotationOffset: 0, size: [w, h, d] },
-    { widthAlong: d, depthIn: w, rotationOffset: Math.PI / 2, size: [d, h, w] },
-  ];
-}
-
-/** Greedy wall packing for floor furniture; lamps snap onto desk / nightstand / dresser tops. */
-export function packAgenticFloorItems(plan: FloorPlan, pieces: AgenticPackPiece[]): AgenticPackResult {
-  const skipped: string[] = [];
-  const doors = doorFootprintAABBs(plan);
-
-  const posterPieces = pieces.filter((p) => p.wallPoster);
-  const floorPieces = pieces.filter((p) => !p.isLamp && !isWallShelfKind(p.kind) && !p.wallPoster);
-  const shelfPieces = pieces.filter((p) => isWallShelfKind(p.kind));
-  const lampPieces = pieces.filter((p) => p.isLamp);
-
-  floorPieces.sort(
-    (a, b) => b.size[0] * b.size[2] - a.size[0] * a.size[2],
-  );
-
-  const walls = allWallSegments(plan).sort((a, b) => b.length - a.length);
-  const wallCursors = new Map<string, number>();
-  const placed: PlacedPiece[] = [];
-
-  for (const piece of floorPieces) {
-    let packed = false;
-
-    orientationLoop: for (const orient of floorOrientations(piece)) {
-      const placedPiece: AgenticPackPiece =
-        orient.rotationOffset === 0
-          ? piece
-          : { ...piece, size: orient.size };
-
-      for (const seg of walls) {
-        const rotationY = inwardRotationY(seg) + orient.rotationOffset;
-        const blocked = doorBlockedIntervals(plan, seg);
-        const widthAlong = orient.widthAlong;
-        const depthIn = orient.depthIn;
-        let cursor = wallCursors.get(seg.wall.id) ?? PIECE_GAP + widthAlong / 2;
-        const [tx, tz] = seg.tangent;
-        const interiorX = -seg.outward[0];
-        const interiorZ = -seg.outward[1];
-        const inset = depthIn / 2 + WALL_INSET;
-
-        while (cursor + widthAlong / 2 + PIECE_GAP <= seg.length) {
-          const tStart = cursor - widthAlong / 2;
-          const tEnd = cursor + widthAlong / 2;
-          if (intervalOverlaps(tStart, tEnd, blocked)) {
-            const nextBlock = blocked.find((b) => tStart < b.end && tEnd > b.start);
-            cursor = (nextBlock?.end ?? tEnd) + PIECE_GAP + widthAlong / 2;
-            continue;
-          }
-
-          const cx = seg.start.x + tx * cursor + interiorX * inset;
-          const cz = seg.start.z + tz * cursor + interiorZ * inset;
-          const aabb = rotatedFootprintAabb(
-            cx,
-            cz,
-            orient.size[0],
-            orient.size[2],
-            rotationY,
-          );
-
-          if (
-            footprintBlocksDoor(
-              plan,
-              cx,
-              cz,
-              orient.size[0],
-              orient.size[2],
-              rotationY,
-              doors,
-            )
-          ) {
-            cursor += widthAlong + PIECE_GAP;
-            continue;
-          }
-
-          const overlaps = placed.some((p) => aabbsOverlap(aabb, p.aabb));
-          if (overlaps) {
-            cursor += widthAlong + PIECE_GAP;
-            continue;
-          }
-
-          placed.push({
-            piece: placedPiece,
-            cx,
-            cz,
-            rotationY,
-            positionY: 0,
-            aabb,
-          });
-          wallCursors.set(seg.wall.id, tEnd + PIECE_GAP + widthAlong / 2);
-          packed = true;
-          break orientationLoop;
-        }
-      }
-    }
-
-    if (!packed) skipped.push(piece.query);
-  }
-
-  const { placed: wallPosters, skipped: posterSkipped } = packAgenticWallPosters(
-    plan,
-    posterPieces,
-    placed,
-  );
-  skipped.push(...posterSkipped);
-  placed.push(...wallPosters);
-
-  for (const piece of shelfPieces) {
-    const pose = defaultWallShelfPose(plan, piece.size);
-    const aabb = rotatedFootprintAabb(
-      pose.position[0],
-      pose.position[2],
-      piece.size[0],
-      piece.size[2],
-      pose.rotationY,
-    );
-    placed.push({
-      piece,
-      cx: pose.position[0],
-      cz: pose.position[2],
-      rotationY: pose.rotationY,
-      positionY: pose.position[1],
-      aabb,
-    });
-  }
-
-  const usedLampHosts = new Set<string>();
-  const floorHosts = placed.filter((p) => !p.piece.isLamp && !isWallShelfKind(p.piece.kind));
-
-  for (const piece of lampPieces) {
-    const host = findLampHost(floorHosts, usedLampHosts);
-    if (!host) {
-      skipped.push(`${piece.query} (no desk or nightstand to place lamp on)`);
-      continue;
-    }
-    usedLampHosts.add(`${host.cx},${host.cz}`);
-    const hostTopY =
-      host.piece.kind === 'imported'
-        ? host.piece.size[1]
-        : FURNITURE[host.piece.kind as GalleryFurnitureKind].size[1];
-    const lampY = hostTopY;
-    const cx = host.cx;
-    const cz = host.cz;
-    const rotationY = host.rotationY;
-    const aabb = rotatedFootprintAabb(cx, cz, piece.size[0], piece.size[2], rotationY);
-    placed.push({
-      piece,
-      cx,
-      cz,
-      rotationY,
-      positionY: lampY,
-      aabb,
-    });
-  }
-
-  const items: Item[] = [];
-  const order: string[] = [];
+  pieces: AgenticPackPiece[],
+  variant: LayoutVariant = 0,
+): AgenticPackResult {
+  const idToQuery = new Map<string, string>();
   let nextId = 1;
-
-  for (const p of placed) {
+  const provisional: Item[] = pieces.map((piece) => {
     const id = `item-${nextId++}`;
-    items.push(
-      pieceToItem(
-        p.piece,
-        id,
-        [p.cx, p.positionY, p.cz],
-        p.rotationY,
-      ),
-    );
-    order.push(id);
-  }
+    idToQuery.set(id, piece.query);
+    return pieceToItem(piece, id, [0, 0, 0], 0);
+  });
 
-  return { items, order, skipped };
+  const { items, skippedIds } = arrangeRoomItems(plan, provisional, variant);
+  return {
+    items,
+    order: items.map((it) => it.id),
+    skipped: skippedIds.map((id) => idToQuery.get(id) ?? id),
+  };
 }

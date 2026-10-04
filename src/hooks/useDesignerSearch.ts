@@ -570,6 +570,7 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
         if (c.section === 'actions') {
           const core = new Set([
             'action-add',
+            'action-shuffle-layout',
             'action-toggle-lamps',
             'action-wall-paint',
             'action-look',
@@ -595,7 +596,7 @@ export function useDesignerSearch(input: UseDesignerSearchInput) {
       checklistKinds,
       recentKinds,
       // Queried: Hollis-tight. Empty: slightly more room for recents + core actions.
-      limits: trimmed ? { add: 3, room: 2, actions: 2 } : { add: 4, room: 0, actions: 6 },
+      limits: trimmed ? { add: 3, room: 2, actions: 2 } : { add: 4, room: 0, actions: 7 },
     });
 
     return ranked

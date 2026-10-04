@@ -1,5 +1,7 @@
 import type { CameraPresetId } from '../../lib/renderQuality';
 import { WALL_COLOR_SWATCHES } from '../../lib/roomAppearance';
+import { roomHasShuffleableFloorItems } from '../../lib/roomLayoutArrange';
+import { shuffleRoomLayout } from '../../lib/shuffleRoomLayout';
 import type { HangingDecorKind } from '../../store';
 import { useStore } from '../../store';
 import { pushRecentCommand } from '../../lib/recentCatalogKinds';
@@ -170,6 +172,21 @@ export function buildDesignerCommands(input: BuildCommandsInput): CommandPalette
       label: 'Edit selected piece',
       hint: 'Enter',
       run: wrap('inspect', () => input.openInspector()),
+    });
+  }
+
+  const floorItems = useStore
+    .getState()
+    .order.map((id) => useStore.getState().items[id])
+    .filter((it): it is NonNullable<typeof it> => it != null);
+  if (roomHasShuffleableFloorItems(floorItems)) {
+    cmds.push({
+      id: 'shuffle-layout',
+      label: 'Shuffle layout',
+      hint: 'Cycle 3 layouts',
+      run: wrap('shuffle-layout', () => {
+        shuffleRoomLayout();
+      }),
     });
   }
 

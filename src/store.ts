@@ -21,6 +21,7 @@ import {
   type RoomGeometry,
 } from './lib/roomGeometry';
 import { clampPositionInRoom } from './interaction/collision';
+import type { LayoutVariant } from './lib/roomLayoutArrange';
 import type { Weather } from './lib/environment';
 import {
   DEFAULT_APPEARANCE,
@@ -339,6 +340,17 @@ interface StoreState {
   hydrateRoomSettings: (environment: RoomEnvironment, roomGeometry: RoomGeometry) => void;
   /** Clear scene (switch room / sign out). */
   resetLayout: () => void;
+  /** Active layout shuffle variant (0–2). Resets when the layout is replaced. */
+  layoutShuffleVariant: LayoutVariant;
+  /** Patch floor poses without replacing the whole layout. */
+  applyItemPoses: (
+    poses: Array<{
+      id: string;
+      position: [number, number, number];
+      rotationY: number;
+      size?: [number, number, number];
+    }>,
+  ) => void;
 
   addItem: (
     kind: FurnitureKind,
@@ -514,6 +526,7 @@ export const useStore = create<StoreState>((set, get) => ({
   measureSnap: true,
   measureImportField: null,
   measureImportAccept: false,
+  layoutShuffleVariant: 0,
 
   setTimeOfDay: (h) =>
     set((s) => ({ environment: { ...s.environment, timeOfDay: clamp(h, 0, 24) } })),
@@ -922,7 +935,24 @@ export const useStore = create<StoreState>((set, get) => ({
         invalid: false,
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
+        layoutShuffleVariant: 0 as LayoutVariant,
       };
+    }),
+
+  applyItemPoses: (poses) =>
+    set((s) => {
+      const items = { ...s.items };
+      for (const pose of poses) {
+        const current = items[pose.id];
+        if (!current) continue;
+        items[pose.id] = {
+          ...current,
+          position: pose.position,
+          rotationY: pose.rotationY,
+          ...(pose.size ? { size: pose.size } : {}),
+        };
+      }
+      return { items, invalid: false };
     }),
 
   hydrateRoomSettings: (environment, roomGeometry) =>
@@ -948,6 +978,7 @@ export const useStore = create<StoreState>((set, get) => ({
         roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
+        layoutShuffleVariant: 0 as LayoutVariant,
         visual: { ...s.visual, cameraPreset: DEFAULT_VISUAL_SETTINGS.cameraPreset },
       };
     }),

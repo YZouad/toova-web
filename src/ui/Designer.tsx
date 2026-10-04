@@ -356,6 +356,7 @@ export function Designer({
         .map((it) => `${it.id}:${it.emitter?.enabled}:${it.hanging?.lightsEnabled}`)
         .join(',')}`,
   );
+  const shuffleEpoch = useStore((s) => s.order.join(','));
 
   const commands = useMemo(
     () =>
@@ -404,6 +405,7 @@ export function Designer({
       onRequestSaveAuth,
       onRequestImportAuth,
       fixturesEpoch,
+      shuffleEpoch,
       showDimensions,
     ],
   );
