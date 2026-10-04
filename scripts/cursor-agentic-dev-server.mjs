@@ -68,6 +68,7 @@ Rules for items:
 - When a specific theme is named (Minecraft, gothic, coastal, etc.), put that theme in the search phrase for decor and textiles: bedding, rug, curtains, pillows, posters, string lights. Examples: "Minecraft twin XL bedding set", "Minecraft area rug", "Minecraft string lights"
 - For wall posters use descriptive, trademark-free titles the Toova poster bank can match: "{theme adjective} {subject} wall poster" (good: "Gothic cathedral architecture wall poster", "Coastal beach shoreline wall poster", "Retro pixel gaming wall poster"; bad: "gothic poster", "Minecraft creeper poster")
 - Include at least three theme-specific decor items. Keep structural furniture generic (bed frame, desk, chair, mattress) so a normal catalog can match it
+- Every dorm/bedroom must include separate generic lines for bed frame, desk, chair, and desk lamp
 - NEVER list built-in architecture as items unless shopping for organizers (bad: "closet" — good: "closet organizer")
 - qty defaults to 1
 - estimatedCents = rough USD cents for that entire line (unit price × qty). Use realistic budget-store estimates, not luxury pricing.

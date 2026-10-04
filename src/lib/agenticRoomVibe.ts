@@ -8,6 +8,10 @@ import type { RoomAppearance } from './roomAppearance';
 import { DEFAULT_APPEARANCE } from './roomAppearance';
 import type { MaterialPresetId } from './roomMaterials';
 import type { Item } from '../store';
+import {
+  resolveAgenticThemeProfile,
+  type AgenticThemeProfile,
+} from './agenticThemeProfile';
 
 export type AgenticVibeId = 'warm' | 'neutral' | 'studio' | 'moody' | 'sage';
 
@@ -148,8 +152,32 @@ function woodTintForKind(
 }
 
 /** Paint builtin / rug placements to match the selected vibe palette. */
-export function applyAgenticVibeToItems(items: Item[], vibe?: AgenticVibeId): Item[] {
-  const palette = furnishingsForAgenticVibe(vibe);
+export function appearanceForAgenticTheme(
+  theme?: string | null,
+  prompt?: string | null,
+): RoomAppearance | null {
+  const profile = resolveAgenticThemeProfile(theme, prompt);
+  if (!profile) return null;
+  return {
+    ...DEFAULT_APPEARANCE,
+    wallColor: profile.appearance.wallColor,
+    floorPreset: profile.appearance.floorPreset,
+    trimPreset: profile.appearance.trimPreset ?? DEFAULT_APPEARANCE.trimPreset,
+    recessedLights: profile.appearance.recessedLights ?? DEFAULT_APPEARANCE.recessedLights,
+  };
+}
+
+export function applyAgenticThemeToItems(
+  items: Item[],
+  theme?: string | null,
+  prompt?: string | null,
+): Item[] {
+  const profile = resolveAgenticThemeProfile(theme, prompt);
+  if (!profile) return items;
+  return applyPaletteToItems(items, profile.furnishings);
+}
+
+function applyPaletteToItems(items: Item[], palette: AgenticVibeFurnishings): Item[] {
   return items.map((item) => {
     if (item.kind === 'imported' && isChecklistRug(item)) {
       return { ...item, tintColor: palette.rugTint };
@@ -173,4 +201,9 @@ export function applyAgenticVibeToItems(items: Item[], vibe?: AgenticVibeId): It
 
     return next;
   });
+}
+
+export function applyAgenticVibeToItems(items: Item[], vibe?: AgenticVibeId): Item[] {
+  const palette = furnishingsForAgenticVibe(vibe);
+  return applyPaletteToItems(items, palette);
 }

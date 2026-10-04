@@ -6,6 +6,7 @@ import type { AgenticRoomRequest } from './agenticRoomPrompt';
 import type { AgenticCommunityMatch } from './agenticCommunityMatch';
 import type { AgenticPosterMatch } from './agenticPosterMatch';
 import { resolveAgenticPoster } from './agenticPosterMatch';
+import { resolveAgenticThemeProfile } from './agenticThemeProfile';
 import { defaultPlaceInRoom } from './agenticRoomPlacement';
 import {
   resolveAgenticItems,
@@ -27,15 +28,21 @@ export interface AgenticReviewRow extends ResolvedAgenticItemWithOffers {
 export function toAgenticReviewRows(
   items: ResolvedAgenticItemWithOffers[],
   theme?: string | null,
+  prompt?: string | null,
 ): AgenticReviewRow[] {
+  const profile = resolveAgenticThemeProfile(theme, prompt);
+  const profileTheme = profile?.label ?? theme ?? undefined;
   return items.map((item) => {
-    const bankPoster = resolveAgenticPoster(item.query, theme ?? undefined);
+    const bankPoster = resolveAgenticPoster(item.query, profileTheme, 25, profile);
+    const cleared = bankPoster
+      ? { ...item, builtinKind: null, warnings: [] as string[] }
+      : item;
     return {
-      ...item,
+      ...cleared,
       placeInRoom: defaultPlaceInRoom({
         query: item.query,
-        product: item.product,
-        builtinKind: item.builtinKind,
+        product: cleared.product,
+        builtinKind: cleared.builtinKind,
         communityModel: null,
         bankPoster,
       }),
@@ -64,6 +71,7 @@ export function listResultToRoomRequest(list: AgenticFurnitureListResult): Agent
 export function resolveAgenticList(
   list: AgenticFurnitureListResult,
   products: CuratedProduct[],
+  sourcePrompt?: string | null,
 ): AgenticListResolveResult {
   const request = listResultToRoomRequest(list);
   const result = resolveAgenticItems(request, products);
@@ -72,6 +80,6 @@ export function resolveAgenticList(
     searchOffers:
       item.product?.affiliateUrl?.trim() ? [] : searchOffersForQuery(item.query),
   }));
-  const items = toAgenticReviewRows(withOffers, list.theme);
+  const items = toAgenticReviewRows(withOffers, list.theme, sourcePrompt ?? list.roomType);
   return { ...result, items, request };
 }

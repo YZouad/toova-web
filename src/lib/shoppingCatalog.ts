@@ -1,3 +1,8 @@
+import {
+  loadLocalAgenticShoppingManifest,
+  saveLocalAgenticShoppingManifest,
+  type AgenticShoppingManifestEntry,
+} from './agenticShoppingManifest';
 import { supabase } from './supabase';
 import {
   loadCheckedIds,
@@ -409,6 +414,71 @@ export async function removeShoppingListEntry(
   if (error) throw new Error(error.message);
 }
 
+export async function fetchUserAgenticShoppingManifest(
+  userId: string,
+  roomId: string,
+): Promise<AgenticShoppingManifestEntry[]> {
+  const { data, error } = await supabase
+    .from('user_agentic_shopping_items')
+    .select(
+      'id,query,quantity,estimated_cents,placed_in_room,bank_poster_label,catalog_product_id,dismissed',
+    )
+    .eq('user_id', userId)
+    .eq('room_id', roomId);
+  if (error) throw new Error(error.message);
+  return (data ?? []).map((r) => ({
+    id: String(r.id),
+    query: String(r.query),
+    qty: Number(r.quantity) > 0 ? Number(r.quantity) : 1,
+    estimatedCents: r.estimated_cents != null ? Number(r.estimated_cents) : undefined,
+    placedInRoom: r.placed_in_room === true,
+    bankPosterLabel: r.bank_poster_label ?? undefined,
+    catalogProductId: r.catalog_product_id ?? null,
+    dismissed: r.dismissed === true,
+  }));
+}
+
+export async function upsertAgenticShoppingManifestEntries(
+  userId: string,
+  roomId: string,
+  entries: AgenticShoppingManifestEntry[],
+): Promise<void> {
+  if (entries.length === 0) return;
+  const now = new Date().toISOString();
+  const { error } = await supabase.from('user_agentic_shopping_items').upsert(
+    entries.map((entry) => ({
+      user_id: userId,
+      room_id: roomId,
+      id: entry.id,
+      query: entry.query,
+      quantity: entry.qty,
+      estimated_cents: entry.estimatedCents ?? null,
+      placed_in_room: entry.placedInRoom ?? false,
+      bank_poster_label: entry.bankPosterLabel ?? null,
+      catalog_product_id: entry.catalogProductId ?? null,
+      dismissed: entry.dismissed ?? false,
+      updated_at: now,
+    })),
+    { onConflict: 'user_id,room_id,id' },
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function updateAgenticShoppingManifestDismissed(
+  userId: string,
+  roomId: string,
+  entryId: string,
+  dismissed: boolean,
+): Promise<void> {
+  const { error } = await supabase
+    .from('user_agentic_shopping_items')
+    .update({ dismissed, updated_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('room_id', roomId)
+    .eq('id', entryId);
+  if (error) throw new Error(error.message);
+}
+
 /** Merge local progress/list into account for one room (local wins on conflicts for checked / qty). */
 export async function mergeLocalShoppingStateToAccount(
   userId: string,
@@ -464,6 +534,20 @@ export async function mergeLocalShoppingStateToAccount(
       byProduct.set(entry.productId, next);
       await upsertShoppingListEntry(userId, roomId, next);
     }
+  }
+
+  const localManifest = loadLocalAgenticShoppingManifest(roomId);
+  if (localManifest.length > 0) {
+    const remoteManifest = await fetchUserAgenticShoppingManifest(userId, roomId);
+    const byId = new Map(remoteManifest.map((e) => [e.id, e]));
+    for (const entry of localManifest) {
+      if (!byId.has(entry.id)) {
+        byId.set(entry.id, entry);
+      }
+    }
+    const merged = [...byId.values()];
+    await upsertAgenticShoppingManifestEntries(userId, roomId, merged);
+    saveLocalAgenticShoppingManifest(roomId, merged);
   }
 }
 

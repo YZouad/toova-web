@@ -163,6 +163,46 @@ describe('agenticRoomPack', () => {
     ).toBe(false);
   });
 
+  it('uses queen bed footprint from query', async () => {
+    const rows = [
+      mockRow({ query: 'queen bed frame', builtinKind: 'bed', placeInRoom: true }),
+    ];
+    const pieces = await buildAgenticPackPieces(rows);
+    expect(pieces).toHaveLength(1);
+    expect(pieces[0]!.size[0]).toBe(60);
+    expect(pieces[0]!.size[2]).toBe(80);
+  });
+
+  it('collapses duplicate bed lines to one mesh', async () => {
+    const rows = [
+      mockRow({ query: 'twin bed frame', builtinKind: 'bed', placeInRoom: true }),
+      mockRow({ query: 'twin xl bed frame', builtinKind: 'bed', placeInRoom: true }),
+      mockRow({ query: 'Minecraft bedding set', placeInRoom: false }),
+    ];
+    const pieces = await buildAgenticPackPieces(rows);
+    const beds = pieces.filter((p) => p.kind === 'bed');
+    expect(beds).toHaveLength(1);
+    expect(beds[0]!.size[2]).toBe(80);
+  });
+
+  it('dedupes wall posters with the same catalog kind', async () => {
+    const poster = {
+      kind: 'poster-pixel-blocks',
+      label: 'Green pixel block landscape wall poster',
+      modelUrl: 'checklist-refs/glb/posters/poster-pixel-blocks.glb',
+      widthIn: 24,
+      heightIn: 36,
+      depthIn: 0.5,
+      score: 55,
+    };
+    const rows = [
+      mockRow({ query: 'gaming wall poster', placeInRoom: true, bankPoster: poster }),
+      mockRow({ query: 'pixel block poster', placeInRoom: true, bankPoster: poster }),
+    ];
+    const pieces = await buildAgenticPackPieces(rows);
+    expect(pieces.filter((p) => p.wallPoster)).toHaveLength(1);
+  });
+
   it('builds imported piece from community model selection', async () => {
     const rows = [
       mockRow({

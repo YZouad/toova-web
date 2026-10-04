@@ -39,6 +39,7 @@ export type RoomPresetPickerSelection =
       plan: FloorPlan;
       environment: RoomEnvironment;
       shoppingList: ShoppingListEntry[];
+      agenticShoppingManifest: import('../lib/agenticShoppingManifest').AgenticShoppingManifestEntry[];
       budgetCents?: number | null;
       seedItems: import('../store').Item[];
       seedOrder: string[];
@@ -177,6 +178,7 @@ export function RoomPresetPicker({
           plan: payload.plan,
           environment: payload.environment,
           shoppingList: payload.shoppingList,
+          agenticShoppingManifest: payload.agenticShoppingManifest,
           budgetCents: payload.budgetCents,
           seedItems: payload.seedItems,
           seedOrder: payload.seedOrder,

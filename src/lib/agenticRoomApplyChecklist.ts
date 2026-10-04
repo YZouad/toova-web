@@ -4,7 +4,15 @@ import {
   type ShoppingListEntry,
 } from './dormChecklist';
 import { isGuestWorkspaceId } from './guestDesignSnapshot';
-import { upsertShoppingListEntry, upsertUserMoveInBudgetCents } from './shoppingCatalog';
+import {
+  type AgenticShoppingManifestEntry,
+  saveLocalAgenticShoppingManifest,
+} from './agenticShoppingManifest';
+import {
+  upsertAgenticShoppingManifestEntries,
+  upsertShoppingListEntry,
+  upsertUserMoveInBudgetCents,
+} from './shoppingCatalog';
 
 /** Write agentic shopping list entries directly for a room (avoids provider race on room switch). */
 export async function applyAgenticShoppingList(
@@ -35,6 +43,23 @@ export async function applyAgenticShoppingList(
   await Promise.all(
     entries.map((entry) => upsertShoppingListEntry(userId, roomId, entry)),
   );
+}
+
+/** Persist full agentic room-plan lines (including query-only search links). */
+export async function applyAgenticShoppingManifest(
+  roomId: string,
+  entries: AgenticShoppingManifestEntry[],
+  userId: string | null | undefined,
+): Promise<void> {
+  if (!roomId.trim() || entries.length === 0) return;
+
+  const isGuest = isGuestWorkspaceId(roomId) || !userId;
+  if (isGuest) {
+    saveLocalAgenticShoppingManifest(roomId, entries);
+    return;
+  }
+
+  await upsertAgenticShoppingManifestEntries(userId, roomId, entries);
 }
 
 export function shoppingEntriesFromResolved(

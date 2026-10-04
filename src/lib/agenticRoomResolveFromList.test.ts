@@ -63,6 +63,19 @@ describe('resolveAgenticList', () => {
     expect(result.items[0]?.placeInRoom).toBe(true);
   });
 
+  it('clears shelf warnings when bank poster matches', () => {
+    const list: AgenticFurnitureListResult = {
+      items: [{ query: 'minecraft green pixel block landscape wall poster', qty: 1 }],
+      theme: 'minecraft',
+      warnings: [],
+      source: 'cursor',
+    };
+    const result = resolveAgenticList(list, catalog, 'minecraft dorm');
+    expect(result.items[0]?.bankPoster?.kind).toMatch(/poster-pixel/);
+    expect(result.items[0]?.builtinKind).toBeNull();
+    expect(result.items[0]?.warnings).toEqual([]);
+  });
+
   it('attaches Amazon and Google search offers when no catalog match', () => {
     const list: AgenticFurnitureListResult = {
       items: [{ query: 'gothic wall tapestry', qty: 1 }],

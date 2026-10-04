@@ -1,12 +1,14 @@
 import { useEffect, useMemo } from 'react';
 import { trackAffiliateClicked } from '../lib/analytics';
 import { formatPriceCents } from '../lib/dormChecklist';
+import type { AgenticShoppingManifestEntry } from '../lib/agenticShoppingManifest';
 import type { PurchaseCartLine } from '../lib/purchaseCart';
 import { purchaseCartTotalCents } from '../lib/purchaseCart';
 import { Button } from './kit/Button';
 import { Modal } from './kit/Modal';
 import { MonoMeta } from './kit/MonoMeta';
 import { RuledTable } from './kit/RuledTable';
+import { ManifestPlanRows } from './ManifestPlanRows';
 
 function sourceLabel(source: PurchaseCartLine['source']): string {
   if (source === 'owned') return 'Already own';
@@ -17,14 +19,18 @@ function sourceLabel(source: PurchaseCartLine['source']): string {
 
 interface ChecklistCheckoutPanelProps {
   lines: PurchaseCartLine[];
+  manifestLines?: AgenticShoppingManifestEntry[];
   onClose: () => void;
   onRemoveFromList: (productId: string) => void;
+  onDismissManifestEntry?: (entryId: string) => void;
 }
 
 export function ChecklistCheckoutPanel({
   lines,
+  manifestLines = [],
   onClose,
   onRemoveFromList,
+  onDismissManifestEntry,
 }: ChecklistCheckoutPanelProps) {
   const { sum, known } = useMemo(() => purchaseCartTotalCents(lines), [lines]);
   const totalLabel = formatPriceCents(sum) ?? '$0';
@@ -66,7 +72,7 @@ export function ChecklistCheckoutPanel({
         retailers handle checkout.
       </MonoMeta>
 
-      {lines.length === 0 ? (
+      {lines.length === 0 && manifestLines.length === 0 ? (
         <p className="purchase-review-empty">
           Nothing to buy yet. Add picks to your list or place items in your room.
         </p>
@@ -91,78 +97,96 @@ export function ChecklistCheckoutPanel({
             </span>
           </div>
 
-          {groups.map(([retailer, groupLines]) => (
-            <div key={retailer} style={{ marginBottom: 24 }}>
+          {lines.length > 0
+            ? groups.map(([retailer, groupLines]) => (
+                <div key={retailer} style={{ marginBottom: 24 }}>
+                  <MonoMeta size="xs" tone="dense" upper style={{ display: 'block', marginBottom: 10 }}>
+                    {retailer}
+                  </MonoMeta>
+                  <RuledTable
+                    columns={[
+                      { label: 'Item' },
+                      { label: 'Source', align: 'right' },
+                      { label: 'Price', align: 'right' },
+                      { label: '', align: 'right' },
+                    ]}
+                    rows={groupLines.map((line) => {
+                      const price =
+                        formatPriceCents(line.product.priceCents, line.product.currency) ?? '—';
+                      const shopUrl = line.product.affiliateUrl?.trim();
+                      return [
+                        <span key={`${line.productId}-name`}>
+                          {line.product.name}
+                          {line.approximate ? (
+                            <MonoMeta size="xs" tone="dense" style={{ display: 'block', marginTop: 4 }}>
+                              Best match for room placement
+                            </MonoMeta>
+                          ) : null}
+                        </span>,
+                        sourceLabel(line.source),
+                        line.quantity > 1 ? `${price} ×${line.quantity}` : price,
+                        <span
+                          key={`${line.productId}-actions`}
+                          style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}
+                        >
+                          {shopUrl ? (
+                            <a
+                              className="kit-btn kit-btn--primary kit-btn--sm"
+                              href={shopUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() =>
+                                trackAffiliateClicked({
+                                  retailer: line.product.retailer,
+                                  product_id: line.product.id,
+                                  is_price_approximate: line.approximate,
+                                  source: 'checklist_checkout',
+                                })
+                              }
+                            >
+                              Shop
+                            </a>
+                          ) : null}
+                          {line.source === 'list' || line.source === 'both' ? (
+                            <button
+                              type="button"
+                              className="kit-btn kit-btn--sm kit-btn--outline"
+                              onClick={() => onRemoveFromList(line.productId)}
+                            >
+                              Remove
+                            </button>
+                          ) : line.source === 'owned' ? (
+                            <button
+                              type="button"
+                              className="kit-btn kit-btn--sm kit-btn--outline"
+                              onClick={() => onRemoveFromList(line.productId)}
+                            >
+                              Remove
+                            </button>
+                          ) : null}
+                        </span>,
+                      ];
+                    })}
+                  />
+                </div>
+              ))
+            : null}
+
+          {manifestLines.length > 0 ? (
+            <div style={{ marginTop: lines.length > 0 ? 24 : 0 }}>
               <MonoMeta size="xs" tone="dense" upper style={{ display: 'block', marginBottom: 10 }}>
-                {retailer}
+                From your room plan
               </MonoMeta>
-              <RuledTable
-                columns={[
-                  { label: 'Item' },
-                  { label: 'Source', align: 'right' },
-                  { label: 'Price', align: 'right' },
-                  { label: '', align: 'right' },
-                ]}
-                rows={groupLines.map((line) => {
-                  const price =
-                    formatPriceCents(line.product.priceCents, line.product.currency) ?? '—';
-                  const shopUrl = line.product.affiliateUrl?.trim();
-                  return [
-                    <span key={`${line.productId}-name`}>
-                      {line.product.name}
-                      {line.approximate ? (
-                        <MonoMeta size="xs" tone="dense" style={{ display: 'block', marginTop: 4 }}>
-                          Best match for room placement
-                        </MonoMeta>
-                      ) : null}
-                    </span>,
-                    sourceLabel(line.source),
-                    line.quantity > 1 ? `${price} ×${line.quantity}` : price,
-                    <span
-                      key={`${line.productId}-actions`}
-                      style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', flexWrap: 'wrap' }}
-                    >
-                      {shopUrl ? (
-                        <a
-                          className="kit-btn kit-btn--primary kit-btn--sm"
-                          href={shopUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() =>
-                            trackAffiliateClicked({
-                              retailer: line.product.retailer,
-                              product_id: line.product.id,
-                              is_price_approximate: line.approximate,
-                              source: 'checklist_checkout',
-                            })
-                          }
-                        >
-                          Shop
-                        </a>
-                      ) : null}
-                      {line.source === 'list' || line.source === 'both' ? (
-                        <button
-                          type="button"
-                          className="kit-btn kit-btn--sm kit-btn--outline"
-                          onClick={() => onRemoveFromList(line.productId)}
-                        >
-                          Remove
-                        </button>
-                      ) : line.source === 'owned' ? (
-                        <button
-                          type="button"
-                          className="kit-btn kit-btn--sm kit-btn--outline"
-                          onClick={() => onRemoveFromList(line.productId)}
-                        >
-                          Remove
-                        </button>
-                      ) : null}
-                    </span>,
-                  ];
-                })}
+              <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 12 }}>
+                These items weren&apos;t in our catalog — search to buy them.
+              </MonoMeta>
+              <ManifestPlanRows
+                entries={manifestLines}
+                source="checklist_checkout"
+                onDismiss={onDismissManifestEntry}
               />
             </div>
-          ))}
+          ) : null}
         </>
       )}
 

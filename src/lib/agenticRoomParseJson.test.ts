@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyNamedThemeToList,
+  ensureRoomEssentials,
   enrichFurnitureListWithTheme,
   extractJsonFromAgentText,
   extractRunTextFromCursorResponse,
@@ -51,15 +52,17 @@ describe('validateFurnitureListJson', () => {
     expect(result?.items[1]?.query).toBe('gothic area rug');
     expect(result?.items.map((item) => item.query)).toEqual(
       expect.arrayContaining([
-        'gothic wall poster',
+        'Gothic cathedral architecture wall poster',
         'gothic string lights',
         'gothic bedding set',
+        'desk',
+        'desk chair',
       ]),
     );
     expect(result?.items[0]?.estimatedCents).toBe(25000);
     expect(result?.roomType).toBe('dorm bedroom');
     expect(result?.theme).toBe('gothic');
-    expect(result?.estimatedTotalCents).toBe(75000 + 1500 + 1800 + 4500);
+    expect(result?.estimatedTotalCents).toBeGreaterThanOrEqual(75000 + 1500 + 1800 + 4500);
     expect(result?.source).toBe('cursor');
   });
 
@@ -77,7 +80,7 @@ describe('validateFurnitureListJson', () => {
       expect.arrayContaining([
         'twin XL bed frame',
         'Minecraft area rug',
-        'Minecraft wall poster',
+        'Green pixel block landscape wall poster',
         'Minecraft string lights',
         'Minecraft bedding set',
       ]),
@@ -135,8 +138,30 @@ describe('enrichFurnitureListWithTheme', () => {
     );
     expect(enriched.theme).toBe('minecraft');
     expect(enriched.items.map((item) => item.query)).toEqual(
-      expect.arrayContaining(['minecraft area rug', 'minecraft wall poster']),
+      expect.arrayContaining([
+        'minecraft area rug',
+        'Green pixel block landscape wall poster',
+        'desk',
+      ]),
     );
+  });
+});
+
+describe('ensureRoomEssentials', () => {
+  it('injects desk, chair, and lamp for dorm lists missing them', () => {
+    const list = ensureRoomEssentials(
+      {
+        items: [{ query: 'twin xl bed frame', qty: 1 }],
+        roomType: 'dorm bedroom',
+        warnings: [],
+        source: 'cursor',
+      },
+      'small dorm bedroom',
+    );
+    const queries = list.items.map((i) => i.query.toLowerCase());
+    expect(queries.some((q) => /\bdesk\b/.test(q))).toBe(true);
+    expect(queries.some((q) => /\bchair\b/.test(q))).toBe(true);
+    expect(queries.some((q) => /\blamp\b/.test(q))).toBe(true);
   });
 });
 
@@ -154,7 +179,9 @@ describe('parseAgentTextToFurnitureList', () => {
 }
 \`\`\``;
     const result = parseAgentTextToFurnitureList(text);
-    expect(result?.items.map((i) => i.query)).toEqual(['loft bed', 'desk lamp']);
-    expect(result?.estimatedTotalCents).toBe(22500);
+    expect(result?.items.map((i) => i.query)).toEqual(
+      expect.arrayContaining(['loft bed', 'desk lamp', 'desk', 'desk chair']),
+    );
+    expect(result?.estimatedTotalCents).toBeGreaterThanOrEqual(22500);
   });
 });

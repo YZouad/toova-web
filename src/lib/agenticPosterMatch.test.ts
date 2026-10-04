@@ -20,7 +20,7 @@ describe('agenticPosterMatch', () => {
 
   it('matches minecraft theme to retro pixel gaming poster', () => {
     const match = resolveAgenticPoster('minecraft wall poster', 'minecraft');
-    expect(match?.kind).toBe('poster-pixel-landscape');
+    expect(match?.kind).toBe('poster-pixel-blocks');
   });
 
   it('returns null for non-poster furniture queries', () => {

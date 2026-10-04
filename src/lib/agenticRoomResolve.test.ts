@@ -172,6 +172,30 @@ describe('resolveAgenticItems', () => {
     expect(result.items[1]?.product?.id).not.toBe('p-cutlery');
   });
 
+  it('matches study desk to desk builtin, not desk lamp product', () => {
+    const withWarmLamp = catalog
+      .filter((p) => p.placeBuiltinKind !== 'desk')
+      .concat([
+        mockProduct({
+          id: 'p-warm-lamp',
+          name: 'Warm desk lamp',
+          description: 'study desk lamp warm light',
+          priceCents: 3000,
+          placeBuiltinKind: 'lamp',
+        }),
+      ]);
+    const result = resolveAgenticItems(
+      {
+        widthIn: 120,
+        depthIn: 144,
+        items: [{ query: 'study desk', qty: 1 }],
+      },
+      withWarmLamp,
+    );
+    expect(result.items[0]?.product?.id).not.toBe('p-warm-lamp');
+    expect(result.items[0]?.builtinKind).toBe('desk');
+  });
+
   it('falls back to builtin when no product match', () => {
     const request: AgenticRoomRequest = {
       widthIn: 120,

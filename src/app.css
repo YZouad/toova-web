@@ -4837,6 +4837,90 @@ button.landing-nav-brand { cursor: pointer; }
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+
+/* Agentic manifest search rows (checklist ticker + checkout) */
+.manifest-plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.manifest-plan-list__item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--paper-0);
+  border: 1px solid var(--rule-soft);
+  border-radius: 10px;
+}
+.manifest-plan-list__copy {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.manifest-plan-list__name {
+  font: 600 13px/1.25 var(--font-sans);
+  color: var(--ink-1);
+  overflow-wrap: anywhere;
+}
+.manifest-plan-list__meta {
+  display: block;
+}
+.manifest-plan-list__actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.manifest-search-links {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.manifest-search-links--buttons {
+  gap: 8px;
+}
+.manifest-search-links__chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--rule-input);
+  border-radius: 999px;
+  background: var(--paper-1);
+  font: 600 11px/1 var(--font-sans);
+  color: var(--accent-text);
+  text-decoration: none;
+  white-space: nowrap;
+}
+.manifest-search-links__chip:hover {
+  background: var(--accent-bg);
+  border-color: var(--accent-line);
+  color: var(--accent-h);
+}
+.manifest-plan-list__dismiss {
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 4px 0;
+  font: 600 11px/1 var(--font-sans);
+  color: var(--ink-5);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.manifest-plan-list__dismiss:hover {
+  color: var(--ink-2);
+}
+
 .agentic-room-flow__saved {
   margin-bottom: 12px;
   padding: 10px 12px;

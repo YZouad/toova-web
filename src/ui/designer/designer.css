@@ -530,6 +530,15 @@
 }
 .dg-ticker-group.is-open .dg-ticker-group__chev { transform: rotate(0deg); }
 .dg-ticker-group__list { display: flex; flex-direction: column; gap: 6px; }
+.dg-ticker-group__list--manifest {
+  gap: 8px;
+}
+.dg-ticker-group__list--manifest .manifest-plan-list {
+  gap: 8px;
+}
+.dg-ticker-group__list--manifest .manifest-plan-list__item {
+  padding: 9px 10px;
+}
 
 .dg-ticker-item {
   display: flex; align-items: center; gap: 8px;

@@ -2,6 +2,11 @@ import {
   AGENTIC_POSTER_BANK,
   type AgenticPosterBankEntry,
 } from './agenticPosterBankData';
+import {
+  profilePosterKindBoost,
+  resolveAgenticThemeProfile,
+  type AgenticThemeProfile,
+} from './agenticThemeProfile';
 import { normalizeSearchText, singularize, tokenize } from './designerSearch';
 
 export interface AgenticPosterMatch {
@@ -59,9 +64,14 @@ function haystack(entry: AgenticPosterBankEntry): string {
   );
 }
 
-function scoreEntry(entry: AgenticPosterBankEntry, query: string, theme?: string): number {
+function scoreEntry(
+  entry: AgenticPosterBankEntry,
+  query: string,
+  theme?: string,
+  profile?: AgenticThemeProfile | null,
+): number {
   const tokens = contentTokens(query, theme);
-  if (tokens.length === 0) return 0;
+  if (tokens.length === 0 && !profile) return 0;
   const hay = haystack(entry);
   let score = 0;
   for (const token of tokens) {
@@ -75,6 +85,7 @@ function scoreEntry(entry: AgenticPosterBankEntry, query: string, theme?: string
       score += 35;
     }
   }
+  score += profilePosterKindBoost(profile ?? null, entry.kind);
   if (normalizeSearchText(query).includes(normalizeSearchText(entry.label))) {
     score += 50;
   }
@@ -85,11 +96,13 @@ export function resolveAgenticPoster(
   query: string,
   theme?: string,
   minScore = 25,
+  profile?: AgenticThemeProfile | null,
 ): AgenticPosterMatch | null {
   if (!isPosterDecorQuery(query)) return null;
+  const resolvedProfile = profile ?? resolveAgenticThemeProfile(theme, query);
   let best: { entry: AgenticPosterBankEntry; score: number } | null = null;
   for (const entry of AGENTIC_POSTER_BANK) {
-    const score = scoreEntry(entry, query, theme);
+    const score = scoreEntry(entry, query, theme, resolvedProfile);
     if (score >= minScore && (!best || score > best.score)) {
       best = { entry, score };
     }

@@ -44,13 +44,21 @@ import { isStarterEditWorkspaceId } from '../lib/starterTemplateOverrides';
 import { trackChecklistItemAdded } from '../lib/analytics';
 import { buildPurchaseCartLines, purchaseCartTotalCents } from '../lib/purchaseCart';
 import {
+  type AgenticShoppingManifestEntry,
+  loadLocalAgenticShoppingManifest,
+  manifestSearchOnlyEntries,
+  saveLocalAgenticShoppingManifest,
+} from '../lib/agenticShoppingManifest';
+import {
   fetchPublishedShoppingCatalog,
+  fetchUserAgenticShoppingManifest,
   fetchUserChecklistProgress,
   fetchUserChecklistResolutions,
   fetchUserMoveInBudgetCents,
   fetchUserShoppingList,
   mergeLocalShoppingStateToAccount,
   removeShoppingListEntry,
+  updateAgenticShoppingManifestDismissed,
   upsertChecklistProgress,
   upsertChecklistResolution,
   upsertShoppingListEntry,
@@ -82,6 +90,7 @@ export function useShoppingCatalog(roomId: string | null) {
   );
   const [moveInBudgetCents, setMoveInBudgetCents] = useState<number | null>(null);
   const [list, setList] = useState<ShoppingListEntry[]>([]);
+  const [agenticManifest, setAgenticManifest] = useState<AgenticShoppingManifestEntry[]>([]);
   const [ready, setReady] = useState(false);
   /** Previous curated product IDs present in the room; used to drop To Buy on delete. */
   const prevRoomProductIdsRef = useRef<Set<string> | null>(null);
@@ -135,6 +144,16 @@ export function useShoppingCatalog(roomId: string | null) {
         getResolution: (categoryId) => resolutions.get(categoryId),
       }),
     [categories, items, order, list, productsById, resolutions],
+  );
+
+  const catalogProductIds = useMemo(
+    () => new Set(list.map((e) => e.productId)),
+    [list],
+  );
+
+  const agenticManifestSearchLines = useMemo(
+    () => manifestSearchOnlyEntries(agenticManifest, catalogProductIds),
+    [agenticManifest, catalogProductIds],
   );
 
   const spentCents = useMemo(
@@ -223,6 +242,7 @@ export function useShoppingCatalog(roomId: string | null) {
       setResolutions(new Map());
       setMoveInBudgetCents(null);
       setList([]);
+      setAgenticManifest([]);
       setLocalProducts([]);
       setOwnedProducts([]);
       setReady(true);
@@ -238,6 +258,7 @@ export function useShoppingCatalog(roomId: string | null) {
           setResolutions(loadLocalResolutions(persistRoomId));
           setMoveInBudgetCents(loadLocalMoveInBudgetCents(persistRoomId));
           setList(loadLocalShoppingList(persistRoomId));
+          setAgenticManifest(loadLocalAgenticShoppingManifest(persistRoomId));
           setLocalProducts(loadLocalChecklistProducts(persistRoomId));
           setOwnedProducts(loadOwnedChecklistProducts(persistRoomId));
           setReady(true);
@@ -251,11 +272,13 @@ export function useShoppingCatalog(roomId: string | null) {
           await mergeLocalShoppingStateToAccount(user!.id, persistRoomId);
           sessionStorage.setItem(mergedKey, '1');
         }
-        const [remoteChecked, remoteList, remoteResolutions, remoteBudget] = await Promise.all([
+        const [remoteChecked, remoteList, remoteResolutions, remoteBudget, remoteManifest] =
+          await Promise.all([
           fetchUserChecklistProgress(user!.id, persistRoomId),
           fetchUserShoppingList(user!.id, persistRoomId),
           fetchUserChecklistResolutions(user!.id, persistRoomId),
           fetchUserMoveInBudgetCents(user!.id, persistRoomId),
+          fetchUserAgenticShoppingManifest(user!.id, persistRoomId),
         ]);
         if (cancelled) return;
         const localProductsForRoom = loadLocalChecklistProducts(persistRoomId);
@@ -272,6 +295,10 @@ export function useShoppingCatalog(roomId: string | null) {
         saveLocalMoveInBudgetCents(remoteBudget, persistRoomId);
         setList(mergedList);
         saveLocalShoppingList(mergedList, persistRoomId);
+        const localManifest = loadLocalAgenticShoppingManifest(persistRoomId);
+        const mergedManifest = localManifest.length > 0 ? localManifest : remoteManifest;
+        setAgenticManifest(mergedManifest);
+        saveLocalAgenticShoppingManifest(persistRoomId, mergedManifest);
         setLocalProducts(localProductsForRoom);
         setOwnedProducts(ownedProductsForRoom);
       } catch {
@@ -280,6 +307,7 @@ export function useShoppingCatalog(roomId: string | null) {
           setResolutions(loadLocalResolutions(persistRoomId));
           setMoveInBudgetCents(loadLocalMoveInBudgetCents(persistRoomId));
           setList(loadLocalShoppingList(persistRoomId));
+          setAgenticManifest(loadLocalAgenticShoppingManifest(persistRoomId));
           setLocalProducts(loadLocalChecklistProducts(persistRoomId));
           setOwnedProducts(loadOwnedChecklistProducts(persistRoomId));
         }
@@ -573,6 +601,21 @@ export function useShoppingCatalog(roomId: string | null) {
     [addToList, persistRoomId],
   );
 
+  const dismissAgenticManifestEntry = useCallback(
+    async (entryId: string) => {
+      if (!persistRoomId) return;
+      setAgenticManifest((prev) => {
+        const next = prev.map((e) => (e.id === entryId ? { ...e, dismissed: true } : e));
+        saveLocalAgenticShoppingManifest(persistRoomId, next);
+        return next;
+      });
+      if (canSyncRemote) {
+        await updateAgenticShoppingManifestDismissed(user!.id, persistRoomId, entryId, true);
+      }
+    },
+    [canSyncRemote, persistRoomId, user],
+  );
+
   const markCategoryAsOwned = useCallback(
     async (input: {
       categoryId: string;
@@ -613,6 +656,9 @@ export function useShoppingCatalog(roomId: string | null) {
     spentCents,
     budgetSummary,
     purchaseCartLines,
+    agenticManifest,
+    agenticManifestSearchLines,
+    dismissAgenticManifestEntry,
     list,
     toggleChecked,
     addToList,

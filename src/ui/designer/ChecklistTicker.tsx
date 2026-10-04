@@ -31,6 +31,7 @@ import {
   ChecklistResolutionActions,
 } from './ChecklistBudgetFoot';
 import { ChecklistCheckoutPanel } from '../ChecklistCheckoutPanel';
+import { ManifestPlanRows } from '../ManifestPlanRows';
 
 export interface ChecklistTickerProps {
   open: boolean;
@@ -168,7 +169,22 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
   const order = useStore((s) => s.order);
   const select = useStore((s) => s.select);
   const removeItem = useStore((s) => s.removeItem);
-  const { categories, categoriesById, list, addToList, removeFromList, getResolution, setResolution, getOwnedProduct, markCategoryAsOwned, budgetSummary, setMoveInBudget, purchaseCartLines } = useShoppingCatalogContext();
+  const {
+    categories,
+    categoriesById,
+    list,
+    addToList,
+    removeFromList,
+    getResolution,
+    setResolution,
+    getOwnedProduct,
+    markCategoryAsOwned,
+    budgetSummary,
+    setMoveInBudget,
+    purchaseCartLines,
+    agenticManifestSearchLines,
+    dismissAgenticManifestEntry,
+  } = useShoppingCatalogContext();
   const { user } = useAuth();
   const canDownloadGlb = !!user?.id;
 
@@ -624,9 +640,10 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
               type="button"
               className="dg-ticker-cta dg-ticker-cta--checkout"
               onClick={() => setCheckoutOpen(true)}
-              disabled={purchaseCartLines.length === 0}
+              disabled={purchaseCartLines.length === 0 && agenticManifestSearchLines.length === 0}
             >
-              Checkout · {purchaseCartLines.length} item{purchaseCartLines.length === 1 ? '' : 's'}
+              Checkout · {purchaseCartLines.length + agenticManifestSearchLines.length} item
+              {purchaseCartLines.length + agenticManifestSearchLines.length === 1 ? '' : 's'}
             </button>
             <button
               type="button"
@@ -641,8 +658,10 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
         {checkoutOpen ? (
           <ChecklistCheckoutPanel
             lines={purchaseCartLines}
+            manifestLines={agenticManifestSearchLines}
             onClose={() => setCheckoutOpen(false)}
             onRemoveFromList={(productId) => void removeFromList(productId)}
+            onDismissManifestEntry={(id) => void dismissAgenticManifestEntry(id)}
           />
         ) : null}
       </div>
@@ -689,7 +708,23 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
                   : 'No checklist items yet.'}
             </p>
           ) : (
-            groups.map((group) => {
+            <>
+            {agenticManifestSearchLines.length > 0 ? (
+              <section className="dg-ticker-group is-open">
+                <div className="dg-ticker-group__head" aria-expanded>
+                  <span className="dg-ticker-group__name">From your room plan</span>
+                  <span className="dg-ticker-group__rule" aria-hidden />
+                  <span className="dg-ticker-group__frac">{agenticManifestSearchLines.length}</span>
+                </div>
+                <div className="dg-ticker-group__list dg-ticker-group__list--manifest">
+                  <ManifestPlanRows
+                    entries={agenticManifestSearchLines}
+                    source="designer_checklist_ticker"
+                  />
+                </div>
+              </section>
+            ) : null}
+            {groups.map((group) => {
               const expanded = openGroups.has(group.id);
               return (
                 <section
@@ -752,7 +787,8 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
                   ) : null}
                 </section>
               );
-            })
+            })}
+            </>
           )}
         </div>
 
@@ -775,19 +811,22 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
             type="button"
             className="dg-ticker-cta dg-ticker-cta--checkout"
             onClick={() => setCheckoutOpen(true)}
-            disabled={purchaseCartLines.length === 0}
+            disabled={purchaseCartLines.length === 0 && agenticManifestSearchLines.length === 0}
           >
-            Checkout · {purchaseCartLines.length} item{purchaseCartLines.length === 1 ? '' : 's'}
+            Checkout · {purchaseCartLines.length + agenticManifestSearchLines.length} item
+            {purchaseCartLines.length + agenticManifestSearchLines.length === 1 ? '' : 's'}
           </button>
         </div>
       </div>
-      {checkoutOpen ? (
-        <ChecklistCheckoutPanel
-          lines={purchaseCartLines}
-          onClose={() => setCheckoutOpen(false)}
-          onRemoveFromList={(productId) => void removeFromList(productId)}
-        />
-      ) : null}
+        {checkoutOpen ? (
+          <ChecklistCheckoutPanel
+            lines={purchaseCartLines}
+            manifestLines={agenticManifestSearchLines}
+            onClose={() => setCheckoutOpen(false)}
+            onRemoveFromList={(productId) => void removeFromList(productId)}
+            onDismissManifestEntry={(id) => void dismissAgenticManifestEntry(id)}
+          />
+        ) : null}
     </div>
   );
 }

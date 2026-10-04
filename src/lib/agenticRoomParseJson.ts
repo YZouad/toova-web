@@ -1,6 +1,10 @@
 import type { AgenticItemAsk, AgenticVibeId } from './agenticRoomPrompt';
 import { parseVibeToken } from './agenticRoomVibe';
 import type { AgenticFurnitureListResult } from './agenticRoomListTypes';
+import {
+  posterQueryForProfile,
+  resolveAgenticThemeProfile,
+} from './agenticThemeProfile';
 
 /** Vibes and generic styles — not shoppable themes like Minecraft or gothic. */
 const THEME_SKIP = new Set([
@@ -56,8 +60,48 @@ export function enrichFurnitureListWithTheme(
   userPrompt: string,
 ): AgenticFurnitureListResult {
   const theme = shoppableTheme(list.theme) ?? inferThemeFromPrompt(userPrompt);
-  if (!theme) return list;
-  return applyNamedThemeToList({ ...list, theme });
+  const withTheme = theme ? { ...list, theme } : list;
+  return ensureRoomEssentials(applyNamedThemeToList(withTheme, userPrompt), userPrompt);
+}
+
+function isBedroomLike(list: AgenticFurnitureListResult, userPrompt: string): boolean {
+  const blob = `${list.roomType ?? ''} ${userPrompt}`.toLowerCase();
+  return /\b(dorm|bedroom|studio apartment|sleep)\b/.test(blob);
+}
+
+/** Inject generic bed/desk/chair/lamp when a dorm/bedroom list omits essentials. */
+export function ensureRoomEssentials(
+  list: AgenticFurnitureListResult,
+  userPrompt = '',
+): AgenticFurnitureListResult {
+  if (!isBedroomLike(list, userPrompt)) return list;
+
+  const has = (re: RegExp) => list.items.some((item) => re.test(item.query));
+  const hasDesk = list.items.some(
+    (item) => /\bdesk\b/i.test(item.query) && !/\blamp\b/i.test(item.query),
+  );
+  const extras: AgenticItemAsk[] = [];
+
+  if (!has(/\b(bed|mattress|bed\s+frame)\b/i)) {
+    extras.push({ query: 'twin bed frame', qty: 1, estimatedCents: 18000 });
+  }
+  if (!hasDesk) {
+    extras.push({ query: 'desk', qty: 1, estimatedCents: 12000 });
+  }
+  if (!has(/\b(chair|seating)\b/i)) {
+    extras.push({ query: 'desk chair', qty: 1, estimatedCents: 8000 });
+  }
+  if (!has(/\blamp\b/i)) {
+    extras.push({ query: 'desk lamp', qty: 1, estimatedCents: 2500 });
+  }
+
+  if (extras.length === 0) return list;
+  const nextItems = [...list.items, ...extras];
+  return {
+    ...list,
+    items: nextItems,
+    estimatedTotalCents: nextItems.reduce((sum, item) => sum + (item.estimatedCents ?? 0), 0),
+  };
 }
 
 function queryHasTheme(query: string, theme: string): boolean {
@@ -71,21 +115,38 @@ function queryHasTheme(query: string, theme: string): boolean {
  */
 export function applyNamedThemeToList(
   list: AgenticFurnitureListResult,
+  userPrompt = '',
 ): AgenticFurnitureListResult {
   const theme = shoppableTheme(list.theme);
   if (!theme) return list;
+  const profile = resolveAgenticThemeProfile(theme, userPrompt || theme);
+  const profilePoster = posterQueryForProfile(profile);
 
   const items = list.items.map((item) => {
-    if (!DECOR_QUERY.test(item.query) || queryHasTheme(item.query, theme)) return item;
+    if (
+      !theme ||
+      !DECOR_QUERY.test(item.query) ||
+      queryHasTheme(item.query, theme) ||
+      item.query === profilePoster
+    ) {
+      return item;
+    }
     return { ...item, query: `${theme} ${item.query}` };
   });
 
   const hasThemed = (re: RegExp) =>
-    items.some((item) => re.test(item.query) && queryHasTheme(item.query, theme));
+    items.some((item) => re.test(item.query) && (theme ? queryHasTheme(item.query, theme) : true));
 
   const extras: AgenticItemAsk[] = [];
-  if (!hasThemed(/\bposters?\b|\bwall art\b|\bdecals?\b/i)) {
-    extras.push({ query: `${theme} wall poster`, qty: 1, estimatedCents: 1500 });
+  if (
+    !hasThemed(/\bposters?\b|\bwall art\b|\bdecals?\b/i) &&
+    !items.some((item) => item.query === profilePoster)
+  ) {
+    extras.push({
+      query: profilePoster,
+      qty: 1,
+      estimatedCents: 1500,
+    });
   }
   if (!hasThemed(/\brugs?\b/i)) {
     extras.push({ query: `${theme} area rug`, qty: 1, estimatedCents: 3500 });
@@ -152,6 +213,7 @@ Rules for items:
 - When a specific theme is named (Minecraft, gothic, coastal, etc.), put that theme in the search phrase for decor and textiles: bedding, rug, curtains, pillows, posters, string lights. Examples: "Minecraft twin XL bedding set", "Minecraft area rug", "Minecraft string lights"
 - For wall posters use descriptive, trademark-free titles the Toova poster bank can match: "{theme adjective} {subject} wall poster" (good: "Gothic cathedral architecture wall poster", "Coastal beach shoreline wall poster", "Retro pixel gaming wall poster"; bad: "gothic poster", "Minecraft creeper poster")
 - Include at least three theme-specific decor items. Keep structural furniture generic (bed frame, desk, chair, mattress) so a normal catalog can match it
+- Every dorm/bedroom must include separate generic lines for bed frame, desk, chair, and desk lamp
 - NEVER list built-in architecture as items unless shopping for organizers (bad: "closet" — good: "closet organizer")
 - qty defaults to 1
 - estimatedCents = rough USD cents for that entire line (unit price × qty). Use realistic budget-store estimates, not luxury pricing.
@@ -254,7 +316,7 @@ export function validateFurnitureListJson(raw: unknown): AgenticFurnitureListRes
   const estimatedTotalCents =
     parseOptionalNumber(o.estimatedTotalCents) ?? sumItemEstimates(items);
 
-  return applyNamedThemeToList({
+  const base: AgenticFurnitureListResult = {
     items,
     widthIn: parseOptionalNumber(o.widthIn),
     depthIn: parseOptionalNumber(o.depthIn),
@@ -265,7 +327,8 @@ export function validateFurnitureListJson(raw: unknown): AgenticFurnitureListRes
     estimatedTotalCents,
     warnings: [],
     source: 'cursor',
-  });
+  };
+  return ensureRoomEssentials(applyNamedThemeToList(base), '');
 }
 
 export function parseAgentTextToFurnitureList(text: string): AgenticFurnitureListResult | null {

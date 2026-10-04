@@ -3,7 +3,17 @@ import type { FloorPlan } from '../lib/floorPlanGeometry';
 import { formatLength, rectanglePlan } from '../lib/floorPlanGeometry';
 import type { AgenticItemAsk, AgenticRoomRequest, AgenticVibeId } from '../lib/agenticRoomPrompt';
 import type { AgenticFurnitureListResult } from '../lib/agenticRoomListTypes';
-import { appearanceForAgenticVibe, applyAgenticVibeToItems } from '../lib/agenticRoomVibe';
+import {
+  appearanceForAgenticTheme,
+  appearanceForAgenticVibe,
+  applyAgenticThemeToItems,
+  applyAgenticVibeToItems,
+} from '../lib/agenticRoomVibe';
+import { rotatedThemeSuggestions } from '../lib/agenticThemeProfile';
+import {
+  manifestFromResolved,
+  type AgenticShoppingManifestEntry,
+} from '../lib/agenticShoppingManifest';
 import { fetchFurnitureListFromCursor } from '../lib/agenticRoomCursorApi';
 import {
   flattenCatalogProducts,
@@ -49,6 +59,7 @@ export interface AgenticRoomConfirmPayload {
   plan: FloorPlan;
   environment: RoomEnvironment;
   shoppingList: ShoppingListEntry[];
+  agenticShoppingManifest: AgenticShoppingManifestEntry[];
   budgetCents?: number | null;
   request: AgenticRoomRequest;
   seedItems: Item[];
@@ -61,12 +72,6 @@ interface AgenticRoomFlowProps {
   onConfirm: (payload: AgenticRoomConfirmPayload) => void | Promise<void>;
   onBack: () => void;
 }
-
-const EXAMPLE_PROMPTS = [
-  'minecraft dorm — twin xl bed, desk, maybe $700 total',
-  'small gothic bedroom, dark and moody, need a queen bed',
-  'studio apartment, minimal work + sleep setup',
-];
 
 const VIBE_OPTIONS: { id: AgenticVibeId; label: string }[] = [
   { id: 'warm', label: 'Warm' },
@@ -452,6 +457,12 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   const [savedPicks, setSavedPicks] = useState<SavedAgenticResolvedPick[] | undefined>();
   const [communityByQuery, setCommunityByQuery] = useState<Record<string, AgenticCommunityMatch[]>>({});
   const [communityLoading, setCommunityLoading] = useState(false);
+  const [showMoreSuggestions, setShowMoreSuggestions] = useState(false);
+
+  const themeSuggestions = useMemo(() => rotatedThemeSuggestions(8), []);
+  const visibleSuggestions = showMoreSuggestions
+    ? themeSuggestions
+    : themeSuggestions.slice(0, 4);
 
   const itemsKey = useMemo(
     () => items.map((i) => `${i.query.trim().toLowerCase()}:${i.qty}`).join('|'),
@@ -512,7 +523,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   useEffect(() => {
     if (!result || catalogLoading || items.length === 0) return;
     const listInput: AgenticFurnitureListResult = { ...result, items };
-    const matchResult = resolveAgenticList(listInput, products);
+    const matchResult = resolveAgenticList(listInput, products, prompt);
     const withPicks = applySavedResolvedPicks(matchResult.items, savedPicks, products);
     const totalCents = withPicks.reduce((sum, it) => {
       if (!it.product?.priceCents) return sum;
@@ -526,7 +537,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     setResolved(withPicks);
     setOverBudget(overBudget);
     setTotalCents(totalCents);
-  }, [result, catalogLoading, products, itemsKey, savedPicks]);
+  }, [result, catalogLoading, products, itemsKey, savedPicks, prompt]);
 
   const communityQueryKey = useMemo(() => {
     if (!result || items.length === 0) return '';
@@ -634,20 +645,32 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     setSubmitting(true);
     try {
       const plan = rectanglePlan(request.widthIn, request.depthIn, request.heightIn);
+      const theme = result?.theme ?? null;
+      const vibeAppearance = appearanceForAgenticVibe(request.vibe);
+      const themeAppearance = appearanceForAgenticTheme(theme, prompt);
       const environment: RoomEnvironment = {
         ...DEFAULT_ENVIRONMENT,
-        appearance: appearanceForAgenticVibe(request.vibe),
+        appearance: {
+          ...vibeAppearance,
+          ...(themeAppearance ?? {}),
+        },
       };
       const shoppingList = shoppingEntriesFromResolved(resolved);
+      const agenticShoppingManifest = manifestFromResolved(resolved);
       const packRows = resolved.filter((row) => row.placeInRoom);
       const pieces = await buildAgenticPackPieces(packRows);
       const packed = packAgenticFloorItems(plan, pieces);
-      const vibeItems = applyAgenticVibeToItems(packed.items, request.vibe);
+      const vibeItems = applyAgenticThemeToItems(
+        applyAgenticVibeToItems(packed.items, request.vibe),
+        theme,
+        prompt,
+      );
       await resolveStarterItemAssets(vibeItems);
       await onConfirm({
         plan,
         environment,
         shoppingList,
+        agenticShoppingManifest,
         budgetCents: request.budgetCents ?? null,
         request,
         seedItems: vibeItems,
@@ -794,19 +817,29 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
       </Field>
 
       <div className="agentic-room-flow__examples">
-        <span className="agentic-room-flow__examples-label">Try an example:</span>
+        <span className="agentic-room-flow__examples-label">Try an idea:</span>
         <div className="agentic-room-flow__examples-list">
-          {EXAMPLE_PROMPTS.map((example) => (
+          {visibleSuggestions.map((suggestion) => (
             <button
-              key={example}
+              key={suggestion.prompt}
               type="button"
               className="agentic-room-flow__example-chip"
               disabled={disabled || generating || submitting}
-              onClick={() => setPrompt(example)}
+              onClick={() => setPrompt(suggestion.prompt)}
             >
-              {example}
+              {suggestion.prompt}
             </button>
           ))}
+          {themeSuggestions.length > 4 ? (
+            <button
+              type="button"
+              className="agentic-room-flow__example-chip agentic-room-flow__example-chip--more"
+              disabled={disabled || generating || submitting}
+              onClick={() => setShowMoreSuggestions((v) => !v)}
+            >
+              {showMoreSuggestions ? 'Fewer ideas' : 'More ideas'}
+            </button>
+          ) : null}
         </div>
       </div>
 

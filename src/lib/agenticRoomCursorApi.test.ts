@@ -50,9 +50,12 @@ describe('fetchFurnitureListFromCursor', () => {
       expect.arrayContaining([
         'queen bed frame',
         'gothic area rug',
-        'gothic wall poster',
+        'Gothic cathedral architecture wall poster',
         'gothic string lights',
         'gothic bedding set',
+        'desk',
+        'desk chair',
+        'desk lamp',
       ]),
     );
   });

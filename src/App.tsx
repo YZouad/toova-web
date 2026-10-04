@@ -55,7 +55,11 @@ import {
   RoomPresetPicker,
   type RoomPresetPickerSelection,
 } from './ui/RoomPresetPicker';
-import { applyAgenticShoppingList } from './lib/agenticRoomApplyChecklist';
+import {
+  applyAgenticShoppingList,
+  applyAgenticShoppingManifest,
+} from './lib/agenticRoomApplyChecklist';
+import type { AgenticShoppingManifestEntry } from './lib/agenticShoppingManifest';
 import type { ShoppingListEntry } from './lib/dormChecklist';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole, type AdminTab } from './ui/AdminConsole';
@@ -481,6 +485,7 @@ function AppContent() {
         seedOrder?: string[];
         starterId?: string;
         agenticShoppingList?: ShoppingListEntry[];
+        agenticShoppingManifest?: AgenticShoppingManifestEntry[];
         agenticBudgetCents?: number | null;
       },
     ): Promise<string> => {
@@ -502,6 +507,13 @@ function AppContent() {
             options.agenticShoppingList,
             null,
             options.agenticBudgetCents,
+          );
+        }
+        if (options?.agenticShoppingManifest?.length) {
+          await applyAgenticShoppingManifest(
+            guestId,
+            options.agenticShoppingManifest,
+            null,
           );
         }
         resetLayout();
@@ -526,6 +538,13 @@ function AppContent() {
             options.agenticShoppingList,
             user.id,
             options.agenticBudgetCents,
+          );
+        }
+        if (options?.agenticShoppingManifest?.length) {
+          await applyAgenticShoppingManifest(
+            room.id,
+            options.agenticShoppingManifest,
+            user.id,
           );
         }
         resetLayout();
@@ -596,6 +615,7 @@ function AppContent() {
           seedItems: selection.seedItems,
           seedOrder: selection.seedOrder,
           agenticShoppingList: selection.shoppingList,
+          agenticShoppingManifest: selection.agenticShoppingManifest,
           agenticBudgetCents: selection.budgetCents,
         });
         return;

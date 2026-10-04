@@ -1,6 +1,7 @@
-import { FURNITURE, type FurnitureKind, type GalleryFurnitureKind } from '../furniture/registry';
+import { FURNITURE, type GalleryFurnitureKind } from '../furniture/registry';
 import type { CuratedProduct } from './dormChecklist';
 import type { AgenticItemAsk, AgenticRoomRequest } from './agenticRoomPrompt';
+import { isPosterDecorQuery } from './agenticPosterMatch';
 import { normalizeSearchText, scoreCandidate, singularize, tokenize } from './designerSearch';
 import type { ScoredCandidate } from '../ui/designer/commandSearchTypes';
 
@@ -179,15 +180,22 @@ function productCandidates(products: CuratedProduct[]): ScoredCandidate[] {
     }));
 }
 
+function isDeskNotLampQuery(query: string): boolean {
+  const n = normalizeSearchText(query);
+  return /\bdesk\b/.test(n) && !/\blamp\b/.test(n);
+}
+
 function rankProductsForQuery(
   query: string,
   products: CuratedProduct[],
 ): Array<{ product: CuratedProduct; score: number }> {
+  const deskQuery = isDeskNotLampQuery(query);
   const candidates = productCandidates(products);
   const scored = candidates
     .map((c) => {
       const product = products.find((p) => p.id === c.id);
       if (!product) return null;
+      if (deskQuery && product.placeBuiltinKind === 'lamp') return null;
       const score = scoreCandidate(c, query);
       return { product, score };
     })
@@ -201,11 +209,14 @@ function rankProductsForQuery(
 }
 
 function resolveBuiltinKind(query: string): GalleryFurnitureKind | null {
+  if (isPosterDecorQuery(query)) return null;
+
   const n = normalizeSearchText(query);
   if (QUERY_TO_BUILTIN[n]) return QUERY_TO_BUILTIN[n]!;
 
   let best: { kind: GalleryFurnitureKind; score: number } | null = null;
   for (const kind of BUILTIN_KINDS) {
+    if (kind === 'shelf' && isPosterDecorQuery(query)) continue;
     const def = FURNITURE[kind];
     const candidate: ScoredCandidate = {
       id: kind,

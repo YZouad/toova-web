@@ -9,6 +9,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildPosterGlb } from './lib/build-poster-glb.mjs';
+import { proceduralPosterBytes } from './lib/procedural-poster-png.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
@@ -16,6 +17,12 @@ const CSV_PATH = join(ROOT, 'docs', 'agentic-poster-bank.csv');
 const GLB_DIR = join(ROOT, 'public', 'checklist-refs', 'glb', 'posters');
 const IMG_DIR = join(ROOT, 'public', 'checklist-refs', 'images', 'posters');
 const SQL_ONLY = process.argv.includes('--sql-only');
+const ONLY_KINDS = process.argv
+  .find((a) => a.startsWith('--only='))
+  ?.slice('--only='.length)
+  .split(',')
+  .filter(Boolean);
+const SQL_OUT = process.argv.find((a) => a.startsWith('--sql-out='))?.slice('--sql-out='.length);
 
 function parseCsv(text) {
   const lines = text.trim().split('\n');
@@ -76,7 +83,10 @@ function tagsArray(tagsPipe) {
   return `{${base.map((t) => `"${t.replace(/"/g, '\\"')}"`).join(',')}}`;
 }
 
-async function downloadImage(imageFile) {
+async function loadImageBytes(imageFile) {
+  if (imageFile.startsWith('procedural:')) {
+    return proceduralPosterBytes(imageFile.slice('procedural:'.length));
+  }
   const url = wikimediaUrl(imageFile);
   const res = await fetch(url, {
     headers: { 'User-Agent': 'ToovaPosterBank/1.0 (https://toova.app; build script)' },
@@ -92,12 +102,16 @@ async function downloadImage(imageFile) {
   return buf;
 }
 
-function buildSql(rows) {
+function thumbExtForRow(row, builtThumbs) {
+  return builtThumbs?.get(row.kind) ?? (row.image_file?.startsWith('procedural:') ? 'png' : 'jpg');
+}
+
+function buildSql(rows, builtThumbs) {
   const values = rows
     .map((row) => {
       const kind = row.kind;
       const modelUrl = `checklist-refs/glb/posters/${kind}.glb`;
-      const thumbUrl = `checklist-refs/images/posters/${kind}.jpg`;
+      const thumbUrl = `checklist-refs/images/posters/${kind}.${thumbExtForRow(row, builtThumbs)}`;
       return `(
   '${sqlEscape(kind)}',
   '${sqlEscape(row.label)}',
@@ -137,11 +151,16 @@ SET label = EXCLUDED.label,
 
 async function main() {
   const csv = readFileSync(CSV_PATH, 'utf8');
-  const rows = parseCsv(csv);
+  let rows = parseCsv(csv);
+  if (ONLY_KINDS?.length) {
+    rows = rows.filter((row) => ONLY_KINDS.includes(row.kind));
+  }
   if (rows.length === 0) {
     console.error('No rows in CSV');
     process.exit(1);
   }
+
+  const builtThumbs = new Map();
 
   if (!SQL_ONLY) {
     mkdirSync(GLB_DIR, { recursive: true });
@@ -160,9 +179,10 @@ async function main() {
 
     process.stdout.write(`Building ${kind}… `);
     try {
-      const imageBytes = await downloadImage(row.image_file);
+      const imageBytes = await loadImageBytes(row.image_file);
       const ext = extForBytes(imageBytes);
       const thumbPath = ext === '.png' ? join(IMG_DIR, `${kind}.png`) : jpgPath;
+      builtThumbs.set(kind, ext === '.png' ? 'png' : 'jpg');
       writeFileSync(thumbPath, imageBytes);
 
       const glb = buildPosterGlb(imageBytes, Number(row.width_in), Number(row.height_in));
@@ -191,9 +211,13 @@ async function main() {
     }
   }
 
-  const sql = buildSql(rows);
-  const sqlPath = join(ROOT, 'supabase', 'migrations', '20261004120000_agentic_poster_bank.sql');
-  if (!existsSync(dirname(sqlPath))) {
+  const sql = buildSql(rows, builtThumbs);
+  const sqlPath =
+    SQL_OUT ??
+    (ONLY_KINDS?.length
+      ? join(ROOT, 'supabase', 'migrations', '20261004150000_agentic_gaming_posters.sql')
+      : join(ROOT, 'supabase', 'migrations', '20261004120000_agentic_poster_bank.sql'));
+  if (!SQL_OUT && !ONLY_KINDS?.length && !existsSync(dirname(sqlPath))) {
     console.log('\n--- SQL fragment ---\n');
     console.log(sql);
   } else {
