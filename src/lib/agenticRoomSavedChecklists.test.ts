@@ -137,6 +137,9 @@ describe('agenticRoomSavedChecklists', () => {
           builtinKind: null,
           warnings: [],
           searchOffers: [],
+          placeInRoom: true,
+          communityModel: null,
+          bankPoster: null,
         },
       ],
     });
@@ -180,6 +183,9 @@ describe('agenticRoomSavedChecklists', () => {
         builtinKind: null,
         warnings: [],
         searchOffers: [],
+        placeInRoom: true,
+        communityModel: null,
+        bankPoster: null,
       },
     ];
     const restored = applySavedResolvedPicks(

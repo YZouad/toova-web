@@ -1,0 +1,198 @@
+-- CC0 / public-domain agentic poster bank (built via scripts/build-poster-bank.mjs)
+
+INSERT INTO public.furniture_catalog (
+  kind, label, description, width_in, height_in, depth_in, clearance_in,
+  is_builtin, model_url, thumbnail_path, tags, categories, visibility
+) VALUES
+(
+  'poster-gothic-cathedral',
+  'Gothic cathedral architecture wall poster',
+  'Gothic cathedral architecture wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-gothic-cathedral.glb',
+  'checklist-refs/images/posters/poster-gothic-cathedral.jpg',
+  '{"gothic","dark","medieval","architecture","cathedral","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-coastal-beach',
+  'Coastal beach shoreline wall poster',
+  'Coastal beach shoreline wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-coastal-beach.glb',
+  'checklist-refs/images/posters/poster-coastal-beach.jpg',
+  '{"coastal","beach","ocean","shore","sand","waves","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-minimalist-lines',
+  'Minimalist geometric line art wall poster',
+  'Minimalist geometric line art wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-minimalist-lines.glb',
+  'checklist-refs/images/posters/poster-minimalist-lines.jpg',
+  '{"minimalist","geometric","line","abstract","modern","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-botanical-flowers',
+  'Botanical flower illustration wall poster',
+  'Botanical flower illustration wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-botanical-flowers.glb',
+  'checklist-refs/images/posters/poster-botanical-flowers.jpg',
+  '{"botanical","flowers","floral","nature","garden","plants","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-space-nebula',
+  'Deep space nebula astronomy wall poster',
+  'Deep space nebula astronomy wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-space-nebula.glb',
+  'checklist-refs/images/posters/poster-space-nebula.jpg',
+  '{"space","nebula","astronomy","stars","cosmos","galaxy","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-vintage-travel',
+  'Vintage travel city wall poster',
+  'Vintage travel city wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-vintage-travel.glb',
+  'checklist-refs/images/posters/poster-vintage-travel.jpg',
+  '{"vintage","travel","city","retro","tourism","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-japanese-woodblock',
+  'Japanese woodblock wave landscape wall poster',
+  'Japanese woodblock wave landscape wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-japanese-woodblock.glb',
+  'checklist-refs/images/posters/poster-japanese-woodblock.jpg',
+  '{"japanese","woodblock","wave","landscape","ukiyo-e","mountain","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-dorm-motivation',
+  'Motivational typography wall poster',
+  'Motivational typography wall poster — CC0/public-domain Toova poster bank',
+  18, 24, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-dorm-motivation.glb',
+  'checklist-refs/images/posters/poster-dorm-motivation.jpg',
+  '{"motivational","typography","quote","dorm","inspiration","text","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-sage-forest',
+  'Sage green forest nature wall poster',
+  'Sage green forest nature wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-sage-forest.glb',
+  'checklist-refs/images/posters/poster-sage-forest.jpg',
+  '{"sage","forest","green","nature","trees","woodland","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-moody-charcoal',
+  'Moody charcoal architecture wall poster',
+  'Moody charcoal architecture wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-moody-charcoal.glb',
+  'checklist-refs/images/posters/poster-moody-charcoal.jpg',
+  '{"moody","dark","charcoal","gothic","church","interior","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-studio-geometric',
+  'Studio geometric abstract wall poster',
+  'Studio geometric abstract wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-studio-geometric.glb',
+  'checklist-refs/images/posters/poster-studio-geometric.jpg',
+  '{"studio","geometric","abstract","modern","color","blocks","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-warm-sunset',
+  'Warm sunset beach landscape wall poster',
+  'Warm sunset beach landscape wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-warm-sunset.glb',
+  'checklist-refs/images/posters/poster-warm-sunset.jpg',
+  '{"warm","sunset","beach","golden","coastal","sky","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-neutral-abstract',
+  'Neutral abstract color wall poster',
+  'Neutral abstract color wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-neutral-abstract.glb',
+  'checklist-refs/images/posters/poster-neutral-abstract.jpg',
+  '{"neutral","abstract","soft","beige","minimal","calm","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-pixel-landscape',
+  'Retro pixel gaming wall poster',
+  'Retro pixel gaming wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-pixel-landscape.glb',
+  'checklist-refs/images/posters/poster-pixel-landscape.jpg',
+  '{"pixel","block","retro","gaming","landscape","8-bit","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+),
+(
+  'poster-mountain-landscape',
+  'Mountain landscape wall poster',
+  'Mountain landscape wall poster — CC0/public-domain Toova poster bank',
+  24, 36, 0.5, null,
+  true,
+  'checklist-refs/glb/posters/poster-mountain-landscape.glb',
+  'checklist-refs/images/posters/poster-mountain-landscape.jpg',
+  '{"mountain","landscape","alpine","nature","peaks","outdoors","poster"}'::text[],
+  ARRAY['decor_art'],
+  'public'
+)
+ON CONFLICT (kind) DO UPDATE
+SET label = EXCLUDED.label,
+    description = EXCLUDED.description,
+    width_in = EXCLUDED.width_in,
+    height_in = EXCLUDED.height_in,
+    depth_in = EXCLUDED.depth_in,
+    model_url = EXCLUDED.model_url,
+    thumbnail_path = EXCLUDED.thumbnail_path,
+    tags = EXCLUDED.tags,
+    categories = EXCLUDED.categories,
+    is_builtin = true,
+    visibility = 'public';

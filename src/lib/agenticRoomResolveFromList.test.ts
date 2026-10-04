@@ -50,6 +50,19 @@ describe('resolveAgenticList', () => {
     expect(result.items[0]?.searchOffers).toHaveLength(0);
   });
 
+  it('attaches bank poster match for themed poster lines without catalog product', () => {
+    const list: AgenticFurnitureListResult = {
+      items: [{ query: 'gothic cathedral architecture wall poster', qty: 1 }],
+      theme: 'gothic',
+      warnings: [],
+      source: 'cursor',
+    };
+    const result = resolveAgenticList(list, catalog);
+    expect(result.items[0]?.product).toBeNull();
+    expect(result.items[0]?.bankPoster?.kind).toBe('poster-gothic-cathedral');
+    expect(result.items[0]?.placeInRoom).toBe(true);
+  });
+
   it('attaches Amazon and Google search offers when no catalog match', () => {
     const list: AgenticFurnitureListResult = {
       items: [{ query: 'gothic wall tapestry', qty: 1 }],

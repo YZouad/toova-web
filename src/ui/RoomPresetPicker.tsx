@@ -40,6 +40,9 @@ export type RoomPresetPickerSelection =
       environment: RoomEnvironment;
       shoppingList: ShoppingListEntry[];
       budgetCents?: number | null;
+      seedItems: import('../store').Item[];
+      seedOrder: string[];
+      packSkipped: string[];
     };
 
 type PickerMode = 'presets' | 'describe';
@@ -175,6 +178,9 @@ export function RoomPresetPicker({
           environment: payload.environment,
           shoppingList: payload.shoppingList,
           budgetCents: payload.budgetCents,
+          seedItems: payload.seedItems,
+          seedOrder: payload.seedOrder,
+          packSkipped: payload.packSkipped,
         },
         resolvedName,
       );

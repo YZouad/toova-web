@@ -4764,6 +4764,18 @@ button.landing-nav-brand { cursor: pointer; }
   flex-direction: column;
   gap: 6px;
 }
+.agentic-room-item__community-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agentic-room-item__place {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font: var(--type-ui-sm);
+  white-space: nowrap;
+}
 .agentic-room-item__community-card {
   display: flex;
   align-items: center;

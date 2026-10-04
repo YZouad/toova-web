@@ -7,6 +7,10 @@ export interface AgenticCommunityMatch {
   kind: string;
   label: string;
   previewUrl: string | null;
+  modelUrl: string | null;
+  widthIn: number;
+  heightIn: number;
+  depthIn: number;
   creatorHandle: string | null;
   creatorDisplayName: string | null;
   relevance: number;
@@ -48,6 +52,10 @@ export async function fetchCommunityMatchesForQuery(
         kind: hit.kind,
         label: hit.label,
         previewUrl,
+        modelUrl: hit.model_url?.trim() || null,
+        widthIn: hit.width_in,
+        heightIn: hit.height_in,
+        depthIn: hit.depth_in,
         creatorHandle: hit.creator_handle,
         creatorDisplayName: hit.creator_display_name,
         relevance: hit.relevance,

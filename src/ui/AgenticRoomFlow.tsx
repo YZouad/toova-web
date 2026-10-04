@@ -3,7 +3,7 @@ import type { FloorPlan } from '../lib/floorPlanGeometry';
 import { formatLength, rectanglePlan } from '../lib/floorPlanGeometry';
 import type { AgenticItemAsk, AgenticRoomRequest, AgenticVibeId } from '../lib/agenticRoomPrompt';
 import type { AgenticFurnitureListResult } from '../lib/agenticRoomListTypes';
-import { appearanceForAgenticVibe } from '../lib/agenticRoomVibe';
+import { appearanceForAgenticVibe, applyAgenticVibeToItems } from '../lib/agenticRoomVibe';
 import { fetchFurnitureListFromCursor } from '../lib/agenticRoomCursorApi';
 import {
   flattenCatalogProducts,
@@ -11,9 +11,16 @@ import {
 } from '../lib/agenticRoomResolve';
 import {
   resolveAgenticList,
-  type ResolvedAgenticItemWithOffers,
+  type AgenticReviewRow,
 } from '../lib/agenticRoomResolveFromList';
 import { shoppingEntriesFromResolved } from '../lib/agenticRoomApplyChecklist';
+import {
+  buildAgenticPackPieces,
+  defaultPlaceInRoom,
+  packAgenticFloorItems,
+  rowCanPlaceInRoom,
+} from '../lib/agenticRoomPack';
+import { resolveStarterItemAssets } from '../lib/starterTemplateOverrides';
 import { fetchPublishedShoppingCatalog } from '../lib/shoppingCatalog';
 import { searchOffersForQuery, type AffiliateOffer } from '../lib/affiliateLinks';
 import type { CuratedProduct, ShoppingListEntry } from '../lib/dormChecklist';
@@ -35,7 +42,7 @@ import {
   type SavedAgenticChecklistDraft,
   type SavedAgenticResolvedPick,
 } from '../lib/agenticRoomSavedChecklists';
-import { DEFAULT_ENVIRONMENT, type RoomEnvironment } from '../store';
+import { DEFAULT_ENVIRONMENT, type Item, type RoomEnvironment } from '../store';
 import { Banner, Button, Field, Input, Spinner } from './kit';
 
 export interface AgenticRoomConfirmPayload {
@@ -44,6 +51,9 @@ export interface AgenticRoomConfirmPayload {
   shoppingList: ShoppingListEntry[];
   budgetCents?: number | null;
   request: AgenticRoomRequest;
+  seedItems: Item[];
+  seedOrder: string[];
+  packSkipped: string[];
 }
 
 interface AgenticRoomFlowProps {
@@ -81,10 +91,16 @@ function CommunityMatches({
   query,
   matches,
   loading,
+  selectedKind,
+  onUseModel,
+  disabled,
 }: {
   query: string;
   matches: AgenticCommunityMatch[];
   loading?: boolean;
+  selectedKind?: string | null;
+  onUseModel?: (match: AgenticCommunityMatch) => void;
+  disabled?: boolean;
 }) {
   if (loading) {
     return (
@@ -102,7 +118,7 @@ function CommunityMatches({
       <p className="agentic-room-item__community-title">Similar in community gallery</p>
       <ul className="agentic-room-item__community-list">
         {matches.map((match) => (
-          <li key={match.kind}>
+          <li key={match.kind} className="agentic-room-item__community-row">
             <button
               type="button"
               className="agentic-room-item__community-card"
@@ -120,6 +136,16 @@ function CommunityMatches({
                 ) : null}
               </span>
             </button>
+            {onUseModel && match.modelUrl ? (
+              <Button
+                size="sm"
+                variant={selectedKind === match.kind ? 'primary' : 'outline'}
+                disabled={disabled}
+                onClick={() => onUseModel(match)}
+              >
+                {selectedKind === match.kind ? 'Using this model' : 'Use this model'}
+              </Button>
+            ) : null}
           </li>
         ))}
       </ul>
@@ -134,10 +160,16 @@ function SearchLinks({
   query,
   communityMatches,
   communityLoading,
+  selectedCommunityKind,
+  onUseCommunityModel,
+  disabled,
 }: {
   query: string;
   communityMatches?: AgenticCommunityMatch[];
   communityLoading?: boolean;
+  selectedCommunityKind?: string | null;
+  onUseCommunityModel?: (match: AgenticCommunityMatch) => void;
+  disabled?: boolean;
 }) {
   const offers = searchOffersForQuery(query);
   const hasCommunity = communityLoading || (communityMatches?.length ?? 0) > 0;
@@ -164,7 +196,14 @@ function SearchLinks({
           </div>
         </>
       ) : null}
-      <CommunityMatches query={query} matches={communityMatches ?? []} loading={communityLoading} />
+      <CommunityMatches
+        query={query}
+        matches={communityMatches ?? []}
+        loading={communityLoading}
+        selectedKind={selectedCommunityKind}
+        onUseModel={onUseCommunityModel}
+        disabled={disabled}
+      />
     </div>
   );
 }
@@ -178,6 +217,11 @@ function FurnitureListRow({
   onRemove,
   communityMatches,
   communityLoading,
+  placeInRoom,
+  onPlaceInRoom,
+  canPlace,
+  selectedCommunityKind,
+  onUseCommunityModel,
 }: {
   item: AgenticItemAsk;
   index: number;
@@ -187,6 +231,11 @@ function FurnitureListRow({
   onRemove: () => void;
   communityMatches?: AgenticCommunityMatch[];
   communityLoading?: boolean;
+  placeInRoom?: boolean;
+  onPlaceInRoom?: (checked: boolean) => void;
+  canPlace?: boolean;
+  selectedCommunityKind?: string | null;
+  onUseCommunityModel?: (match: AgenticCommunityMatch) => void;
 }) {
   return (
     <div className="agentic-room-item agentic-room-item--list">
@@ -204,10 +253,24 @@ function FurnitureListRow({
             query={item.query}
             communityMatches={communityMatches}
             communityLoading={communityLoading}
+            selectedCommunityKind={selectedCommunityKind}
+            onUseCommunityModel={onUseCommunityModel}
+            disabled={disabled}
           />
         </div>
       </div>
       <div className="agentic-room-item__actions">
+        {canPlace && onPlaceInRoom ? (
+          <label className="agentic-room-item__place">
+            <input
+              type="checkbox"
+              checked={placeInRoom ?? false}
+              disabled={disabled}
+              onChange={(e) => onPlaceInRoom(e.target.checked)}
+            />
+            Place in room
+          </label>
+        ) : null}
         {item.estimatedCents != null ? (
           <span className="agentic-room-item__estimate">
             ~{formatAgenticPrice(item.estimatedCents)}
@@ -238,14 +301,18 @@ function ProductRow({
   onSwap,
   onQty,
   onRemove,
+  onPlaceInRoom,
+  onUseCommunityModel,
   communityMatches,
   communityLoading,
 }: {
-  item: ResolvedAgenticItemWithOffers;
+  item: AgenticReviewRow;
   disabled?: boolean;
   onSwap: (productId: string) => void;
   onQty: (qty: number) => void;
   onRemove: () => void;
+  onPlaceInRoom: (checked: boolean) => void;
+  onUseCommunityModel: (match: AgenticCommunityMatch) => void;
   communityMatches?: AgenticCommunityMatch[];
   communityLoading?: boolean;
 }) {
@@ -267,6 +334,11 @@ function ProductRow({
           <div className="agentic-room-item__name">{item.query}</div>
           {showCatalogMatch ? (
             <div className="agentic-room-item__query">Catalog match: {product!.name}</div>
+          ) : null}
+          {item.bankPoster ? (
+            <div className="agentic-room-item__query">
+              Toova poster: {item.bankPoster.label}
+            </div>
           ) : null}
           <div className="agentic-room-item__meta">
             {product ? <span>{price}</span> : null}
@@ -295,6 +367,9 @@ function ProductRow({
                 query={item.query}
                 communityMatches={communityMatches}
                 communityLoading={communityLoading}
+                selectedCommunityKind={item.communityModel?.kind ?? null}
+                onUseCommunityModel={onUseCommunityModel}
+                disabled={disabled}
               />
             ) : null}
           </div>
@@ -306,6 +381,17 @@ function ProductRow({
         </div>
       </div>
       <div className="agentic-room-item__actions">
+        {rowCanPlaceInRoom(item) || item.communityModel || item.bankPoster ? (
+          <label className="agentic-room-item__place">
+            <input
+              type="checkbox"
+              checked={item.placeInRoom}
+              disabled={disabled}
+              onChange={(e) => onPlaceInRoom(e.target.checked)}
+            />
+            Place in room
+          </label>
+        ) : null}
         {item.alternates.length > 0 ? (
           <select
             className="agentic-room-item__swap"
@@ -352,7 +438,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   const [generatePhase, setGeneratePhase] = useState<GeneratePhase>('idle');
   const [generating, setGenerating] = useState(false);
   const [request, setRequest] = useState<AgenticRoomRequest | null>(null);
-  const [resolved, setResolved] = useState<ResolvedAgenticItemWithOffers[]>([]);
+  const [resolved, setResolved] = useState<AgenticReviewRow[]>([]);
   const [overBudget, setOverBudget] = useState(false);
   const [totalCents, setTotalCents] = useState(0);
   const [submitting, setSubmitting] = useState(false);
@@ -473,7 +559,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   }, [communityQueryKey]);
 
   const updateItem = useCallback(
-    (index: number, patch: Partial<ResolvedAgenticItemWithOffers>) => {
+    (index: number, patch: Partial<AgenticReviewRow>) => {
       setResolved((prev) => {
         const next = prev.map((item, i) => (i === index ? { ...item, ...patch } : item));
         if (request) {
@@ -494,11 +580,21 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     (index: number, productId: string) => {
       const product = products.find((p) => p.id === productId);
       if (!product) return;
+      const row = resolved[index];
       updateItem(index, {
         product,
         builtinKind: null,
         warnings: [],
-        searchOffers: product.affiliateUrl?.trim() ? [] : searchOffersForQuery(resolved[index]?.query ?? ''),
+        searchOffers: product.affiliateUrl?.trim() ? [] : searchOffersForQuery(row?.query ?? ''),
+        placeInRoom: row
+          ? defaultPlaceInRoom({
+              query: row.query,
+              product,
+              builtinKind: null,
+              communityModel: row.communityModel,
+              bankPoster: row.bankPoster,
+            })
+          : true,
       });
     },
     [products, updateItem, resolved],
@@ -543,19 +639,45 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
         appearance: appearanceForAgenticVibe(request.vibe),
       };
       const shoppingList = shoppingEntriesFromResolved(resolved);
+      const packRows = resolved.filter((row) => row.placeInRoom);
+      const pieces = await buildAgenticPackPieces(packRows);
+      const packed = packAgenticFloorItems(plan, pieces);
+      const vibeItems = applyAgenticVibeToItems(packed.items, request.vibe);
+      await resolveStarterItemAssets(vibeItems);
       await onConfirm({
         plan,
         environment,
         shoppingList,
         budgetCents: request.budgetCents ?? null,
         request,
+        seedItems: vibeItems,
+        seedOrder: packed.order,
+        packSkipped: packed.skipped,
       });
     } finally {
       setSubmitting(false);
     }
   };
 
+  const useCommunityModel = useCallback((index: number, match: AgenticCommunityMatch) => {
+    setResolved((prev) =>
+      prev.map((row, i) =>
+        i === index
+          ? {
+              ...row,
+              communityModel: row.communityModel?.kind === match.kind ? null : match,
+              placeInRoom: row.communityModel?.kind === match.kind ? row.placeInRoom : true,
+            }
+          : row,
+      ),
+    );
+  }, []);
+
   const hasCatalogMatch = resolved.some((i) => i.product != null);
+  const hasPlaceableSelection = resolved.some(
+    (row) => row.placeInRoom && (rowCanPlaceInRoom(row) || row.communityModel || row.bankPoster),
+  );
+  const canCreateRoom = resolved.length > 0 && (hasCatalogMatch || hasPlaceableSelection);
   const showProductRows = Boolean(result && !catalogLoading && resolved.length > 0);
   const activeDraft = activeDraftId
     ? savedDrafts.find((d) => d.id === activeDraftId) ?? null
@@ -826,6 +948,8 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                         prev.map((row, i) => (i === index ? { ...row, qty } : row)),
                       );
                     }}
+                    onPlaceInRoom={(checked) => updateItem(index, { placeInRoom: checked })}
+                    onUseCommunityModel={(match) => useCommunityModel(index, match)}
                     onRemove={() => {
                       setResolved((prev) => prev.filter((_, i) => i !== index));
                       setItems((prev) => prev.filter((_, i) => i !== index));
@@ -912,7 +1036,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
             <Button
               size="md"
               full
-              disabled={disabled || submitting || !hasCatalogMatch}
+              disabled={disabled || submitting || !canCreateRoom}
               onClick={() => void handleConfirm()}
             >
               {submitting ? 'Creating…' : 'Create room & add to checklist'}

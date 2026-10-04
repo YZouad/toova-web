@@ -1,16 +1,27 @@
 import type { AgenticFurnitureListResult } from './agenticRoomListTypes';
 import type { AgenticItemAsk, AgenticVibeId } from './agenticRoomPrompt';
 import type { CuratedProduct } from './dormChecklist';
-import type { ResolvedAgenticItemWithOffers } from './agenticRoomResolveFromList';
+import type { AgenticReviewRow } from './agenticRoomResolveFromList';
 import { searchOffersForQuery } from './affiliateLinks';
 
 export const SAVED_AGENTIC_CHECKLISTS_KEY = 'toova-agentic-checklist-drafts';
 export const MAX_SAVED_AGENTIC_CHECKLISTS = 30;
 
+export interface SavedAgenticCommunityModel {
+  kind: string;
+  label: string;
+  modelUrl: string | null;
+  widthIn: number;
+  heightIn: number;
+  depthIn: number;
+}
+
 export interface SavedAgenticResolvedPick {
   query: string;
   qty: number;
   productId: string | null;
+  placeInRoom?: boolean;
+  communityModel?: SavedAgenticCommunityModel | null;
 }
 
 export interface SavedAgenticChecklistDraft {
@@ -91,7 +102,26 @@ function parseResolvedPick(raw: unknown): SavedAgenticResolvedPick | null {
       : 1;
   const productId =
     typeof o.productId === 'string' && o.productId.trim() ? o.productId.trim() : null;
-  return { query, qty, productId };
+  const placeInRoom = typeof o.placeInRoom === 'boolean' ? o.placeInRoom : undefined;
+  let communityModel: SavedAgenticCommunityModel | null | undefined;
+  if (o.communityModel === null) {
+    communityModel = null;
+  } else if (o.communityModel && typeof o.communityModel === 'object') {
+    const m = o.communityModel as Record<string, unknown>;
+    const kind = typeof m.kind === 'string' ? m.kind.trim() : '';
+    const label = typeof m.label === 'string' ? m.label.trim() : '';
+    if (kind && label) {
+      communityModel = {
+        kind,
+        label,
+        modelUrl: typeof m.modelUrl === 'string' ? m.modelUrl.trim() || null : null,
+        widthIn: typeof m.widthIn === 'number' && m.widthIn > 0 ? m.widthIn : 24,
+        heightIn: typeof m.heightIn === 'number' && m.heightIn > 0 ? m.heightIn : 24,
+        depthIn: typeof m.depthIn === 'number' && m.depthIn > 0 ? m.depthIn : 24,
+      };
+    }
+  }
+  return { query, qty, productId, placeInRoom, communityModel };
 }
 
 function parseDraft(raw: unknown): SavedAgenticChecklistDraft | null {
@@ -187,7 +217,7 @@ export function buildAgenticChecklistDraft(input: {
   prompt: string;
   listResult: AgenticFurnitureListResult | null;
   items: AgenticItemAsk[];
-  resolved: ResolvedAgenticItemWithOffers[];
+  resolved: AgenticReviewRow[];
 }): SavedAgenticChecklistDraft {
   const now = new Date().toISOString();
   const id = input.id?.trim() || crypto.randomUUID();
@@ -203,16 +233,44 @@ export function buildAgenticChecklistDraft(input: {
       query: row.query,
       qty: row.qty,
       productId: row.product?.id ?? null,
+      placeInRoom: row.placeInRoom,
+      communityModel: row.communityModel
+        ? {
+            kind: row.communityModel.kind,
+            label: row.communityModel.label,
+            modelUrl: row.communityModel.modelUrl,
+            widthIn: row.communityModel.widthIn,
+            heightIn: row.communityModel.heightIn,
+            depthIn: row.communityModel.depthIn,
+          }
+        : row.communityModel === null
+          ? null
+          : undefined,
     })),
   };
 }
 
 /** Re-apply stored catalog product picks after resolveAgenticList runs. */
+function savedCommunityToMatch(saved: SavedAgenticCommunityModel) {
+  return {
+    kind: saved.kind,
+    label: saved.label,
+    previewUrl: null,
+    modelUrl: saved.modelUrl,
+    widthIn: saved.widthIn,
+    heightIn: saved.heightIn,
+    depthIn: saved.depthIn,
+    creatorHandle: null,
+    creatorDisplayName: null,
+    relevance: 0,
+  };
+}
+
 export function applySavedResolvedPicks(
-  items: ResolvedAgenticItemWithOffers[],
+  items: AgenticReviewRow[],
   picks: SavedAgenticResolvedPick[] | undefined,
   products: CuratedProduct[],
-): ResolvedAgenticItemWithOffers[] {
+): AgenticReviewRow[] {
   if (!picks?.length) return items;
 
   const pickByQuery = new Map(picks.map((p) => [p.query.trim().toLowerCase(), p]));
@@ -222,18 +280,28 @@ export function applySavedResolvedPicks(
     if (!pick) return item;
 
     const qty = pick.qty;
+    const placeInRoom = pick.placeInRoom ?? item.placeInRoom;
+    const communityModel =
+      pick.communityModel === null
+        ? null
+        : pick.communityModel
+          ? savedCommunityToMatch(pick.communityModel)
+          : item.communityModel;
+
     if (!pick.productId) {
-      return { ...item, qty };
+      return { ...item, qty, placeInRoom, communityModel };
     }
 
     const product = products.find((p) => p.id === pick.productId);
     if (!product) {
-      return { ...item, qty };
+      return { ...item, qty, placeInRoom, communityModel };
     }
 
     return {
       ...item,
       qty,
+      placeInRoom,
+      communityModel,
       product,
       builtinKind: null,
       warnings: [],

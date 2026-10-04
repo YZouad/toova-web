@@ -593,6 +593,8 @@ function AppContent() {
       if (selection.kind === 'agentic') {
         await handleCreateWithPlan(name, selection.plan, {
           environment: selection.environment,
+          seedItems: selection.seedItems,
+          seedOrder: selection.seedOrder,
           agenticShoppingList: selection.shoppingList,
           agenticBudgetCents: selection.budgetCents,
         });

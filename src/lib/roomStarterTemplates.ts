@@ -12,14 +12,15 @@ import {
   type RoomEnvironment,
 } from '../store';
 import {
-  doorOpenings,
+  aabbsOverlap,
+  doorFootprintAABBs,
+  rotatedFootprintAabb,
+} from './floorClearance';
+import {
   formatLength,
-  getWallSegment,
   lShapePlan,
-  openingWorldPlacement,
   planBounds,
   rectanglePlan,
-  wallById,
   type FloorPlan,
 } from './floorPlanGeometry';
 import {
@@ -643,86 +644,10 @@ export function materializeStarterItems(
   return { items, order: items.map((it) => it.id) };
 }
 
-interface Aabb {
-  minX: number;
-  maxX: number;
-  minZ: number;
-  maxZ: number;
-}
-
-function aabbsOverlap(a: Aabb, b: Aabb): boolean {
-  return a.minX < b.maxX && a.maxX > b.minX && a.minZ < b.maxZ && a.maxZ > b.minZ;
-}
-
-function rotatedFootprintAabb(
-  cx: number,
-  cz: number,
-  width: number,
-  depth: number,
-  rotationY: number,
-): Aabb {
-  const hw = width / 2;
-  const hd = depth / 2;
-  const c = Math.cos(rotationY);
-  const s = Math.sin(rotationY);
-  const corners: Array<[number, number]> = [
-    [-hw, -hd],
-    [hw, -hd],
-    [hw, hd],
-    [-hw, hd],
-  ];
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  for (const [lx, lz] of corners) {
-    const x = cx + lx * c + lz * s;
-    const z = cz - lx * s + lz * c;
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (z < minZ) minZ = z;
-    if (z > maxZ) maxZ = z;
-  }
-  return { minX, maxX, minZ, maxZ };
-}
-
-function doorOpeningAabb(plan: FloorPlan, opening: ReturnType<typeof doorOpenings>[number]): Aabb | null {
-  const wall = wallById(plan, opening.wallId);
-  if (!wall) return null;
-  const seg = getWallSegment(plan, wall);
-  const placed = openingWorldPlacement(plan, opening);
-  if (!seg || !placed) return null;
-  const [tx, tz] = seg.tangent;
-  const inward: [number, number] = [-seg.outward[0], -seg.outward[1]];
-  const half = opening.width / 2;
-  const depth = ROOM.wallThickness + 24;
-  const corners: Array<[number, number]> = [
-    [-half, 0],
-    [half, 0],
-    [half, depth],
-    [-half, depth],
-  ];
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minZ = Infinity;
-  let maxZ = -Infinity;
-  for (const [along, inw] of corners) {
-    const x = placed.cx + tx * along + inward[0] * inw;
-    const z = placed.cz + tz * along + inward[1] * inw;
-    if (x < minX) minX = x;
-    if (x > maxX) maxX = x;
-    if (z < minZ) minZ = z;
-    if (z > maxZ) maxZ = z;
-  }
-  return { minX, maxX, minZ, maxZ };
-}
-
 /** Floor-sitting starter pieces whose footprint intersects a door opening. */
 export function starterItemsBlockingDoors(template: RoomStarterTemplate): StarterFloorSeed[] {
   const plan = template.buildPlan();
-  const doors = doorOpenings(plan)
-    .map((o) => doorOpeningAabb(plan, o))
-    .filter((a): a is Aabb => a != null);
+  const doors = doorFootprintAABBs(plan);
   if (doors.length === 0) return [];
   return template.floorItems.filter((seed) => {
     if (seed.position[1] > 1) return false;
