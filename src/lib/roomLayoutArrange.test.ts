@@ -77,6 +77,11 @@ describe('roomLayoutArrange', () => {
     const desk = arranged.find((it) => it.id === 'desk-1')!;
     const chair = arranged.find((it) => it.id === 'chair-1')!;
     expect(Math.abs(chair.rotationY - desk.rotationY)).toBeCloseTo(Math.PI, 2);
+    const [fx, fz] = [Math.sin(desk.rotationY), Math.cos(desk.rotationY)];
+    const along =
+      (chair.position[0] - desk.position[0]) * fx + (chair.position[2] - desk.position[2]) * fz;
+    expect(along).toBeGreaterThan(0);
+    expect(along).toBeLessThan(desk.size[2] / 2 + chair.size[2] / 2);
     expect(
       footprintBlocksDoor(
         plan,
@@ -102,7 +107,7 @@ describe('roomLayoutArrange', () => {
       chair.size[2],
       chair.rotationY,
     );
-    expect(aabbsOverlap(deskBox, chairBox)).toBe(false);
+    expect(aabbsOverlap(deskBox, chairBox)).toBe(true);
   });
 
   it('moves bed to a different wall between variant 0 and 1', () => {
@@ -145,8 +150,10 @@ describe('roomLayoutArrange', () => {
     const desk = arranged.find((it) => it.id === 'desk-1')!;
     const lamp = arranged.find((it) => it.id === 'lamp-1')!;
     expect(lamp.position[1]).toBe(FURNITURE.desk.size[1]);
-    expect(lamp.position[0]).toBeCloseTo(desk.position[0], 0);
-    expect(lamp.position[2]).toBeCloseTo(desk.position[2], 0);
+    const [fx, fz] = [Math.sin(desk.rotationY), Math.cos(desk.rotationY)];
+    const along =
+      (lamp.position[0] - desk.position[0]) * fx + (lamp.position[2] - desk.position[2]) * fz;
+    expect(along).toBeLessThan(-2);
   });
 
   it('wall-mounts poster at eye level', () => {
@@ -398,5 +405,155 @@ describe('roomLayoutArrange', () => {
     const { items: arranged, movedIds } = arrangeRoomItems(plan, items, 2);
     expect(movedIds).toEqual([]);
     expect(arranged[0]!.position).toEqual(before);
+  });
+
+  it('centers a poster above the bed', () => {
+    const plan = rectanglePlan(inches(12), inches(14));
+    const { items: arranged } = arrangeRoomItems(plan, [
+      floorItem('bed', 'bed-1'),
+      floorItem('imported', 'poster-1', {
+        wallMounted: true,
+        size: [24, 36, 0.5],
+        label: 'Wall poster',
+      }),
+    ], 0);
+    const bed = arranged.find((it) => it.id === 'bed-1')!;
+    const poster = arranged.find((it) => it.id === 'poster-1')!;
+    const walls = allWallSegments(plan);
+    let bedT = 0;
+    let posterT = 0;
+    let best = Infinity;
+    for (const seg of walls) {
+      const [tx, tz] = seg.tangent;
+      const t = (bed.position[0] - seg.start.x) * tx + (bed.position[2] - seg.start.z) * tz;
+      const px = seg.start.x + tx * Math.max(0, Math.min(seg.length, t));
+      const pz = seg.start.z + tz * Math.max(0, Math.min(seg.length, t));
+      const dist = Math.hypot(bed.position[0] - px, bed.position[2] - pz);
+      if (dist < best) {
+        best = dist;
+        bedT = t;
+        posterT = (poster.position[0] - seg.start.x) * tx + (poster.position[2] - seg.start.z) * tz;
+      }
+    }
+    expect(Math.abs(posterT - bedT)).toBeLessThan(8);
+    expect(poster.position[1]).toBeCloseTo(WALL_POSTER_CENTER_Y - 18, 1);
+  });
+
+  it('pulls a smaller rug past the foot of the bed', () => {
+    const plan = rectanglePlan(inches(12), inches(14));
+    const { items: arranged } = arrangeRoomItems(plan, [
+      floorItem('bed', 'bed-1'),
+      floorItem('imported', 'rug-1', { size: [30, 1, 40], label: 'Rug' }),
+    ], 0);
+    const bed = arranged.find((it) => it.id === 'bed-1')!;
+    const rug = arranged.find((it) => it.id === 'rug-1')!;
+    const [fx, fz] = [Math.sin(bed.rotationY), Math.cos(bed.rotationY)];
+    const along = (rug.position[0] - bed.position[0]) * fx + (rug.position[2] - bed.position[2]) * fz;
+    expect(along).toBeGreaterThan(4);
+  });
+
+  it('puts the desk on the window wall when the bed is not already there', () => {
+    const plan = rectanglePlan(inches(12), inches(14));
+    const windowWall = plan.openings.find((o) => o.kind === 'window')!;
+    const { items: arranged } = arrangeRoomItems(plan, [
+      floorItem('bed', 'bed-1'),
+      floorItem('desk', 'desk-1'),
+    ], 0);
+    const desk = arranged.find((it) => it.id === 'desk-1')!;
+    const seg = allWallSegments(plan).find((s) => s.wall.id === windowWall.wallId)!;
+    const [tx, tz] = seg.tangent;
+    const t = Math.max(0, Math.min(seg.length, (desk.position[0] - seg.start.x) * tx + (desk.position[2] - seg.start.z) * tz));
+    const px = seg.start.x + tx * t;
+    const pz = seg.start.z + tz * t;
+    expect(Math.hypot(desk.position[0] - px, desk.position[2] - pz)).toBeLessThan(desk.size[2] / 2 + 16);
+  });
+
+  it('faces the bed toward the door on variant 1', () => {
+    const plan = rectanglePlan(inches(10), inches(12));
+    const door = plan.openings.find((o) => o.kind === 'door')!;
+    const { items: arranged } = arrangeRoomItems(plan, [floorItem('bed', 'bed-1')], 1);
+    const bed = arranged.find((it) => it.id === 'bed-1')!;
+    const doorSeg = allWallSegments(plan).find((s) => s.wall.id === door.wallId)!;
+    const [tx, tz] = doorSeg.tangent;
+    const t = (bed.position[0] - doorSeg.start.x) * tx + (bed.position[2] - doorSeg.start.z) * tz;
+    const clamped = Math.max(0, Math.min(doorSeg.length, t));
+    const px = doorSeg.start.x + tx * clamped;
+    const pz = doorSeg.start.z + tz * clamped;
+    const dist = Math.hypot(bed.position[0] - px, bed.position[2] - pz);
+    expect(dist).toBeGreaterThan(doorSeg.length * 0.6);
+  });
+
+  it('leaves a pinned bed where it is', () => {
+    const plan = rectanglePlan(inches(12), inches(14));
+    const bed = floorItem('bed', 'bed-1', { position: [40, 0, 50], rotationY: 0.4 });
+    const { items: arranged, movedIds } = arrangeRoomItems(
+      plan,
+      [bed, floorItem('nightstand', 'ns-1')],
+      0,
+      { pinnedIds: ['bed-1'] },
+    );
+    const next = arranged.find((it) => it.id === 'bed-1')!;
+    expect(next.position).toEqual(bed.position);
+    expect(next.rotationY).toBe(bed.rotationY);
+    expect(movedIds).not.toContain('bed-1');
+    expect(movedIds).toContain('ns-1');
+  });
+
+  it('keeps a book on a desk that cannot move', () => {
+    const plan = rectanglePlan(inches(12), inches(14));
+    const desk = floorItem('desk', 'desk-1', { position: [30, 0, 40], rotationY: 0.2 });
+    const book = floorItem('imported', 'book-1', {
+      position: [36, desk.size[1], 44],
+      rotationY: 0.2,
+      size: [8, 2, 6],
+      label: 'Notebook',
+    });
+    const { items: arranged } = arrangeRoomItems(plan, [desk, book], 0, { pinnedIds: ['desk-1'] });
+    const nextDesk = arranged.find((it) => it.id === 'desk-1')!;
+    const nextBook = arranged.find((it) => it.id === 'book-1')!;
+    expect(nextDesk.position).toEqual(desk.position);
+    expect(nextBook.position[1]).toBeCloseTo(nextDesk.position[1] + nextDesk.size[1], 1);
+    const dx = book.position[0] - desk.position[0];
+    const dz = book.position[2] - desk.position[2];
+    expect(nextBook.position[0]).toBeCloseTo(nextDesk.position[0] + dx, 1);
+    expect(nextBook.position[2]).toBeCloseTo(nextDesk.position[2] + dz, 1);
+  });
+
+  it('sets a coffee table in front of a sofa', () => {
+    const plan = rectanglePlan(inches(14), inches(16));
+    const { items: arranged, skippedIds } = arrangeRoomItems(plan, [
+      floorItem('imported', 'sofa-1', { size: [72, 32, 30], label: 'Sofa' }),
+      floorItem('imported', 'table-1', { size: [40, 16, 20], label: 'Coffee table' }),
+    ], 0);
+    expect(skippedIds).toEqual([]);
+    const sofa = arranged.find((it) => it.id === 'sofa-1')!;
+    const table = arranged.find((it) => it.id === 'table-1')!;
+    const [fx, fz] = [Math.sin(sofa.rotationY), Math.cos(sofa.rotationY)];
+    const along =
+      (table.position[0] - sofa.position[0]) * fx + (table.position[2] - sofa.position[2]) * fz;
+    expect(along).toBeGreaterThan(sofa.size[2] / 2);
+    expect(floorLayoutHasOverlaps(arranged)).toBe(false);
+  });
+
+  it('places a mirror above a dresser and a plant near a window', () => {
+    const plan = rectanglePlan(inches(12), inches(14));
+    const windowWall = plan.openings.find((o) => o.kind === 'window')!;
+    const { items: arranged } = arrangeRoomItems(plan, [
+      floorItem('dresser', 'd1'),
+      floorItem('imported', 'mirror-1', { size: [24, 30, 1], label: 'Mirror' }),
+      floorItem('imported', 'plant-1', { size: [12, 24, 12], label: 'Plant' }),
+    ], 0);
+    const dresser = arranged.find((it) => it.id === 'd1')!;
+    const mirror = arranged.find((it) => it.id === 'mirror-1')!;
+    const plant = arranged.find((it) => it.id === 'plant-1')!;
+    expect(mirror.position[1]).toBeGreaterThan(dresser.size[1]);
+    expect(Math.hypot(mirror.position[0] - dresser.position[0], mirror.position[2] - dresser.position[2])).toBeLessThan(20);
+    const seg = allWallSegments(plan).find((s) => s.wall.id === windowWall.wallId)!;
+    const [tx, tz] = seg.tangent;
+    const t = (plant.position[0] - seg.start.x) * tx + (plant.position[2] - seg.start.z) * tz;
+    expect(t).toBeGreaterThan(-8);
+    expect(t).toBeLessThan(seg.length + 8);
+    const inward = -((plant.position[0] - seg.start.x) * seg.outward[0] + (plant.position[2] - seg.start.z) * seg.outward[1]);
+    expect(inward).toBeLessThan(plant.size[2] / 2 + 24);
   });
 });

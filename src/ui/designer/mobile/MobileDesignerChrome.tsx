@@ -67,6 +67,7 @@ export interface MobileDesignerChromeProps {
   ) => void;
   onOpenImport: () => void;
   onOpenThrixelRevise?: (catalogKind: string) => void;
+  onChangePoster?: () => void;
   searchTriggerRef: RefObject<HTMLButtonElement | null>;
 }
 
@@ -96,6 +97,7 @@ export function MobileDesignerChrome({
   onImportComplete,
   onOpenImport,
   onOpenThrixelRevise,
+  onChangePoster,
   searchTriggerRef,
 }: MobileDesignerChromeProps) {
   const mobile = useMobileDesignerChrome(chrome);
@@ -362,6 +364,7 @@ export function MobileDesignerChrome({
               ? () => onOpenThrixelRevise(chrome.selectedItem!.catalogKind!)
               : undefined
           }
+          onChangePoster={onChangePoster}
         />
       ) : null}
 

@@ -49,7 +49,10 @@ export function HeroTurntable() {
         const data = await loadPublicRoomLayout(
           MARKETING_SHOWCASE.room.handle,
           MARKETING_SHOWCASE.room.roomId,
-          { assetUrlOverrides: MARKETING_SHOWCASE.roomAssetMap },
+          {
+            assetUrlOverrides: MARKETING_SHOWCASE.roomAssetMap,
+            localAssetsOnly: true,
+          },
         );
         if (cancelled) return;
         hydrateLayout(data.items, data.order);

@@ -4,6 +4,8 @@ import { isGuestWorkspaceId } from './guestDesignSnapshot';
 
 export const AGENTIC_SHOPPING_MANIFEST_KEY = 'toova-agentic-shopping-manifest';
 
+export type AgenticManifestResolution = 'have' | 'skip';
+
 export interface AgenticShoppingManifestEntry {
   id: string;
   query: string;
@@ -13,6 +15,16 @@ export interface AgenticShoppingManifestEntry {
   bankPosterLabel?: string;
   catalogProductId?: string | null;
   dismissed?: boolean;
+  /** User marked as already owned or not needed (local-first; not synced remotely yet). */
+  resolution?: AgenticManifestResolution | null;
+}
+
+export function manifestResolutionLabel(
+  resolution: AgenticManifestResolution | null | undefined,
+): string | null {
+  if (resolution === 'have') return 'Have';
+  if (resolution === 'skip') return 'Skip';
+  return null;
 }
 
 function manifestEntryId(query: string): string {
@@ -74,6 +86,12 @@ export function activeManifestEntries(
   return entries.filter((e) => !e.dismissed);
 }
 
+export function manifestEntryNeedsPurchase(
+  entry: AgenticShoppingManifestEntry,
+): boolean {
+  return !entry.resolution;
+}
+
 /** Query-only rows not already represented by a catalog shopping-list product. */
 export function manifestSearchOnlyEntries(
   entries: AgenticShoppingManifestEntry[],
@@ -81,6 +99,16 @@ export function manifestSearchOnlyEntries(
 ): AgenticShoppingManifestEntry[] {
   return activeManifestEntries(entries).filter(
     (e) => !e.catalogProductId || !catalogProductIds.has(e.catalogProductId),
+  );
+}
+
+/** Search-only manifest rows still on the shopping list (excludes resolved / dismissed). */
+export function manifestUnresolvedSearchEntries(
+  entries: AgenticShoppingManifestEntry[],
+  catalogProductIds: Set<string>,
+): AgenticShoppingManifestEntry[] {
+  return manifestSearchOnlyEntries(entries, catalogProductIds).filter((e) =>
+    manifestEntryNeedsPurchase(e),
   );
 }
 

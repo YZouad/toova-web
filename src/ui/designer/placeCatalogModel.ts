@@ -37,7 +37,9 @@ export async function placeFromCatalog(model: GalleryModel, userId?: string | nu
       size: dims,
       catalogSizeIn: dims,
       catalogKind: model.kind,
+      catalogTags: model.tags.length ? [...model.tags] : undefined,
       curatedProductId: localProduct?.id,
+      wallMounted: model.tags.includes('poster') ? true : undefined,
     });
     recordCatalogPlaceEngagement(model, userId ?? null);
   }

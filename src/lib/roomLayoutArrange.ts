@@ -1,5 +1,5 @@
 import { FURNITURE, isWallShelfKind, type FurnitureKind, type GalleryFurnitureKind } from '../furniture/registry';
-import { defaultWallShelfPose } from '../interaction/collision';
+import { DEFAULT_SHELF_ELEVATION, defaultWallShelfPose } from '../interaction/collision';
 import type { Item } from '../store';
 import { isChecklistRug } from './checklistPublicGlbs';
 import {
@@ -11,6 +11,7 @@ import {
 } from './floorClearance';
 import {
   allWallSegments,
+  planCentroid,
   type FloorPlan,
   type FloorPlanVertex,
   type WallSegment,
@@ -25,6 +26,16 @@ export const WALL_POSTER_CENTER_Y = 57;
 const WALL_INSET = 4;
 const PIECE_GAP = 8;
 const CHAIR_GAP = 10;
+/** Clear landing inside the door, deeper than the swing itself. */
+const AISLE_DEPTH = 36;
+/** Standing room kept in front of the bed when another spot exists. */
+const BED_FOOT_CLEAR = 24;
+/** Room to open wardrobe doors. */
+const WARDROBE_SWING = 20;
+/** How far a desk chair slides under the desktop. */
+const CHAIR_TUCK = 8;
+/** How far a smaller rug is pulled past the foot of the bed. */
+const RUG_SHOW = 6;
 
 type WallSpan = { start: number; end: number };
 type WallOccupancy = Map<string, WallSpan[]>;
@@ -33,6 +44,11 @@ export interface ArrangeResult {
   items: Item[];
   movedIds: string[];
   skippedIds: string[];
+}
+
+export interface ArrangeOptions {
+  /** Pieces that stay where they are. Everything else arranges around them. */
+  pinnedIds?: readonly string[];
 }
 
 type ItemRole =
@@ -45,6 +61,12 @@ type ItemRole =
   | 'rug'
   | 'wallPoster'
   | 'shelf'
+  | 'sofa'
+  | 'coffeeTable'
+  | 'diningTable'
+  | 'screen'
+  | 'mirror'
+  | 'plant'
   | 'leftover'
   | 'skip';
 
@@ -72,32 +94,13 @@ function inwardRotationY(seg: WallSegment): number {
 }
 
 function doorBlockedIntervals(plan: FloorPlan, seg: WallSegment): Array<{ start: number; end: number }> {
-  const doors = doorFootprintAABBs(plan);
   const intervals: Array<{ start: number; end: number }> = [];
-  const [tx, tz] = seg.tangent;
-  const sx = seg.start.x;
-  const sz = seg.start.z;
-
-  for (const door of doors) {
-    const corners: Array<[number, number]> = [
-      [door.minX, door.minZ],
-      [door.maxX, door.minZ],
-      [door.maxX, door.maxZ],
-      [door.minX, door.maxZ],
-    ];
-    let minT = Infinity;
-    let maxT = -Infinity;
-    for (const [x, z] of corners) {
-      const t = (x - sx) * tx + (z - sz) * tz;
-      if (t < minT) minT = t;
-      if (t > maxT) maxT = t;
-    }
-    if (maxT > 0 && minT < seg.length) {
-      intervals.push({
-        start: Math.max(0, minT - PIECE_GAP),
-        end: Math.min(seg.length, maxT + PIECE_GAP),
-      });
-    }
+  for (const opening of plan.openings) {
+    if (opening.kind !== 'door' || opening.wallId !== seg.wall.id) continue;
+    intervals.push({
+      start: Math.max(0, opening.offset - PIECE_GAP),
+      end: Math.min(seg.length, opening.offset + opening.width + PIECE_GAP),
+    });
   }
   return intervals;
 }
@@ -134,15 +137,33 @@ function itemFootprintSize(item: Item): [number, number, number] {
   return [item.size[0], item.size[1], item.size[2]];
 }
 
+function rotatesAgainstWall(item: Item): boolean {
+  const role = classifyItem(item);
+  return (
+    role === 'bed' ||
+    role === 'desk' ||
+    role === 'storage' ||
+    role === 'sofa' ||
+    role === 'diningTable' ||
+    role === 'coffeeTable' ||
+    role === 'plant' ||
+    role === 'leftover'
+  );
+}
+
 function floorOrientations(item: Item): FloorOrientation[] {
   const [w, h, d] = itemFootprintSize(item);
-  if (item.kind !== 'bed') {
-    return [{ widthAlong: w, depthIn: d, rotationOffset: 0, size: [w, h, d] }];
-  }
+  const primary: FloorOrientation = { widthAlong: w, depthIn: d, rotationOffset: 0, size: [w, h, d] };
+  if (!rotatesAgainstWall(item) || Math.abs(w - d) < 2) return [primary];
   return [
-    { widthAlong: w, depthIn: d, rotationOffset: 0, size: [w, h, d] },
+    primary,
     { widthAlong: d, depthIn: w, rotationOffset: Math.PI / 2, size: [d, h, w] },
   ];
+}
+
+function withOrientSize(item: Item, orient: FloorOrientation): Item {
+  if (orient.rotationOffset === 0) return item;
+  return { ...item, size: orient.size };
 }
 
 function classifyItem(item: Item): ItemRole {
@@ -167,6 +188,12 @@ function classifyItem(item: Item): ItemRole {
   if (/\brug\b/.test(label)) return 'rug';
   if (/\b(poster|artwork|wall art|canvas|print)\b/.test(label)) return 'wallPoster';
   if (/\blamp\b/.test(label)) return 'lamp';
+  if (/\b(sofa|couch|loveseat)\b/.test(label)) return 'sofa';
+  if (/\bcoffee table\b/.test(label)) return 'coffeeTable';
+  if (/\bdining table\b/.test(label)) return 'diningTable';
+  if (/\b(tv|television)\b/.test(label)) return 'screen';
+  if (/\bmirror\b/.test(label)) return 'mirror';
+  if (/\b(plant|planter)\b/.test(label)) return 'plant';
   return 'leftover';
 }
 
@@ -182,7 +209,9 @@ function isFloorBlockerRole(role: ItemRole): boolean {
     role !== 'lamp' &&
     role !== 'wallPoster' &&
     role !== 'rug' &&
-    role !== 'shelf'
+    role !== 'shelf' &&
+    role !== 'screen' &&
+    role !== 'mirror'
   );
 }
 
@@ -256,10 +285,28 @@ function canPlace(
   rotationY: number,
   placed: PlacedItem[],
   doors: FootprintAabb[],
+  reserved: FootprintAabb[] = [],
+  honorReserved = true,
 ): boolean {
   if (footprintBlocksDoor(plan, cx, cz, width, depth, rotationY, doors)) return false;
   const aabb = rotatedFootprintAabb(cx, cz, width, depth, rotationY);
+  if (honorReserved && reserved.some((zone) => aabbsOverlap(aabb, zone))) return false;
   return !blockingPlaced(placed).some((p) => aabbsOverlap(aabb, p.aabb));
+}
+
+/** A desk chair slid under its desk overlaps that desk on purpose. */
+function isChairTuckedAtDesk(chair: Item, desk: Item): boolean {
+  if (classifyItem(chair) !== 'chair' || classifyItem(desk) !== 'desk') return false;
+  const target = desk.rotationY + Math.PI;
+  const yaw = Math.atan2(Math.sin(chair.rotationY - target), Math.cos(chair.rotationY - target));
+  if (Math.abs(yaw) > 0.4) return false;
+  const [fx, fz] = forwardXZ(desk.rotationY);
+  const dx = chair.position[0] - desk.position[0];
+  const dz = chair.position[2] - desk.position[2];
+  const along = dx * fx + dz * fz;
+  const side = Math.abs(dx * fz + dz * -fx);
+  if (along <= 4) return false;
+  return along < desk.size[2] / 2 + chair.size[2] / 2 + 4 && side <= desk.size[0] / 2 + 2;
 }
 
 export function floorLayoutHasOverlaps(items: Item[]): boolean {
@@ -292,6 +339,7 @@ export function floorLayoutHasOverlaps(items: Item[]): boolean {
         b.rotationY,
       );
       if (tuckedUnderHost(a, b) || tuckedUnderHost(b, a)) continue;
+      if (isChairTuckedAtDesk(a, b) || isChairTuckedAtDesk(b, a)) continue;
       if (aabbsOverlap(boxA, boxB)) return true;
     }
   }
@@ -308,6 +356,8 @@ function placeOnWall(
   placed: PlacedItem[],
   doors: FootprintAabb[],
   occupancy: WallOccupancy,
+  reserved: FootprintAabb[] = [],
+  honorReserved = true,
 ): PlacedItem | null {
   const rotationY = inwardRotationY(seg) + orient.rotationOffset;
   const blocked = [
@@ -328,20 +378,28 @@ function placeOnWall(
   const cx = seg.start.x + tx * tAlong + interiorX * inset;
   const cz = seg.start.z + tz * tAlong + interiorZ * inset;
 
-  if (!canPlace(plan, cx, cz, orient.size[0], orient.size[2], rotationY, placed, doors)) {
+  if (
+    !canPlace(
+      plan,
+      cx,
+      cz,
+      orient.size[0],
+      orient.size[2],
+      rotationY,
+      placed,
+      doors,
+      reserved,
+      honorReserved,
+    )
+  ) {
     return null;
   }
 
   const aabb = rotatedFootprintAabb(cx, cz, orient.size[0], orient.size[2], rotationY);
-  const sizedItem =
-    orient.rotationOffset === 0 || item.kind !== 'bed'
-      ? item
-      : { ...item, size: orient.size };
-
   markWallSpan(seg.wall.id, tStart, tEnd, occupancy);
 
   return {
-    item: sizedItem,
+    item: withOrientSize(item, orient),
     cx,
     cz,
     rotationY,
@@ -360,6 +418,8 @@ function tryPlaceOnWallCenter(
   doors: FootprintAabb[],
   occupancy: WallOccupancy,
   tOverride?: number,
+  reserved: FootprintAabb[] = [],
+  honorReserved = true,
 ): PlacedItem | null {
   for (const orient of floorOrientations(item)) {
     const tAlong = tOverride ?? seg.length / 2;
@@ -373,6 +433,8 @@ function tryPlaceOnWallCenter(
       placed,
       doors,
       occupancy,
+      reserved,
+      honorReserved,
     );
     if (placedItem) return placedItem;
   }
@@ -389,6 +451,8 @@ function tryPlaceOnWallGreedy(
   doors: FootprintAabb[],
   occupancy: WallOccupancy,
   avoidWindows = false,
+  reserved: FootprintAabb[] = [],
+  honorReserved = true,
 ): PlacedItem | null {
   for (const orient of floorOrientations(item)) {
     for (const seg of walls) {
@@ -417,17 +481,24 @@ function tryPlaceOnWallGreedy(
         const cx = seg.start.x + tx * cursor + interiorX * inset;
         const cz = seg.start.z + tz * cursor + interiorZ * inset;
         if (
-          canPlace(plan, cx, cz, orient.size[0], orient.size[2], rotationY, placed, doors)
+          canPlace(
+            plan,
+            cx,
+            cz,
+            orient.size[0],
+            orient.size[2],
+            rotationY,
+            placed,
+            doors,
+            reserved,
+            honorReserved,
+          )
         ) {
           const aabb = rotatedFootprintAabb(cx, cz, orient.size[0], orient.size[2], rotationY);
-          const sizedItem =
-            orient.rotationOffset === 0 || item.kind !== 'bed'
-              ? item
-              : { ...item, size: orient.size };
           markWallSpan(seg.wall.id, tStart, tEnd, occupancy);
           wallCursors.set(seg.wall.id, tEnd + PIECE_GAP + widthAlong / 2);
           return {
-            item: sizedItem,
+            item: withOrientSize(item, orient),
             cx,
             cz,
             rotationY,
@@ -469,18 +540,16 @@ function poseAgainstWall(
   item: Item,
   role: ItemRole,
   tAlong: number,
+  orient: FloorOrientation,
   positionY: number,
 ): PlacedItem {
-  const orient = floorOrientations(item)[0]!;
   const rotationY = inwardRotationY(seg) + orient.rotationOffset;
   const [tx, tz] = seg.tangent;
   const inset = orient.depthIn / 2 + WALL_INSET;
   const cx = seg.start.x + tx * tAlong - seg.outward[0] * inset;
   const cz = seg.start.z + tz * tAlong - seg.outward[1] * inset;
-  const sizedItem =
-    orient.rotationOffset === 0 || item.kind !== 'bed' ? item : { ...item, size: orient.size };
   return {
-    item: sizedItem,
+    item: withOrientSize(item, orient),
     cx,
     cz,
     rotationY,
@@ -518,7 +587,8 @@ function wallAnchor(
 
 /** Upper dresser or bookshelf, back flush to the same wall as the piece under it. */
 function stackOnColumn(item: Item, role: ItemRole, column: StorageColumn): PlacedItem {
-  return poseAgainstWall(column.seg, item, role, column.tAlong, column.topY);
+  const orient = floorOrientations(item)[0]!;
+  return poseAgainstWall(column.seg, item, role, column.tAlong, orient, column.topY);
 }
 
 function overlapArea(a: FootprintAabb, b: FootprintAabb): number {
@@ -575,37 +645,41 @@ function forceFlushToWall(
   doors: FootprintAabb[],
   occupancy: WallOccupancy,
   avoidWindows = false,
+  reserved: FootprintAabb[] = [],
+  honorReserved = true,
 ): PlacedItem | null {
-  const orient = floorOrientations(item)[0];
-  if (!orient || walls.length === 0) return null;
-  for (const seg of walls) {
-    const gap = 2;
-    const start = orient.widthAlong / 2 + gap;
-    const end = seg.length - orient.widthAlong / 2 - gap;
-    if (start > end) continue;
-    for (let t = start; t <= end; t += 4) {
-      const pose = poseAgainstWall(seg, item, role, t, 0);
-      if (avoidWindows && coversWindow(plan, seg, t - orient.widthAlong / 2, t + orient.widthAlong / 2)) {
-        continue;
-      }
-      if (
-        footprintBlocksDoor(
-          plan,
-          pose.cx,
-          pose.cz,
-          orient.size[0],
-          orient.size[2],
-          pose.rotationY,
-          doors,
-        )
-      ) {
-        continue;
-      }
-      let area = 0;
-      for (const other of blockingPlaced(placed)) area += overlapArea(pose.aabb, other.aabb);
-      if (area === 0) {
-        markWallSpan(seg.wall.id, t - orient.widthAlong / 2, t + orient.widthAlong / 2, occupancy);
-        return pose;
+  if (walls.length === 0) return null;
+  for (const orient of floorOrientations(item)) {
+    for (const seg of walls) {
+      const gap = 2;
+      const start = orient.widthAlong / 2 + gap;
+      const end = seg.length - orient.widthAlong / 2 - gap;
+      if (start > end) continue;
+      for (let t = start; t <= end; t += 4) {
+        const pose = poseAgainstWall(seg, item, role, t, orient, 0);
+        if (avoidWindows && coversWindow(plan, seg, t - orient.widthAlong / 2, t + orient.widthAlong / 2)) {
+          continue;
+        }
+        if (
+          footprintBlocksDoor(
+            plan,
+            pose.cx,
+            pose.cz,
+            orient.size[0],
+            orient.size[2],
+            pose.rotationY,
+            doors,
+          )
+        ) {
+          continue;
+        }
+        if (honorReserved && reserved.some((zone) => aabbsOverlap(pose.aabb, zone))) continue;
+        let area = 0;
+        for (const other of blockingPlaced(placed)) area += overlapArea(pose.aabb, other.aabb);
+        if (area === 0) {
+          markWallSpan(seg.wall.id, t - orient.widthAlong / 2, t + orient.widthAlong / 2, occupancy);
+          return pose;
+        }
       }
     }
   }
@@ -641,42 +715,17 @@ function pickBedWall(
   item: Item,
   variant: LayoutVariant,
   walls: WallSegment[],
+  placed: PlacedItem[] = [],
+  reserved: FootprintAabb[] = [],
+  honorReserved = true,
 ): { seg: WallSegment; tAlong: number } | null {
   const sorted = [...walls].sort((a, b) => b.length - a.length);
   const doors = doorFootprintAABBs(plan);
   const probeOccupancy: WallOccupancy = new Map();
 
-  if (variant === 2) {
-    const corners = adjacentWallPairs(plan).sort(
-      (a, b) => b.segA.length + b.segB.length - (a.segA.length + a.segB.length),
-    );
-    for (const { segA, vertex } of corners) {
-      for (const orient of floorOrientations(item)) {
-        const tAlong = tFromCorner(segA, vertex, orient.widthAlong);
-        const placedItem = placeOnWall(
-          plan,
-          item,
-          'bed',
-          segA,
-          tAlong,
-          orient,
-          [],
-          doors,
-          probeOccupancy,
-        );
-        if (placedItem) {
-          return { seg: segA, tAlong };
-        }
-      }
-    }
-    return null;
-  }
-
-  const startIndex = variant === 0 ? 0 : Math.min(1, sorted.length - 1);
-  for (let i = startIndex; i < sorted.length; i++) {
-    const seg = sorted[i]!;
+  const trySeg = (seg: WallSegment, tFor: (orient: FloorOrientation) => number) => {
     for (const orient of floorOrientations(item)) {
-      const tAlong = seg.length / 2;
+      const tAlong = tFor(orient);
       const placedItem = placeOnWall(
         plan,
         item,
@@ -684,14 +733,43 @@ function pickBedWall(
         seg,
         tAlong,
         orient,
-        [],
+        placed,
         doors,
         probeOccupancy,
+        reserved,
+        honorReserved,
       );
-      if (placedItem) {
-        return { seg, tAlong };
-      }
+      if (placedItem) return { seg, tAlong };
     }
+    return null;
+  };
+
+  if (variant === 2) {
+    const corners = adjacentWallPairs(plan).sort(
+      (a, b) => b.segA.length + b.segB.length - (a.segA.length + b.segB.length),
+    );
+    for (const { segA, vertex } of corners) {
+      const hit = trySeg(segA, (orient) => tFromCorner(segA, vertex, orient.widthAlong));
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  if (variant === 1) {
+    const seen = wallSeenFromDoor(plan, sorted);
+    const ordered = seen
+      ? [seen, ...sorted.filter((w) => w.wall.id !== seen.wall.id)]
+      : sorted.slice(Math.min(1, sorted.length - 1));
+    for (const seg of ordered) {
+      const hit = trySeg(seg, () => seg.length / 2);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  for (const seg of sorted) {
+    const hit = trySeg(seg, () => seg.length / 2);
+    if (hit) return hit;
   }
   return null;
 }
@@ -746,6 +824,8 @@ function placeNightstandBesideBed(
   placed: PlacedItem[],
   doors: FootprintAabb[],
   occupancy: WallOccupancy,
+  reserved: FootprintAabb[] = [],
+  honorReserved = true,
 ): PlacedItem | null {
   const [tx, tz] = bedSeg.tangent;
   const bedHalfAlong = halfExtentAlongWall(bed, bedSeg);
@@ -768,6 +848,8 @@ function placeNightstandBesideBed(
     doors,
     occupancy,
     tAlong,
+    reserved,
+    honorReserved,
   );
 }
 
@@ -777,66 +859,311 @@ function placeChairAtDesk(
   desk: PlacedItem,
   placed: PlacedItem[],
   doors: FootprintAabb[],
+  reserved: FootprintAabb[] = [],
+  honorReserved = true,
 ): PlacedItem | null {
+  const others = placed.filter((p) => p.item.id !== desk.item.id);
   const [fx, fz] = forwardXZ(desk.rotationY);
-  const deskDepth = desk.item.size[2];
-  const chairDepth = chair.size[2];
-  const dist = deskDepth / 2 + CHAIR_GAP + chairDepth / 2;
-  const cx = desk.cx + fx * dist;
-  const cz = desk.cz + fz * dist;
-  const rotationY = desk.rotationY + Math.PI;
+  const rx = fz;
+  const rz = -fx;
+  const tuckDist = desk.item.size[2] / 2 + chair.size[2] / 2 - CHAIR_TUCK;
+  const gapDist = desk.item.size[2] / 2 + CHAIR_GAP + chair.size[2] / 2;
+  const sideDist = desk.item.size[0] / 2 + CHAIR_GAP + chair.size[0] / 2;
+  const attempts: Array<{ cx: number; cz: number; rotationY: number }> = [
+    {
+      cx: desk.cx + fx * tuckDist,
+      cz: desk.cz + fz * tuckDist,
+      rotationY: desk.rotationY + Math.PI,
+    },
+    {
+      cx: desk.cx + fx * gapDist,
+      cz: desk.cz + fz * gapDist,
+      rotationY: desk.rotationY + Math.PI,
+    },
+    {
+      cx: desk.cx + rx * sideDist,
+      cz: desk.cz + rz * sideDist,
+      rotationY: Math.atan2(-rx, -rz),
+    },
+    {
+      cx: desk.cx - rx * sideDist,
+      cz: desk.cz - rz * sideDist,
+      rotationY: Math.atan2(rx, rz),
+    },
+  ];
 
-  if (!canPlace(plan, cx, cz, chair.size[0], chair.size[2], rotationY, placed, doors)) {
-    return null;
+  for (const attempt of attempts) {
+    if (
+      !canPlace(
+        plan,
+        attempt.cx,
+        attempt.cz,
+        chair.size[0],
+        chair.size[2],
+        attempt.rotationY,
+        others,
+        doors,
+        reserved,
+        honorReserved,
+      )
+    ) {
+      continue;
+    }
+    return {
+      item: chair,
+      cx: attempt.cx,
+      cz: attempt.cz,
+      rotationY: attempt.rotationY,
+      positionY: 0,
+      aabb: rotatedFootprintAabb(attempt.cx, attempt.cz, chair.size[0], chair.size[2], attempt.rotationY),
+      role: 'chair',
+    };
   }
-
-  return {
-    item: chair,
-    cx,
-    cz,
-    rotationY,
-    positionY: 0,
-    aabb: rotatedFootprintAabb(cx, cz, chair.size[0], chair.size[2], rotationY),
-    role: 'chair',
-  };
+  return null;
 }
 
 function placeRugUnderBed(bed: PlacedItem, rug: Item): PlacedItem {
+  const [fx, fz] = forwardXZ(bed.rotationY);
+  const bedDepth = bed.item.size[2];
+  const rugDepth = rug.size[2];
+  const shift = rugDepth < bedDepth - 1 ? (bedDepth - rugDepth) / 2 + RUG_SHOW : 0;
+  const cx = bed.cx + fx * shift;
+  const cz = bed.cz + fz * shift;
   return {
     item: rug,
-    cx: bed.cx,
-    cz: bed.cz,
+    cx,
+    cz,
     rotationY: bed.rotationY,
     positionY: 0,
-    aabb: rotatedFootprintAabb(bed.cx, bed.cz, rug.size[0], rug.size[2], bed.rotationY),
+    aabb: rotatedFootprintAabb(cx, cz, rug.size[0], rug.size[2], bed.rotationY),
     role: 'rug',
   };
 }
 
-function placeWallPoster(
+function doorAisleAABBs(plan: FloorPlan): FootprintAabb[] {
+  const boxes: FootprintAabb[] = [];
+  for (const opening of plan.openings) {
+    if (opening.kind !== 'door') continue;
+    const seg = allWallSegments(plan).find((s) => s.wall.id === opening.wallId);
+    if (!seg) continue;
+    const [tx, tz] = seg.tangent;
+    const inwardX = -seg.outward[0];
+    const inwardZ = -seg.outward[1];
+    const along = opening.offset + opening.width / 2;
+    const cx = seg.start.x + tx * along + inwardX * (AISLE_DEPTH / 2);
+    const cz = seg.start.z + tz * along + inwardZ * (AISLE_DEPTH / 2);
+    boxes.push(rotatedFootprintAabb(cx, cz, opening.width, AISLE_DEPTH, Math.atan2(inwardX, inwardZ)));
+  }
+  return boxes;
+}
+
+function frontClearZone(piece: PlacedItem, clearDepth: number): FootprintAabb {
+  const [fx, fz] = forwardXZ(piece.rotationY);
+  const cx = piece.cx + fx * (piece.item.size[2] / 2 + clearDepth / 2);
+  const cz = piece.cz + fz * (piece.item.size[2] / 2 + clearDepth / 2);
+  return rotatedFootprintAabb(
+    cx,
+    cz,
+    Math.max(piece.item.size[0] - 4, 8),
+    clearDepth,
+    piece.rotationY,
+  );
+}
+
+function wallSeenFromDoor(plan: FloorPlan, walls: WallSegment[]): WallSegment | null {
+  const door = plan.openings.find((o) => o.kind === 'door');
+  if (!door) return null;
+  const doorSeg = walls.find((w) => w.wall.id === door.wallId);
+  if (!doorSeg) return null;
+  return oppositeWall(doorSeg, walls);
+}
+
+function neighborWalls(plan: FloorPlan, seg: WallSegment): WallSegment[] {
+  const out: WallSegment[] = [];
+  for (const pair of adjacentWallPairs(plan)) {
+    const other =
+      pair.segA.wall.id === seg.wall.id
+        ? pair.segB
+        : pair.segB.wall.id === seg.wall.id
+          ? pair.segA
+          : null;
+    if (other && !out.some((s) => s.wall.id === other.wall.id)) out.push(other);
+  }
+  return out;
+}
+
+function uniqueWalls(list: Array<WallSegment | null | undefined>): WallSegment[] {
+  const out: WallSegment[] = [];
+  for (const seg of list) {
+    if (!seg) continue;
+    if (out.some((s) => s.wall.id === seg.wall.id)) continue;
+    out.push(seg);
+  }
+  return out;
+}
+
+function wallsWithWindows(plan: FloorPlan, walls: WallSegment[]): WallSegment[] {
+  const ids = new Set(plan.openings.filter((o) => o.kind === 'window').map((o) => o.wallId));
+  return walls.filter((w) => ids.has(w.wall.id));
+}
+
+function tOf(seg: WallSegment, x: number, z: number): number {
+  const [tx, tz] = seg.tangent;
+  return (x - seg.start.x) * tx + (z - seg.start.z) * tz;
+}
+
+function isWardrobeItem(item: Item): boolean {
+  return item.kind === 'wardrobe' || /\bwardrobe\b/i.test(item.label ?? '');
+}
+
+function isBookshelfItem(item: Item): boolean {
+  return item.kind === 'bookshelf' || /\b(bookshelf|bookcase)\b/i.test(item.label ?? '');
+}
+
+function prefersWardrobeCorner(item: Item): boolean {
+  const label = (item.label ?? '').toLowerCase();
+  if (/\bunder\b/.test(label)) return false;
+  return /\b(hamper|laundry|basket)\b/.test(label);
+}
+
+function poseFromItem(item: Item, role: ItemRole): PlacedItem {
+  return {
+    item,
+    cx: item.position[0],
+    cz: item.position[2],
+    rotationY: item.rotationY,
+    positionY: item.position[1],
+    aabb: rotatedFootprintAabb(item.position[0], item.position[2], item.size[0], item.size[2], item.rotationY),
+    role,
+  };
+}
+
+function occupyPlaced(walls: WallSegment[], piece: PlacedItem, occupancy: WallOccupancy): void {
+  const anchor = wallAnchor(walls, piece);
+  if (!anchor) return;
+  const half = halfExtentAlongWall(piece, anchor.seg);
+  markWallSpan(anchor.seg.wall.id, anchor.tAlong - half, anchor.tAlong + half, occupancy);
+}
+
+function deskWallOrder(
+  plan: FloorPlan,
+  variant: LayoutVariant,
+  walls: WallSegment[],
+  bedWall: WallSegment | null,
+): WallSegment[] {
+  const opposite = bedWall ? oppositeWall(bedWall, walls) : null;
+  if (variant === 2 && bedWall) {
+    return uniqueWalls([...neighborWalls(plan, bedWall), opposite, ...walls]);
+  }
+  const windows = wallsWithWindows(plan, walls).filter((w) => w.wall.id !== bedWall?.wall.id);
+  return uniqueWalls([...windows, opposite, ...walls]);
+}
+
+function placeInOpenFloor(
   plan: FloorPlan,
   item: Item,
-  preferredWall: WallSegment | null,
+  role: ItemRole,
   placed: PlacedItem[],
   doors: FootprintAabb[],
+  reserved: FootprintAabb[],
 ): PlacedItem | null {
-  const walls = allWallSegments(plan).sort((a, b) => b.length - a.length);
-  const ordered = preferredWall
-    ? [preferredWall, ...walls.filter((w) => w.wall.id !== preferredWall.wall.id)]
-    : walls;
+  const [sx, sz] = planCentroid(plan);
+  for (const honorReserved of [true, false]) {
+    for (let radius = 0; radius <= 96; radius += 12) {
+      const angles = radius === 0 ? [0] : [0, 45, 90, 135, 180, 225, 270, 315];
+      for (const deg of angles) {
+        const rad = (deg * Math.PI) / 180;
+        const cx = sx + Math.cos(rad) * radius;
+        const cz = sz + Math.sin(rad) * radius;
+        for (const rotationY of [0, Math.PI / 2]) {
+          if (
+            !canPlace(
+              plan,
+              cx,
+              cz,
+              item.size[0],
+              item.size[2],
+              rotationY,
+              placed,
+              doors,
+              reserved,
+              honorReserved,
+            )
+          ) {
+            continue;
+          }
+          return {
+            item,
+            cx,
+            cz,
+            rotationY,
+            positionY: 0,
+            aabb: rotatedFootprintAabb(cx, cz, item.size[0], item.size[2], rotationY),
+            role,
+          };
+        }
+      }
+    }
+  }
+  return null;
+}
+
+function posterBottom(item: Item): number {
+  return Math.max(0, WALL_POSTER_CENTER_Y - item.size[1] / 2);
+}
+
+function elevatedPose(
+  item: Item,
+  role: ItemRole,
+  seg: WallSegment,
+  tAlong: number,
+  positionY: number,
+  placed: PlacedItem[],
+  plan: FloorPlan,
+  avoidWindows: boolean,
+): PlacedItem | null {
   const widthAlong = item.size[0];
-  const depthIn = item.size[2];
-  const bottomY = Math.max(0, WALL_POSTER_CENTER_Y - item.size[1] / 2);
+  const depthIn = Math.max(item.size[2], 0.5);
+  const tStart = tAlong - widthAlong / 2;
+  const tEnd = tAlong + widthAlong / 2;
+  if (tStart < PIECE_GAP || tEnd > seg.length - PIECE_GAP) return null;
+  const blocked = [
+    ...doorBlockedIntervals(plan, seg),
+    ...(avoidWindows ? windowBlockedIntervals(plan, seg) : []),
+  ];
+  if (intervalOverlaps(tStart, tEnd, blocked)) return null;
+  const rotationY = inwardRotationY(seg);
+  const [tx, tz] = seg.tangent;
+  const inset = depthIn / 2 + WALL_INSET;
+  const cx = seg.start.x + tx * tAlong - seg.outward[0] * inset;
+  const cz = seg.start.z + tz * tAlong - seg.outward[1] * inset;
+  const aabb = rotatedFootprintAabb(cx, cz, widthAlong, depthIn, rotationY);
+  const crowded = placed.some(
+    (p) =>
+      (p.role === 'wallPoster' || p.role === 'shelf' || p.role === 'screen' || p.role === 'mirror') &&
+      Math.abs(p.positionY - positionY) < Math.max(item.size[1], p.item.size[1]) * 0.6 &&
+      aabbsOverlap(aabb, p.aabb),
+  );
+  if (crowded) return null;
+  return { item, cx, cz, rotationY, positionY, aabb, role };
+}
 
-  for (const seg of ordered) {
-    const rotationY = inwardRotationY(seg);
-    const blocked = doorBlockedIntervals(plan, seg);
+function scanElevated(
+  plan: FloorPlan,
+  item: Item,
+  role: ItemRole,
+  walls: WallSegment[],
+  positionY: number,
+  placed: PlacedItem[],
+  avoidWindows: boolean,
+): PlacedItem | null {
+  const widthAlong = item.size[0];
+  for (const seg of walls) {
+    const blocked = [
+      ...doorBlockedIntervals(plan, seg),
+      ...(avoidWindows ? windowBlockedIntervals(plan, seg) : []),
+    ];
     let cursor = PIECE_GAP + widthAlong / 2;
-    const [tx, tz] = seg.tangent;
-    const interiorX = -seg.outward[0];
-    const interiorZ = -seg.outward[1];
-    const inset = depthIn / 2 + WALL_INSET;
-
     while (cursor + widthAlong / 2 + PIECE_GAP <= seg.length) {
       const tStart = cursor - widthAlong / 2;
       const tEnd = cursor + widthAlong / 2;
@@ -845,36 +1172,44 @@ function placeWallPoster(
         cursor = (nextBlock?.end ?? tEnd) + PIECE_GAP + widthAlong / 2;
         continue;
       }
-
-      const cx = seg.start.x + tx * cursor + interiorX * inset;
-      const cz = seg.start.z + tz * cursor + interiorZ * inset;
-      const floorOverlap = placed.some(
-        (p) =>
-          p.role !== 'wallPoster' &&
-          aabbsOverlap(rotatedFootprintAabb(cx, cz, widthAlong, depthIn, rotationY), p.aabb),
-      );
-      if (floorOverlap) {
-        cursor += widthAlong + PIECE_GAP;
-        continue;
-      }
-
-      if (!canPlace(plan, cx, cz, widthAlong, depthIn, rotationY, placed, doors)) {
-        cursor += widthAlong + PIECE_GAP;
-        continue;
-      }
-
-      return {
-        item,
-        cx,
-        cz,
-        rotationY,
-        positionY: bottomY,
-        aabb: rotatedFootprintAabb(cx, cz, widthAlong, depthIn, rotationY),
-        role: 'wallPoster',
-      };
+      const pose = elevatedPose(item, role, seg, cursor, positionY, placed, plan, avoidWindows);
+      if (pose) return pose;
+      cursor += widthAlong + PIECE_GAP;
     }
   }
   return null;
+}
+
+function placeLampOnHost(lamp: Item, host: PlacedItem, occupants: PlacedItem[]): PlacedItem {
+  const [fx, fz] = forwardXZ(host.rotationY);
+  const rx = fz;
+  const rz = -fx;
+  const back = host.item.size[2] * 0.22;
+  const lampY = hostTopY(host);
+  for (const side of [0, 0.22, -0.22, 0.36, -0.36]) {
+    const cx = host.cx - fx * back + rx * host.item.size[0] * side;
+    const cz = host.cz - fz * back + rz * host.item.size[0] * side;
+    if (cx < host.aabb.minX || cx > host.aabb.maxX || cz < host.aabb.minZ || cz > host.aabb.maxZ) continue;
+    const aabb = rotatedFootprintAabb(cx, cz, lamp.size[0], lamp.size[2], host.rotationY);
+    const hits = occupants.some(
+      (p) =>
+        p.item.id !== host.item.id &&
+        p.role !== 'lamp' &&
+        Math.abs(p.positionY - lampY) < 8 &&
+        aabbsOverlap(aabb, p.aabb),
+    );
+    if (hits) continue;
+    return { item: lamp, cx, cz, rotationY: host.rotationY, positionY: lampY, aabb, role: 'lamp' };
+  }
+  return {
+    item: lamp,
+    cx: host.cx,
+    cz: host.cz,
+    rotationY: host.rotationY,
+    positionY: lampY,
+    aabb: rotatedFootprintAabb(host.cx, host.cz, lamp.size[0], lamp.size[2], host.rotationY),
+    role: 'lamp',
+  };
 }
 
 function findLampHost(
@@ -1043,6 +1378,7 @@ export function arrangeRoomItems(
   plan: FloorPlan,
   items: Item[],
   variant: LayoutVariant,
+  options?: ArrangeOptions,
 ): ArrangeResult {
   const skippedIds: string[] = [];
   const placed: PlacedItem[] = [];
@@ -1050,17 +1386,21 @@ export function arrangeRoomItems(
   const walls = allWallSegments(plan).sort((a, b) => b.length - a.length);
   const wallCursors = new Map<string, number>();
   const occupancy: WallOccupancy = new Map();
-  const riders = collectSurfaceRiders(items);
+  const reserved = doorAisleAABBs(plan);
+  const pinnedIds = new Set(options?.pinnedIds ?? []);
+  const riders = collectSurfaceRiders(items).filter((rider) => !pinnedIds.has(rider.item.id));
   const riderIds = new Set(riders.map((rider) => rider.item.id));
 
   const byRole = new Map<ItemRole, Item[]>();
-  const unchanged: Item[] = [];
 
   for (const item of items) {
     if (riderIds.has(item.id)) continue;
     const role = classifyItem(item);
-    if (role === 'skip') {
-      unchanged.push(item);
+    if (role === 'skip') continue;
+    if (pinnedIds.has(item.id)) {
+      const pose = poseFromItem(item, role);
+      placed.push(pose);
+      occupyPlaced(walls, pose, occupancy);
       continue;
     }
     const list = byRole.get(role) ?? [];
@@ -1077,202 +1417,350 @@ export function arrangeRoomItems(
   const posters = byRole.get('wallPoster') ?? [];
   const lamps = byRole.get('lamp') ?? [];
   const shelves = byRole.get('shelf') ?? [];
+  const sofas = byRole.get('sofa') ?? [];
+  const coffeeTables = byRole.get('coffeeTable') ?? [];
+  const diningTables = byRole.get('diningTable') ?? [];
+  const screens = byRole.get('screen') ?? [];
+  const mirrors = byRole.get('mirror') ?? [];
+  const plants = byRole.get('plant') ?? [];
   const leftovers = byRole.get('leftover') ?? [];
 
-  let bedWall: WallSegment | null = null;
-  let bedPlacement: PlacedItem | null = null;
+  const greedy = (
+    piece: Item,
+    role: ItemRole,
+    wallList: WallSegment[] = walls,
+    avoidWindows = false,
+  ): PlacedItem | null =>
+    tryPlaceOnWallGreedy(
+      plan,
+      piece,
+      role,
+      wallList,
+      wallCursors,
+      placed,
+      doors,
+      occupancy,
+      avoidWindows,
+      reserved,
+      true,
+    ) ??
+    tryPlaceOnWallGreedy(
+      plan,
+      piece,
+      role,
+      wallList,
+      wallCursors,
+      placed,
+      doors,
+      occupancy,
+      avoidWindows,
+      reserved,
+      false,
+    );
 
-  if (beds.length > 0) {
-    const bed = beds[0]!;
-    const pick = pickBedWall(plan, bed, variant, walls);
-    if (!pick) {
-      return { items, movedIds: [], skippedIds: items.map((it) => it.id) };
-    }
-    bedWall = pick.seg;
-    for (const orient of floorOrientations(bed)) {
-      const p = placeOnWall(
-        plan,
-        bed,
-        'bed',
-        pick.seg,
-        pick.tAlong,
-        orient,
-        placed,
-        doors,
-        occupancy,
-      );
-      if (p) {
-        bedPlacement = p;
-        placed.push(p);
-        break;
+  const flush = (
+    piece: Item,
+    role: ItemRole,
+    wallList: WallSegment[] = walls,
+    avoidWindows = false,
+  ): PlacedItem | null =>
+    forceFlushToWall(plan, piece, role, wallList, placed, doors, occupancy, avoidWindows, reserved, true) ??
+    forceFlushToWall(plan, piece, role, wallList, placed, doors, occupancy, avoidWindows, reserved, false);
+
+  let bedWall: WallSegment | null = null;
+  let bedPlacement = placed.find((p) => p.role === 'bed') ?? null;
+  if (bedPlacement) {
+    bedWall = wallAnchor(walls, bedPlacement)?.seg ?? null;
+    reserved.push(frontClearZone(bedPlacement, BED_FOOT_CLEAR));
+  }
+
+  const acceptBed = (pose: PlacedItem) => {
+    bedPlacement = pose;
+    placed.push(pose);
+    bedWall = wallAnchor(walls, pose)?.seg ?? bedWall;
+    reserved.push(frontClearZone(pose, BED_FOOT_CLEAR));
+  };
+
+  const placePrimaryBed = (bed: Item): PlacedItem | null => {
+    const pick =
+      pickBedWall(plan, bed, variant, walls, placed, reserved, true) ??
+      pickBedWall(plan, bed, variant, walls, placed, reserved, false);
+    if (!pick) return greedy(bed, 'bed');
+    for (const honor of [true, false]) {
+      for (const orient of floorOrientations(bed)) {
+        const pose = placeOnWall(
+          plan,
+          bed,
+          'bed',
+          pick.seg,
+          pick.tAlong,
+          orient,
+          placed,
+          doors,
+          occupancy,
+          reserved,
+          honor,
+        );
+        if (pose) return pose;
       }
     }
-    if (!bedPlacement) {
+    return greedy(bed, 'bed');
+  };
+
+  if (!bedPlacement && beds.length > 0) {
+    const pose = placePrimaryBed(beds[0]!);
+    if (!pose) {
       return { items, movedIds: [], skippedIds: items.map((it) => it.id) };
     }
+    acceptBed(pose);
     for (const extraBed of beds.slice(1)) {
-      const p = tryPlaceOnWallGreedy(
-        plan,
-        extraBed,
-        'bed',
-        walls,
-        wallCursors,
-        placed,
-        doors,
-        occupancy,
-      );
+      const p = greedy(extraBed, 'bed') ?? flush(extraBed, 'bed');
+      if (p) placed.push(p);
+      else skippedIds.push(extraBed.id);
+    }
+  } else {
+    for (const extraBed of beds) {
+      const p = greedy(extraBed, 'bed') ?? flush(extraBed, 'bed');
       if (p) placed.push(p);
       else skippedIds.push(extraBed.id);
     }
   }
 
-  if (bedPlacement && bedWall) {
-    if (nightstands[0]) {
-      const ns = placeNightstandBesideBed(
+  const placeBeside = (item: Item, side: 'left' | 'right'): PlacedItem | null => {
+    if (!bedPlacement || !bedWall) return null;
+    return (
+      placeNightstandBesideBed(
         plan,
-        nightstands[0],
+        item,
         bedPlacement,
         bedWall,
-        'right',
+        side,
         placed,
         doors,
         occupancy,
-      );
+        reserved,
+        true,
+      ) ??
+      placeNightstandBesideBed(
+        plan,
+        item,
+        bedPlacement,
+        bedWall,
+        side,
+        placed,
+        doors,
+        occupancy,
+        reserved,
+        false,
+      )
+    );
+  };
+
+  if (bedPlacement && bedWall) {
+    if (nightstands[0]) {
+      const ns = placeBeside(nightstands[0], 'right') ?? placeBeside(nightstands[0], 'left');
       if (ns) placed.push(ns);
       else skippedIds.push(nightstands[0].id);
     }
     if (nightstands[1]) {
-      const ns = placeNightstandBesideBed(
-        plan,
-        nightstands[1],
-        bedPlacement,
-        bedWall,
-        'left',
-        placed,
-        doors,
-        occupancy,
-      );
+      const ns = placeBeside(nightstands[1], 'left') ?? placeBeside(nightstands[1], 'right');
       if (ns) placed.push(ns);
       else skippedIds.push(nightstands[1].id);
     }
     for (const ns of nightstands.slice(2)) {
-      const p = tryPlaceOnWallGreedy(
-        plan,
-        ns,
-        'nightstand',
-        walls,
-        wallCursors,
-        placed,
-        doors,
-        occupancy,
-      );
+      const p = greedy(ns, 'nightstand') ?? flush(ns, 'nightstand');
       if (p) placed.push(p);
       else skippedIds.push(ns.id);
-    }
-
-    if (rugs[0]) {
-      placed.push(placeRugUnderBed(bedPlacement, rugs[0]));
-    }
-    for (const rug of rugs.slice(1)) {
-      const p = tryPlaceOnWallGreedy(
-        plan,
-        rug,
-        'rug',
-        walls,
-        wallCursors,
-        placed,
-        doors,
-        occupancy,
-      );
-      if (p) placed.push(p);
-      else skippedIds.push(rug.id);
     }
   } else {
     for (const ns of nightstands) {
-      const p = tryPlaceOnWallGreedy(
-        plan,
-        ns,
-        'nightstand',
-        walls,
-        wallCursors,
-        placed,
-        doors,
-        occupancy,
-      );
+      const p = greedy(ns, 'nightstand') ?? flush(ns, 'nightstand');
       if (p) placed.push(p);
       else skippedIds.push(ns.id);
     }
-    for (const rug of rugs) {
-      const p = tryPlaceOnWallGreedy(
-        plan,
-        rug,
-        'rug',
-        walls,
-        wallCursors,
-        placed,
-        doors,
-        occupancy,
-      );
-      if (p) placed.push(p);
-      else skippedIds.push(rug.id);
-    }
   }
 
-  const deskWall =
-    bedWall != null ? oppositeWall(bedWall, walls) : walls[variant === 0 ? 0 : Math.min(1, walls.length - 1)] ?? null;
+  const looseRugs = [...rugs];
+  if (bedPlacement && looseRugs.length > 0) {
+    placed.push(placeRugUnderBed(bedPlacement, looseRugs.shift()!));
+  }
+  for (const rug of looseRugs) {
+    const p = placeInOpenFloor(plan, rug, 'rug', placed, doors, reserved);
+    if (p) placed.push(p);
+    else skippedIds.push(rug.id);
+  }
 
+  const deskWalls = deskWallOrder(plan, variant, walls, bedWall);
   let deskPlacement: PlacedItem | null = null;
-  if (desks[0] && deskWall) {
-    deskPlacement = tryPlaceOnWallCenter(
-      plan,
-      desks[0],
-      'desk',
-      deskWall,
-      placed,
-      doors,
-      occupancy,
-    );
+  const chairForDesk = chairs[0] ?? null;
+  if (desks[0]) {
+    for (const honor of [true, false]) {
+      for (const seg of deskWalls) {
+        const pose = tryPlaceOnWallCenter(
+          plan,
+          desks[0],
+          'desk',
+          seg,
+          placed,
+          doors,
+          occupancy,
+          undefined,
+          reserved,
+          honor,
+        );
+        if (!pose) continue;
+        if (chairForDesk && honor) {
+          const chairPose = placeChairAtDesk(
+            plan,
+            chairForDesk,
+            pose,
+            [...placed, pose],
+            doors,
+            reserved,
+            true,
+          );
+          if (!chairPose) continue;
+        }
+        deskPlacement = pose;
+        break;
+      }
+      if (deskPlacement) break;
+    }
     if (deskPlacement) placed.push(deskPlacement);
     else skippedIds.push(desks[0].id);
   }
   for (const desk of desks.slice(1)) {
-    const p = tryPlaceOnWallGreedy(
-      plan,
-      desk,
-      'desk',
-      walls,
-      wallCursors,
-      placed,
-      doors,
-      occupancy,
-    );
+    const p = greedy(desk, 'desk') ?? flush(desk, 'desk');
     if (p) placed.push(p);
     else skippedIds.push(desk.id);
   }
 
-  const chairDesk = deskPlacement;
   const chairCandidates = [...chairs];
-  if (chairDesk && chairCandidates[0]) {
-    const chair = placeChairAtDesk(plan, chairCandidates[0], chairDesk, placed, doors);
+  if (deskPlacement && chairCandidates[0]) {
+    const chair =
+      placeChairAtDesk(plan, chairCandidates[0], deskPlacement, placed, doors, reserved, true) ??
+      placeChairAtDesk(plan, chairCandidates[0], deskPlacement, placed, doors, reserved, false);
     if (chair) {
       placed.push(chair);
+      reserved.push(frontClearZone(chair, 16));
       chairCandidates.shift();
     }
   }
+
+  const sofaWalls = uniqueWalls([
+    ...(bedWall ? walls.filter((w) => w.wall.id !== bedWall.wall.id) : []),
+    ...walls,
+  ]);
+  let sofaPlacement: PlacedItem | null = null;
+  for (const sofa of sofas) {
+    const p = greedy(sofa, 'sofa', sofaWalls) ?? flush(sofa, 'sofa', sofaWalls);
+    if (p) {
+      placed.push(p);
+      if (!sofaPlacement) sofaPlacement = p;
+    } else skippedIds.push(sofa.id);
+  }
+  for (const table of coffeeTables) {
+    let pose: PlacedItem | null = null;
+    if (sofaPlacement) {
+      const [fx, fz] = forwardXZ(sofaPlacement.rotationY);
+      const dist = sofaPlacement.item.size[2] / 2 + PIECE_GAP + table.size[2] / 2;
+      const cx = sofaPlacement.cx + fx * dist;
+      const cz = sofaPlacement.cz + fz * dist;
+      const rotationY = sofaPlacement.rotationY;
+      for (const honor of [true, false]) {
+        if (
+          canPlace(plan, cx, cz, table.size[0], table.size[2], rotationY, placed, doors, reserved, honor)
+        ) {
+          pose = {
+            item: table,
+            cx,
+            cz,
+            rotationY,
+            positionY: 0,
+            aabb: rotatedFootprintAabb(cx, cz, table.size[0], table.size[2], rotationY),
+            role: 'coffeeTable',
+          };
+          break;
+        }
+      }
+    }
+    pose = pose ?? placeInOpenFloor(plan, table, 'coffeeTable', placed, doors, reserved);
+    if (pose) placed.push(pose);
+    else skippedIds.push(table.id);
+  }
+
+  let diningPlacement: PlacedItem | null = null;
+  for (const table of diningTables) {
+    const p =
+      placeInOpenFloor(plan, table, 'diningTable', placed, doors, reserved) ??
+      greedy(table, 'diningTable') ??
+      flush(table, 'diningTable');
+    if (p) {
+      placed.push(p);
+      if (!diningPlacement) diningPlacement = p;
+    } else skippedIds.push(table.id);
+  }
+
+  if (diningPlacement) {
+    const table = diningPlacement;
+    const still: Item[] = [];
+    for (const chair of chairCandidates) {
+      let around: PlacedItem | null = null;
+      for (const extra of [0, Math.PI / 2, Math.PI, -Math.PI / 2]) {
+        const yaw = table.rotationY + extra;
+        const [fx, fz] = forwardXZ(yaw);
+        const alongDepth = Math.abs(Math.cos(extra)) > 0.5;
+        const reach =
+          (alongDepth ? table.item.size[2] : table.item.size[0]) / 2 + CHAIR_GAP + chair.size[2] / 2;
+        const cx = table.cx + fx * reach;
+        const cz = table.cz + fz * reach;
+        const rotationY = yaw + Math.PI;
+        if (!canPlace(plan, cx, cz, chair.size[0], chair.size[2], rotationY, placed, doors, reserved, true)) {
+          continue;
+        }
+        around = {
+          item: chair,
+          cx,
+          cz,
+          rotationY,
+          positionY: 0,
+          aabb: rotatedFootprintAabb(cx, cz, chair.size[0], chair.size[2], rotationY),
+          role: 'chair',
+        };
+        break;
+      }
+      if (around) placed.push(around);
+      else still.push(chair);
+    }
+    chairCandidates.length = 0;
+    chairCandidates.push(...still);
+  }
   for (const chair of chairCandidates) {
-    const p = tryPlaceOnWallGreedy(
-      plan,
-      chair,
-      'chair',
-      walls,
-      wallCursors,
-      placed,
-      doors,
-      occupancy,
-    );
+    const p = greedy(chair, 'chair') ?? flush(chair, 'chair');
     if (p) placed.push(p);
     else skippedIds.push(chair.id);
   }
+
+  const lWalls =
+    variant === 2 && bedWall ? uniqueWalls([bedWall, ...neighborWalls(plan, bedWall)]) : [];
+  const deskWallAnchor = deskPlacement ? (wallAnchor(walls, deskPlacement)?.seg ?? null) : null;
+
+  const storageOrder = (piece: Item): WallSegment[] => {
+    let list = walls;
+    if (variant === 0) {
+      list = [...walls].sort((a, b) => {
+        const oa = occupancy.get(a.wall.id)?.length ?? 0;
+        const ob = occupancy.get(b.wall.id)?.length ?? 0;
+        return oa - ob || b.length - a.length;
+      });
+    } else if (variant === 2 && lWalls.length > 0) {
+      list = uniqueWalls([...lWalls, ...walls]);
+    }
+    if (isBookshelfItem(piece) && deskWallAnchor) {
+      list = uniqueWalls([deskWallAnchor, ...neighborWalls(plan, deskWallAnchor), ...list]);
+    }
+    return list;
+  };
 
   const columns: StorageColumn[] = [];
   const rememberColumn = (piece: PlacedItem) => {
@@ -1291,34 +1779,6 @@ export function arrangeRoomItems(
     if (!bedPlacement || !canTuckUnderBed(piece, role)) return null;
     return placeUnderBed(bedPlacement, piece, placed);
   };
-  const placeAgainstWall = (piece: Item, role: ItemRole): PlacedItem | null => {
-    if (role === 'leftover') {
-      const under = tuckUnderBed(piece, role);
-      if (under) return under;
-    }
-    const onWall = tryPlaceOnWallGreedy(
-      plan,
-      piece,
-      role,
-      walls,
-      wallCursors,
-      placed,
-      doors,
-      occupancy,
-    );
-    if (onWall) return onWall;
-    const under = tuckUnderBed(piece, role);
-    if (under) return under;
-    return forceFlushToWall(plan, piece, role, walls, placed, doors, occupancy);
-  };
-  const placeOnWallPreferClear = (
-    piece: Item,
-    role: ItemRole,
-  ): PlacedItem | null =>
-    tryPlaceOnWallGreedy(plan, piece, role, walls, wallCursors, placed, doors, occupancy, true) ??
-    tryPlaceOnWallGreedy(plan, piece, role, walls, wallCursors, placed, doors, occupancy, false) ??
-    forceFlushToWall(plan, piece, role, walls, placed, doors, occupancy, true) ??
-    forceFlushToWall(plan, piece, role, walls, placed, doors, occupancy, false);
 
   const floorStorage = storage.filter((piece) => !isStackableStorage(piece));
   const stackable = storage
@@ -1326,28 +1786,46 @@ export function arrangeRoomItems(
     .sort((a, b) => b.size[0] - a.size[0] || b.size[2] - a.size[2]);
 
   for (const piece of floorStorage) {
-    const p = placeOnWallPreferClear(piece, 'storage');
-    if (p) placed.push(p);
-    else skippedIds.push(piece.id);
+    const order = storageOrder(piece);
+    const p =
+      greedy(piece, 'storage', order, true) ??
+      greedy(piece, 'storage', order, false) ??
+      flush(piece, 'storage', order, true) ??
+      flush(piece, 'storage', order, false);
+    if (p) {
+      placed.push(p);
+      if (isWardrobeItem(piece)) reserved.push(frontClearZone(p, WARDROBE_SWING));
+    } else skippedIds.push(piece.id);
   }
 
   const ceiling = plan.height;
   const fitsOnColumn = (piece: Item, col: StorageColumn) =>
-    col.count < MAX_STACK &&
-    piece.size[0] <= col.baseWidth + 2 &&
-    col.topY + piece.size[1] <= ceiling;
+    col.count < MAX_STACK && piece.size[0] <= col.baseWidth + 2 && col.topY + piece.size[1] <= ceiling;
+
   for (const piece of stackable) {
-    const onClearWall = tryPlaceOnWallGreedy(
-      plan,
-      piece,
-      'storage',
-      walls,
-      wallCursors,
-      placed,
-      doors,
-      occupancy,
-      true,
-    );
+    const order = storageOrder(piece);
+    if (variant === 2 && lWalls.length > 0) {
+      const onL = greedy(piece, 'storage', lWalls, true) ?? greedy(piece, 'storage', lWalls, false);
+      if (onL) {
+        placed.push(onL);
+        rememberColumn(onL);
+        continue;
+      }
+      const column =
+        columns.find(
+          (col) =>
+            fitsOnColumn(piece, col) &&
+            !coversWindow(plan, col.seg, col.tAlong - col.baseWidth / 2, col.tAlong + col.baseWidth / 2),
+        ) ?? columns.find((col) => fitsOnColumn(piece, col));
+      if (column) {
+        placed.push(stackOnColumn(piece, 'storage', column));
+        column.topY += piece.size[1];
+        column.count += 1;
+        continue;
+      }
+    }
+
+    const onClearWall = greedy(piece, 'storage', order, true);
     if (onClearWall) {
       placed.push(onClearWall);
       rememberColumn(onClearWall);
@@ -1358,10 +1836,7 @@ export function arrangeRoomItems(
         fitsOnColumn(piece, col) &&
         !coversWindow(plan, col.seg, col.tAlong - col.baseWidth / 2, col.tAlong + col.baseWidth / 2),
     );
-    const onAnyWall =
-      clearColumn == null
-        ? tryPlaceOnWallGreedy(plan, piece, 'storage', walls, wallCursors, placed, doors, occupancy, false)
-        : null;
+    const onAnyWall = clearColumn == null ? greedy(piece, 'storage', order, false) : null;
     if (onAnyWall) {
       placed.push(onAnyWall);
       rememberColumn(onAnyWall);
@@ -1374,7 +1849,7 @@ export function arrangeRoomItems(
       column.count += 1;
       continue;
     }
-    const forced = forceFlushToWall(plan, piece, 'storage', walls, placed, doors, occupancy, false);
+    const forced = flush(piece, 'storage', order, false);
     if (forced) {
       placed.push(forced);
       rememberColumn(forced);
@@ -1385,20 +1860,274 @@ export function arrangeRoomItems(
     else skippedIds.push(piece.id);
   }
 
-  for (const poster of posters) {
-    const p = placeWallPoster(plan, poster, bedWall, placed, doors);
+  const placeAboveStorage = (item: Item, role: ItemRole): PlacedItem | null => {
+    const bases = placed
+      .filter((p) => p.role === 'storage' && p.positionY < 1 && !p.tuckedUnderBed)
+      .sort((a, b) => a.item.size[1] - b.item.size[1]);
+    for (const base of bases) {
+      const anchor = wallAnchor(walls, base);
+      if (!anchor) continue;
+      const y = Math.max(base.positionY + base.item.size[1] + 4, posterBottom(item));
+      const pose = elevatedPose(item, role, anchor.seg, anchor.tAlong, y, placed, plan, false);
+      if (pose) return pose;
+    }
+    return scanElevated(plan, item, role, walls, posterBottom(item), placed, true);
+  };
+  for (const screen of screens) {
+    const p = placeAboveStorage(screen, 'screen');
     if (p) placed.push(p);
-    else skippedIds.push(poster.id);
+    else skippedIds.push(screen.id);
+  }
+  for (const mirror of mirrors) {
+    const p = placeAboveStorage(mirror, 'mirror');
+    if (p) placed.push(p);
+    else skippedIds.push(mirror.id);
+  }
+
+  const anchorSeg =
+    bedWall ?? (deskPlacement ? (wallAnchor(walls, deskPlacement)?.seg ?? null) : null);
+  const anchorPoint = bedPlacement ?? deskPlacement;
+  const anchorT =
+    anchorSeg && anchorPoint ? tOf(anchorSeg, anchorPoint.cx, anchorPoint.cz) : null;
+  const placePosterGroup = () => {
+    if (posters.length === 0) return;
+    const pending: Item[] = [];
+    if (anchorSeg && anchorT != null) {
+      const widths = posters.map((poster) => poster.size[0]);
+      const total =
+        widths.reduce((sum, width) => sum + width, 0) + PIECE_GAP * Math.max(0, posters.length - 1);
+      let cursorT = anchorT - total / 2;
+      const centers = widths.map((width) => {
+        const center = cursorT + width / 2;
+        cursorT += width + PIECE_GAP;
+        return center;
+      });
+      const blocked = doorBlockedIntervals(plan, anchorSeg);
+      const fits = centers.every((center, index) => {
+        const width = widths[index]!;
+        const t0 = center - width / 2;
+        const t1 = center + width / 2;
+        return (
+          t0 >= PIECE_GAP &&
+          t1 <= anchorSeg.length - PIECE_GAP &&
+          !intervalOverlaps(t0, t1, blocked)
+        );
+      });
+      if (fits) {
+        for (let i = 0; i < posters.length; i++) {
+          const poster = posters[i]!;
+          const pose = elevatedPose(
+            poster,
+            'wallPoster',
+            anchorSeg,
+            centers[i]!,
+            posterBottom(poster),
+            placed,
+            plan,
+            false,
+          );
+          if (pose) placed.push(pose);
+          else pending.push(poster);
+        }
+      } else {
+        const first = posters[0]!;
+        const pose =
+          elevatedPose(first, 'wallPoster', anchorSeg, anchorT, posterBottom(first), placed, plan, false) ??
+          scanElevated(
+            plan,
+            first,
+            'wallPoster',
+            uniqueWalls([anchorSeg, ...walls]),
+            posterBottom(first),
+            placed,
+            false,
+          );
+        if (pose) placed.push(pose);
+        else skippedIds.push(first.id);
+        pending.push(...posters.slice(1));
+      }
+    } else {
+      pending.push(...posters);
+    }
+    for (const poster of pending) {
+      const pose = scanElevated(
+        plan,
+        poster,
+        'wallPoster',
+        anchorSeg ? uniqueWalls([anchorSeg, ...walls]) : walls,
+        posterBottom(poster),
+        placed,
+        true,
+      );
+      if (pose) placed.push(pose);
+      else skippedIds.push(poster.id);
+    }
+  };
+  placePosterGroup();
+
+  for (const plant of plants) {
+    const windowWall = wallsWithWindows(plan, walls)[0] ?? null;
+    let pose: PlacedItem | null = null;
+    const corners = adjacentWallPairs(plan).filter(
+      (pair) =>
+        !windowWall ||
+        pair.segA.wall.id === windowWall.wall.id ||
+        pair.segB.wall.id === windowWall.wall.id,
+    );
+    for (const corner of corners) {
+      const seg =
+        windowWall && corner.segB.wall.id === windowWall.wall.id ? corner.segB : corner.segA;
+      for (const honor of [true, false]) {
+        for (const orient of floorOrientations(plant)) {
+          const tAlong = tFromCorner(seg, corner.vertex, orient.widthAlong);
+          const hit = placeOnWall(
+            plan,
+            plant,
+            'plant',
+            seg,
+            tAlong,
+            orient,
+            placed,
+            doors,
+            occupancy,
+            reserved,
+            honor,
+          );
+          if (hit) {
+            pose = hit;
+            break;
+          }
+        }
+        if (pose) break;
+      }
+      if (pose) break;
+    }
+    pose = pose ?? greedy(plant, 'plant') ?? flush(plant, 'plant');
+    if (pose) placed.push(pose);
+    else skippedIds.push(plant.id);
   }
 
   for (const piece of leftovers) {
-    const p = placeAgainstWall(piece, 'leftover');
-    if (p) placed.push(p);
+    let pose: PlacedItem | null = null;
+    if (prefersWardrobeCorner(piece)) {
+      const wardrobe = placed.find((p) => isWardrobeItem(p.item) && p.positionY < 1);
+      const pairs = [...adjacentWallPairs(plan)].sort((a, b) => {
+        if (!wardrobe) return 0;
+        const da = Math.hypot(a.vertex.x - wardrobe.cx, a.vertex.z - wardrobe.cz);
+        const db = Math.hypot(b.vertex.x - wardrobe.cx, b.vertex.z - wardrobe.cz);
+        return da - db;
+      });
+      for (const { segA, vertex } of pairs) {
+        for (const honor of [true, false]) {
+          for (const orient of floorOrientations(piece)) {
+            const tAlong = tFromCorner(segA, vertex, orient.widthAlong);
+            const hit = placeOnWall(
+              plan,
+              piece,
+              'leftover',
+              segA,
+              tAlong,
+              orient,
+              placed,
+              doors,
+              occupancy,
+              reserved,
+              honor,
+            );
+            if (hit) {
+              pose = hit;
+              break;
+            }
+          }
+          if (pose) break;
+        }
+        if (pose) break;
+      }
+    }
+    if (!pose) pose = tuckUnderBed(piece, 'leftover');
+    if (!pose) pose = greedy(piece, 'leftover') ?? flush(piece, 'leftover');
+    if (!pose) pose = tuckUnderBed(piece, 'leftover');
+    if (pose) placed.push(pose);
     else skippedIds.push(piece.id);
   }
 
+  const shelfAnchor = anchorSeg;
+  for (const shelf of shelves) {
+    const y = Math.max(0, Math.min(DEFAULT_SHELF_ELEVATION, plan.height - shelf.size[1]));
+    const preferred = uniqueWalls([deskWallAnchor, shelfAnchor, ...walls]);
+    let pose: PlacedItem | null = null;
+    for (const seg of preferred) {
+      const width = shelf.size[0];
+      const targets: number[] = [];
+      if (deskPlacement && deskWallAnchor?.wall.id === seg.wall.id) {
+        const t = tOf(seg, deskPlacement.cx, deskPlacement.cz);
+        targets.push(t + deskPlacement.item.size[0] / 2 + PIECE_GAP + width / 2);
+        targets.push(t - deskPlacement.item.size[0] / 2 - PIECE_GAP - width / 2);
+      }
+      if (shelfAnchor?.wall.id === seg.wall.id && anchorT != null) {
+        targets.push(anchorT + width / 2 + PIECE_GAP + 18);
+        targets.push(anchorT - width / 2 - PIECE_GAP - 18);
+      }
+      targets.push(seg.length / 2);
+      for (const t of targets) {
+        const hit = elevatedPose(shelf, 'shelf', seg, t, y, placed, plan, true);
+        if (hit) {
+          pose = hit;
+          break;
+        }
+      }
+      if (pose) break;
+    }
+    pose = pose ?? scanElevated(plan, shelf, 'shelf', preferred, y, placed, true);
+    if (!pose) {
+      const base = defaultWallShelfPose(plan, shelf.size);
+      const n = placed.filter((p) => p.role === 'shelf').length;
+      const rx = Math.cos(base.rotationY);
+      const rz = -Math.sin(base.rotationY);
+      const cx = base.position[0] + rx * n * (shelf.size[0] + PIECE_GAP);
+      const cz = base.position[2] + rz * n * (shelf.size[0] + PIECE_GAP);
+      pose = {
+        item: shelf,
+        cx,
+        cz,
+        rotationY: base.rotationY,
+        positionY: base.position[1],
+        aabb: rotatedFootprintAabb(cx, cz, shelf.size[0], shelf.size[2], base.rotationY),
+        role: 'shelf',
+      };
+    }
+    placed.push(pose);
+  }
+
+  const placedBeforeRecovery = new Set(placed.map((p) => p.item.id));
+  for (const item of items) {
+    if (classifyItem(item) === 'skip' || riderIds.has(item.id) || pinnedIds.has(item.id)) continue;
+    if (placedBeforeRecovery.has(item.id)) continue;
+    const role = classifyItem(item);
+    if (
+      role === 'wallPoster' ||
+      role === 'shelf' ||
+      role === 'rug' ||
+      role === 'screen' ||
+      role === 'mirror' ||
+      role === 'skip'
+    ) {
+      continue;
+    }
+    const p = tuckUnderBed(item, role) ?? greedy(item, role) ?? flush(item, role);
+    if (p) {
+      placed.push(p);
+      const idx = skippedIds.indexOf(item.id);
+      if (idx >= 0) skippedIds.splice(idx, 1);
+    }
+  }
+
+  placeSurfaceRiders(riders, placed);
+
   const usedLampHosts = new Set<string>();
-  const floorHosts = placed.filter((p) => p.role !== 'lamp' && p.role !== 'wallPoster');
+  const floorHosts = placed.filter(
+    (p) => p.role !== 'lamp' && p.role !== 'wallPoster' && p.role !== 'screen' && p.role !== 'mirror',
+  );
   for (const lamp of lamps) {
     const host = findLampHost(floorHosts, usedLampHosts);
     if (!host) {
@@ -1406,60 +2135,7 @@ export function arrangeRoomItems(
       continue;
     }
     usedLampHosts.add(`${host.cx},${host.cz}`);
-    const lampY = hostTopY(host);
-    const aabb = rotatedFootprintAabb(
-      host.cx,
-      host.cz,
-      lamp.size[0],
-      lamp.size[2],
-      host.rotationY,
-    );
-    placed.push({
-      item: lamp,
-      cx: host.cx,
-      cz: host.cz,
-      rotationY: host.rotationY,
-      positionY: lampY,
-      aabb,
-      role: 'lamp',
-    });
-  }
-
-  for (const shelf of shelves) {
-    const pose = defaultWallShelfPose(plan, shelf.size);
-    placed.push({
-      item: shelf,
-      cx: pose.position[0],
-      cz: pose.position[2],
-      rotationY: pose.rotationY,
-      positionY: pose.position[1],
-      aabb: rotatedFootprintAabb(
-        pose.position[0],
-        pose.position[2],
-        shelf.size[0],
-        shelf.size[2],
-        pose.rotationY,
-      ),
-      role: 'shelf',
-    });
-  }
-
-  placeSurfaceRiders(riders, placed);
-
-  const placedIds = new Set(placed.map((p) => p.item.id));
-  const unplaced = items.filter(
-    (item) =>
-      classifyItem(item) !== 'skip' && !placedIds.has(item.id) && !riderIds.has(item.id),
-  );
-  for (const item of unplaced) {
-    const role = classifyItem(item);
-    if (role === 'wallPoster' || role === 'shelf' || role === 'rug' || role === 'skip') continue;
-    const p = placeAgainstWall(item, role);
-    if (p) {
-      placed.push(p);
-      const idx = skippedIds.indexOf(item.id);
-      if (idx >= 0) skippedIds.splice(idx, 1);
-    }
+    placed.push(placeLampOnHost(lamp, host, placed));
   }
 
   return buildArrangeResult(items, placed, skippedIds);

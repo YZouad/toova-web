@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   AGENTIC_VIBE_FURNISHINGS,
+  applyAgenticThemeToItems,
   applyAgenticVibeToItems,
   appearanceForAgenticVibe,
 } from './agenticRoomVibe';
@@ -49,5 +50,20 @@ describe('agenticRoomVibe', () => {
     const [bed] = applyAgenticVibeToItems([builtinItem('bed', { beddingEnabled: true })], 'sage');
     expect(bed.blanketColor).toBe('#5c7a6a');
     expect(bed.tintColor).toBe('#6b4f33');
+  });
+
+  it('keeps wood and brown labels out of the grey studio palette', () => {
+    const [woodDesk, brownShelf] = applyAgenticThemeToItems(
+      [
+        builtinItem('desk', { label: 'wood executive office desk' }),
+        builtinItem('shelf', { label: 'brown rugged shelf' }),
+      ],
+      'minimalist',
+      'minimalist studio',
+    );
+    expect(woodDesk.tintColor).toBe('#8a6440');
+    expect(woodDesk.topColor).toBe('#a98662');
+    expect(brownShelf.tintColor).toBe('#6b4f33');
+    expect(brownShelf.topColor).toBeUndefined();
   });
 });

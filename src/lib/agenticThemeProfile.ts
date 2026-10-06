@@ -403,7 +403,10 @@ export function resolveAgenticThemeProfile(
     }
   }
 
-  if (!best) return PROFILES.minimalist;
+  if (!best) {
+    if (/\b(wooden|woods?|oak|walnut|mahogany|brown)\b/i.test(combined)) return PROFILES.warm;
+    return PROFILES.minimalist;
+  }
   return PROFILES[best.id];
 }
 

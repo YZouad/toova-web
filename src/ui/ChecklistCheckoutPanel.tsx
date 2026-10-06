@@ -1,7 +1,10 @@
 import { useEffect, useMemo } from 'react';
 import { trackAffiliateClicked } from '../lib/analytics';
 import { formatPriceCents } from '../lib/dormChecklist';
-import type { AgenticShoppingManifestEntry } from '../lib/agenticShoppingManifest';
+import type {
+  AgenticManifestResolution,
+  AgenticShoppingManifestEntry,
+} from '../lib/agenticShoppingManifest';
 import type { PurchaseCartLine } from '../lib/purchaseCart';
 import { purchaseCartTotalCents } from '../lib/purchaseCart';
 import { Button } from './kit/Button';
@@ -23,6 +26,10 @@ interface ChecklistCheckoutPanelProps {
   onClose: () => void;
   onRemoveFromList: (productId: string) => void;
   onDismissManifestEntry?: (entryId: string) => void;
+  onSetManifestResolution?: (
+    entryId: string,
+    resolution: AgenticManifestResolution | null,
+  ) => void;
 }
 
 export function ChecklistCheckoutPanel({
@@ -31,6 +38,7 @@ export function ChecklistCheckoutPanel({
   onClose,
   onRemoveFromList,
   onDismissManifestEntry,
+  onSetManifestResolution,
 }: ChecklistCheckoutPanelProps) {
   const { sum, known } = useMemo(() => purchaseCartTotalCents(lines), [lines]);
   const totalLabel = formatPriceCents(sum) ?? '$0';
@@ -184,6 +192,7 @@ export function ChecklistCheckoutPanel({
                 entries={manifestLines}
                 source="checklist_checkout"
                 onDismiss={onDismissManifestEntry}
+                onSetResolution={onSetManifestResolution}
               />
             </div>
           ) : null}

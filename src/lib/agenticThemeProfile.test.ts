@@ -34,6 +34,10 @@ describe('resolveAgenticThemeProfile', () => {
     );
   });
 
+  it('uses warm finishes when the prompt asks for wood or brown', () => {
+    expect(resolveAgenticThemeProfile(null, 'wooden brown home office')?.id).toBe('warm');
+  });
+
   it('explicit theme overrides prompt inference', () => {
     expect(resolveAgenticThemeProfile('coastal', 'gothic cathedral bedroom')?.id).toBe('coastal');
   });

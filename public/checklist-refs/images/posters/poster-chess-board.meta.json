@@ -1,0 +1,10 @@
+{
+  "kind": "poster-chess-board",
+  "source_url": "https://toova.app/posters/poster-chess-board",
+  "license": "CC0 1.0 (Toova procedural)",
+  "image_file": "procedural:chess-board",
+  "width_in": 24,
+  "height_in": 36,
+  "depth_in": 0.5,
+  "built_at": "2026-10-06T04:02:02.253Z"
+}

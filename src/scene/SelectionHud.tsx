@@ -6,6 +6,7 @@ import {
   toColorInputValue,
   type HangingDecorationConfig,
 } from '../lib/hangingDecorGeometry';
+import { isPosterItem } from '../lib/posterItem';
 import { useStore, type HangingDecorKind } from '../store';
 
 const ROT_STEP = (15 * Math.PI) / 180;
@@ -24,6 +25,8 @@ export interface SelectionHudProps {
   radialOpen: boolean;
   onToggleRadial: () => void;
   onOpenInspector: () => void;
+  /** Opens the poster bank for the selected wall poster. */
+  onChangePoster?: () => void;
   /** Present mode / drawing — hide all HUD chrome. */
   hidden?: boolean;
 }
@@ -230,6 +233,7 @@ export function SelectionHud({
   radialOpen,
   onToggleRadial,
   onOpenInspector,
+  onChangePoster,
   hidden = false,
 }: SelectionHudProps) {
   const selectedId = useStore((s) => s.selectedId);
@@ -257,6 +261,7 @@ export function SelectionHud({
 
   const isHanging = item.kind === 'hanging';
   const isLight = item.kind === 'light';
+  const isPoster = isPosterItem(item);
   const canYaw = !isHanging && !isLight;
   const wallSnapped = !!item.wallMounted;
 
@@ -299,6 +304,16 @@ export function SelectionHud({
               <span className="dg-hud-label__dot" style={{ background: swatch }} />
               <span className="dg-hud-label__name">{displayName}</span>
             </div>
+            {isPoster && onChangePoster ? (
+              <HudBtn
+                className="dg-hud-label__action"
+                title="Change poster"
+                onClick={onChangePoster}
+              >
+                <RadialIcon kind="poster" />
+                <span>Change poster</span>
+              </HudBtn>
+            ) : null}
             <HudBtn
               className="dg-hud-label__action"
               title="Actions"
@@ -357,6 +372,16 @@ export function SelectionHud({
                   </>
                 ) : (
                   <>
+                    {isPoster && onChangePoster ? (
+                      <HudBtn
+                        className="dg-hud-radial__btn"
+                        title="Change poster"
+                        onClick={onChangePoster}
+                      >
+                        <RadialIcon kind="poster" />
+                        <span>Change poster</span>
+                      </HudBtn>
+                    ) : null}
                     <HudBtn
                       className="dg-hud-radial__btn"
                       title="Resize"
@@ -453,7 +478,7 @@ function RotateGlyph({ dir }: { dir: 'left' | 'right' }) {
 function RadialIcon({
   kind,
 }: {
-  kind: 'resize' | 'rotate' | 'duplicate' | 'remove' | 'path' | 'bulbs' | 'leaves' | 'led';
+  kind: 'resize' | 'rotate' | 'duplicate' | 'remove' | 'path' | 'bulbs' | 'leaves' | 'led' | 'poster';
 }) {
   const common = {
     width: 18,
@@ -527,6 +552,14 @@ function RadialIcon({
         <rect x="6" y="10.4" width="2.4" height="3.2" rx="0.5" fill="currentColor" stroke="none" />
         <rect x="10.8" y="10.4" width="2.4" height="3.2" rx="0.5" fill="currentColor" stroke="none" />
         <rect x="15.6" y="10.4" width="2.4" height="3.2" rx="0.5" fill="currentColor" stroke="none" />
+      </svg>
+    );
+  }
+  if (kind === 'poster') {
+    return (
+      <svg {...common}>
+        <rect x="5" y="4" width="14" height="16" rx="1.5" />
+        <path d="M8 9h8M8 12h6" />
       </svg>
     );
   }

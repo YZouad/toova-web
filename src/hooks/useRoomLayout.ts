@@ -219,19 +219,26 @@ export interface LoadPublicRoomOptions {
    * count against Supabase Storage egress.
    */
   assetUrlOverrides?: Record<string, string>;
+  /**
+   * When true with overrides, only resolve same-origin / mapped assets.
+   * Unmapped imports are left without a URL so the scene skips them instead
+   * of hitting assets.toova.net (which breaks local dev and leaks egress).
+   */
+  localAssetsOnly?: boolean;
 }
 
 function resolveRoomAssetUrl(
   storagePath: string,
   signedAssets: Record<string, string>,
   overrides: Record<string, string>,
+  localAssetsOnly = false,
 ): string | undefined {
+  const staticUrl = publicModelAssetUrl(storagePath);
+  if (staticUrl) return staticUrl;
   const override = overrides[storagePath];
-  return (
-    publicModelAssetUrl(storagePath) ??
-    (override ? publicModelAssetUrl(override) ?? override : null) ??
-    signedAssets[storagePath]
-  );
+  if (override) return publicModelAssetUrl(override) ?? override;
+  if (localAssetsOnly) return undefined;
+  return signedAssets[storagePath];
 }
 
 /** Load a published profile room (works for anon via path-scoped storage policy). */
@@ -242,23 +249,26 @@ export async function loadPublicRoomLayout(
 ): Promise<PublicRoomLoadResult> {
   const payload = await fetchPublicRoom(handle, roomId);
   const overrides = options?.assetUrlOverrides ?? {};
-  const toSign = (payload.asset_paths ?? []).filter((raw) => {
-    const path = raw.trim();
-    if (!path) return false;
-    if (publicModelAssetUrl(path)) return false;
-    const override = overrides[path];
-    if (override && (publicModelAssetUrl(override) || override.startsWith('http'))) {
-      return false;
-    }
-    return true;
-  });
+  const localAssetsOnly = options?.localAssetsOnly === true;
+  const toSign = localAssetsOnly
+    ? []
+    : (payload.asset_paths ?? []).filter((raw) => {
+        const path = raw.trim();
+        if (!path) return false;
+        if (publicModelAssetUrl(path)) return false;
+        const override = overrides[path];
+        if (override && (publicModelAssetUrl(override) || override.startsWith('http'))) {
+          return false;
+        }
+        return true;
+      });
   const signedAssets = await signPublicRoomAssetPaths(toSign);
 
   const environment = parseEnvironment(payload.room.environment) ?? { ...DEFAULT_ENVIRONMENT };
   const roomGeometry = parseFloorPlan(payload.room.room_geometry) ?? DEFAULT_ROOM_GEOMETRY;
   const publicFloorPath = storedFloorTexturePath(environment.appearance);
   if (publicFloorPath) {
-    const floorUrl = resolveRoomAssetUrl(publicFloorPath, signedAssets, overrides);
+    const floorUrl = resolveRoomAssetUrl(publicFloorPath, signedAssets, overrides, localAssetsOnly);
     if (floorUrl) assignFloorTextureUrl(environment.appearance, publicFloorPath, floorUrl);
   }
 
@@ -274,6 +284,7 @@ export async function loadPublicRoomLayout(
         item.importedStoragePath,
         signedAssets,
         overrides,
+        localAssetsOnly,
       );
     }
     for (const texturePath of storedTexturePaths(item)) {
@@ -281,6 +292,7 @@ export async function loadPublicRoomLayout(
         texturePath,
         signedAssets,
         overrides,
+        localAssetsOnly,
       );
       if (url) assignSignedTextureUrl(item, texturePath, url);
     }
@@ -288,16 +300,18 @@ export async function loadPublicRoomLayout(
     order.push(item.id);
   }
 
-  const extraPublicPaths = items.flatMap(storedTexturePaths).filter((p) => {
-    if (signedAssets[p] || overrides[p]) return false;
-    if (publicModelAssetUrl(p)) return false;
-    return true;
-  });
+  const extraPublicPaths = localAssetsOnly
+    ? []
+    : items.flatMap(storedTexturePaths).filter((p) => {
+        if (signedAssets[p] || overrides[p]) return false;
+        if (publicModelAssetUrl(p)) return false;
+        return true;
+      });
   if (extraPublicPaths.length) {
     Object.assign(signedAssets, await signPublicRoomAssetPaths(extraPublicPaths));
     for (const item of items) {
       for (const texturePath of storedTexturePaths(item)) {
-        const url = resolveRoomAssetUrl(texturePath, signedAssets, overrides);
+        const url = resolveRoomAssetUrl(texturePath, signedAssets, overrides, localAssetsOnly);
         if (url) assignSignedTextureUrl(item, texturePath, url);
       }
     }

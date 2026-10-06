@@ -208,10 +208,16 @@ function rankProductsForQuery(
   return scored;
 }
 
+/** Accessories that mention a furniture word but are not that piece. */
+const NOT_FURNITURE =
+  /\b(desk\s+pads?|desk\s+mats?|desk\s+blotters?|desk\s+organizers?|monitor\s+stands?)\b/;
+
 function resolveBuiltinKind(query: string): GalleryFurnitureKind | null {
   if (isPosterDecorQuery(query)) return null;
 
   const n = normalizeSearchText(query);
+  if (/\bdesk\s+lamps?\b/.test(n) || /\bfloor\s+lamps?\b/.test(n)) return 'lamp';
+  if (NOT_FURNITURE.test(n)) return null;
   if (QUERY_TO_BUILTIN[n]) return QUERY_TO_BUILTIN[n]!;
 
   let best: { kind: GalleryFurnitureKind; score: number } | null = null;

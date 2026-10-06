@@ -44,9 +44,11 @@ import { isStarterEditWorkspaceId } from '../lib/starterTemplateOverrides';
 import { trackChecklistItemAdded } from '../lib/analytics';
 import { buildPurchaseCartLines, purchaseCartTotalCents } from '../lib/purchaseCart';
 import {
+  type AgenticManifestResolution,
   type AgenticShoppingManifestEntry,
   loadLocalAgenticShoppingManifest,
   manifestSearchOnlyEntries,
+  manifestUnresolvedSearchEntries,
   saveLocalAgenticShoppingManifest,
 } from '../lib/agenticShoppingManifest';
 import {
@@ -153,6 +155,11 @@ export function useShoppingCatalog(roomId: string | null) {
 
   const agenticManifestSearchLines = useMemo(
     () => manifestSearchOnlyEntries(agenticManifest, catalogProductIds),
+    [agenticManifest, catalogProductIds],
+  );
+
+  const agenticManifestCheckoutLines = useMemo(
+    () => manifestUnresolvedSearchEntries(agenticManifest, catalogProductIds),
     [agenticManifest, catalogProductIds],
   );
 
@@ -616,6 +623,29 @@ export function useShoppingCatalog(roomId: string | null) {
     [canSyncRemote, persistRoomId, user],
   );
 
+  const setAgenticManifestResolution = useCallback(
+    async (entryId: string, resolution: AgenticManifestResolution | null) => {
+      if (!persistRoomId) return;
+      setAgenticManifest((prev) => {
+        const next = prev.map((e) =>
+          e.id === entryId
+            ? {
+                ...e,
+                resolution,
+                dismissed: resolution === 'skip' ? true : e.dismissed,
+              }
+            : e,
+        );
+        saveLocalAgenticShoppingManifest(persistRoomId, next);
+        return next;
+      });
+      if (canSyncRemote && resolution === 'skip') {
+        await updateAgenticShoppingManifestDismissed(user!.id, persistRoomId, entryId, true);
+      }
+    },
+    [canSyncRemote, persistRoomId, user],
+  );
+
   const markCategoryAsOwned = useCallback(
     async (input: {
       categoryId: string;
@@ -658,7 +688,9 @@ export function useShoppingCatalog(roomId: string | null) {
     purchaseCartLines,
     agenticManifest,
     agenticManifestSearchLines,
+    agenticManifestCheckoutLines,
     dismissAgenticManifestEntry,
+    setAgenticManifestResolution,
     list,
     toggleChecked,
     addToList,

@@ -3,5 +3,8 @@
   "source_url": "https://toova.app/posters/poster-retro-arcade",
   "license": "CC0 1.0 (Toova procedural)",
   "image_file": "procedural:retro-arcade",
-  "built_at": "2026-10-04T15:33:40.037Z"
+  "width_in": 24,
+  "height_in": 36,
+  "depth_in": 0.5,
+  "built_at": "2026-10-06T04:01:56.230Z"
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   manifestFromResolved,
   manifestSearchOnlyEntries,
+  manifestUnresolvedSearchEntries,
 } from './agenticShoppingManifest';
 import type { AgenticReviewRow } from './agenticRoomResolveFromList';
 
@@ -40,5 +41,22 @@ describe('agenticShoppingManifest', () => {
     const searchOnly = manifestSearchOnlyEntries(manifest, new Set(['p-desk']));
     expect(searchOnly).toHaveLength(1);
     expect(searchOnly[0]?.query).toBe('Minecraft bedding set');
+  });
+
+  it('excludes resolved manifest rows from checkout', () => {
+    const manifest = [
+      ...manifestFromResolved([mockRow({ query: 'desk lamp' })]),
+      {
+        ...manifestFromResolved([mockRow({ query: 'curtains' })])[0]!,
+        resolution: 'have' as const,
+      },
+      {
+        ...manifestFromResolved([mockRow({ query: 'rug' })])[0]!,
+        resolution: 'skip' as const,
+      },
+    ];
+    const checkout = manifestUnresolvedSearchEntries(manifest, new Set());
+    expect(checkout).toHaveLength(1);
+    expect(checkout[0]?.query).toBe('desk lamp');
   });
 });

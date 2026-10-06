@@ -476,7 +476,7 @@
 }
 
 .dg-ticker-body {
-  padding: 10px 14px 4px;
+  padding: 10px 14px 18px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -484,6 +484,7 @@
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+  scroll-padding-bottom: 12px;
 }
 
 .dg-ticker-empty {
@@ -779,7 +780,8 @@
   padding: 10px 14px 14px;
   border-top: 1px solid var(--rule-soft);
   display: flex; flex-direction: column; gap: 10px;
-  background: rgba(251, 247, 240, 0.72);
+  background: var(--dg-glass-soft);
+  box-shadow: 0 -8px 16px -12px rgba(36, 31, 25, 0.18);
 }
 .dg-ticker-foot--detail { gap: 8px; }
 .dg-ticker-total {
@@ -2864,4 +2866,94 @@
     animation: none;
     box-shadow: 0 0 0 2px rgba(176, 90, 60, 0.9), 0 0 0 8px rgba(176, 90, 60, 0.14);
   }
+}
+
+.dg-poster-bank__scrim {
+  z-index: var(--dg-z-import);
+}
+
+.dg-poster-bank__section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.dg-poster-bank__section:first-child {
+  margin-top: 0;
+}
+
+.dg-poster-bank__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+}
+
+.dg-poster-bank__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 0;
+  border: 1px solid rgba(36, 31, 25, 0.12);
+  border-radius: var(--dg-radius-sm);
+  background: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dg-poster-bank__card:hover:not(:disabled) {
+  border-color: rgba(176, 90, 60, 0.45);
+  box-shadow: var(--dg-shadow);
+}
+
+.dg-poster-bank__card.is-active {
+  border-color: rgba(176, 90, 60, 0.85);
+  box-shadow: 0 0 0 2px rgba(176, 90, 60, 0.18);
+}
+
+.dg-poster-bank__card:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.dg-poster-bank__thumb {
+  position: relative;
+  aspect-ratio: 2 / 3;
+  overflow: hidden;
+  border-radius: calc(var(--dg-radius-sm) - 1px) calc(var(--dg-radius-sm) - 1px) 0 0;
+  background: rgba(36, 31, 25, 0.06);
+}
+
+.dg-poster-bank__thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.dg-poster-bank__thumb-fallback {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(145deg, rgba(36, 31, 25, 0.08), rgba(176, 90, 60, 0.12));
+}
+
+.dg-poster-bank__badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  padding: 2px 6px;
+  border-radius: var(--dg-pill);
+  background: rgba(36, 31, 25, 0.82);
+  color: #f8f3ea;
+  font: var(--type-mono-xs);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.dg-poster-bank__label {
+  padding: 0 8px 10px;
+  font: 400 12px/1.35 var(--font-sans);
+  color: rgba(36, 31, 25, 0.88);
 }

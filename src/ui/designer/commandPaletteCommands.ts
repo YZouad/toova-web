@@ -183,7 +183,7 @@ export function buildDesignerCommands(input: BuildCommandsInput): CommandPalette
     cmds.push({
       id: 'shuffle-layout',
       label: 'Shuffle layout',
-      hint: 'Cycle 3 layouts',
+      hint: 'Cycle 3 layouts, keeps selection',
       run: wrap('shuffle-layout', () => {
         shuffleRoomLayout();
       }),

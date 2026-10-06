@@ -7,9 +7,10 @@ import {
 } from './roomLayoutArrange';
 
 /**
- * Command-palette action. Cycles three preset arrangements of the furniture
- * already in the room (longest wall, next wall, corner). Does not add, remove,
- * or replace pieces, and does not edit the walls.
+ * Command-palette action. Cycles three arrangements of the furniture already
+ * in the room: bed on the longest wall with the desk at a window, bed on the
+ * wall you face from the door, and a corner L. Selected pieces stay put.
+ * Does not add, remove, or replace pieces, and does not edit the walls.
  * Returns false when nothing moved.
  */
 export function shuffleRoomLayout(): boolean {
@@ -26,6 +27,7 @@ export function shuffleRoomLayout(): boolean {
       state.roomGeometry,
       roomItems,
       variant,
+      { pinnedIds: state.selectedIds },
     );
     if (movedIds.length === 0) continue;
     state.applyItemPoses(

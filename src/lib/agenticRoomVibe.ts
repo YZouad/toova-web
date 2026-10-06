@@ -177,6 +177,23 @@ export function applyAgenticThemeToItems(
   return applyPaletteToItems(items, profile.furnishings);
 }
 
+/** Named finish on a shopping-list line. Wins over the room palette. */
+export function explicitFinishFromLabel(
+  label: string,
+): { tintColor: string; topColor: string } | null {
+  const text = label.toLowerCase();
+  if (/\b(charcoal|black)\b/.test(text)) return { tintColor: '#3a3a3a', topColor: '#5c6166' };
+  if (/\b(grays?|greys?)\b/.test(text)) return { tintColor: '#5c6166', topColor: '#f2efe8' };
+  if (/\bwhites?\b/.test(text)) return { tintColor: '#f2efe8', topColor: '#f2efe8' };
+  if (/\b(walnut|mahogany|cherry|brown)\b/.test(text)) {
+    return { tintColor: '#6b4f33', topColor: '#8a6440' };
+  }
+  if (/\b(woods?|wooden|oak|maple|teak|bamboo)\b/.test(text)) {
+    return { tintColor: '#8a6440', topColor: '#a98662' };
+  }
+  return null;
+}
+
 function applyPaletteToItems(items: Item[], palette: AgenticVibeFurnishings): Item[] {
   return items.map((item) => {
     if (item.kind === 'imported' && isChecklistRug(item)) {
@@ -197,6 +214,13 @@ function applyPaletteToItems(items: Item[], palette: AgenticVibeFurnishings): It
 
     if (itemSupportsTopColor(item)) {
       next.topColor = palette.topColor;
+    }
+
+    // "wood desk" / "brown desk pad" must not inherit a grey-white studio palette.
+    const named = item.kind === 'imported' ? null : explicitFinishFromLabel(item.label);
+    if (named) {
+      if (tint || item.kind === 'bed') next.tintColor = named.tintColor;
+      if (itemSupportsTopColor(item)) next.topColor = named.topColor;
     }
 
     return next;

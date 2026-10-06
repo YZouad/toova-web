@@ -37,6 +37,10 @@ import {
   submitCatalogImport,
   type GeneratePhase,
 } from './importLogic';
+import {
+  posterWidthInForHeight,
+  readImageSizeFromBlob,
+} from '../../lib/posterSize';
 
 export interface ImportFlowProps {
   open: boolean;
@@ -273,6 +277,24 @@ export function ImportFlow({
     setPosterPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
   }, [posterImageFile]);
+
+  // Keep width/height inches aligned with the cropped image aspect ratio.
+  useEffect(() => {
+    if (!posterCroppedBlob) return;
+    let cancelled = false;
+    void readImageSizeFromBlob(posterCroppedBlob)
+      .then(({ width, height }) => {
+        if (cancelled) return;
+        const h = Number(heightIn);
+        if (!(h > 0)) return;
+        const w = posterWidthInForHeight(width, height, h);
+        if (w != null) setWidthIn(String(w));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [posterCroppedBlob, heightIn]);
 
   useEffect(() => {
     if (!open || !userId) {

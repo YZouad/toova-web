@@ -46,6 +46,8 @@ import { ImportFlow } from './designer/ImportFlow';
 import { GenerationQueueHost } from './GenerationQueueHost';
 import { MobileDesignerChrome } from './designer/mobile/MobileDesignerChrome';
 import { placeFromCatalog } from './designer/placeCatalogModel';
+import { PosterBankModal } from './designer/PosterBankModal';
+import { isPosterItem } from '../lib/posterItem';
 import { fetchOwnerCatalogGalleryModel } from '../lib/fetchOwnerCatalogModel';
 import { useCatalogThrixelLinked } from '../hooks/useCatalogThrixelLinked';
 import {
@@ -134,6 +136,7 @@ export function Designer({
   const [cameraPreset, setCameraPreset] = useState<CameraPresetId>('corner');
   const [detailModel, setDetailModel] = useState<GalleryModel | null>(null);
   const [detailFocusThrixel, setDetailFocusThrixel] = useState(false);
+  const [posterBankItemId, setPosterBankItemId] = useState<string | null>(null);
   const builtinPreviews = useBuiltinPreviews();
 
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
@@ -325,6 +328,17 @@ export function Designer({
     setDetailModel(model);
   }, []);
 
+  const openPosterBank = useCallback((itemId: string) => {
+    setPosterBankItemId(itemId);
+    chrome.closePanels();
+    chrome.setOverlay(null);
+  }, [chrome]);
+
+  const changePosterForSelection = useCallback(() => {
+    const id = useStore.getState().selectedId;
+    if (id && isPosterItem(useStore.getState().items[id])) openPosterBank(id);
+  }, [openPosterBank]);
+
   const openThrixelRevise = useCallback(async (catalogKind: string) => {
     const selected = useStore.getState().items[useStore.getState().selectedId ?? ''];
     if (selected?.catalogKind === catalogKind) {
@@ -445,6 +459,10 @@ export function Designer({
           chrome.closeImport();
           return;
         }
+        if (posterBankItemId) {
+          setPosterBankItemId(null);
+          return;
+        }
         if (chrome.overlay) {
           chrome.setOverlay(null);
           return;
@@ -538,7 +556,7 @@ export function Designer({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cancelHangingDraft, cancelMeasure, chrome, onEditFloorPlan, resetCamera, canShare]);
+  }, [cancelHangingDraft, cancelMeasure, chrome, onEditFloorPlan, resetCamera, canShare, posterBankItemId]);
 
   // Clicking the viewport takes focus off the room-name field so shortcuts work.
   useEffect(() => {
@@ -732,10 +750,12 @@ export function Designer({
             orbitCssTargetRef={canvasWrapRef}
             interactionMode={isPhone ? 'mobile' : 'desktop'}
             dimensionsOverlayHidden={chrome.present}
+            onPosterActivate={openPosterBank}
             selectionHud={{
               radialOpen: chrome.radialOpen,
               onToggleRadial: () => chrome.setRadialOpen(!chrome.radialOpen),
               onOpenInspector: chrome.openInspector,
+              onChangePoster: changePosterForSelection,
               // Always pass an object so Scene uses SelectionHud (not ArcMenu).
               // hidden:true in present/draw — SelectionHud / MobileSelectionHud no-ops.
               hidden: chrome.present || chrome.drawing,
@@ -771,6 +791,7 @@ export function Designer({
             }}
             onOpenImport={() => openImportOrAuth(null)}
             onOpenThrixelRevise={(kind) => void openThrixelRevise(kind)}
+            onChangePoster={changePosterForSelection}
             searchTriggerRef={searchTriggerRef}
           />
         ) : (
@@ -903,6 +924,11 @@ export function Designer({
                     ? () => void openThrixelRevise(chrome.selectedItem!.catalogKind!)
                     : undefined
                 }
+                onChangePoster={
+                  chrome.selectedItem && isPosterItem(chrome.selectedItem)
+                    ? changePosterForSelection
+                    : undefined
+                }
               />
             ) : null}
 
@@ -1030,6 +1056,12 @@ export function Designer({
         }}
       />
       <KeysOverlay open={chrome.overlay === 'keys'} onClose={() => chrome.setOverlay(null)} />
+
+      <PosterBankModal
+        open={!!posterBankItemId}
+        itemId={posterBankItemId}
+        onClose={() => setPosterBankItemId(null)}
+      />
 
       {detailModel ? (
         <ModelDetailModal

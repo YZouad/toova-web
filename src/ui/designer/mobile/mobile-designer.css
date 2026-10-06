@@ -1931,6 +1931,7 @@
 }
 
 .dg-page.is-phone .dgm-checklist-scroll {
+  scroll-padding-bottom: 12px;
   flex: 1;
   min-height: 0;
   overflow: auto;
@@ -2047,6 +2048,8 @@
   flex: none;
   padding: 12px 16px 20px;
   border-top: 1px solid var(--rule-soft);
+  background: var(--paper-0);
+  box-shadow: 0 -8px 16px -12px rgba(36, 31, 25, 0.18);
 }
 
 .dg-page.is-phone .dgm-checklist-total__eyebrow {

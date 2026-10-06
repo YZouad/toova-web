@@ -120,14 +120,17 @@ function CommunityMatches({
 
   return (
     <div className="agentic-room-item__community">
-      <p className="agentic-room-item__community-title">Similar in community gallery</p>
+      <p className="agentic-room-item__community-title">Similar in Community Gallery</p>
       <ul className="agentic-room-item__community-list">
-        {matches.map((match) => (
-          <li key={match.kind} className="agentic-room-item__community-row">
+        {matches.slice(0, 1).map((match, matchIndex) => (
+          <li key={`${match.kind}-${matchIndex}`} className="agentic-room-item__community-row">
             <button
               type="button"
               className="agentic-room-item__community-card"
-              onClick={() => navigate(browseHref)}
+              onClick={() => {
+                if (onUseModel && match.modelUrl) onUseModel(match);
+                else navigate(browseHref);
+              }}
             >
               {match.previewUrl ? (
                 <img src={match.previewUrl} alt="" className="agentic-room-item__community-img" />
@@ -168,6 +171,7 @@ function SearchLinks({
   selectedCommunityKind,
   onUseCommunityModel,
   disabled,
+  catalogMatchStatus = 'unmatched',
 }: {
   query: string;
   communityMatches?: AgenticCommunityMatch[];
@@ -175,17 +179,20 @@ function SearchLinks({
   selectedCommunityKind?: string | null;
   onUseCommunityModel?: (match: AgenticCommunityMatch) => void;
   disabled?: boolean;
+  catalogMatchStatus?: 'pending' | 'unmatched';
 }) {
   const offers = searchOffersForQuery(query);
   const hasCommunity = communityLoading || (communityMatches?.length ?? 0) > 0;
   if (offers.length === 0 && !hasCommunity) return null;
+  const approxCopy =
+    catalogMatchStatus === 'pending'
+      ? 'Matching to our catalog — search links below if we don’t find a product.'
+      : 'No catalog match — search results may not match exactly.';
   return (
     <div className="agentic-room-item__search-fallback">
       {offers.length > 0 ? (
         <>
-          <p className="agentic-room-item__search-approx">
-            No catalog match — search results may not match exactly.
-          </p>
+          <p className="agentic-room-item__search-approx">{approxCopy}</p>
           <div className="agentic-room-item__meta agentic-room-item__meta--links">
             {offers.map((offer) => (
               <a
@@ -213,6 +220,51 @@ function SearchLinks({
   );
 }
 
+function ItemResolutionBar({
+  resolution,
+  disabled,
+  onHave,
+  onSkip,
+  onUndo,
+}: {
+  resolution?: 'have' | 'skip' | null;
+  disabled?: boolean;
+  onHave: () => void;
+  onSkip: () => void;
+  onUndo: () => void;
+}) {
+  if (resolution === 'skip') {
+    return (
+      <div className="agentic-room-item__resolution">
+        <span className="agentic-room-item__resolution-label">Marked as not needed</span>
+        <button type="button" className="agentic-room-item__resolution-undo" disabled={disabled} onClick={onUndo}>
+          Undo
+        </button>
+      </div>
+    );
+  }
+  if (resolution === 'have') {
+    return (
+      <div className="agentic-room-item__resolution">
+        <span className="agentic-room-item__resolution-label">Already purchased</span>
+        <button type="button" className="agentic-room-item__resolution-undo" disabled={disabled} onClick={onUndo}>
+          Undo
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="agentic-room-item__resolution">
+      <button type="button" className="agentic-room-item__resolution-btn" disabled={disabled} onClick={onHave}>
+        Already have
+      </button>
+      <button type="button" className="agentic-room-item__resolution-btn" disabled={disabled} onClick={onSkip}>
+        Don&apos;t need
+      </button>
+    </div>
+  );
+}
+
 function FurnitureListRow({
   item,
   index,
@@ -222,11 +274,14 @@ function FurnitureListRow({
   onRemove,
   communityMatches,
   communityLoading,
+  catalogMatchPending,
   placeInRoom,
   onPlaceInRoom,
   canPlace,
   selectedCommunityKind,
   onUseCommunityModel,
+  resolution,
+  onSetResolution,
 }: {
   item: AgenticItemAsk;
   index: number;
@@ -236,65 +291,82 @@ function FurnitureListRow({
   onRemove: () => void;
   communityMatches?: AgenticCommunityMatch[];
   communityLoading?: boolean;
+  catalogMatchPending?: boolean;
   placeInRoom?: boolean;
   onPlaceInRoom?: (checked: boolean) => void;
   canPlace?: boolean;
   selectedCommunityKind?: string | null;
   onUseCommunityModel?: (match: AgenticCommunityMatch) => void;
+  resolution?: 'have' | 'skip' | null;
+  onSetResolution?: (resolution: 'have' | 'skip' | null) => void;
 }) {
+  const resolved = resolution === 'have' || resolution === 'skip';
+
   return (
-    <div className="agentic-room-item agentic-room-item--list">
-      <div className="agentic-room-item__main">
-        <div className="agentic-room-item__copy agentic-room-item__copy--full">
-          <Field label={`Item ${index + 1}`}>
-            <Input
-              value={item.query}
-              disabled={disabled}
-              onChange={(e) => onQuery(e.target.value)}
-              aria-label={`Furniture item ${index + 1}`}
-            />
-          </Field>
-          <SearchLinks
-            query={item.query}
-            communityMatches={communityMatches}
-            communityLoading={communityLoading}
-            selectedCommunityKind={selectedCommunityKind}
-            onUseCommunityModel={onUseCommunityModel}
-            disabled={disabled}
-          />
+    <div className={`agentic-room-item agentic-room-item--list${resolved ? ' is-resolved' : ''}`}>
+      <Field label={`Item ${index + 1}`}>
+        <Input
+          value={item.query}
+          disabled={disabled || resolved}
+          onChange={(e) => onQuery(e.target.value)}
+          aria-label={`Furniture item ${index + 1}`}
+        />
+      </Field>
+      {!resolved ? (
+        <SearchLinks
+          query={item.query}
+          communityMatches={communityMatches}
+          communityLoading={communityLoading}
+          selectedCommunityKind={selectedCommunityKind}
+          onUseCommunityModel={onUseCommunityModel}
+          disabled={disabled}
+          catalogMatchStatus={catalogMatchPending ? 'pending' : 'unmatched'}
+        />
+      ) : null}
+      {onSetResolution ? (
+        <ItemResolutionBar
+          resolution={resolution}
+          disabled={disabled}
+          onHave={() => onSetResolution('have')}
+          onSkip={() => onSetResolution('skip')}
+          onUndo={() => onSetResolution(null)}
+        />
+      ) : null}
+      <div className="agentic-room-item__footer">
+        <div className="agentic-room-item__footer-meta">
+          {canPlace && onPlaceInRoom ? (
+            <label className="agentic-room-item__place">
+              <input
+                type="checkbox"
+                checked={placeInRoom ?? false}
+                disabled={disabled || resolved}
+                onChange={(e) => onPlaceInRoom(e.target.checked)}
+              />
+              Place in room
+            </label>
+          ) : null}
+          {item.estimatedCents != null ? (
+            <span className="agentic-room-item__estimate">
+              ~{formatAgenticPrice(item.estimatedCents)}
+            </span>
+          ) : null}
         </div>
-      </div>
-      <div className="agentic-room-item__actions">
-        {canPlace && onPlaceInRoom ? (
-          <label className="agentic-room-item__place">
-            <input
-              type="checkbox"
-              checked={placeInRoom ?? false}
-              disabled={disabled}
-              onChange={(e) => onPlaceInRoom(e.target.checked)}
+        <div className="agentic-room-item__footer-controls">
+          <label className="agentic-room-item__qty">
+            Qty
+            <Input
+              type="number"
+              min={1}
+              max={99}
+              value={String(item.qty)}
+              disabled={disabled || resolved}
+              onChange={(e) => onQty(Math.max(1, Number(e.target.value) || 1))}
             />
-            Place in room
           </label>
-        ) : null}
-        {item.estimatedCents != null ? (
-          <span className="agentic-room-item__estimate">
-            ~{formatAgenticPrice(item.estimatedCents)}
-          </span>
-        ) : null}
-        <label className="agentic-room-item__qty">
-          Qty
-          <Input
-            type="number"
-            min={1}
-            max={99}
-            value={String(item.qty)}
-            disabled={disabled}
-            onChange={(e) => onQty(Math.max(1, Number(e.target.value) || 1))}
-          />
-        </label>
-        <Button size="sm" variant="outline" disabled={disabled} onClick={onRemove}>
-          Remove
-        </Button>
+          <Button size="sm" variant="outline" disabled={disabled} onClick={onRemove}>
+            Remove
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -310,6 +382,8 @@ function ProductRow({
   onUseCommunityModel,
   communityMatches,
   communityLoading,
+  resolution,
+  onSetResolution,
 }: {
   item: AgenticReviewRow;
   disabled?: boolean;
@@ -320,15 +394,18 @@ function ProductRow({
   onUseCommunityModel: (match: AgenticCommunityMatch) => void;
   communityMatches?: AgenticCommunityMatch[];
   communityLoading?: boolean;
+  resolution?: 'have' | 'skip' | null;
+  onSetResolution?: (resolution: 'have' | 'skip' | null) => void;
 }) {
   const product = item.product;
   const price = product ? formatAgenticPrice(product.priceCents) : '—';
   const showCatalogMatch =
     Boolean(product) &&
     product!.name.trim().toLowerCase() !== item.query.trim().toLowerCase();
+  const resolved = resolution === 'have' || resolution === 'skip';
 
   return (
-    <div className="agentic-room-item">
+    <div className={`agentic-room-item${resolved ? ' is-resolved' : ''}`}>
       <div className="agentic-room-item__main">
         {product?.imageUrl ? (
           <img src={product.imageUrl} alt="" className="agentic-room-item__img" />
@@ -345,9 +422,9 @@ function ProductRow({
               Toova poster: {item.bankPoster.label}
             </div>
           ) : null}
-          <div className="agentic-room-item__meta">
-            {product ? <span>{price}</span> : null}
-            {product?.affiliateUrl ? (
+          {!resolved && product?.affiliateUrl ? (
+            <div className="agentic-room-item__meta">
+              <span>{price}</span>
               <a
                 href={product.affiliateUrl}
                 target="_blank"
@@ -366,18 +443,19 @@ function ProductRow({
               >
                 Shop at {product.retailer?.trim() || 'retailer'}
               </a>
-            ) : null}
-            {!product?.affiliateUrl ? (
-              <SearchLinks
-                query={item.query}
-                communityMatches={communityMatches}
-                communityLoading={communityLoading}
-                selectedCommunityKind={item.communityModel?.kind ?? null}
-                onUseCommunityModel={onUseCommunityModel}
-                disabled={disabled}
-              />
-            ) : null}
-          </div>
+            </div>
+          ) : null}
+          {!resolved && !product?.affiliateUrl ? (
+            <SearchLinks
+              query={item.query}
+              communityMatches={communityMatches}
+              communityLoading={communityLoading}
+              selectedCommunityKind={item.communityModel?.kind ?? null}
+              onUseCommunityModel={onUseCommunityModel}
+              disabled={disabled}
+              catalogMatchStatus="unmatched"
+            />
+          ) : null}
           {item.warnings.map((w) => (
             <p key={w} className="agentic-room-item__warn">
               {w}
@@ -385,48 +463,62 @@ function ProductRow({
           ))}
         </div>
       </div>
-      <div className="agentic-room-item__actions">
-        {rowCanPlaceInRoom(item) || item.communityModel || item.bankPoster ? (
-          <label className="agentic-room-item__place">
-            <input
-              type="checkbox"
-              checked={item.placeInRoom}
-              disabled={disabled}
-              onChange={(e) => onPlaceInRoom(e.target.checked)}
+      {onSetResolution ? (
+        <ItemResolutionBar
+          resolution={resolution}
+          disabled={disabled}
+          onHave={() => onSetResolution('have')}
+          onSkip={() => onSetResolution('skip')}
+          onUndo={() => onSetResolution(null)}
+        />
+      ) : null}
+      <div className="agentic-room-item__footer">
+        <div className="agentic-room-item__footer-meta">
+          {rowCanPlaceInRoom(item) || item.communityModel || item.bankPoster ? (
+            <label className="agentic-room-item__place">
+              <input
+                type="checkbox"
+                checked={item.placeInRoom}
+                disabled={disabled || resolved}
+                onChange={(e) => onPlaceInRoom(e.target.checked)}
+              />
+              Place in room
+            </label>
+          ) : null}
+          {product && !resolved ? <span className="agentic-room-item__estimate">{price}</span> : null}
+        </div>
+        <div className="agentic-room-item__footer-controls">
+          {item.alternates.length > 0 ? (
+            <select
+              className="agentic-room-item__swap"
+              disabled={disabled || resolved}
+              value={product?.id ?? ''}
+              onChange={(e) => onSwap(e.target.value)}
+              aria-label={`Swap match for ${item.query}`}
+            >
+              {product ? <option value={product.id}>{product.name}</option> : null}
+              {item.alternates.map((alt) => (
+                <option key={alt.id} value={alt.id}>
+                  {alt.name} ({formatAgenticPrice(alt.priceCents)})
+                </option>
+              ))}
+            </select>
+          ) : null}
+          <label className="agentic-room-item__qty">
+            Qty
+            <Input
+              type="number"
+              min={1}
+              max={99}
+              value={String(item.qty)}
+              disabled={disabled || resolved}
+              onChange={(e) => onQty(Math.max(1, Number(e.target.value) || 1))}
             />
-            Place in room
           </label>
-        ) : null}
-        {item.alternates.length > 0 ? (
-          <select
-            className="agentic-room-item__swap"
-            disabled={disabled}
-            value={product?.id ?? ''}
-            onChange={(e) => onSwap(e.target.value)}
-            aria-label={`Swap match for ${item.query}`}
-          >
-            {product ? <option value={product.id}>{product.name}</option> : null}
-            {item.alternates.map((alt) => (
-              <option key={alt.id} value={alt.id}>
-                {alt.name} ({formatAgenticPrice(alt.priceCents)})
-              </option>
-            ))}
-          </select>
-        ) : null}
-        <label className="agentic-room-item__qty">
-          Qty
-          <Input
-            type="number"
-            min={1}
-            max={99}
-            value={String(item.qty)}
-            disabled={disabled}
-            onChange={(e) => onQty(Math.max(1, Number(e.target.value) || 1))}
-          />
-        </label>
-        <Button size="sm" variant="outline" disabled={disabled} onClick={onRemove}>
-          Remove
-        </Button>
+          <Button size="sm" variant="outline" disabled={disabled} onClick={onRemove}>
+            Remove
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -456,8 +548,9 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [savedPicks, setSavedPicks] = useState<SavedAgenticResolvedPick[] | undefined>();
   const [communityByQuery, setCommunityByQuery] = useState<Record<string, AgenticCommunityMatch[]>>({});
-  const [communityLoading, setCommunityLoading] = useState(false);
+  const [communityLoadingQueries, setCommunityLoadingQueries] = useState<Set<string>>(() => new Set());
   const [showMoreSuggestions, setShowMoreSuggestions] = useState(false);
+  const [itemResolutions, setItemResolutions] = useState<Map<number, 'have' | 'skip'>>(new Map());
 
   const themeSuggestions = useMemo(() => rotatedThemeSuggestions(8), []);
   const visibleSuggestions = showMoreSuggestions
@@ -510,6 +603,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
       setActiveDraftCreatedAt(null);
       setSaveMessage(null);
       setSaveTitle(defaultChecklistTitle(prompt, next));
+      setItemResolutions(new Map());
     } catch (e) {
       setParseError(e instanceof Error ? e.message : 'Could not generate list');
       setResult(null);
@@ -553,21 +647,30 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   useEffect(() => {
     if (!communityQueryKey) {
       setCommunityByQuery({});
-      setCommunityLoading(false);
+      setCommunityLoadingQueries(new Set());
       return;
     }
     const queries = communityQueryKey.split('|');
     let cancelled = false;
-    setCommunityLoading(true);
+    setCommunityLoadingQueries(new Set(queries));
     void fetchCommunityMatchesByQuery(queries).then((next) => {
       if (cancelled) return;
       setCommunityByQuery(next);
-      setCommunityLoading(false);
+      setCommunityLoadingQueries(new Set());
     });
     return () => {
       cancelled = true;
     };
   }, [communityQueryKey]);
+
+  const setItemResolution = useCallback((index: number, resolution: 'have' | 'skip' | null) => {
+    setItemResolutions((prev) => {
+      const next = new Map(prev);
+      if (resolution == null) next.delete(index);
+      else next.set(index, resolution);
+      return next;
+    });
+  }, []);
 
   const updateItem = useCallback(
     (index: number, patch: Partial<AgenticReviewRow>) => {
@@ -655,9 +758,24 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
           ...(themeAppearance ?? {}),
         },
       };
-      const shoppingList = shoppingEntriesFromResolved(resolved);
-      const agenticShoppingManifest = manifestFromResolved(resolved);
-      const packRows = resolved.filter((row) => row.placeInRoom);
+      const activeResolved = resolved.filter((_, index) => itemResolutions.get(index) !== 'skip');
+      const shoppingList = shoppingEntriesFromResolved(
+        resolved.filter((_, index) => {
+          const resolution = itemResolutions.get(index);
+          return resolution !== 'skip' && resolution !== 'have';
+        }),
+      );
+      const agenticShoppingManifest = manifestFromResolved(activeResolved).map((entry) => {
+        const rowIndex = resolved.findIndex((row) => row.query === entry.query);
+        if (rowIndex >= 0 && itemResolutions.get(rowIndex) === 'have') {
+          return { ...entry, resolution: 'have' as const };
+        }
+        return entry;
+      });
+      const packRows = resolved.filter((row, index) => {
+        const resolution = itemResolutions.get(index);
+        return row.placeInRoom && resolution !== 'skip' && resolution !== 'have';
+      });
       const pieces = await buildAgenticPackPieces(packRows);
       const packed = packAgenticFloorItems(plan, pieces);
       const vibeItems = applyAgenticThemeToItems(
@@ -956,13 +1074,6 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
             </Banner>
           ) : null}
 
-          {showProductRows && !hasCatalogMatch ? (
-            <Banner tone="info">
-              No catalog matches — check community gallery links, or search Amazon / Google Shopping
-              on each item below.
-            </Banner>
-          ) : null}
-
           <div className="agentic-room-flow__items">
             {showProductRows
               ? resolved.map((item, index) => (
@@ -971,9 +1082,9 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                     item={item}
                     disabled={disabled || submitting}
                     communityMatches={communityByQuery[item.query.trim()]}
-                    communityLoading={
-                      communityLoading && communityByQuery[item.query.trim()] == null
-                    }
+                    communityLoading={communityLoadingQueries.has(item.query.trim())}
+                    resolution={itemResolutions.get(index) ?? null}
+                    onSetResolution={(resolution) => setItemResolution(index, resolution)}
                     onSwap={(productId) => swapProduct(index, productId)}
                     onQty={(qty) => {
                       updateItem(index, { qty });
@@ -986,6 +1097,14 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                     onRemove={() => {
                       setResolved((prev) => prev.filter((_, i) => i !== index));
                       setItems((prev) => prev.filter((_, i) => i !== index));
+                      setItemResolutions((prev) => {
+                        const next = new Map<number, 'have' | 'skip'>();
+                        prev.forEach((value, key) => {
+                          if (key < index) next.set(key, value);
+                          else if (key > index) next.set(key - 1, value);
+                        });
+                        return next;
+                      });
                     }}
                   />
                 ))
@@ -996,9 +1115,10 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                     index={index}
                     disabled={disabled || generating || submitting}
                     communityMatches={communityByQuery[item.query.trim()]}
-                    communityLoading={
-                      communityLoading && communityByQuery[item.query.trim()] == null
-                    }
+                    communityLoading={communityLoadingQueries.has(item.query.trim())}
+                    catalogMatchPending={catalogLoading}
+                    resolution={itemResolutions.get(index) ?? null}
+                    onSetResolution={(resolution) => setItemResolution(index, resolution)}
                     onQuery={(query) =>
                       setItems((prev) =>
                         prev.map((row, i) => (i === index ? { ...row, query } : row)),
@@ -1009,7 +1129,17 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                         prev.map((row, i) => (i === index ? { ...row, qty } : row)),
                       )
                     }
-                    onRemove={() => setItems((prev) => prev.filter((_, i) => i !== index))}
+                    onRemove={() => {
+                      setItems((prev) => prev.filter((_, i) => i !== index));
+                      setItemResolutions((prev) => {
+                        const next = new Map<number, 'have' | 'skip'>();
+                        prev.forEach((value, key) => {
+                          if (key < index) next.set(key, value);
+                          else if (key > index) next.set(key - 1, value);
+                        });
+                        return next;
+                      });
+                    }}
                   />
                 ))}
           </div>

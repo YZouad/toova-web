@@ -196,6 +196,36 @@ describe('resolveAgenticItems', () => {
     expect(result.items[0]?.builtinKind).toBe('desk');
   });
 
+  it('matches a wood desk lamp to a lamp, not a desk', () => {
+    const result = resolveAgenticItems(
+      {
+        widthIn: 120,
+        depthIn: 144,
+        items: [{ query: 'wood desk lamp', qty: 1 }],
+      },
+      catalog,
+    );
+    expect(result.items[0]?.product).toBeNull();
+    expect(result.items[0]?.builtinKind).toBe('lamp');
+  });
+
+  it('does not place a desk pad or desk organizer as a desk', () => {
+    const result = resolveAgenticItems(
+      {
+        widthIn: 120,
+        depthIn: 144,
+        items: [
+          { query: 'brown rugged fancy desk pad', qty: 1 },
+          { query: 'desk organizer set brown', qty: 1 },
+        ],
+      },
+      catalog,
+    );
+    expect(result.items[0]?.builtinKind).toBeNull();
+    expect(result.items[0]?.product).toBeNull();
+    expect(result.items[1]?.builtinKind).toBeNull();
+  });
+
   it('falls back to builtin when no product match', () => {
     const request: AgenticRoomRequest = {
       widthIn: 120,

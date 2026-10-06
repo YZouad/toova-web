@@ -1,10 +1,13 @@
 import { ReactNode } from 'react';
 import { ThreeEvent } from '@react-three/fiber';
+import { isPosterItem } from '../lib/posterItem';
 import { useStore } from '../store';
 
 interface SelectableProps {
   id: string;
   children: ReactNode;
+  /** Opens the poster bank on double-click (single click selects / drags). */
+  onPosterActivate?: (id: string) => void;
 }
 
 /**
@@ -13,7 +16,7 @@ interface SelectableProps {
  * selected item keeps the current set so group drag still works.
  * Selection outline is rendered by the item component itself based on selectedIds.
  */
-export function Selectable({ id, children }: SelectableProps) {
+export function Selectable({ id, children, onPosterActivate }: SelectableProps) {
   const select = useStore((s) => s.select);
 
   const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
@@ -33,8 +36,15 @@ export function Selectable({ id, children }: SelectableProps) {
     select(id);
   };
 
+  const handleDoubleClick = (e: ThreeEvent<MouseEvent>) => {
+    if (useStore.getState().designerTool === 'measure') return;
+    e.stopPropagation();
+    const item = useStore.getState().items[id];
+    if (isPosterItem(item)) onPosterActivate?.(id);
+  };
+
   return (
-    <group onPointerDown={handlePointerDown}>
+    <group onPointerDown={handlePointerDown} onDoubleClick={handleDoubleClick}>
       {children}
     </group>
   );

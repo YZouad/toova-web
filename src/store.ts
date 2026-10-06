@@ -9,6 +9,12 @@ import {
 import { defaultWallShelfPose, findValidElevation, resolveValidXZ, settleGravity, validatePlacement } from './interaction/collision';
 import { trackDesignItemAdded } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
+import { isPosterItem } from './lib/posterItem';
+import {
+  posterCatalogSize,
+  posterPositionPreservingCenterY,
+  posterSizeForItemAfterNatural,
+} from './lib/posterSize';
 import { shouldStandImportedUpright, standUpFlatBounds } from './lib/importedUpright';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './lib/checklistPublicGlbs';
 import {
@@ -208,6 +214,8 @@ export interface Item {
   catalogSizeIn?: [number, number, number];
   /** furniture_catalog.kind for imported GLBs (checklist + gallery placement). */
   catalogKind?: string;
+  /** furniture_catalog.tags for imported GLBs (runtime; backfilled on load). */
+  catalogTags?: string[];
   label: string;
   /** Gravity off on drag only when checked AND touching a wall; height slider ignores this flag. */
   wallMounted?: boolean;
@@ -351,7 +359,6 @@ interface StoreState {
       size?: [number, number, number];
     }>,
   ) => void;
-
   addItem: (
     kind: FurnitureKind,
     opts?: {
@@ -361,8 +368,10 @@ interface StoreState {
       size?: [number, number, number];
       catalogSizeIn?: [number, number, number];
       catalogKind?: string;
+      catalogTags?: string[];
       curatedProductId?: string;
       tintColor?: string;
+      wallMounted?: boolean;
     },
   ) => string;
   /** Clone an item with a new id, slight position offset; appends and selects it. */
@@ -406,6 +415,18 @@ interface StoreState {
       url: string;
       storagePath: string;
       catalogSizeIn?: [number, number, number];
+    },
+  ) => void;
+  /** Replace one wall poster placement while preserving pose and wall mount. */
+  swapPosterItem: (
+    id: string,
+    replacement: {
+      label: string;
+      catalogKind: string;
+      url: string;
+      storagePath: string;
+      size: [number, number, number];
+      catalogTags?: string[];
     },
   ) => void;
   setImportedSize: (id: string, size: [number, number, number]) => void;
@@ -1026,9 +1047,10 @@ export const useStore = create<StoreState>((set, get) => ({
       importedStoragePath: opts?.storagePath,
       catalogSizeIn,
       catalogKind: opts?.catalogKind,
+      catalogTags: opts?.catalogTags?.length ? [...opts.catalogTags] : undefined,
       label,
       curatedProductId: opts?.curatedProductId,
-      wallMounted: isWallShelfKind(kind) ? true : undefined,
+      wallMounted: opts?.wallMounted ?? (isWallShelfKind(kind) ? true : undefined),
       tintColor:
         opts?.tintColor ??
         (isWallShelfKind(kind)
@@ -1470,6 +1492,15 @@ export const useStore = create<StoreState>((set, get) => ({
       const it = s.items[id];
       if (!it || it.kind !== 'imported') return s;
       if (!it.importedNaturalSize) {
+        if (isPosterItem(it)) {
+          const size = posterSizeForItemAfterNatural(it, natural);
+          return {
+            items: {
+              ...s.items,
+              [id]: { ...it, importedNaturalSize: natural, size, catalogSizeIn: size },
+            },
+          };
+        }
         const size = resolveImportedInitialSize(it.size, natural, it.catalogSizeIn);
         return {
           items: {
@@ -1512,6 +1543,40 @@ export const useStore = create<StoreState>((set, get) => ({
         changed = true;
       }
       return changed ? { items } : s;
+    }),
+
+  swapPosterItem: (id, replacement) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'imported') return s;
+
+      const newSize = posterCatalogSize(
+        replacement.size[0],
+        replacement.size[1],
+        replacement.size[2],
+      );
+      const position = posterPositionPreservingCenterY(it.position, it.size[1], newSize[1]);
+
+      return {
+        items: {
+          ...s.items,
+          [id]: {
+            ...it,
+            label: replacement.label,
+            catalogKind: replacement.catalogKind,
+            catalogTags: replacement.catalogTags?.length
+              ? [...replacement.catalogTags]
+              : it.catalogTags,
+            importedUrl: replacement.url,
+            importedStoragePath: replacement.storagePath,
+            catalogSizeIn: [...newSize] as [number, number, number],
+            size: newSize,
+            position,
+            importedNaturalSize: undefined,
+            wallMounted: it.wallMounted ?? true,
+          },
+        },
+      };
     }),
 
   setImportedSize: (id, sizeInput) =>

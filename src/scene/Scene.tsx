@@ -554,6 +554,7 @@ function SceneInner({
   selectionHud,
   interactionMode,
   onMobileLiftInchesChange,
+  onPosterActivate,
   dimensionsOverlayHidden,
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
@@ -568,6 +569,7 @@ function SceneInner({
   selectionHud?: SelectionHudProps | null;
   interactionMode: 'desktop' | 'mobile';
   onMobileLiftInchesChange?: (inches: number | null) => void;
+  onPosterActivate?: (id: string) => void;
   dimensionsOverlayHidden?: boolean;
 }) {
   const deselect = useStore((s) => s.select);
@@ -648,7 +650,7 @@ function SceneInner({
       {showWeatherFx ? <WeatherSystem /> : null}
 
       <Room interactive={showChrome && !hangingTool} />
-      <ItemsLayer />
+      <ItemsLayer onPosterActivate={onPosterActivate} />
       {showDimensionsOverlay ? <DimensionsOverlay /> : null}
       {!readOnly && !capturing ? <MeasurementsLayer /> : null}
       {hangingTool ? (
@@ -743,6 +745,8 @@ export interface SceneProps {
   /** Desktop keeps mouse drag + long-press bump; mobile uses coordinated touch controller. */
   interactionMode?: 'desktop' | 'mobile';
   onMobileLiftInchesChange?: (inches: number | null) => void;
+  /** Opens the poster bank when a wall poster is double-clicked (desktop). */
+  onPosterActivate?: (id: string) => void;
   /** Hide dimension overlay (present mode, etc.) without toggling the user preference. */
   dimensionsOverlayHidden?: boolean;
 }
@@ -755,6 +759,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
     selectionHud = null,
     interactionMode = 'desktop',
     onMobileLiftInchesChange,
+    onPosterActivate,
     dimensionsOverlayHidden = false,
   },
   ref,
@@ -811,6 +816,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
       selectionHud={selectionHud}
       interactionMode={interactionMode}
       onMobileLiftInchesChange={onMobileLiftInchesChange}
+      onPosterActivate={onPosterActivate}
       dimensionsOverlayHidden={dimensionsOverlayHidden}
     />
   );
