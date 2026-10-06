@@ -12,6 +12,9 @@ export type OpenConversionJob = {
   source: ConversionJobSource;
   label: string | null;
   updated_at: string;
+  source_path?: string | null;
+  result_path?: string | null;
+  server_owned?: boolean;
 };
 
 const STALE_PROCESSING_MS = 20 * 60 * 1000;
@@ -48,15 +51,21 @@ export async function updateConversionJob(
     kind?: string | null;
     label?: string | null;
     thrixelSubmissionId?: string | null;
+    source_path?: string | null;
+    result_path?: string | null;
+    server_owned?: boolean;
   },
 ): Promise<void> {
   const payload: Record<string, unknown> = {
     updated_at: new Date().toISOString(),
-    status: patch.status,
-    error: patch.error,
-    kind: patch.kind,
-    label: patch.label,
   };
+  if (patch.status !== undefined) payload.status = patch.status;
+  if (patch.error !== undefined) payload.error = patch.error;
+  if (patch.kind !== undefined) payload.kind = patch.kind;
+  if (patch.label !== undefined) payload.label = patch.label;
+  if (patch.source_path !== undefined) payload.source_path = patch.source_path;
+  if (patch.result_path !== undefined) payload.result_path = patch.result_path;
+  if (patch.server_owned !== undefined) payload.server_owned = patch.server_owned;
   if (patch.thrixelSubmissionId !== undefined) {
     payload.thrixel_submission_id = patch.thrixelSubmissionId;
   }
@@ -77,7 +86,7 @@ export async function updateConversionJob(
 export async function listOpenTrellisJobs(userId: string): Promise<OpenConversionJob[]> {
   const { data, error } = await supabase
     .from('conversion_jobs')
-    .select('id,status,source,label,updated_at')
+    .select('id,status,source,label,updated_at,source_path,result_path,server_owned')
     .eq('user_id', userId)
     .eq('source', 'trellis')
     .in('status', ['queued', 'processing']);
@@ -93,7 +102,72 @@ export async function listOpenTrellisJobs(userId: string): Promise<OpenConversio
     source: 'trellis' as const,
     label: row.label != null ? String(row.label) : null,
     updated_at: String(row.updated_at ?? ''),
+    source_path: row.source_path != null ? String(row.source_path) : null,
+    result_path: row.result_path != null ? String(row.result_path) : null,
+    server_owned: Boolean(row.server_owned),
   })).filter((row) => row.id);
+}
+
+/** Recently completed server-owned jobs that still have a result to claim. */
+export async function listReadyTrellisJobs(userId: string, sinceHours = 48): Promise<OpenConversionJob[]> {
+  const since = new Date(Date.now() - sinceHours * 3600_000).toISOString();
+  const { data, error } = await supabase
+    .from('conversion_jobs')
+    .select('id,status,source,label,updated_at,source_path,result_path,server_owned')
+    .eq('user_id', userId)
+    .eq('source', 'trellis')
+    .eq('status', 'completed')
+    .eq('server_owned', true)
+    .not('result_path', 'is', null)
+    .gte('completed_at', since)
+    .order('completed_at', { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.warn('[conversion_jobs] list ready failed', error.message);
+    return [];
+  }
+
+  return ((data ?? []) as Partial<OpenConversionJob>[]).map((row) => ({
+    id: String(row.id ?? ''),
+    status: 'completed' as ConversionJobStatus,
+    source: 'trellis' as const,
+    label: row.label != null ? String(row.label) : null,
+    updated_at: String(row.updated_at ?? ''),
+    source_path: row.source_path != null ? String(row.source_path) : null,
+    result_path: row.result_path != null ? String(row.result_path) : null,
+    server_owned: true,
+  })).filter((row) => row.id && row.result_path);
+}
+
+export async function fetchConversionJob(jobId: string): Promise<{
+  id: string;
+  status: ConversionJobStatus;
+  error: string | null;
+  label: string | null;
+  source_path: string | null;
+  result_path: string | null;
+  server_owned: boolean;
+} | null> {
+  const { data, error } = await supabase
+    .from('conversion_jobs')
+    .select('id,status,error,label,source_path,result_path,server_owned')
+    .eq('id', jobId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const status = data.status as ConversionJobStatus;
+  return {
+    id: String(data.id),
+    status:
+      status === 'queued' || status === 'processing' || status === 'completed' || status === 'failed'
+        ? status
+        : 'processing',
+    error: data.error != null ? String(data.error) : null,
+    label: data.label != null ? String(data.label) : null,
+    source_path: data.source_path != null ? String(data.source_path) : null,
+    result_path: data.result_path != null ? String(data.result_path) : null,
+    server_owned: Boolean(data.server_owned),
+  };
 }
 
 /** Best-effort status write that can run during tab close. */
@@ -143,6 +217,7 @@ export async function failStaleProcessingJobsAsAdmin(): Promise<number> {
       completed_at: new Date().toISOString(),
     })
     .eq('status', 'processing')
+    .eq('server_owned', false)
     .lt('updated_at', cutoff)
     .select('id');
   if (fallback.error) return 0;

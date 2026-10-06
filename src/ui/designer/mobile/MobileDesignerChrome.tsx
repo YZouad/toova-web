@@ -30,8 +30,12 @@ import { MobileLookSheet } from './MobileLookSheet';
 import { MobilePiecesSheet } from './MobilePiecesSheet';
 import { MobilePresentBar } from './MobilePresentBar';
 import { MobileSelectionActions } from './MobileSelectionActions';
+import { useAuth } from '../../../hooks/useAuth';
 import { useCatalogThrixelLinked } from '../../../hooks/useCatalogThrixelLinked';
+import { useEntitlements } from '../../../hooks/useEntitlements';
+import { CreditMenuBody } from '../CreditTopUpMenu';
 import { useMobileDesignerChrome } from './useMobileDesignerChrome';
+import { MobileSheet } from './MobileSheet';
 
 function detailLabelFor(kind: string | undefined): string {
   if (kind === 'bed') return 'Bedding & details';
@@ -68,6 +72,8 @@ export interface MobileDesignerChromeProps {
   onOpenImport: () => void;
   onOpenThrixelRevise?: (catalogKind: string) => void;
   searchTriggerRef: RefObject<HTMLButtonElement | null>;
+  creditsOpen?: boolean;
+  onCreditsOpenChange?: (open: boolean) => void;
 }
 
 /**
@@ -97,8 +103,12 @@ export function MobileDesignerChrome({
   onOpenImport,
   onOpenThrixelRevise,
   searchTriggerRef,
+  creditsOpen = false,
+  onCreditsOpenChange,
 }: MobileDesignerChromeProps) {
   const mobile = useMobileDesignerChrome(chrome);
+  const { user } = useAuth();
+  const { creditsTotal, billing, loading: creditsLoading } = useEntitlements();
   const showDimensions = useStore((s) => s.visual.showDimensions);
   const setShowDimensions = useStore((s) => s.setShowDimensions);
   const order = useStore((s) => s.order);
@@ -204,12 +214,34 @@ export function MobileDesignerChrome({
               className="dgm-icon-btn"
               aria-label="More actions"
               aria-expanded={moreOpen}
-              onClick={() => chrome.setOverlay(moreOpen ? null : 'more')}
+              onClick={() => {
+                onCreditsOpenChange?.(false);
+                chrome.setOverlay(moreOpen ? null : 'more');
+              }}
             >
               ···
             </button>
             {moreOpen ? (
               <div className="dgm-more-menu" role="menu">
+                {user?.id && onCreditsOpenChange ? (
+                  <>
+                    <button
+                      type="button"
+                      className="dgm-more-menu__item dgm-more-menu__item--split"
+                      role="menuitem"
+                      onClick={() => {
+                        chrome.setOverlay(null);
+                        onCreditsOpenChange(true);
+                      }}
+                    >
+                      <span>Top up</span>
+                      <span className="dgm-more-menu__meta">
+                        {creditsLoading && !billing ? '…' : `${creditsTotal} credits`}
+                      </span>
+                    </button>
+                    <div className="dgm-more-menu__rule" aria-hidden />
+                  </>
+                ) : null}
                 <button
                   type="button"
                   className="dgm-more-menu__item"
@@ -462,6 +494,12 @@ export function MobileDesignerChrome({
             onImportComplete(model, meta);
           }}
         />
+      ) : null}
+
+      {creditsOpen && onCreditsOpenChange ? (
+        <MobileSheet kind="credits" title="Credits" onClose={() => onCreditsOpenChange(false)}>
+          <CreditMenuBody onDone={() => onCreditsOpenChange(false)} />
+        </MobileSheet>
       ) : null}
 
       {chrome.present ? (

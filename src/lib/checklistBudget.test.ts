@@ -20,6 +20,7 @@ const lampProduct: CuratedProduct = {
   description: '',
   retailer: 'Amazon',
   affiliateUrl: 'https://example.com',
+  asin: null,
   priceCents: 2499,
   currency: 'USD',
   imagePath: null,

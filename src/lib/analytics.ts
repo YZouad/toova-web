@@ -368,10 +368,12 @@ export function trackAffiliateClicked(params: {
     | 'checklist_checkout'
     | 'checklist_checkout_amazon_cart'
     | 'product_drawer'
-    | 'purchase_review'
-    | 'shared_tobuy'
     | 'designer_checklist_ticker'
-    | 'designer_checklist_mobile';
+    | 'designer_checklist_mobile'
+    | 'designer_inspector'
+    | 'checklist_top_picks'
+    | 'bundle_cart'
+    | 'ticker_inline';
 }): void {
   track(EVENTS.PRODUCT_AFFILIATE_CLICKED, params);
 }
@@ -382,6 +384,13 @@ export function trackRoomShared(params: { room_id: string; role: 'viewer' | 'edi
 
 export function trackRoomLiked(params: { room_id: string }): void {
   track(EVENTS.ROOM_LIKED, params);
+}
+
+export function trackRoomOpened(params: {
+  room_id: string;
+  is_owner?: boolean;
+}): void {
+  track(EVENTS.ROOM_OPENED, params);
 }
 
 export function trackCatalogSearched(params: {

@@ -1,5 +1,6 @@
 /** Room-scoped local checklist products created when a user imports a model. */
 
+import { parseAsinFromAffiliateUrl } from './affiliateLinks';
 import {
   checklistScopedKey,
   type ChecklistCategoryWithProducts,
@@ -96,6 +97,10 @@ function parseLocalProduct(row: unknown): CuratedProduct | null {
     description: typeof o.description === 'string' ? o.description : '',
     retailer: typeof o.retailer === 'string' && o.retailer.trim() ? o.retailer : 'Amazon',
     affiliateUrl: typeof o.affiliateUrl === 'string' ? o.affiliateUrl : '',
+    asin:
+      typeof o.asin === 'string' && o.asin.trim().length === 10
+        ? o.asin.trim().toUpperCase()
+        : null,
     priceCents: priceCents != null && Number.isFinite(priceCents) ? Math.round(priceCents) : null,
     currency: typeof o.currency === 'string' && o.currency.trim() ? o.currency : 'USD',
     imagePath: typeof o.imagePath === 'string' ? o.imagePath : null,
@@ -162,6 +167,7 @@ export function createLocalChecklistProduct(input: {
     description: input.description?.trim() ?? '',
     retailer: 'Amazon',
     affiliateUrl: input.affiliateUrl,
+    asin: parseAsinFromAffiliateUrl(input.affiliateUrl),
     priceCents: input.priceCents,
     currency: 'USD',
     imagePath: null,

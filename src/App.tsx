@@ -45,6 +45,17 @@ import {
   type GuestDesignSnapshot,
 } from './lib/guestDesignSnapshot';
 import { consumePostAuthRedirect } from './lib/postAuthRedirect';
+import {
+  checkoutReturnPathname,
+  checkoutReturnMatchesLocation,
+  clearCheckoutReturn,
+  consumeCheckoutReturn,
+  isPersistableRoomId,
+  peekCheckoutReturn,
+  pendingDesignerCheckoutReturn,
+  setCheckoutReturnContext,
+  stripCheckoutQuery,
+} from './lib/checkoutReturn';
 import { LandingPage } from './ui/LandingPage';
 import { PitchMadnessPage } from './ui/PitchMadnessPage';
 import { AuthPage, type AuthPageMode } from './ui/AuthPage';
@@ -81,6 +92,7 @@ import {
   setInternalUser,
   trackCheckoutCompleted,
   trackPageView,
+  trackRoomOpened,
   type AuthMethod,
 } from './lib/analytics';
 import { useEntitlements } from './hooks/useEntitlements';
@@ -119,6 +131,8 @@ interface FloorPlanDraft {
   initialPlan?: FloorPlan;
   /** When set, create continues by seeding this starter’s furniture into the edited plan. */
   starterTemplateId?: string;
+  /** Highlight / prefer this starter in the picker (first-room onboarding). */
+  preferredTemplateId?: string;
 }
 
 /** Decorative only — does not encode a real URL. */
@@ -208,6 +222,8 @@ function AppContent() {
   const { setRoomId } = useChecklistRoomScope();
   const route = useRoute();
   const [screen, setScreen] = useState<Screen>('landing');
+  const [restoringCheckout, setRestoringCheckout] = useState(pendingDesignerCheckoutReturn);
+  const checkoutRestoreStarted = useRef(false);
   const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
   const [timelineScrollToDemos, setTimelineScrollToDemos] = useState(false);
@@ -240,7 +256,11 @@ function AppContent() {
         .eq('user_id', userId);
       if (error) throw error;
       if ((count ?? 0) === 0) {
-        setFloorPlanDraft({ name: 'Room 1', mode: 'create' });
+        setFloorPlanDraft({
+          name: 'My bedroom',
+          mode: 'create',
+          preferredTemplateId: 'bedroom-balanced',
+        });
       }
     } catch (err) {
       console.warn('[toova] could not count rooms for post-auth route', err);
@@ -256,6 +276,25 @@ function AppContent() {
     setRoomId(workspace?.id ?? getActiveChecklistRoomId());
     setCurrentRoom(workspace?.id ?? null);
   }, [workspace?.id, setRoomId]);
+
+  useEffect(() => {
+    setCheckoutReturnContext({
+      screen,
+      roomId: screen === 'designer' ? workspace?.id : undefined,
+      roomName: screen === 'designer' ? workspace?.name : undefined,
+      isOwner: workspace?.isOwner,
+    });
+  }, [screen, workspace]);
+
+  // Back-forward cache keeps the designer alive. Drop the return marker so a
+  // later refresh of the homepage does not reopen the room.
+  useEffect(() => {
+    const onShow = (event: PageTransitionEvent) => {
+      if (event.persisted) clearCheckoutReturn();
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
 
   const routeIsPublic =
     route.name === 'shared' ||
@@ -484,7 +523,9 @@ function AppContent() {
       const data = await load(room.id);
       hydrateLayout(data.items, data.order);
       hydrateRoomSettings(data.environment, data.roomGeometry);
-      setWorkspace({ id: room.id, name: room.name, isOwner: room.isOwner !== false });
+      const isOwner = room.isOwner !== false;
+      setWorkspace({ id: room.id, name: room.name, isOwner });
+      trackRoomOpened({ room_id: room.id, is_owner: isOwner });
       setScreen('designer');
       const path = window.location.pathname;
       if (path.startsWith('/r/') || path.startsWith('/u/') || path.startsWith('/gallery')) {
@@ -503,6 +544,51 @@ function AppContent() {
       placePendingGalleryModel,
     ],
   );
+
+  useEffect(() => {
+    const ret = peekCheckoutReturn();
+    if (!ret || !checkoutReturnMatchesLocation(ret, window.location.pathname)) return;
+    const backToRoom =
+      checkoutReturnPathname(ret.path) === '/'
+      && ret.screen === 'designer'
+      && isPersistableRoomId(ret.roomId);
+    if (backToRoom && isPersistableRoomId(ret.roomId)) {
+      if (!user || checkoutRestoreStarted.current) return;
+      checkoutRestoreStarted.current = true;
+      const roomId = ret.roomId;
+      const roomName = ret.roomName?.trim() || 'Room';
+      const isOwner = ret.isOwner !== false;
+      consumeCheckoutReturn();
+      stripCheckoutQuery();
+      setRestoringCheckout(true);
+      void handlePickExisting({ id: roomId, name: roomName, isOwner })
+        .catch(() => setScreen('dashboard'))
+        .finally(() => setRestoringCheckout(false));
+      return;
+    }
+    if (checkoutRestoreStarted.current) return;
+    checkoutRestoreStarted.current = true;
+    consumeCheckoutReturn();
+    stripCheckoutQuery();
+    if (
+      checkoutReturnPathname(ret.path) === '/'
+      && ret.screen
+      && ret.screen !== 'designer'
+      && ret.screen !== 'landing'
+      && ret.screen !== 'auth'
+      && ret.screen !== 'floor-plan'
+    ) {
+      setScreen(ret.screen as Screen);
+    }
+  }, [user, handlePickExisting]);
+
+  useEffect(() => {
+    if (!restoringCheckout || loading || user) return;
+    checkoutRestoreStarted.current = true;
+    consumeCheckoutReturn();
+    stripCheckoutQuery();
+    setRestoringCheckout(false);
+  }, [restoringCheckout, loading, user]);
 
   const handleStartFloorPlan = useCallback((name: string) => {
     setFloorPlanDraft({ name, mode: 'create' });
@@ -845,6 +931,10 @@ function AppContent() {
       setScreen('pitch-madness');
     },
   };
+
+  if (restoringCheckout) {
+    return <Splash label="Returning to your room…" />;
+  }
 
   if (route.name === 'resetPassword') {
     return (
@@ -1335,6 +1425,7 @@ function AppContent() {
           open={!!showPresetPicker}
           creating={floorPlanBusy}
           defaultName={floorPlanDraft?.name || 'Room 1'}
+          preferredTemplateId={floorPlanDraft?.preferredTemplateId}
           onClose={() => setFloorPlanDraft(null)}
           onSelect={handlePresetPickerSelect}
         />

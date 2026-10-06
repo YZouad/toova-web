@@ -14,6 +14,7 @@ const productA: CuratedProduct = {
   description: '',
   retailer: 'Amazon',
   affiliateUrl: 'https://example.com/a',
+  asin: null,
   priceCents: 2000,
   currency: 'USD',
   imagePath: null,

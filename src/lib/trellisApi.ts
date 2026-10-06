@@ -16,7 +16,8 @@ export const trellisUsesRemoteUrl = /^https?:\/\//i.test(TRELLIS_GENERATE_URL);
 export const TRELLIS_READY_TIMEOUT_MS = 10 * 60 * 1000;
 export const TRELLIS_STATUS_POLL_MS = 2500;
 
-export const TRELLIS_STARTING_STATUS = 'Starting the model instance…';
+export const TRELLIS_STARTING_STATUS = 'Waiting for a free GPU…';
+export const TRELLIS_GPU_WAIT_STATUS = 'Waiting for a free GPU…';
 
 const INSUFFICIENT_SPACE_RE =
   /insufficient\s+(space|capacity)|InsufficientInstanceCapacity|not enough (space|capacity)/i;
@@ -45,7 +46,7 @@ export function formatTrellisError(raw: string, fallback: string): string {
   return text || fallback;
 }
 
-export function trellisSiblingUrl(endpoint: 'wake' | 'status'): string {
+export function trellisSiblingUrl(endpoint: 'wake' | 'status' | 'jobs'): string {
   if (!TRELLIS_GENERATE_URL.endsWith('/generate')) {
     throw new Error(`Unexpected TRELLIS_GENERATE_URL: ${TRELLIS_GENERATE_URL}`);
   }
@@ -121,10 +122,12 @@ export async function ensureTrellisReady(
       .filter((value): value is string => typeof value === 'string' && value.length > 0)
       .join(' ');
     if (INSUFFICIENT_SPACE_RE.test(statusDetail)) {
-      throw new Error(TRELLIS_INSUFFICIENT_SPACE_MESSAGE);
+      onProgress?.(TRELLIS_GPU_WAIT_STATUS);
+      await sleep(TRELLIS_STATUS_POLL_MS * 2, signal);
+      continue;
     }
 
-    onProgress?.(TRELLIS_STARTING_STATUS);
+    onProgress?.(TRELLIS_GPU_WAIT_STATUS);
     await sleep(TRELLIS_STATUS_POLL_MS, signal);
   }
 

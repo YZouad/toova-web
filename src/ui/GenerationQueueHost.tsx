@@ -39,10 +39,15 @@ export function GenerationQueueHost() {
           <div className="generation-queue-card__copy">
             <span className="generation-queue-card__label">Generation queue</span>
             <span className="generation-queue-card__title">
-              {snapshot.draining ? 'Processing queued 3D generation…' : `${queued.length} waiting to generate`}
+              {snapshot.draining
+                ? queued[0]?.statusMessage || 'Waiting for a free GPU…'
+                : queued.some((item) => item.serverOwned && item.status === 'processing')
+                  ? queued.find((item) => item.status === 'processing')?.statusMessage ||
+                    'Waiting for a free GPU…'
+                  : `${queued.length} waiting to generate`}
             </span>
           </div>
-          {!snapshot.draining ? (
+          {!snapshot.draining && !queued.some((item) => item.serverOwned) ? (
             <Button size="sm" onClick={() => processGenerationQueue()}>
               Process queue
             </Button>
@@ -53,7 +58,9 @@ export function GenerationQueueHost() {
         <div key={item.jobId} className="generation-queue-card">
           <div className="generation-queue-card__copy">
             <span className="generation-queue-card__label">Ready</span>
-            <span className="generation-queue-card__title">{item.label} is ready to save</span>
+            <span className="generation-queue-card__title">
+              {item.statusMessage || `${item.label} is ready to save`}
+            </span>
           </div>
           <Button
             size="sm"

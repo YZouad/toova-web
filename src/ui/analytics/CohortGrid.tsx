@@ -23,10 +23,17 @@ export function CohortGrid({
   rows,
   title = 'Signup retention',
   description = 'Share of each week’s new accounts who had any recorded event within 1, 7, or 30 days of signing up.',
+  columns = {
+    size: 'New accounts',
+    d1: 'Still active after 1 day',
+    d7: 'After 7 days',
+    d30: 'After 30 days',
+  },
 }: {
   rows: CohortRow[];
   title?: string;
   description?: string;
+  columns?: { size: string; d1: string; d7: string; d30: string };
 }) {
   if (rows.length === 0) {
     return (
@@ -43,14 +50,14 @@ export function CohortGrid({
       <p className="analytics-chart__desc">{description}</p>
       <div className="analytics-cohort-wrap">
         <table className="analytics-cohort">
-          <caption className="sr-only">{title}: D1, D7, and D30 retained counts</caption>
+          <caption className="sr-only">{title}: retention columns</caption>
           <thead>
             <tr>
               <th scope="col">Signed up week of</th>
-              <th scope="col">New accounts</th>
-              <th scope="col">Still active after 1 day</th>
-              <th scope="col">After 7 days</th>
-              <th scope="col">After 30 days</th>
+              <th scope="col">{columns.size}</th>
+              <th scope="col">{columns.d1}</th>
+              <th scope="col">{columns.d7}</th>
+              <th scope="col">{columns.d30}</th>
             </tr>
           </thead>
           <tbody>

@@ -48,6 +48,7 @@ export function bundleItemAsCuratedProduct(item: BundleItemRow): CuratedProduct 
     description: '',
     retailer: p.retailer,
     affiliateUrl: p.affiliate_url,
+    asin: p.asin?.trim().length === 10 ? p.asin.trim().toUpperCase() : null,
     priceCents: p.price_cents,
     currency: 'USD',
     imagePath: null,

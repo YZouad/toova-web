@@ -15,12 +15,7 @@ import { MonoMeta } from '../kit/MonoMeta';
 import { SectionOpener } from '../kit/SectionOpener';
 import { SiteFooter } from '../kit/SiteFooter';
 import { PlanColumns } from './PlanColumns';
-
-const TOPUPS: { kind: CheckoutKind; name: string; price: string; detail: string }[] = [
-  { kind: 'topup_50', name: '50 credits', price: '$3.99', detail: 'A few extra photo-to-3D runs' },
-  { kind: 'topup_150', name: '150 credits', price: '$9.99', detail: 'A busy week of imports' },
-  { kind: 'topup_400', name: '400 credits', price: '$19.99', detail: 'A full move-in of new pieces' },
-];
+import { formatUsd, TOPUP_OFFERS } from './planCatalog';
 
 interface PricingPageProps {
   loggedIn?: boolean;
@@ -80,7 +75,7 @@ export function PricingPage({
   }
 
   return (
-    <div className="toova-page">
+    <div className="toova-page pricing-page">
       <div className="toova-paper" aria-hidden />
 
       <MarketingNav
@@ -100,77 +95,105 @@ export function PricingPage({
         }
       />
 
-      <div className="toova-frame" style={{ paddingTop: 104, paddingBottom: 40 }}>
-        <Eyebrow level="page" style={{ marginBottom: 40 }}>
-          Plans
-        </Eyebrow>
-        <DisplayHeading level={3}>Lite or Pro.</DisplayHeading>
-        <p
-          style={{
-            font: 'var(--type-lead)',
-            color: 'var(--ink-2)',
-            margin: '28px 0 0',
-            maxWidth: 'var(--measure-lead)',
-          }}
-        >
-          Free covers five rooms and 15 credits a month, with a watermark on exports. Lite and Pro
-          add rooms, credits, and cleaner files. Monthly credits reset each period. Purchased
-          top-ups do not expire.
-        </p>
-        {billing ? (
-          <MonoMeta style={{ display: 'block', marginTop: 20 }}>
-            Current plan: {billing.display_name} · {creditsTotal} credits available
-          </MonoMeta>
-        ) : null}
+      <main className="toova-frame pricing-page__frame">
+        <section className="pricing-hero">
+          <div className="pricing-hero__copy">
+            <Eyebrow level="page">Plans</Eyebrow>
+            <DisplayHeading level={3}>A plan for every room.</DisplayHeading>
+            <p className="pricing-hero__lede">
+              Start free, upgrade when you need more rooms or cleaner exports, and add credits
+              without changing your plan.
+            </p>
+            {billing ? (
+              <div className="pricing-current">
+                <MonoMeta size="sm" upper>Current account</MonoMeta>
+                <span>{billing.display_name}</span>
+                <span>{creditsTotal} credits available</span>
+              </div>
+            ) : null}
+          </div>
+          <aside className="pricing-hero__free" aria-label="Free plan includes">
+            <MonoMeta size="sm" upper>Free, always</MonoMeta>
+            <strong>$0</strong>
+            <p>Build your first rooms before deciding whether you need more.</p>
+            <dl>
+              <div>
+                <dt>Rooms</dt>
+                <dd>5</dd>
+              </div>
+              <div>
+                <dt>Credits / month</dt>
+                <dd>15</dd>
+              </div>
+              <div>
+                <dt>Commitment</dt>
+                <dd>None</dd>
+              </div>
+            </dl>
+          </aside>
+        </section>
 
-        <div className="landing-section-pad">
+        <section className="pricing-section pricing-section--plans">
+          <SectionOpener title="Choose your plan." note="Cancel or change anytime" />
           <PlanColumns context="pricing" loggedIn={loggedIn} onRequireAccount={onLogin} />
-        </div>
+        </section>
 
-        <div className="landing-section-pad">
+        <section className="pricing-section">
           <SectionOpener title="Credit top-ups." note="Never expire · any plan" />
-          <div style={{ borderTop: '1px solid var(--rule-heavy)', marginTop: 28 }}>
-            {TOPUPS.map((topup, i) => (
-              <div
-                key={topup.kind}
-                className="pricing-addon"
-                style={{
-                  borderBottom: i === TOPUPS.length - 1 ? 'none' : '1px solid var(--rule-hair)',
-                }}
-              >
-                <div>
+          <p className="pricing-section__intro">
+            Need a few more photo-to-3D generations? Buy credits once and keep them until you use
+            them.
+          </p>
+          <div className="pricing-topups">
+            {TOPUP_OFFERS.map((topup) => (
+              <article key={topup.kind} className="pricing-topup">
+                <div className="pricing-topup__head">
                   <div className="pricing-addon__name">{topup.name}</div>
-                  <p className="pricing-addon__detail">{topup.detail}</p>
+                  <span>{formatUsd(topup.cents)}</span>
                 </div>
-                <MonoMeta size="lg">{topup.price}</MonoMeta>
+                <p className="pricing-addon__detail">{topup.detail}</p>
                 <Button
                   size="sm"
                   variant="outline"
                   disabled={Boolean(busy)}
                   onClick={() => void checkout(topup.kind)}
                 >
-                  {busy === topup.kind ? 'Opening checkout…' : 'Buy'}
+                  {busy === topup.kind ? 'Opening checkout…' : `Buy ${topup.name}`}
                 </Button>
-              </div>
+              </article>
             ))}
           </div>
-        </div>
+        </section>
 
-        <div className="landing-section-pad">
-          <SectionOpener title="Semester Pass." note="Five months of Pro · no subscription" />
-          <div className="pricing-addon" style={{ borderTop: '1px solid var(--rule-heavy)', marginTop: 28 }}>
-            <div>
-              <div className="pricing-addon__name">One payment</div>
-              <p className="pricing-addon__detail">
-                Pro for a term, then the account returns to Free.
+        <section className="pricing-section">
+          <article className="semester-pass">
+            <div className="semester-pass__copy">
+              <MonoMeta size="sm" upper>Semester Pass</MonoMeta>
+              <DisplayHeading level={4}>One term. Every Pro feature.</DisplayHeading>
+              <p>
+                Get <strong>5 months of Pro</strong> for one payment of <strong>$24.99 USD</strong>.
+                There is no subscription and no automatic renewal. At the end of five months, your
+                account simply returns to Free.
               </p>
+              <ul aria-label="Semester Pass details">
+                <li>5 months of Pro</li>
+                <li>One payment</li>
+                <li>No auto-renew</li>
+              </ul>
             </div>
-            <MonoMeta size="lg">$24.99</MonoMeta>
-            <Button size="sm" disabled={Boolean(busy)} onClick={() => void checkout('semester_pass')}>
-              {busy === 'semester_pass' ? 'Opening checkout…' : 'Get the pass'}
-            </Button>
-          </div>
-        </div>
+            <div className="semester-pass__purchase">
+              <span className="semester-pass__price">$24.99</span>
+              <MonoMeta size="sm">USD · one time</MonoMeta>
+              <Button
+                size="md"
+                disabled={Boolean(busy)}
+                onClick={() => void checkout('semester_pass')}
+              >
+                {busy === 'semester_pass' ? 'Opening checkout…' : 'Get the Semester Pass'}
+              </Button>
+            </div>
+          </article>
+        </section>
 
         <div className="pricing-page__actions">
           {billing?.subscription?.source === 'subscription' ? (
@@ -190,7 +213,7 @@ export function PricingPage({
             {error}
           </div>
         ) : null}
-      </div>
+      </main>
 
       <SiteFooter onContact={onContact} onPitchMadness={onPitchMadness} onAdmin={onAdmin} />
     </div>

@@ -63,7 +63,11 @@ function mapProduct(row: Record<string, unknown>): CuratedProduct {
     name: String(row.name),
     description: String(row.description ?? ''),
     retailer: String(row.retailer ?? 'Amazon'),
-    affiliateUrl: String(row.affiliate_url),
+    affiliateUrl: String(row.affiliate_url ?? ''),
+    asin:
+      row.asin != null && String(row.asin).trim().length === 10
+        ? String(row.asin).trim().toUpperCase()
+        : null,
     priceCents:
       row.price_cents == null || row.price_cents === ''
         ? null
@@ -115,10 +119,10 @@ function mapProduct(row: Record<string, unknown>): CuratedProduct {
 }
 
 const CURATED_PRODUCT_SELECT =
-  'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind,place_hanging_kind,place_bedding_kind,brand,feature_bullets,dimensions_text,rating,review_count,availability';
+  'id,category_id,slug,name,description,retailer,affiliate_url,asin,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind,place_hanging_kind,place_bedding_kind,brand,feature_bullets,dimensions_text,rating,review_count,availability';
 
 const CURATED_PRODUCT_SELECT_LEGACY =
-  'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind,place_hanging_kind,place_bedding_kind';
+  'id,category_id,slug,name,description,retailer,affiliate_url,asin,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind,place_hanging_kind,place_bedding_kind';
 
 const CURATED_PRODUCT_SELECT_MINIMAL =
   'id,category_id,slug,name,description,retailer,affiliate_url,price_cents,currency,image_path,sort_order,published,last_verified_at,place_builtin_kind,place_catalog_kind';

@@ -1,3 +1,4 @@
+import { parseAsinFromAffiliateUrl } from './affiliateLinks';
 import { supabase } from './supabase';
 import { uploadCatalogModel } from './catalogModelUpload';
 import {
@@ -126,6 +127,7 @@ export interface CreateProductInput {
   name: string;
   description?: string;
   affiliateUrl?: string;
+  asin?: string | null;
   priceCents?: number | null;
   retailer?: string;
   published?: boolean;
@@ -134,6 +136,11 @@ export interface CreateProductInput {
   placeHangingKind?: string | null;
   imagePath?: string | null;
   sortOrder?: number;
+}
+
+function normalizeAsin(value: string | null | undefined): string | null {
+  const trimmed = value?.trim().toUpperCase() ?? '';
+  return trimmed.length === 10 ? trimmed : null;
 }
 
 export async function createCuratedProduct(
@@ -152,6 +159,7 @@ export async function createCuratedProduct(
       name: input.name.trim(),
       description: input.description?.trim() ?? '',
       affiliate_url: input.affiliateUrl?.trim() ?? '',
+      asin: normalizeAsin(input.asin),
       retailer: input.retailer?.trim() || 'Amazon',
       price_cents: input.priceCents ?? null,
       published: input.published ?? true,
@@ -173,6 +181,7 @@ export interface UpdateProductInput {
   name?: string;
   description?: string;
   affiliateUrl?: string;
+  asin?: string | null;
   priceCents?: number | null;
   retailer?: string;
   published?: boolean;
@@ -197,6 +206,7 @@ export async function updateCuratedProduct(
   }
   if (input.description != null) patch.description = input.description.trim();
   if (input.affiliateUrl != null) patch.affiliate_url = input.affiliateUrl.trim();
+  if (input.asin !== undefined) patch.asin = normalizeAsin(input.asin);
   if (input.priceCents !== undefined) patch.price_cents = input.priceCents;
   if (input.retailer != null) patch.retailer = input.retailer.trim() || 'Amazon';
   if (input.published != null) patch.published = input.published;
@@ -248,6 +258,7 @@ export async function createChecklistProductFromCatalog(input: {
       name: input.name,
       description: input.description ?? '',
       affiliateUrl: input.affiliateUrl ?? '',
+      asin: parseAsinFromAffiliateUrl(input.affiliateUrl ?? ''),
       priceCents: input.priceCents ?? null,
       placeCatalogKind: input.catalogKind,
       published: true,
@@ -268,6 +279,7 @@ export async function createChecklistProductWithModel(input: {
   name: string;
   description?: string;
   affiliateUrl?: string;
+  asin?: string | null;
   priceCents?: number | null;
   retailer?: string;
   published?: boolean;
@@ -297,6 +309,7 @@ export async function createChecklistProductWithModel(input: {
       name: input.name.trim(),
       description: input.description ?? '',
       affiliateUrl: input.affiliateUrl ?? '',
+      asin: input.asin ?? null,
       priceCents: input.priceCents ?? null,
       retailer: input.retailer ?? 'Amazon',
       placeCatalogKind: kind,
@@ -318,6 +331,7 @@ export async function updateChecklistProductWithModel(input: {
   name?: string;
   description?: string;
   affiliateUrl?: string;
+  asin?: string | null;
   priceCents?: number | null;
   retailer?: string;
   published?: boolean;
@@ -332,6 +346,7 @@ export async function updateChecklistProductWithModel(input: {
   if (input.name != null) patch.name = input.name;
   if (input.description != null) patch.description = input.description;
   if (input.affiliateUrl != null) patch.affiliateUrl = input.affiliateUrl;
+  if (input.asin !== undefined) patch.asin = input.asin;
   if (input.priceCents !== undefined) patch.priceCents = input.priceCents;
   if (input.retailer != null) patch.retailer = input.retailer;
   if (input.published != null) patch.published = input.published;

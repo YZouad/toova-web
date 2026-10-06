@@ -28,6 +28,8 @@ export interface CuratedProduct {
   description: string;
   retailer: string;
   affiliateUrl: string;
+  /** Amazon ASIN when known (needed for multi-add cart). */
+  asin: string | null;
   priceCents: number | null;
   currency: string;
   imagePath: string | null;

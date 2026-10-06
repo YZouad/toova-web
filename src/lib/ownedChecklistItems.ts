@@ -1,5 +1,6 @@
 /** Room-scoped "I already have this" purchase details for checklist categories. */
 
+import { parseAsinFromAffiliateUrl } from './affiliateLinks';
 import { checklistScopedKey, type CuratedProduct } from './dormChecklist';
 import {
   isLocalChecklistProductId,
@@ -83,6 +84,10 @@ function parseOwnedProduct(row: unknown): CuratedProduct | null {
     description: typeof o.description === 'string' ? o.description : '',
     retailer: affiliateUrl.trim() ? 'Amazon' : 'Shop',
     affiliateUrl,
+    asin:
+      typeof o.asin === 'string' && o.asin.trim().length === 10
+        ? o.asin.trim().toUpperCase()
+        : parseAsinFromAffiliateUrl(affiliateUrl),
     priceCents: Math.round(priceCents),
     currency: typeof o.currency === 'string' && o.currency.trim() ? o.currency : 'USD',
     imagePath: null,
@@ -119,6 +124,7 @@ export function createOwnedChecklistProduct(input: {
     description: '',
     retailer: input.affiliateUrl.trim() ? 'Amazon' : 'Shop',
     affiliateUrl: input.affiliateUrl,
+    asin: parseAsinFromAffiliateUrl(input.affiliateUrl),
     priceCents: Math.round(input.priceCents),
     currency: 'USD',
     imagePath: null,

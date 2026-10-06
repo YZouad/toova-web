@@ -14,8 +14,12 @@ import {
 import type { BeddingConfigPatch } from '../../../lib/bedding/types';
 import { proportionalSizesFromMaxSide } from '../../../lib/uniformItemSize';
 import { planBounds } from '../../../lib/roomGeometry';
+import { useShoppingCatalogContext } from '../../../context/ShoppingCatalogContext';
 import { useAuth } from '../../../hooks/useAuth';
 import { useCatalogThrixelLinked } from '../../../hooks/useCatalogThrixelLinked';
+import { resolveAffiliateForItem } from '../../../lib/affiliateLinks';
+import { trackAffiliateClicked } from '../../../lib/analytics';
+import { formatPriceCents } from '../../../lib/dormChecklist';
 import { DEFAULT_EMITTER, useStore } from '../../../store';
 import type { InspectorTab } from '../chromeTypes';
 import { FinishTab } from '../FinishEditor';
@@ -42,6 +46,7 @@ const TAB_LABELS: Record<InspectorTab, string> = {
 
 export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorSheetProps) {
   const { user } = useAuth();
+  const { productsById } = useShoppingCatalogContext();
   const selectedId = useStore((s) => s.selectedId);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
   const thrixelLinked = useCatalogThrixelLinked(item?.catalogKind);
@@ -81,6 +86,17 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
   const hang = item.hanging;
   const bulbTabLabel =
     hang?.kind === 'leaves' ? 'Leaves' : hang?.kind === 'led-strip' ? 'Colors' : 'Bulbs';
+  const shopOffer = resolveAffiliateForItem(item, productsById)[0] ?? null;
+  const shopPrice = shopOffer
+    ? formatPriceCents(shopOffer.priceCents ?? null, shopOffer.currency)
+    : null;
+  const shopLabel = shopOffer
+    ? shopOffer.approximate
+      ? 'Shop similar on Amazon'
+      : shopPrice
+        ? `Buy on Amazon · ${shopPrice}`
+        : 'Buy on Amazon'
+    : null;
 
   return (
     <MobileSheet
@@ -89,6 +105,33 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
       onClose={onClose}
       headerEnd={<span className="dgm-sheet-count">{dims}</span>}
     >
+      {shopOffer && shopLabel ? (
+        <a
+          className="dgm-action-btn"
+          href={shopOffer.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: 'flex',
+            justifyContent: 'center',
+            marginBottom: 12,
+            textDecoration: 'none',
+            background: 'var(--ink-0)',
+            color: 'var(--bg-0, #fff)',
+            borderColor: 'var(--ink-0)',
+          }}
+          onClick={() =>
+            trackAffiliateClicked({
+              retailer: shopOffer.retailer,
+              product_id: shopOffer.productId,
+              is_price_approximate: shopOffer.approximate,
+              source: 'designer_inspector',
+            })
+          }
+        >
+          {shopLabel}
+        </a>
+      ) : null}
       <div className="dgm-tab-row" role="tablist" aria-label="Inspector">
         {tabs.map((t) => (
           <button

@@ -54,6 +54,20 @@ export const PLAN_OFFERS: PlanOffer[] = [
   },
 ];
 
+export interface TopupOffer {
+  kind: CheckoutKind;
+  name: string;
+  cents: number;
+  detail: string;
+}
+
+/** One-time credit packs. Purchased credits do not expire. */
+export const TOPUP_OFFERS: TopupOffer[] = [
+  { kind: 'topup_50', name: '50 credits', cents: 399, detail: 'A few extra photo-to-3D runs' },
+  { kind: 'topup_150', name: '150 credits', cents: 999, detail: 'A busy week of imports' },
+  { kind: 'topup_400', name: '400 credits', cents: 1999, detail: 'A full move-in of new pieces' },
+];
+
 export function formatUsd(cents: number): string {
   const sign = cents < 0 ? '-' : '';
   const abs = Math.abs(Math.round(cents));

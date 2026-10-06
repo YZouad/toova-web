@@ -9,6 +9,8 @@ import { useStore, type Item, type CameraPresetId } from '../store';
 import { FeedbackModal } from './FeedbackModal';
 import { ExportRenderDialog } from './ExportRenderDialog';
 import { ShareModal } from './ShareModal';
+import { FirstRoomChecklist, noteRoomSharedOrPublished } from './designer/FirstRoomChecklist';
+import { PublishPrompt } from './designer/PublishPrompt';
 import { UnsavedLeaveModal } from './UnsavedLeaveModal';
 import { GuestImportAuthModal } from './GuestImportAuthModal';
 import { ModelDetailModal } from './ModelDetailModal';
@@ -23,10 +25,10 @@ import { isStarterEditWorkspaceId } from '../lib/starterTemplateOverrides';
 import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
 import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
-import { navigate, pricingPath, profilePath, publicRoomPath } from '../hooks/useRoute';
-import { CreditBalanceChip } from './billing/CreditBalanceChip';
-import { UpgradeModal, type PaywallReason } from './billing/UpgradeModal';
+import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
+import { trackPaywallShown } from '../lib/analytics';
 import { useEntitlements } from '../hooks/useEntitlements';
+import { CreditTopUpMenu } from './designer/CreditTopUpMenu';
 import './designer/designer.css';
 import './designer/mobile/mobile-designer.css';
 import { useDesignerChrome } from './designer/useDesignerChrome';
@@ -123,11 +125,10 @@ export function Designer({
   const chrome = useDesignerChrome();
   const roomGeometry = useStore((s) => s.roomGeometry);
 
-  const { refresh: refreshBilling } = useEntitlements();
+  const { refresh: refreshBilling, creditsTotal } = useEntitlements();
   const [shareOpen, setShareOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
-  const [paywallOpen, setPaywallOpen] = useState(false);
-  const [paywallReason, setPaywallReason] = useState<PaywallReason>('credits');
+  const [creditsOpen, setCreditsOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   const [leaveConfirmOpen, setLeaveConfirmOpen] = useState(false);
   const [importAuthOpen, setImportAuthOpen] = useState(false);
@@ -433,12 +434,17 @@ export function Designer({
       if (meta && lower === 'k') {
         e.preventDefault();
         if (chrome.present) return;
+        setCreditsOpen(false);
         chrome.setOverlay(chrome.overlay === 'cmdk' ? null : 'cmdk');
         return;
       }
 
       if (key === 'Escape') {
         if (editable && e.target instanceof HTMLElement) e.target.blur();
+        if (creditsOpen) {
+          setCreditsOpen(false);
+          return;
+        }
         if (chrome.measuring) {
           if (chrome.importMeasuring) chrome.cancelMeasureFromImport();
           else if (chrome.measurePending) chrome.cancelMeasurePending();
@@ -477,6 +483,8 @@ export function Designer({
 
       // Don't steal keystrokes from real text fields (including room rename).
       if (editable) return;
+
+      if (creditsOpen) return;
 
       if (chrome.present || (chrome.importOpen && !chrome.measuring) || chrome.overlay === 'cmdk') return;
       if (e.altKey) return;
@@ -542,7 +550,7 @@ export function Designer({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cancelHangingDraft, cancelMeasure, chrome, onEditFloorPlan, resetCamera, canShare]);
+  }, [cancelHangingDraft, cancelMeasure, chrome, onEditFloorPlan, resetCamera, canShare, creditsOpen]);
 
   // Clicking the viewport takes focus off the room-name field so shortcuts work.
   useEffect(() => {
@@ -671,11 +679,14 @@ export function Designer({
             {user?.id ? (
               <>
                 <div className="dg-rule--v" aria-hidden />
-                <CreditBalanceChip
-                  compact
-                  onNeedCredits={() => {
-                    setPaywallReason('credits');
-                    setPaywallOpen(true);
+                <CreditTopUpMenu
+                  open={creditsOpen}
+                  onOpenChange={(next) => {
+                    if (next) {
+                      chrome.setOverlay(null);
+                      if (creditsTotal <= 10) trackPaywallShown({ reason: 'credits' });
+                    }
+                    setCreditsOpen(next);
                   }}
                 />
               </>
@@ -687,7 +698,10 @@ export function Designer({
                 className="dg-topbar-icon"
                 aria-label="More actions"
                 aria-expanded={chrome.overlay === 'more'}
-                onClick={() => chrome.setOverlay(chrome.overlay === 'more' ? null : 'more')}
+                onClick={() => {
+                  setCreditsOpen(false);
+                  chrome.setOverlay(chrome.overlay === 'more' ? null : 'more');
+                }}
               >
                 ···
               </button>
@@ -788,6 +802,14 @@ export function Designer({
             onOpenImport={() => openImportOrAuth(null)}
             onOpenThrixelRevise={(kind) => void openThrixelRevise(kind)}
             searchTriggerRef={searchTriggerRef}
+            creditsOpen={creditsOpen}
+            onCreditsOpenChange={(next) => {
+              if (next) {
+                chrome.setOverlay(null);
+                if (creditsTotal <= 10) trackPaywallShown({ reason: 'credits' });
+              }
+              setCreditsOpen(next);
+            }}
           />
         ) : (
           <>
@@ -999,8 +1021,9 @@ export function Designer({
               isAdmin={isAdmin}
               compact={false}
               onInsufficientCredits={() => {
-                setPaywallReason('credits');
-                setPaywallOpen(true);
+                chrome.setOverlay(null);
+                trackPaywallShown({ reason: 'credits' });
+                setCreditsOpen(true);
               }}
               onComplete={(model, meta) => {
                 chrome.closeImport();
@@ -1078,20 +1101,26 @@ export function Designer({
       ) : null}
 
       {shareOpen && canShare && workspace && user?.id ? (
-        <ShareModal roomId={workspace.id} userId={user.id} onClose={() => setShareOpen(false)} />
+        <ShareModal
+          roomId={workspace.id}
+          userId={user.id}
+          onClose={() => setShareOpen(false)}
+          onShared={() => {
+            noteRoomSharedOrPublished(workspace.id);
+          }}
+        />
       ) : null}
+      {workspace?.isOwner && !starterEdit && user?.id ? (
+        <FirstRoomChecklist
+          roomId={workspace.id}
+          onImportPhoto={() => openImportOrAuth('photo')}
+          onShare={canShare ? () => setShareOpen(true) : undefined}
+        />
+      ) : null}
+      {workspace?.isOwner && !starterEdit ? <PublishPrompt /> : null}
       {exportOpen ? (
         <ExportRenderDialog sceneRef={sceneRef} onClose={() => setExportOpen(false)} />
       ) : null}
-      <UpgradeModal
-        open={paywallOpen}
-        reason={paywallReason}
-        onClose={() => setPaywallOpen(false)}
-        onViewPricing={() => {
-          setPaywallOpen(false);
-          navigate(pricingPath());
-        }}
-      />
       <FeedbackModal
         open={feedbackOpen}
         pageSource="designer"

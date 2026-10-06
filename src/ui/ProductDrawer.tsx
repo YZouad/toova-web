@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { shopUrlForProduct } from '../lib/affiliateLinks';
 import { trackAffiliateClicked } from '../lib/analytics';
 import { useAuth } from '../hooks/useAuth';
 import type { ChecklistLineStatus, CuratedProduct } from '../lib/dormChecklist';
@@ -158,26 +159,65 @@ export function ProductDrawer({
           <ul className="product-drawer-grid">
             {products.map((product) => {
               const price = formatPriceCents(product.priceCents, product.currency);
-              const shopUrl = product.affiliateUrl?.trim();
+              const shop = shopUrlForProduct(product);
               const placeable = canPlace && productHasPlaceableModel(product);
               const recommended = /recommended/i.test(product.name) || /recommended/i.test(product.description);
+              const trackShop = () =>
+                trackAffiliateClicked({
+                  retailer: product.retailer,
+                  product_id: product.id,
+                  is_price_approximate: shop.approximate,
+                  source: 'product_drawer',
+                });
               return (
                 <li
                   key={product.id}
                   className={`product-drawer-card${adminMode ? ' product-drawer-card--admin' : ''}`}
                 >
-                  <div className="product-drawer-media" aria-hidden>
-                    {product.imageUrl ? (
-                      <img src={product.imageUrl} alt="" referrerPolicy="no-referrer" />
-                    ) : (
-                      <span className="product-drawer-media-fallback">
-                        {product.name.slice(0, 1)}
-                      </span>
-                    )}
-                  </div>
+                  {adminMode ? (
+                    <div className="product-drawer-media" aria-hidden>
+                      {product.imageUrl ? (
+                        <img src={product.imageUrl} alt="" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span className="product-drawer-media-fallback">
+                          {product.name.slice(0, 1)}
+                        </span>
+                      )}
+                    </div>
+                  ) : (
+                    <a
+                      className="product-drawer-media product-drawer-media--link"
+                      href={shop.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={trackShop}
+                      aria-label={`${shop.label} ${product.name}`}
+                    >
+                      {product.imageUrl ? (
+                        <img src={product.imageUrl} alt="" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span className="product-drawer-media-fallback">
+                          {product.name.slice(0, 1)}
+                        </span>
+                      )}
+                    </a>
+                  )}
                   <div className="product-drawer-body">
                     <div className="product-drawer-meta">
-                      <h3 className="product-drawer-name">{product.name}</h3>
+                      {adminMode ? (
+                        <h3 className="product-drawer-name">{product.name}</h3>
+                      ) : (
+                        <h3 className="product-drawer-name">
+                          <a
+                            href={shop.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={trackShop}
+                          >
+                            {product.name}
+                          </a>
+                        </h3>
+                      )}
                       {price ? (
                         <span className="product-drawer-price">{price}</span>
                       ) : (
@@ -231,24 +271,15 @@ export function ProductDrawer({
                           <Button size="sm" variant="outline" onClick={() => onAddToList(product)}>
                             Add to list
                           </Button>
-                          {shopUrl ? (
-                            <a
-                              className="kit-btn kit-btn--primary kit-btn--sm"
-                              href={shopUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={() =>
-                                trackAffiliateClicked({
-                                  retailer: product.retailer,
-                                  product_id: product.id,
-                                  is_price_approximate: false,
-                                  source: 'product_drawer',
-                                })
-                              }
-                            >
-                              Shop
-                            </a>
-                          ) : null}
+                          <a
+                            className="kit-btn kit-btn--primary kit-btn--sm"
+                            href={shop.url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={trackShop}
+                          >
+                            {shop.label}
+                          </a>
                           {canDownloadGlb && product.placeCatalogKind ? (
                             <Button
                               size="sm"

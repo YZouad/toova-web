@@ -32,9 +32,11 @@ const BUILTIN_SEARCH_TERMS: Record<string, string> = {
   imported: 'dorm furniture',
 };
 
-function amazonTag(): string | undefined {
+const DEFAULT_AMAZON_TAG = 'toova-20';
+
+function amazonTag(): string {
   const tag = (import.meta.env.VITE_AMAZON_AFFILIATE_TAG as string | undefined)?.trim();
-  return tag || undefined;
+  return tag || DEFAULT_AMAZON_TAG;
 }
 
 export function amazonSearchUrl(query: string): string {
@@ -87,11 +89,35 @@ function sanitizeLabel(label: string | undefined | null): string {
   return cleaned;
 }
 
-export function offerFromProduct(product: CuratedProduct): AffiliateOffer {
+/** Exact product page URL, or tagged Amazon search when the catalog link is missing. */
+export function shopUrlForProduct(product: Pick<CuratedProduct, 'affiliateUrl' | 'name'>): {
+  url: string;
+  approximate: boolean;
+  label: string;
+} {
+  const exact = product.affiliateUrl?.trim();
+  if (exact) {
+    return { url: exact, approximate: false, label: 'Shop' };
+  }
   return {
-    label: 'Shop',
-    url: product.affiliateUrl,
-    approximate: false,
+    url: amazonSearchUrl(product.name || 'dorm essentials'),
+    approximate: true,
+    label: 'Find on Amazon',
+  };
+}
+
+export function productAsin(product: Pick<CuratedProduct, 'asin' | 'affiliateUrl'>): string | null {
+  const stored = product.asin?.trim();
+  if (stored && stored.length === 10) return stored.toUpperCase();
+  return parseAsinFromAffiliateUrl(product.affiliateUrl ?? '');
+}
+
+export function offerFromProduct(product: CuratedProduct): AffiliateOffer {
+  const shop = shopUrlForProduct(product);
+  return {
+    label: shop.label,
+    url: shop.url,
+    approximate: shop.approximate,
     priceCents: product.priceCents,
     currency: product.currency,
     retailer: product.retailer,

@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useShoppingCatalogContext } from '../../../context/ShoppingCatalogContext';
 import { useAuth } from '../../../hooks/useAuth';
+import { shopUrlForProduct } from '../../../lib/affiliateLinks';
 import { trackAffiliateClicked } from '../../../lib/analytics';
 import { productHasPlaceableModel } from '../../../lib/checklistPublicGlbs';
 import {
@@ -290,16 +291,18 @@ export function MobileChecklistSheet({
     }
   };
 
-  const shopProduct = (product: CuratedProduct) => {
-    const url = product.affiliateUrl?.trim();
-    if (!url) return;
+  const shopProduct = (
+    product: CuratedProduct,
+    source: 'designer_checklist_mobile' | 'ticker_inline' = 'designer_checklist_mobile',
+  ) => {
+    const shop = shopUrlForProduct(product);
     trackAffiliateClicked({
       retailer: product.retailer,
       product_id: product.id,
-      is_price_approximate: false,
-      source: 'designer_checklist_mobile',
+      is_price_approximate: shop.approximate,
+      source,
     });
-    window.open(url, '_blank', 'noopener,noreferrer');
+    window.open(shop.url, '_blank', 'noopener,noreferrer');
   };
 
   if (activeLine) {
@@ -381,7 +384,7 @@ export function MobileChecklistSheet({
           ) : (
             detailProducts.map((product) => {
               const price = formatPriceCents(product.priceCents, product.currency);
-              const shopUrl = product.affiliateUrl?.trim();
+              const shop = shopUrlForProduct(product);
               const roomId = findRoomItemForProduct(product, items, order);
               const inRoom = !!roomId;
                 const placeable = productHasPlaceableModel(product);
@@ -422,28 +425,24 @@ export function MobileChecklistSheet({
                     <p className="dgm-offer-card__desc">{product.description}</p>
                   ) : null}
 
-                  {shopUrl ? (
-                    <a
+                  <a
                       className="dgm-shop-btn"
-                      href={shopUrl}
+                      href={shop.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() =>
                         trackAffiliateClicked({
                           retailer: product.retailer,
                           product_id: product.id,
-                          is_price_approximate: false,
+                          is_price_approximate: shop.approximate,
                           source: 'designer_checklist_mobile',
                         })
                       }
                     >
-                      Shop {price ?? ''} at {retailer}
+                      {shop.approximate
+                        ? `${shop.label}${price ? ` · ${price}` : ''}`
+                        : `Shop ${price ?? ''} at ${retailer}`}
                     </a>
-                  ) : (
-                    <button type="button" className="dgm-shop-btn" disabled>
-                      Shop link coming soon
-                    </button>
-                  )}
 
                   <div className="dgm-offer-card__actions">
                     {inRoom && roomId ? (
@@ -574,10 +573,15 @@ export function MobileChecklistSheet({
                 {group.lines.map((line) => {
                   const statusChip = checklistLineStatusLabel(line.status);
                   const topPick =
-                    line.products.find((p) => p.affiliateUrl?.trim()) ?? line.products[0] ?? null;
+                    [...line.products].sort(
+                      (a, b) => (a.priceCents ?? Infinity) - (b.priceCents ?? Infinity),
+                    )[0] ?? null;
                   const onList = topPick
                     ? list.some((e) => e.productId === topPick.id)
                     : false;
+                  const inlinePrice = topPick
+                    ? formatPriceCents(topPick.priceCents, topPick.currency)
+                    : null;
                   return (
                   <li key={line.categoryId} className="dgm-checklist-item-row">
                     <button
@@ -594,8 +598,17 @@ export function MobileChecklistSheet({
                           {optionsLabel(line.optionCount, line.fromPriceCents, line.currency)}
                         </span>
                       </span>
-                      <span className="dgm-checklist-item__cue">Shop ›</span>
+                      <span className="dgm-checklist-item__cue">Options ›</span>
                     </button>
+                    {topPick ? (
+                      <button
+                        type="button"
+                        className="dgm-checklist-item__list"
+                        onClick={() => shopProduct(topPick, 'ticker_inline')}
+                      >
+                        {inlinePrice ? `Shop ${inlinePrice}` : 'Shop'}
+                      </button>
+                    ) : null}
                     {topPick ? (
                       <button
                         type="button"
@@ -638,6 +651,7 @@ export function MobileChecklistSheet({
       </div>
       {checkoutOpen ? (
         <ChecklistCheckoutPanel
+          variant="designer"
           lines={purchaseCartLines}
           onClose={() => setCheckoutOpen(false)}
           onRemoveFromList={(productId) => void removeFromList(productId)}

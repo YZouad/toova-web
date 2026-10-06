@@ -1,3 +1,8 @@
+import {
+  checkoutReturnUrls,
+  clearCheckoutReturn,
+  rememberCheckoutReturn,
+} from './checkoutReturn';
 import { supabase } from './supabase';
 
 export type PlanTier = 'free' | 'lite' | 'pro';
@@ -57,20 +62,29 @@ export async function startCheckout(
   kind: CheckoutKind,
   urls?: { successUrl?: string; cancelUrl?: string },
 ): Promise<string> {
-  const { data, error } = await supabase.functions.invoke('billing-checkout', {
-    body: {
-      kind,
-      success_url: urls?.successUrl,
-      cancel_url: urls?.cancelUrl,
-    },
-  });
-  if (error) throw new Error(error.message);
-  const url = (data as { url?: string })?.url;
-  if (!url) {
-    const message = (data as { message?: string })?.message;
-    throw new Error(message || 'Checkout is not available yet.');
+  const defaults = typeof window !== 'undefined'
+    ? checkoutReturnUrls(window.location.href)
+    : undefined;
+  rememberCheckoutReturn();
+  try {
+    const { data, error } = await supabase.functions.invoke('billing-checkout', {
+      body: {
+        kind,
+        success_url: urls?.successUrl ?? defaults?.successUrl,
+        cancel_url: urls?.cancelUrl ?? defaults?.cancelUrl,
+      },
+    });
+    if (error) throw new Error(error.message);
+    const url = (data as { url?: string })?.url;
+    if (!url) {
+      const message = (data as { message?: string })?.message;
+      throw new Error(message || 'Checkout is not available yet.');
+    }
+    return url;
+  } catch (err) {
+    clearCheckoutReturn();
+    throw err;
   }
-  return url;
 }
 
 export async function openBillingPortal(returnUrl?: string): Promise<string> {

@@ -25,6 +25,7 @@ export const EVENTS = {
   LIMIT_REACHED: 'limit_reached',
   PAGE_VIEW: 'page_view',
   SESSION_STARTED: 'session_started',
+  ROOM_OPENED: 'room_opened',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -68,6 +69,7 @@ export const ALLOWED_EVENT_PROPERTIES = [
   'page_title',
   'page_referrer',
   'page_location',
+  'is_owner',
 ] as const;
 
 const ALLOWED_PROPERTY_SET = new Set<string>(ALLOWED_EVENT_PROPERTIES);

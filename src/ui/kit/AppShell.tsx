@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from 'react';
 import { FeedbackModal, type FeedbackPageSource } from '../FeedbackModal';
+import { NotificationsBell } from '../NotificationsBell';
 import { AppRail, type AppRailItem, type AppRailItemId } from './AppRail';
 import { Logo } from './Logo';
 import { MonoMeta } from './MonoMeta';
@@ -206,9 +207,10 @@ export function AppShell({
                 {meta}
               </MonoMeta>
             ) : null}
-            {actions ? (
-              <div className="kit-app-shell__actions">{actions}</div>
-            ) : null}
+            <div className="kit-app-shell__actions">
+              {feedbackUserId ? <NotificationsBell enabled /> : null}
+              {actions}
+            </div>
           </header>
           <main className="kit-app-shell__main">{children}</main>
           <SiteFooter

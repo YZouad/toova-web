@@ -10,6 +10,7 @@ import {
   type ProductBundle,
 } from '../../lib/bundles';
 import {
+  trackAffiliateClicked,
   trackBundleAddedToRoom,
   trackBundleCartClicked,
   trackBundleViewed,
@@ -86,6 +87,11 @@ function BundleCard({
 
   function handleCartClick() {
     trackBundleCartClicked({ bundle_slug: bundle.slug, item_count: bundle.items.length });
+    trackAffiliateClicked({
+      retailer: 'Amazon',
+      is_price_approximate: false,
+      source: 'bundle_cart',
+    });
     if (cartUrl) window.open(cartUrl, '_blank', 'noopener,noreferrer');
   }
 

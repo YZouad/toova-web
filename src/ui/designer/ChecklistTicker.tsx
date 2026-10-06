@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useShoppingCatalogContext } from '../../context/ShoppingCatalogContext';
 import { useAuth } from '../../hooks/useAuth';
+import { shopUrlForProduct } from '../../lib/affiliateLinks';
 import { trackAffiliateClicked } from '../../lib/analytics';
 import { productHasPlaceableModel } from '../../lib/checklistPublicGlbs';
 import {
@@ -282,16 +283,15 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
     setActionError(null);
   };
 
-  const shopProduct = (product: CuratedProduct) => {
-    const url = product.affiliateUrl?.trim();
-    if (!url) return;
+  const shopProduct = (product: CuratedProduct, source: 'designer_checklist_ticker' | 'ticker_inline' = 'designer_checklist_ticker') => {
+    const shop = shopUrlForProduct(product);
     trackAffiliateClicked({
       retailer: product.retailer,
       product_id: product.id,
-      is_price_approximate: false,
-      source: 'designer_checklist_ticker',
+      is_price_approximate: shop.approximate,
+      source,
     });
-    window.open(url, '_blank', 'noopener,noreferrer');
+    window.open(shop.url, '_blank', 'noopener,noreferrer');
   };
 
   const handlePlace = async (product: CuratedProduct) => {
@@ -357,10 +357,10 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
 
   const shopAll = () => {
     if (!activeLine) return;
-    const withUrl = [...activeLine.products]
-      .filter((p) => p.affiliateUrl?.trim())
-      .sort((a, b) => (a.priceCents ?? Infinity) - (b.priceCents ?? Infinity));
-    const first = withUrl[0];
+    const sorted = [...activeLine.products].sort(
+      (a, b) => (a.priceCents ?? Infinity) - (b.priceCents ?? Infinity),
+    );
+    const first = sorted[0];
     if (first) shopProduct(first);
   };
 
@@ -404,11 +404,20 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
   }
 
   if (!open) {
+    const hasCheckout = purchaseCartLines.length > 0;
     return (
       <div data-tour-id="ticker" className="dg-ticker">
-        <div className="dg-ticker-card dg-ticker-card--collapsed">
+        <div
+          className={[
+            'dg-ticker-card',
+            'dg-ticker-card--collapsed',
+            hasCheckout ? 'dg-ticker-card--collapsed-checkout' : '',
+          ]
+            .filter(Boolean)
+            .join(' ')}
+        >
           {head}
-          {purchaseCartLines.length > 0 ? (
+          {hasCheckout ? (
             <button
               type="button"
               className="dg-ticker-cta dg-ticker-cta--checkout dg-ticker-cta--collapsed"
@@ -420,6 +429,7 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
         </div>
         {checkoutOpen ? (
           <ChecklistCheckoutPanel
+            variant="designer"
             lines={purchaseCartLines}
             onClose={() => setCheckoutOpen(false)}
             onRemoveFromList={(productId) => void removeFromList(productId)}
@@ -514,7 +524,7 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
             ) : (
               detailProducts.map((product) => {
                 const price = formatPriceCents(product.priceCents, product.currency);
-                const shopUrl = product.affiliateUrl?.trim();
+                const shop = shopUrlForProduct(product);
                 const roomId = findRoomItemForProduct(product, items, order);
                 const inRoom = !!roomId;
                 const placeable = productHasPlaceableModel(product);
@@ -555,30 +565,25 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
                       <p className="dg-ticker-offer__desc">{product.description}</p>
                     ) : null}
 
-                    {shopUrl ? (
-                      <a
-                        className="dg-ticker-shop"
-                        href={shopUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={() =>
-                          trackAffiliateClicked({
-                            retailer: product.retailer,
-                            product_id: product.id,
-                            is_price_approximate: false,
-                            source: 'designer_checklist_ticker',
-                          })
-                        }
-                      >
-                        <CartIcon />
-                        Shop {price ?? ''} at {retailer}
-                      </a>
-                    ) : (
-                      <button type="button" className="dg-ticker-shop" disabled>
-                        <CartIcon />
-                        Shop link coming soon
-                      </button>
-                    )}
+                    <a
+                      className="dg-ticker-shop"
+                      href={shop.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() =>
+                        trackAffiliateClicked({
+                          retailer: product.retailer,
+                          product_id: product.id,
+                          is_price_approximate: shop.approximate,
+                          source: 'designer_checklist_ticker',
+                        })
+                      }
+                    >
+                      <CartIcon />
+                      {shop.approximate
+                        ? `${shop.label}${price ? ` · ${price}` : ''}`
+                        : `Shop ${price ?? ''} at ${retailer}`}
+                    </a>
 
                     <div className="dg-ticker-offer__actions">
                       {inRoom && roomId ? (
@@ -650,7 +655,7 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
               type="button"
               className="dg-ticker-cta"
               onClick={shopAll}
-              disabled={!activeLine.products.some((p) => p.affiliateUrl?.trim())}
+              disabled={activeLine.products.length === 0}
             >
               Shop all {activeLine.name.toLowerCase()} ↗
             </button>
@@ -658,6 +663,7 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
         </div>
         {checkoutOpen ? (
           <ChecklistCheckoutPanel
+            variant="designer"
             lines={purchaseCartLines}
             onClose={() => setCheckoutOpen(false)}
             onRemoveFromList={(productId) => void removeFromList(productId)}
@@ -734,10 +740,15 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
                       {group.lines.map((line) => {
                         const statusChip = checklistLineStatusLabel(line.status);
                         const topPick =
-                          line.products.find((p) => p.affiliateUrl?.trim()) ?? line.products[0] ?? null;
+                          [...line.products].sort(
+                            (a, b) => (a.priceCents ?? Infinity) - (b.priceCents ?? Infinity),
+                          )[0] ?? null;
                         const onList = topPick
                           ? list.some((e) => e.productId === topPick.id)
                           : false;
+                        const inlinePrice = topPick
+                          ? formatPriceCents(topPick.priceCents, topPick.currency)
+                          : null;
                         return (
                         <div
                           key={line.categoryId}
@@ -773,12 +784,21 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
                               {onList ? 'On list' : '+ List'}
                             </button>
                           ) : null}
+                          {topPick ? (
+                            <button
+                              type="button"
+                              className="dg-ticker-item__shop dg-ticker-item__shop--buy"
+                              onClick={() => shopProduct(topPick, 'ticker_inline')}
+                            >
+                              {inlinePrice ? `Shop ${inlinePrice}` : 'Shop'}
+                            </button>
+                          ) : null}
                           <button
                             type="button"
                             className="dg-ticker-item__shop"
                             onClick={() => openDetail(line.categoryId)}
                           >
-                            Shop ›
+                            Options ›
                           </button>
                         </div>
                         );
@@ -818,6 +838,7 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
       </div>
       {checkoutOpen ? (
         <ChecklistCheckoutPanel
+          variant="designer"
           lines={purchaseCartLines}
           onClose={() => setCheckoutOpen(false)}
           onRemoveFromList={(productId) => void removeFromList(productId)}

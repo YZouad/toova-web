@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   fetchGalleryHome,
   type GalleryRoomRow,
+  type GalleryWeeklyTheme,
 } from '../lib/roomGallery';
 import { resolveRoomThumbnailUrl } from '../lib/roomThumbnailStorage';
 import { parseFloorPlan } from '../lib/floorPlanGeometry';
@@ -117,6 +118,8 @@ async function hydrateModel(row: Record<string, unknown>): Promise<GalleryModel 
 export interface GalleryHomeData {
   roomsHot: GalleryRoom[];
   roomsLiked: GalleryRoom[];
+  roomsFeatured: GalleryRoom[];
+  weeklyTheme: GalleryWeeklyTheme | null;
   modelsHot: GalleryModel[];
   modelsLiked: GalleryModel[];
 }
@@ -135,9 +138,10 @@ export function useGalleryHome(enabled: boolean) {
     setError(null);
     try {
       const raw = await fetchGalleryHome(12, 12);
-      const [roomsHot, roomsLiked, modelsHot, modelsLiked] = await Promise.all([
+      const [roomsHot, roomsLiked, roomsFeatured, modelsHot, modelsLiked] = await Promise.all([
         Promise.all(raw.rooms_hot.map(hydrateRoom)),
         Promise.all(raw.rooms_likes.map(hydrateRoom)),
+        Promise.all(raw.rooms_featured.map(hydrateRoom)),
         Promise.all(raw.models_hot.map(hydrateModel)).then((list) =>
           list.filter((m): m is GalleryModel => !!m),
         ),
@@ -149,6 +153,8 @@ export function useGalleryHome(enabled: boolean) {
       setData({
         roomsHot,
         roomsLiked,
+        roomsFeatured,
+        weeklyTheme: raw.weekly_theme,
         modelsHot,
         modelsLiked,
       });

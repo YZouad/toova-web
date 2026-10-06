@@ -20,6 +20,26 @@ type CheckoutKind =
   | "topup_400"
   | "semester_pass";
 
+/** Only send Stripe back to this app. A caller-supplied URL on another origin is ignored. */
+function sameOriginAppUrl(raw: unknown, origin: string): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  try {
+    const url = new URL(raw.trim());
+    const allowed = new URL(origin);
+    if (url.origin !== allowed.origin) return null;
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function withCheckoutFlag(raw: string, flag: "success" | "cancel"): string {
+  const url = new URL(raw);
+  url.searchParams.set("checkout", flag);
+  return url.toString();
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers: corsHeaders });
@@ -40,12 +60,11 @@ Deno.serve(async (req: Request) => {
     if (!kind) return json({ error: "Missing checkout kind." }, 400);
 
     const origin = req.headers.get("origin")?.trim() || "https://toova.net";
-    const successUrl = typeof body.success_url === "string" && body.success_url.trim()
-      ? body.success_url.trim()
-      : `${origin}/?checkout=success`;
-    const cancelUrl = typeof body.cancel_url === "string" && body.cancel_url.trim()
-      ? body.cancel_url.trim()
-      : `${origin}/?checkout=cancel`;
+    const referer = sameOriginAppUrl(req.headers.get("referer"), origin);
+    const successUrl = sameOriginAppUrl(body.success_url, origin)
+      ?? withCheckoutFlag(referer ?? `${origin}/`, "success");
+    const cancelUrl = sameOriginAppUrl(body.cancel_url, origin)
+      ?? withCheckoutFlag(referer ?? `${origin}/`, "cancel");
 
     const customerId = await getOrCreateStripeCustomer(userId);
 

@@ -76,9 +76,20 @@ export async function fetchGalleryRooms(
   return { rows, total: rows[0]?.total_count ?? 0 };
 }
 
+export interface GalleryWeeklyTheme {
+  id: string;
+  slug: string;
+  title: string;
+  body: string | null;
+  starts_at: string;
+  ends_at: string;
+}
+
 export interface GalleryHomePayload {
   rooms_hot: GalleryRoomRow[];
   rooms_likes: GalleryRoomRow[];
+  rooms_featured: GalleryRoomRow[];
+  weekly_theme: GalleryWeeklyTheme | null;
   models_hot: Record<string, unknown>[];
   models_likes: Record<string, unknown>[];
 }
@@ -86,6 +97,22 @@ export interface GalleryHomePayload {
 function mapRoomList(raw: unknown): GalleryRoomRow[] {
   if (!Array.isArray(raw)) return [];
   return raw.map((r) => mapGalleryRoomRow(r as Record<string, unknown>));
+}
+
+function mapWeeklyTheme(raw: unknown): GalleryWeeklyTheme | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const row = raw as Record<string, unknown>;
+  const id = String(row.id ?? '');
+  const title = String(row.title ?? '').trim();
+  if (!id || !title) return null;
+  return {
+    id,
+    slug: String(row.slug ?? ''),
+    title,
+    body: row.body != null ? String(row.body) : null,
+    starts_at: String(row.starts_at ?? ''),
+    ends_at: String(row.ends_at ?? ''),
+  };
 }
 
 export async function fetchGalleryHome(
@@ -101,6 +128,8 @@ export async function fetchGalleryHome(
   return {
     rooms_hot: mapRoomList(payload.rooms_hot),
     rooms_likes: mapRoomList(payload.rooms_likes),
+    rooms_featured: mapRoomList(payload.rooms_featured),
+    weekly_theme: mapWeeklyTheme(payload.weekly_theme),
     models_hot: Array.isArray(payload.models_hot)
       ? (payload.models_hot as Record<string, unknown>[])
       : [],

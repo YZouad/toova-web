@@ -2534,6 +2534,30 @@
   cursor: not-allowed;
 }
 
+.dg-page.is-phone .dgm-more-menu__item--split {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dg-page.is-phone .dgm-more-menu__meta {
+  font: var(--type-mono-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-6);
+}
+
+.dg-page.is-phone .dgm-more-menu__rule {
+  height: 1px;
+  background: var(--rule-soft);
+  margin: 4px 8px;
+}
+
+.dg-page.is-phone .dg-credits-pack,
+.dg-page.is-phone .dgm-sheet .dg-more-menu__item {
+  min-height: 44px;
+  border-radius: 10px;
+}
+
 .dg-page.is-phone .dgm-scene-chips {
   position: absolute;
   left: var(--dgm-gutter);

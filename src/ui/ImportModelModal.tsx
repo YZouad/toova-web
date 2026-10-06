@@ -135,6 +135,21 @@ export function ImportModelModal({
     setTab(initialTab);
   }, [open, initialTab, initialGlbFile, priorJobId]);
 
+  // Pre-wake Trellis while the user prepares the photo.
+  useEffect(() => {
+    if (!open || tab !== 'generate') return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const { ensureTrellisReady } = await import('../lib/trellisApi');
+        await ensureTrellisReady(controller.signal);
+      } catch {
+        /* best-effort */
+      }
+    })();
+    return () => controller.abort();
+  }, [open, tab]);
+
   useEffect(() => {
     if (!open || !isAdmin) return;
     let cancelled = false;
