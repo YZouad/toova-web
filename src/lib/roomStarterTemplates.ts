@@ -23,12 +23,8 @@ import {
   rectanglePlan,
   type FloorPlan,
 } from './floorPlanGeometry';
-import {
-  DEFAULT_LEAF_CONFIG,
-  DEFAULT_LIGHT_CONFIG,
-  type HangingDecorKind,
-  type HangingDecorationConfig,
-} from './hangingDecorGeometry';
+import type { HangingDecorKind } from './hangingDecorGeometry';
+import { appendHangingFromSeeds, type HangingPlacementSeed } from './hangingDecorPlacement';
 import { DEFAULT_APPEARANCE, type RoomAppearance } from './roomAppearance';
 import { buildUChicagoDormStarters, type UChicagoDormMeta } from './uchicagoDormTemplates';
 import { ROOM } from '../units';
@@ -530,34 +526,6 @@ export function starterPieceCount(template: RoomStarterTemplate): number {
   return template.floorItems.length + (template.hanging?.length ?? 0);
 }
 
-function resolveHanging(
-  plan: FloorPlan,
-  seed: StarterHangingSeed,
-): HangingDecorationConfig | null {
-  const wall = plan.walls[seed.wallIndex];
-  if (!wall) return null;
-  const base = seed.kind === 'lights' ? DEFAULT_LIGHT_CONFIG : DEFAULT_LEAF_CONFIG;
-  return {
-    ...base,
-    anchors: [
-      {
-        surface: 'wall',
-        wallId: wall.id,
-        offset: seed.offsetStart,
-        height: seed.height,
-      },
-      {
-        surface: 'wall',
-        wallId: wall.id,
-        offset: seed.offsetEnd,
-        height: seed.height,
-      },
-    ],
-    seed: (seed.wallIndex * 997 + Math.round(seed.offsetStart * 13)) >>> 0,
-    palette: seed.kind === 'lights' ? [...base.palette] : [],
-  };
-}
-
 function floorSeedToItem(seed: StarterFloorSeed, id: string): Item {
   const def = FURNITURE[seed.kind];
   const isBed = seed.kind === 'bed';
@@ -580,12 +548,6 @@ function floorSeedToItem(seed: StarterFloorSeed, id: string): Item {
   };
 }
 
-function hangingLabel(kind: HangingDecorKind): string {
-  if (kind === 'lights') return 'String lights';
-  if (kind === 'led-strip') return 'LED strip';
-  return 'Hanging leaves';
-}
-
 function cloneSnapshotItem(snap: Item, id: string): Item {
   const cloned = structuredClone(snap);
   cloned.id = id;
@@ -594,29 +556,6 @@ function cloneSnapshotItem(snap: Item, id: string): Item {
   delete cloned.finishTextureUrl;
   if (!cloned.attachmentKey) cloned.attachmentKey = newAttachmentKey();
   return cloned;
-}
-
-function appendHangingFromSeeds(
-  items: Item[],
-  plan: FloorPlan,
-  hanging: readonly StarterHangingSeed[] | undefined,
-  nextIndex: { n: number },
-): void {
-  for (const hang of hanging ?? []) {
-    const config = resolveHanging(plan, hang);
-    if (!config) continue;
-    const id = `item-${nextIndex.n++}`;
-    items.push({
-      id,
-      kind: 'hanging',
-      position: [0, 0, 0],
-      rotationY: 0,
-      size: [12, 12, 12],
-      label: hangingLabel(hang.kind),
-      attachmentKey: newAttachmentKey(),
-      hanging: config,
-    });
-  }
 }
 
 /** Build editable store items from a template + freshly built plan (for hanging wall ids). */
@@ -632,14 +571,24 @@ export function materializeStarterItems(
       if (snap.kind === 'hanging') continue;
       items.push(cloneSnapshotItem(snap, `item-${nextIndex.n++}`));
     }
-    appendHangingFromSeeds(items, plan, template.hanging, nextIndex);
+    appendHangingFromSeeds(
+      items,
+      plan,
+      (template.hanging ?? []) as readonly HangingPlacementSeed[],
+      nextIndex,
+    );
     return { items, order: items.map((it) => it.id) };
   }
 
   for (const seed of template.floorItems) {
     items.push(floorSeedToItem(seed, `item-${nextIndex.n++}`));
   }
-  appendHangingFromSeeds(items, plan, template.hanging, nextIndex);
+  appendHangingFromSeeds(
+    items,
+    plan,
+    (template.hanging ?? []) as readonly HangingPlacementSeed[],
+    nextIndex,
+  );
 
   return { items, order: items.map((it) => it.id) };
 }

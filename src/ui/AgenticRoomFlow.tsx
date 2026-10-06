@@ -27,7 +27,7 @@ import { shoppingEntriesFromResolved } from '../lib/agenticRoomApplyChecklist';
 import {
   buildAgenticPackPieces,
   defaultPlaceInRoom,
-  packAgenticFloorItems,
+  packAgenticRoomItems,
   rowCanPlaceInRoom,
 } from '../lib/agenticRoomPack';
 import { resolveStarterItemAssets } from '../lib/starterTemplateOverrides';
@@ -777,7 +777,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
         return row.placeInRoom && resolution !== 'skip' && resolution !== 'have';
       });
       const pieces = await buildAgenticPackPieces(packRows);
-      const packed = packAgenticFloorItems(plan, pieces);
+      const packed = packAgenticRoomItems(plan, pieces, packRows);
       const vibeItems = applyAgenticThemeToItems(
         applyAgenticVibeToItems(packed.items, request.vibe),
         theme,

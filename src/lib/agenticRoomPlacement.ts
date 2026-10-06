@@ -3,22 +3,24 @@ import type { AgenticCommunityMatch } from './agenticCommunityMatch';
 import type { AgenticPosterMatch } from './agenticPosterMatch';
 import { productHasPlaceableModel } from './checklistPublicGlbs';
 import {
-  getProductDrawKind,
   resolvePlaceBeddingKind,
   resolvePlaceHangingKind,
   type CuratedProduct,
 } from './dormChecklist';
 
+/** Bedding and generic poster queries stay checklist-only unless a bank poster matched. */
 const CHECKLIST_ONLY =
-  /\b(bedding|comforter|sheets|duvet|pillow|mattress|blanket|throw|poster|print|artwork|wall art|canvas|rug|area rug|carpet|mat|string lights|led strip|hanging leaves|garland)\b/i;
+  /\b(bedding|comforter|sheets|duvet|pillow|mattress|blanket|throw|poster|print|artwork|wall art|canvas)\b/i;
+
+const CHECKLIST_RUG_KIND = 'checklist-rug';
 
 function isChecklistOnlyRow(row: {
   query: string;
   product?: CuratedProduct | null;
 }): boolean {
   if (row.product && resolvePlaceBeddingKind(row.product)) return true;
-  if (row.product && resolvePlaceHangingKind(row.product)) return true;
-  if (row.product && getProductDrawKind(row.product)) return true;
+  if (row.product?.placeCatalogKind === CHECKLIST_RUG_KIND) return false;
+  if (row.product && resolvePlaceHangingKind(row.product)) return false;
   return CHECKLIST_ONLY.test(row.query);
 }
 

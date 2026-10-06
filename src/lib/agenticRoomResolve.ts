@@ -1,6 +1,11 @@
 import { FURNITURE, type GalleryFurnitureKind } from '../furniture/registry';
 import type { CuratedProduct } from './dormChecklist';
 import type { AgenticItemAsk, AgenticRoomRequest } from './agenticRoomPrompt';
+import {
+  isHangingDecorQuery,
+  isRugQuery,
+  resolveCatalogBankProduct,
+} from './agenticCatalogBankMatch';
 import { isPosterDecorQuery } from './agenticPosterMatch';
 import { normalizeSearchText, scoreCandidate, singularize, tokenize } from './designerSearch';
 import type { ScoredCandidate } from '../ui/designer/commandSearchTypes';
@@ -214,9 +219,11 @@ const NOT_FURNITURE =
 
 function resolveBuiltinKind(query: string): GalleryFurnitureKind | null {
   if (isPosterDecorQuery(query)) return null;
+  if (isHangingDecorQuery(query) || isRugQuery(query)) return null;
 
   const n = normalizeSearchText(query);
   if (/\bdesk\s+lamps?\b/.test(n) || /\bfloor\s+lamps?\b/.test(n)) return 'lamp';
+  if (/\bstring\s+lights?\b/.test(n) || /\bfairy\s+lights?\b/.test(n)) return null;
   if (NOT_FURNITURE.test(n)) return null;
   if (QUERY_TO_BUILTIN[n]) return QUERY_TO_BUILTIN[n]!;
 
@@ -245,10 +252,28 @@ function priceForItem(item: ResolvedAgenticItem): number {
   return item.product.priceCents * item.qty;
 }
 
-function resolveOneItem(query: string, qty: number, products: CuratedProduct[]): ResolvedAgenticItem {
+function resolveOneItem(
+  query: string,
+  qty: number,
+  products: CuratedProduct[],
+  sourcePrompt?: string,
+): ResolvedAgenticItem {
   const ranked = rankProductsForQuery(query, products);
   const top = ranked[0];
   const warnings: string[] = [];
+
+  const bankProduct = resolveCatalogBankProduct(query, products, sourcePrompt);
+  if (bankProduct) {
+    return {
+      query,
+      qty,
+      product: bankProduct,
+      alternates: ranked.slice(0, 3).map((r) => r.product),
+      score: 100,
+      builtinKind: null,
+      warnings,
+    };
+  }
 
   if (top && top.score >= AGENTIC_MATCH_MIN_SCORE) {
     return {
@@ -333,9 +358,10 @@ export function optimizeForBudget(
 export function resolveAgenticItems(
   request: AgenticRoomRequest,
   products: CuratedProduct[],
+  sourcePrompt?: string,
 ): AgenticResolveResult {
   let items = request.items.map((ask: AgenticItemAsk) =>
-    resolveOneItem(ask.query, ask.qty, products),
+    resolveOneItem(ask.query, ask.qty, products, sourcePrompt),
   );
   items = optimizeForBudget(items, request.budgetCents, products);
 

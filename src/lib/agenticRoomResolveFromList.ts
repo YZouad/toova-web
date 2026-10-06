@@ -74,7 +74,7 @@ export function resolveAgenticList(
   sourcePrompt?: string | null,
 ): AgenticListResolveResult {
   const request = listResultToRoomRequest(list);
-  const result = resolveAgenticItems(request, products);
+  const result = resolveAgenticItems(request, products, sourcePrompt ?? undefined);
   const withOffers = result.items.map((item) => ({
     ...item,
     searchOffers:

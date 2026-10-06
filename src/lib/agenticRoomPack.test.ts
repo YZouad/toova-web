@@ -6,6 +6,7 @@ import { defaultPlaceInRoom } from './agenticRoomPlacement';
 import {
   buildAgenticPackPieces,
   packAgenticFloorItems,
+  packAgenticRoomItems,
   WALL_POSTER_CENTER_Y,
   type AgenticPackRow,
 } from './agenticRoomPack';
@@ -48,6 +49,75 @@ describe('agenticRoomPack', () => {
     expect(defaultPlaceInRoom(mockRow({ query: 'gothic bedding set' }))).toBe(false);
     expect(defaultPlaceInRoom(mockRow({ query: 'wall poster' }))).toBe(false);
     expect(defaultPlaceInRoom(mockRow({ query: 'queen bed frame', builtinKind: 'bed' }))).toBe(true);
+  });
+
+  it('defaults rug and hanging decor rows to place in room', () => {
+    expect(
+      defaultPlaceInRoom(
+        mockRow({
+          query: 'botanical rug',
+          product: {
+            id: 'rug',
+            categoryId: 'c',
+            slug: 'rug',
+            name: 'Rug',
+            description: '',
+            retailer: 'Amazon',
+            affiliateUrl: '',
+            priceCents: 3000,
+            currency: 'USD',
+            imagePath: null,
+            imageUrl: null,
+            sortOrder: 0,
+            published: true,
+            lastVerifiedAt: null,
+            placeBuiltinKind: null,
+            placeCatalogKind: 'checklist-rug',
+            placeHangingKind: null,
+            placeBeddingKind: null,
+            brand: null,
+            featureBullets: [],
+            dimensionsText: null,
+            rating: null,
+            reviewCount: null,
+            availability: null,
+          },
+        }),
+      ),
+    ).toBe(true);
+    expect(
+      defaultPlaceInRoom(
+        mockRow({
+          query: 'string lights',
+          product: {
+            id: 'lights',
+            categoryId: 'c',
+            slug: 'fairlylights1',
+            name: 'Fairy lights',
+            description: '',
+            retailer: 'Amazon',
+            affiliateUrl: '',
+            priceCents: 1800,
+            currency: 'USD',
+            imagePath: null,
+            imageUrl: null,
+            sortOrder: 0,
+            published: true,
+            lastVerifiedAt: null,
+            placeBuiltinKind: null,
+            placeCatalogKind: null,
+            placeHangingKind: 'lights',
+            placeBeddingKind: null,
+            brand: null,
+            featureBullets: [],
+            dimensionsText: null,
+            rating: null,
+            reviewCount: null,
+            availability: null,
+          },
+        }),
+      ),
+    ).toBe(true);
   });
 
   it('defaults bank poster hits to place in room', () => {
@@ -201,6 +271,80 @@ describe('agenticRoomPack', () => {
     ];
     const pieces = await buildAgenticPackPieces(rows);
     expect(pieces.filter((p) => p.wallPoster)).toHaveLength(1);
+  });
+
+  it('auto-spans hanging lights and leaves after floor pack', () => {
+    const plan = rectanglePlan(inches(10), inches(12));
+    const pieces = [
+      { query: 'bed', label: 'Bed', kind: 'bed' as const, size: [...FURNITURE.bed.size] as [number, number, number], isLamp: false },
+    ];
+    const hangingRows = [
+      mockRow({
+        query: 'string lights',
+        placeInRoom: true,
+        product: {
+          id: 'lights',
+          categoryId: 'c',
+          slug: 'fairlylights1',
+          name: 'Fairy lights',
+          description: '',
+          retailer: 'Amazon',
+          affiliateUrl: '',
+          priceCents: 1800,
+          currency: 'USD',
+          imagePath: null,
+          imageUrl: null,
+          sortOrder: 0,
+          published: true,
+          lastVerifiedAt: null,
+          placeBuiltinKind: null,
+          placeCatalogKind: null,
+          placeHangingKind: 'lights',
+          placeBeddingKind: null,
+          brand: null,
+          featureBullets: [],
+          dimensionsText: null,
+          rating: null,
+          reviewCount: null,
+          availability: null,
+        },
+      }),
+      mockRow({
+        query: 'hanging ivy leaves',
+        placeInRoom: true,
+        product: {
+          id: 'leaves',
+          categoryId: 'c',
+          slug: 'leaves',
+          name: 'Artificial ivy leaves',
+          description: '',
+          retailer: 'Amazon',
+          affiliateUrl: '',
+          priceCents: 2200,
+          currency: 'USD',
+          imagePath: null,
+          imageUrl: null,
+          sortOrder: 0,
+          published: true,
+          lastVerifiedAt: null,
+          placeBuiltinKind: null,
+          placeCatalogKind: null,
+          placeHangingKind: 'leaves',
+          placeBeddingKind: null,
+          brand: null,
+          featureBullets: [],
+          dimensionsText: null,
+          rating: null,
+          reviewCount: null,
+          availability: null,
+        },
+      }),
+    ];
+    const { items, order } = packAgenticRoomItems(plan, pieces, hangingRows);
+    const hanging = items.filter((it) => it.kind === 'hanging');
+    expect(hanging).toHaveLength(2);
+    expect(hanging.every((it) => (it.hanging?.anchors.length ?? 0) === 2)).toBe(true);
+    expect(order.length).toBe(items.length);
   });
 
   it('builds imported piece from community model selection', async () => {

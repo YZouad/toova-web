@@ -61,7 +61,10 @@ export function enrichFurnitureListWithTheme(
 ): AgenticFurnitureListResult {
   const theme = shoppableTheme(list.theme) ?? inferThemeFromPrompt(userPrompt);
   const withTheme = theme ? { ...list, theme } : list;
-  return ensureRoomEssentials(applyNamedThemeToList(withTheme, userPrompt), userPrompt);
+  return ensureCatalogBankExtras(
+    ensureRoomEssentials(applyNamedThemeToList(withTheme, userPrompt), userPrompt),
+    userPrompt,
+  );
 }
 
 function isBedroomLike(list: AgenticFurnitureListResult, userPrompt: string): boolean {
@@ -93,6 +96,43 @@ export function ensureRoomEssentials(
   }
   if (!has(/\blamp\b/i)) {
     extras.push({ query: 'desk lamp', qty: 1, estimatedCents: 2500 });
+  }
+
+  if (extras.length === 0) return list;
+  const nextItems = [...list.items, ...extras];
+  return {
+    ...list,
+    items: nextItems,
+    estimatedTotalCents: nextItems.reduce((sum, item) => sum + (item.estimatedCents ?? 0), 0),
+  };
+}
+
+function isDecoratableRoom(list: AgenticFurnitureListResult, userPrompt: string): boolean {
+  const blob = `${list.roomType ?? ''} ${userPrompt}`.toLowerCase();
+  return /\b(dorm|bedroom|studio|living|lounge)\b/.test(blob);
+}
+
+/** Inject catalog-bank decor lines (rug, lights, leaves, fridge) when missing from the list. */
+export function ensureCatalogBankExtras(
+  list: AgenticFurnitureListResult,
+  userPrompt = '',
+): AgenticFurnitureListResult {
+  if (!isDecoratableRoom(list, userPrompt)) return list;
+
+  const has = (re: RegExp) => list.items.some((item) => re.test(item.query));
+  const extras: AgenticItemAsk[] = [];
+
+  if (!has(/\b(area\s+)?rugs?\b|\bcarpets?\b/i)) {
+    extras.push({ query: 'area rug', qty: 1, estimatedCents: 3500 });
+  }
+  if (!has(/\bstring\s+lights?\b|\bfairy\s+lights?\b/i)) {
+    extras.push({ query: 'string lights', qty: 1, estimatedCents: 1800 });
+  }
+  if (!has(/\b(hanging\s+)?(leaves|ivy|garland|vines?)\b/i)) {
+    extras.push({ query: 'hanging ivy leaves', qty: 1, estimatedCents: 2200 });
+  }
+  if (isBedroomLike(list, userPrompt) && !has(/\b(mini\s+)?fridges?\b|\brefrigerators?\b/i)) {
+    extras.push({ query: 'mini fridge', qty: 1, estimatedCents: 12000 });
   }
 
   if (extras.length === 0) return list;
@@ -206,7 +246,8 @@ Schema:
 }
 
 Rules for items:
-- Each item must be a buyable furniture or decor product (queen bed, desk lamp, area rug, hangers, shelf unit, dresser, mirror, etc.)
+- Each item must be a buyable furniture or decor product (queen bed, desk lamp, area rug, string lights, hanging ivy leaves, mini fridge, hangers, shelf unit, dresser, mirror, etc.)
+- Dorm/bedroom lists should include decor that Toova can place in 3D: area rug, string lights, hanging ivy leaves, and mini fridge when they fit the room
 - query = short search phrase you'd type into a store (e.g. "queen bed frame", "blackout curtains", "over-door hooks")
 - Include commonly needed pieces for the room type and size, not only words copied from the description
 - NEVER list the theme, room type, or vibe as its own item (bad: "gothic", "minecraft", "bedroom", "cozy")

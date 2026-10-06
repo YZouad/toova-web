@@ -194,6 +194,7 @@ function classifyItem(item: Item): ItemRole {
   if (/\b(tv|television)\b/.test(label)) return 'screen';
   if (/\bmirror\b/.test(label)) return 'mirror';
   if (/\b(plant|planter)\b/.test(label)) return 'plant';
+  if (/\bfridge\b|\brefrigerator\b/.test(label)) return 'storage';
   return 'leftover';
 }
 

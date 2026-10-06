@@ -61,7 +61,8 @@ Schema:
 }
 
 Rules for items:
-- Each item must be a buyable furniture or decor product (queen bed, desk lamp, area rug, hangers, shelf unit, dresser, mirror, etc.)
+- Each item must be a buyable furniture or decor product (queen bed, desk lamp, area rug, string lights, hanging ivy leaves, mini fridge, hangers, shelf unit, dresser, mirror, etc.)
+- Dorm/bedroom lists should include decor that Toova can place in 3D: area rug, string lights, hanging ivy leaves, and mini fridge when they fit the room
 - query = short search phrase you'd type into a store (e.g. "queen bed frame", "blackout curtains", "over-door hooks")
 - Include commonly needed pieces for the room type and size, not only words copied from the description
 - NEVER list the theme, room type, or vibe as its own item (bad: "gothic", "minecraft", "bedroom", "cozy")

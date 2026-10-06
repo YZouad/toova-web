@@ -177,6 +177,18 @@ export function applyAgenticThemeToItems(
   return applyPaletteToItems(items, profile.furnishings);
 }
 
+/** Rug tint inferred from a descriptive shopping query (e.g. "botanical rug"). */
+export function rugTintFromQuery(query: string): string | null {
+  const text = query.toLowerCase();
+  if (/\b(botanical|sage|forest|nature|emerald|leaf|leaves|green)\b/.test(text)) return '#8a9a82';
+  if (/\b(gothic|charcoal|black|dark|moody)\b/.test(text)) return '#3a3a3a';
+  if (/\b(coastal|ocean|blue|aqua|teal)\b/.test(text)) return '#d8e0d8';
+  if (/\b(minecraft|pixel|gaming|block)\b/.test(text)) return '#4a6038';
+  if (/\b(warm|sunset|terracotta|rust)\b/.test(text)) return '#c4a574';
+  if (/\b(pink|blush|rose)\b/.test(text)) return '#d8c0c0';
+  return null;
+}
+
 /** Named finish on a shopping-list line. Wins over the room palette. */
 export function explicitFinishFromLabel(
   label: string,
@@ -197,7 +209,8 @@ export function explicitFinishFromLabel(
 function applyPaletteToItems(items: Item[], palette: AgenticVibeFurnishings): Item[] {
   return items.map((item) => {
     if (item.kind === 'imported' && isChecklistRug(item)) {
-      return { ...item, tintColor: palette.rugTint };
+      const namedRug = rugTintFromQuery(item.label ?? '');
+      return { ...item, tintColor: namedRug ?? palette.rugTint };
     }
     if (!itemUsesTintColor(item.kind) && item.kind !== 'bed') return item;
 

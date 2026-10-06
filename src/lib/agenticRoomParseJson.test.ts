@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyNamedThemeToList,
+  ensureCatalogBankExtras,
   ensureRoomEssentials,
   enrichFurnitureListWithTheme,
   extractJsonFromAgentText,
@@ -162,6 +163,25 @@ describe('ensureRoomEssentials', () => {
     expect(queries.some((q) => /\bdesk\b/.test(q))).toBe(true);
     expect(queries.some((q) => /\bchair\b/.test(q))).toBe(true);
     expect(queries.some((q) => /\blamp\b/.test(q))).toBe(true);
+  });
+});
+
+describe('ensureCatalogBankExtras', () => {
+  it('injects rug, lights, leaves, and fridge for dorm lists', () => {
+    const list = ensureCatalogBankExtras(
+      {
+        items: [{ query: 'twin xl bed frame', qty: 1 }],
+        roomType: 'dorm bedroom',
+        warnings: [],
+        source: 'cursor',
+      },
+      'small dorm bedroom',
+    );
+    const queries = list.items.map((i) => i.query.toLowerCase());
+    expect(queries.some((q) => /\brug\b/.test(q))).toBe(true);
+    expect(queries.some((q) => /\bstring lights\b/.test(q))).toBe(true);
+    expect(queries.some((q) => /\bleaves\b/.test(q))).toBe(true);
+    expect(queries.some((q) => /\bfridge\b/.test(q))).toBe(true);
   });
 });
 

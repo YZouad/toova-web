@@ -9,7 +9,15 @@ export { WALL_POSTER_CENTER_Y } from './roomLayoutArrange';
 import { bedFrameSpecificity, isBedFrameQuery, resolveBedFootprint } from './agenticBedSize';
 import { parseInchDims } from './importedItemSize';
 import { shouldStandImportedUpright, standUpFlatBounds } from './importedUpright';
+import { resolvePlaceHangingKind } from './dormChecklist';
+import {
+  appendHangingFromSeeds,
+  pickAgenticHangingSeeds,
+} from './hangingDecorPlacement';
+import type { HangingDecorKind } from './hangingDecorGeometry';
 import { supabase } from './supabase';
+
+const CHECKLIST_RUG_KIND = 'checklist-rug';
 
 export type AgenticPackRow = AgenticReviewRow;
 
@@ -205,11 +213,13 @@ export async function buildAgenticPackPieces(rows: AgenticPackRow[]): Promise<Ag
       if (cat) {
         const size =
           parseInchDims(cat.width_in, cat.height_in, cat.depth_in) ?? ([24, 24, 24] as [number, number, number]);
+        const displayLabel =
+          product.placeCatalogKind === CHECKLIST_RUG_KIND ? row.query : product.name;
         for (let i = 0; i < qty; i++) {
           pieces.push(
             importedPiece({
               query: row.query,
-              label: product.name,
+              label: displayLabel,
               storagePath: cat.model_url,
               catalogKind: product.placeCatalogKind,
               size,
@@ -298,5 +308,50 @@ export function packAgenticFloorItems(
     items,
     order: items.map((it) => it.id),
     skipped: skippedIds.map((id) => idToQuery.get(id) ?? id),
+  };
+}
+
+function hangingKindsFromRows(rows: AgenticPackRow[]): Array<{
+  kind: HangingDecorKind;
+  curatedProductId?: string;
+}> {
+  const out: Array<{ kind: HangingDecorKind; curatedProductId?: string }> = [];
+  const seen = new Set<HangingDecorKind>();
+  for (const row of rows) {
+    if (!row.placeInRoom || !row.product) continue;
+    const kind = resolvePlaceHangingKind(row.product);
+    if (!kind || seen.has(kind)) continue;
+    seen.add(kind);
+    out.push({ kind, curatedProductId: row.product.id });
+  }
+  return out;
+}
+
+/** Pack floor furniture, then auto-span hanging leaves / string lights on walls. */
+export function packAgenticRoomItems(
+  plan: FloorPlan,
+  pieces: AgenticPackPiece[],
+  hangingRows: AgenticPackRow[],
+  variant: LayoutVariant = 0,
+): AgenticPackResult {
+  const floor = packAgenticFloorItems(plan, pieces, variant);
+  const hangingEntries = hangingKindsFromRows(hangingRows);
+  if (hangingEntries.length === 0) return floor;
+
+  const seeds = pickAgenticHangingSeeds(plan, hangingEntries);
+  if (seeds.length === 0) return floor;
+
+  const items = [...floor.items];
+  const nextIndex = {
+    n: items.reduce((max, it) => {
+      const n = Number.parseInt(it.id.replace(/^item-/, ''), 10);
+      return Number.isFinite(n) ? Math.max(max, n + 1) : max;
+    }, 1),
+  };
+  const addedIds = appendHangingFromSeeds(items, plan, seeds, nextIndex);
+  return {
+    items,
+    order: [...floor.order, ...addedIds],
+    skipped: floor.skipped,
   };
 }

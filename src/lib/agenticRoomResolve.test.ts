@@ -37,6 +37,22 @@ function mockProduct(partial: Partial<CuratedProduct> & Pick<CuratedProduct, 'id
 
 const catalog: CuratedProduct[] = [
   mockProduct({
+    id: 'p-rug',
+    slug: 'rug',
+    name: 'Rug',
+    description: 'area rug dorm',
+    priceCents: 3500,
+    placeCatalogKind: 'checklist-rug',
+  }),
+  mockProduct({
+    id: 'p-lights',
+    slug: 'fairlylights1',
+    name: 'Fairy lights',
+    description: 'string lights dorm decor',
+    priceCents: 1800,
+    placeHangingKind: 'lights',
+  }),
+  mockProduct({
     id: 'p-bed',
     name: 'Twin XL Mattress Topper',
     description: 'bedding dorm mattress',
@@ -67,6 +83,24 @@ const catalog: CuratedProduct[] = [
 ];
 
 describe('resolveAgenticItems', () => {
+  it('kind-first matches descriptive rug and string light queries to bank products', () => {
+    const result = resolveAgenticItems(
+      {
+        widthIn: 120,
+        depthIn: 144,
+        items: [
+          { query: 'botanical rug', qty: 1 },
+          { query: 'minecraft string lights', qty: 1 },
+        ],
+      },
+      catalog,
+    );
+    expect(result.items[0]?.product?.slug).toBe('rug');
+    expect(result.items[0]?.query).toBe('botanical rug');
+    expect(result.items[1]?.product?.slug).toBe('fairlylights1');
+    expect(result.items[1]?.builtinKind).toBeNull();
+  });
+
   it('matches bed and desk to catalog products', () => {
     const request: AgenticRoomRequest = {
       widthIn: 120,
