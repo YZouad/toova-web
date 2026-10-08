@@ -9,6 +9,11 @@ import {
   type GallerySource,
   type RoomGallerySortParam,
 } from '../lib/galleryCatalog';
+import {
+  appendAgenticChecklistPick,
+  galleryModelToCommunityPick,
+  markAgenticChecklistResume,
+} from '../lib/agenticChecklistSession';
 import { navigate, profilePath } from '../hooks/useRoute';
 import { profileInitials } from '../lib/userDisplay';
 import { FeedbackModal } from './FeedbackModal';
@@ -37,6 +42,8 @@ interface GalleryPageProps {
   onLogout?: () => void;
   onContact?: () => void;
   onPitchMadness?: () => void;
+  /** Return to the in-progress agentic checklist builder. */
+  onReturnToChecklist?: () => void;
 }
 
 /** Kit-aligned primary tabs: Rooms | Models. Discover URL maps to Rooms shelves. */
@@ -62,6 +69,7 @@ export function GalleryPage({
   onLogout,
   onContact,
   onPitchMadness,
+  onReturnToChecklist,
 }: GalleryPageProps) {
   const { user, profile } = useAuth();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -79,10 +87,14 @@ export function GalleryPage({
       Boolean(initial.query.trim()) ||
       initial.mode === 'rooms' ||
       initial.mode === 'models' ||
-      initial.categories.length > 0,
+      initial.categories.length > 0 ||
+      initial.pick === 'checklist',
   );
+  const [pickMode, setPickMode] = useState(initial.pick === 'checklist');
+  const [pickNotice, setPickNotice] = useState<string | null>(null);
 
   const tab = modeToTab(mode);
+  const checklistPickMode = pickMode;
 
   const syncUrl = useCallback(
     (next: {
@@ -92,6 +104,7 @@ export function GalleryPage({
       roomSort: RoomGallerySortParam;
       categories: string[];
       query: string;
+      pick?: typeof initial.pick;
     }) => {
       if (!isGalleryPathname()) return;
       const qs = buildGallerySearchParams(next);
@@ -112,8 +125,16 @@ export function GalleryPage({
   }, []);
 
   useEffect(() => {
-    syncUrl({ mode, source, sort, roomSort, categories, query });
-  }, [mode, source, sort, roomSort, categories, query, syncUrl]);
+    syncUrl({
+      mode,
+      source,
+      sort,
+      roomSort,
+      categories,
+      query,
+      pick: pickMode ? 'checklist' : undefined,
+    });
+  }, [mode, source, sort, roomSort, categories, query, pickMode, syncUrl]);
 
   useEffect(() => {
     const onPop = () => {
@@ -129,18 +150,40 @@ export function GalleryPage({
         Boolean(next.query.trim()) ||
           next.mode === 'rooms' ||
           next.mode === 'models' ||
-          next.categories.length > 0,
+          next.categories.length > 0 ||
+          next.pick === 'checklist',
       );
+      setPickMode(next.pick === 'checklist');
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [user]);
 
+  function handleAddToChecklist(model: GalleryModel) {
+    if (model.isBuiltin) return;
+    appendAgenticChecklistPick(galleryModelToCommunityPick(model));
+    setPickNotice(`Added “${model.label}” to your checklist.`);
+  }
+
   function handlePlace(model: GalleryModel) {
+    if (checklistPickMode) {
+      handleAddToChecklist(model);
+      return;
+    }
     onUseInRoom(model);
     if (!loggedIn) {
       onRequestAuth('signin');
     }
+  }
+
+  function finishChecklistPick() {
+    markAgenticChecklistResume();
+    if (onReturnToChecklist) {
+      onReturnToChecklist();
+      return;
+    }
+    navigate('/');
+    onGoHome();
   }
 
   function setShellTab(next: ShellTab) {
@@ -200,6 +243,18 @@ export function GalleryPage({
 
   const body = (
     <>
+      {checklistPickMode ? (
+        <div className="gallery-checklist-pick-banner">
+          <div className="gallery-checklist-pick-banner__copy">
+            <strong>Add to your checklist</strong>
+            <span>Click a community model to add it. Keep browsing or return when done.</span>
+            {pickNotice ? <span className="gallery-checklist-pick-banner__notice">{pickNotice}</span> : null}
+          </div>
+          <Button size="sm" onClick={finishChecklistPick}>
+            Done — back to checklist
+          </Button>
+        </div>
+      ) : null}
       <div className="gallery-page-header">
         <Tabs
           active={tab}
@@ -285,14 +340,16 @@ export function GalleryPage({
         />
       ) : null}
 
-      {tab === 'models' && (browse || query.trim() || categories.length > 0) ? (
+      {tab === 'models' && (browse || query.trim() || categories.length > 0 || checklistPickMode) ? (
         <ModelGallery
           source={source === 'mine' ? 'community' : source}
           sort={sort}
           categories={categories}
           query={query}
           currentUserId={user?.id ?? null}
-          placeLabel="Use in a room"
+          placeLabel={checklistPickMode ? 'Add to checklist' : 'Use in a room'}
+          checklistPickMode={checklistPickMode}
+          onAddToChecklist={handleAddToChecklist}
           onSourceChange={(s) => {
             if (s === 'mine') {
               if (!user) {

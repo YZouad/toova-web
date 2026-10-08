@@ -35,12 +35,20 @@ export function isRugQuery(query: string): boolean {
   return detectCatalogBankKind(query) === 'rug';
 }
 
-function fridgeSlug(userPrompt?: string): string {
+function isBedroomLikeContext(userPrompt?: string, query?: string): boolean {
+  const blob = `${userPrompt ?? ''} ${query ?? ''}`.toLowerCase();
+  return /\b(dorm|bedroom|studio apartment|sleep)\b/.test(blob);
+}
+
+function fridgeSlug(query?: string, userPrompt?: string): string {
   if (/\b(uchicago|u\s*chicago)\b/i.test(userPrompt ?? '')) return 'uchicago-mini-fridge';
+  const n = normalizeSearchText(query ?? '');
+  if (/\bmini\b/.test(n)) return 'uchicago-mini-fridge';
+  if (isBedroomLikeContext(userPrompt, query)) return 'uchicago-mini-fridge';
   return 'fridge';
 }
 
-function slugForBankKind(kind: CatalogBankKind, userPrompt?: string): string {
+function slugForBankKind(kind: CatalogBankKind, query: string, userPrompt?: string): string {
   switch (kind) {
     case 'rug':
       return 'rug';
@@ -51,7 +59,7 @@ function slugForBankKind(kind: CatalogBankKind, userPrompt?: string): string {
     case 'led-strip':
       return 'led1';
     case 'fridge':
-      return fridgeSlug(userPrompt);
+      return fridgeSlug(query, userPrompt);
   }
 }
 
@@ -63,6 +71,6 @@ export function resolveCatalogBankProduct(
 ): CuratedProduct | null {
   const kind = detectCatalogBankKind(query, userPrompt);
   if (!kind) return null;
-  const slug = slugForBankKind(kind, userPrompt);
+  const slug = slugForBankKind(kind, query, userPrompt);
   return products.find((p) => p.published && p.slug === slug) ?? null;
 }

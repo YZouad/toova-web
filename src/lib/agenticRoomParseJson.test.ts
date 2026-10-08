@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyNamedThemeToList,
   ensureCatalogBankExtras,
+  ensureDeskPairings,
   ensureRoomEssentials,
   enrichFurnitureListWithTheme,
   extractJsonFromAgentText,
@@ -57,7 +58,7 @@ describe('validateFurnitureListJson', () => {
         'gothic string lights',
         'gothic bedding set',
         'desk',
-        'desk chair',
+        'chair',
       ]),
     );
     expect(result?.items[0]?.estimatedCents).toBe(25000);
@@ -149,7 +150,7 @@ describe('enrichFurnitureListWithTheme', () => {
 });
 
 describe('ensureRoomEssentials', () => {
-  it('injects desk, chair, and lamp for dorm lists missing them', () => {
+  it('injects bed and desk for dorm lists missing them', () => {
     const list = ensureRoomEssentials(
       {
         items: [{ query: 'twin xl bed frame', qty: 1 }],
@@ -161,7 +162,37 @@ describe('ensureRoomEssentials', () => {
     );
     const queries = list.items.map((i) => i.query.toLowerCase());
     expect(queries.some((q) => /\bdesk\b/.test(q))).toBe(true);
-    expect(queries.some((q) => /\bchair\b/.test(q))).toBe(true);
+    expect(queries.some((q) => /\bchair\b/.test(q))).toBe(false);
+  });
+});
+
+describe('ensureDeskPairings', () => {
+  it('adds chair and lamp when a desk is present without them', () => {
+    const list = ensureDeskPairings(
+      {
+        items: [{ query: 'student desk', qty: 1 }],
+        roomType: 'home office',
+        warnings: [],
+        source: 'cursor',
+      },
+      'home office with desk',
+    );
+    const queries = list.items.map((i) => i.query.toLowerCase());
+    expect(queries).toContain('chair');
+    expect(queries.some((q) => /\blamp\b/.test(q))).toBe(true);
+  });
+
+  it('adds lamp for decoratable rooms even without a desk', () => {
+    const list = ensureDeskPairings(
+      {
+        items: [{ query: 'twin xl bed frame', qty: 1 }],
+        roomType: 'dorm bedroom',
+        warnings: [],
+        source: 'cursor',
+      },
+      'small dorm bedroom',
+    );
+    const queries = list.items.map((i) => i.query.toLowerCase());
     expect(queries.some((q) => /\blamp\b/.test(q))).toBe(true);
   });
 });
@@ -200,7 +231,7 @@ describe('parseAgentTextToFurnitureList', () => {
 \`\`\``;
     const result = parseAgentTextToFurnitureList(text);
     expect(result?.items.map((i) => i.query)).toEqual(
-      expect.arrayContaining(['loft bed', 'desk lamp', 'desk', 'desk chair']),
+      expect.arrayContaining(['loft bed', 'desk lamp', 'desk', 'chair']),
     );
     expect(result?.estimatedTotalCents).toBeGreaterThanOrEqual(22500);
   });

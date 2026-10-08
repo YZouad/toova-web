@@ -1,5 +1,5 @@
 import { FURNITURE, isWallShelfKind, type FurnitureKind, type GalleryFurnitureKind } from '../furniture/registry';
-import { DEFAULT_BLANKET_COLOR, newAttachmentKey, type Item } from '../store';
+import { DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, newAttachmentKey, type Item } from '../store';
 import { CHECKLIST_RUG_MODEL_PATH, DEFAULT_RUG_COLOR } from './checklistPublicGlbs';
 import type { AgenticReviewRow } from './agenticRoomResolveFromList';
 export { defaultPlaceInRoom, rowCanPlaceInRoom } from './agenticRoomPlacement';
@@ -241,6 +241,10 @@ export async function buildAgenticPackPieces(rows: AgenticPackRow[]): Promise<Ag
   return pieces;
 }
 
+function defaultLampEmitter(): Item['emitter'] {
+  return { ...DEFAULT_EMITTER, enabled: true, intensity: 1.8, range: 90 };
+}
+
 function pieceToItem(piece: AgenticPackPiece, id: string, position: [number, number, number], rotationY: number): Item {
   if (piece.kind === 'imported') {
     const isRug =
@@ -262,6 +266,7 @@ function pieceToItem(piece: AgenticPackPiece, id: string, position: [number, num
       tintColor: isRug ? DEFAULT_RUG_COLOR : undefined,
       wallMounted: piece.wallPoster ? true : undefined,
       attachmentKey: newAttachmentKey(),
+      ...(piece.isLamp ? { emitter: defaultLampEmitter() } : {}),
     };
   }
 
@@ -286,6 +291,7 @@ function pieceToItem(piece: AgenticPackPiece, id: string, position: [number, num
     curatedProductId: piece.curatedProductId,
     wallMounted: isWallShelfKind(piece.kind) ? true : undefined,
     attachmentKey: newAttachmentKey(),
+    ...(piece.isLamp || piece.kind === 'lamp' ? { emitter: defaultLampEmitter() } : {}),
   };
 }
 

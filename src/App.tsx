@@ -1088,6 +1088,11 @@ function AppContent() {
           navigate('/');
           setScreen('dashboard');
         }}
+        onReturnToChecklist={() => {
+          navigate('/');
+          setScreen('dashboard');
+          setFloorPlanDraft((prev) => prev ?? { name: user ? 'Room 1' : 'My dorm', mode: 'create' });
+        }}
         onNavigate={handleAppNav}
         onLogout={user ? handleLogout : undefined}
         {...siteFooterNav}
@@ -1320,6 +1325,9 @@ function AppContent() {
           defaultName={floorPlanDraft?.name || 'Room 1'}
           onClose={() => setFloorPlanDraft(null)}
           onSelect={handlePresetPickerSelect}
+          onResumeAgenticChecklist={() => {
+            setFloorPlanDraft((prev) => prev ?? { name: 'Room 1', mode: 'create' });
+          }}
         />
       </>
     );
@@ -1364,6 +1372,9 @@ function AppContent() {
               cancelLabel="Back to home"
               onClose={() => setScreen('landing')}
               onSelect={handlePresetPickerSelect}
+              onResumeAgenticChecklist={() => {
+                setFloorPlanDraft((prev) => prev ?? { name: 'My dorm', mode: 'create' });
+              }}
             />
           </main>
           <aside className="room-preset-split__auth">

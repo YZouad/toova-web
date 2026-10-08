@@ -71,7 +71,10 @@ function parseListResult(raw: unknown): AgenticFurnitureListResult | null {
     ? o.warnings.filter((w): w is string => typeof w === 'string')
     : [];
 
-  const source = o.source === 'cursor' || o.source === 'rules-fallback' ? o.source : 'cursor';
+  const source =
+    o.source === 'cursor' || o.source === 'rules-fallback' || o.source === 'manual'
+      ? o.source
+      : 'cursor';
 
   return {
     items,

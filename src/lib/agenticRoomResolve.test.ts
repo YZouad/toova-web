@@ -271,6 +271,19 @@ describe('resolveAgenticItems', () => {
     expect(result.items[0]?.warnings.length).toBeGreaterThan(0);
   });
 
+  it('resolves desk chair to a chair, not a second desk', () => {
+    const result = resolveAgenticItems(
+      {
+        widthIn: 120,
+        depthIn: 144,
+        items: [{ query: 'desk chair', qty: 1 }],
+      },
+      catalog,
+    );
+    expect(result.items[0]?.builtinKind).toBe('chair');
+    expect(result.items[0]?.product).toBeNull();
+  });
+
   it('optimizeForBudget prefers cheaper lamp', () => {
     const resolved = resolveAgenticItems(
       {

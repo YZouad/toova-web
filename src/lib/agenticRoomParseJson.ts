@@ -62,7 +62,10 @@ export function enrichFurnitureListWithTheme(
   const theme = shoppableTheme(list.theme) ?? inferThemeFromPrompt(userPrompt);
   const withTheme = theme ? { ...list, theme } : list;
   return ensureCatalogBankExtras(
-    ensureRoomEssentials(applyNamedThemeToList(withTheme, userPrompt), userPrompt),
+    ensureDeskPairings(
+      ensureRoomEssentials(applyNamedThemeToList(withTheme, userPrompt), userPrompt),
+      userPrompt,
+    ),
     userPrompt,
   );
 }
@@ -72,7 +75,33 @@ function isBedroomLike(list: AgenticFurnitureListResult, userPrompt: string): bo
   return /\b(dorm|bedroom|studio apartment|sleep)\b/.test(blob);
 }
 
-/** Inject generic bed/desk/chair/lamp when a dorm/bedroom list omits essentials. */
+const DESK_NOT_FURNITURE =
+  /\b(desk\s+pads?|desk\s+mats?|desk\s+blotters?|desk\s+organizers?|monitor\s+stands?|desk\s+mirrors?)\b/i;
+
+/** True when the query names a desk (not a lamp, pad, organizer, or mirror). */
+export function isRealDeskQuery(query: string): boolean {
+  return /\bdesk\b/i.test(query) && !/\blamp\b/i.test(query) && !DESK_NOT_FURNITURE.test(query);
+}
+
+function isLampDecoratableRoom(list: AgenticFurnitureListResult, userPrompt: string): boolean {
+  const blob = `${list.roomType ?? ''} ${userPrompt}`.toLowerCase();
+  return isBedroomLike(list, userPrompt) || /\b(living|lounge|studio)\b/.test(blob);
+}
+
+function appendExtras(
+  list: AgenticFurnitureListResult,
+  extras: AgenticItemAsk[],
+): AgenticFurnitureListResult {
+  if (extras.length === 0) return list;
+  const nextItems = [...list.items, ...extras];
+  return {
+    ...list,
+    items: nextItems,
+    estimatedTotalCents: nextItems.reduce((sum, item) => sum + (item.estimatedCents ?? 0), 0),
+  };
+}
+
+/** Inject generic bed/desk when a dorm/bedroom list omits essentials. */
 export function ensureRoomEssentials(
   list: AgenticFurnitureListResult,
   userPrompt = '',
@@ -80,9 +109,7 @@ export function ensureRoomEssentials(
   if (!isBedroomLike(list, userPrompt)) return list;
 
   const has = (re: RegExp) => list.items.some((item) => re.test(item.query));
-  const hasDesk = list.items.some(
-    (item) => /\bdesk\b/i.test(item.query) && !/\blamp\b/i.test(item.query),
-  );
+  const hasDesk = list.items.some((item) => isRealDeskQuery(item.query));
   const extras: AgenticItemAsk[] = [];
 
   if (!has(/\b(bed|mattress|bed\s+frame)\b/i)) {
@@ -91,20 +118,30 @@ export function ensureRoomEssentials(
   if (!hasDesk) {
     extras.push({ query: 'desk', qty: 1, estimatedCents: 12000 });
   }
-  if (!has(/\b(chair|seating)\b/i)) {
-    extras.push({ query: 'desk chair', qty: 1, estimatedCents: 8000 });
+
+  return appendExtras(list, extras);
+}
+
+/** Add a chair when a desk is present, and a lamp for decoratable rooms or any desk setup. */
+export function ensureDeskPairings(
+  list: AgenticFurnitureListResult,
+  userPrompt = '',
+): AgenticFurnitureListResult {
+  const has = (re: RegExp) => list.items.some((item) => re.test(item.query));
+  const hasDesk = list.items.some((item) => isRealDeskQuery(item.query));
+  const extras: AgenticItemAsk[] = [];
+
+  if (hasDesk && !has(/\b(chair|stool|seating)\b/i)) {
+    extras.push({ query: 'chair', qty: 1, estimatedCents: 8000 });
   }
-  if (!has(/\blamp\b/i)) {
+
+  const needsLamp =
+    (isLampDecoratableRoom(list, userPrompt) || hasDesk) && !has(/\blamp\b/i);
+  if (needsLamp) {
     extras.push({ query: 'desk lamp', qty: 1, estimatedCents: 2500 });
   }
 
-  if (extras.length === 0) return list;
-  const nextItems = [...list.items, ...extras];
-  return {
-    ...list,
-    items: nextItems,
-    estimatedTotalCents: nextItems.reduce((sum, item) => sum + (item.estimatedCents ?? 0), 0),
-  };
+  return appendExtras(list, extras);
 }
 
 function isDecoratableRoom(list: AgenticFurnitureListResult, userPrompt: string): boolean {
@@ -369,7 +406,7 @@ export function validateFurnitureListJson(raw: unknown): AgenticFurnitureListRes
     warnings: [],
     source: 'cursor',
   };
-  return ensureRoomEssentials(applyNamedThemeToList(base), '');
+  return ensureDeskPairings(ensureRoomEssentials(applyNamedThemeToList(base), ''), '');
 }
 
 export function parseAgentTextToFurnitureList(text: string): AgenticFurnitureListResult | null {

@@ -5,6 +5,8 @@ export type GallerySort = 'hot' | 'downloads' | 'likes' | 'views' | 'newest';
 export type GalleryBrowseMode = 'discover' | 'models' | 'rooms';
 export type RoomGallerySortParam = 'hot' | 'likes' | 'views' | 'clones' | 'newest';
 
+export type GalleryPickMode = 'checklist';
+
 export interface GalleryPageSearchState {
   mode: GalleryBrowseMode;
   /** Model browse source (Community / Toova / Mine). */
@@ -16,6 +18,8 @@ export interface GalleryPageSearchState {
   /** Selected category slugs (AND match). Empty = all. */
   categories: string[];
   query: string;
+  /** When set, model clicks add to an in-progress agentic checklist. */
+  pick?: GalleryPickMode;
 }
 
 export function catalogHotScore(input: {
@@ -99,6 +103,9 @@ export function parseGallerySearchParams(
     roomSortRaw === 'hot'
       ? roomSortRaw
       : 'hot';
+  const pickRaw = sp.get('pick');
+  const pick: GalleryPickMode | undefined = pickRaw === 'checklist' ? 'checklist' : undefined;
+
   return {
     mode,
     source,
@@ -106,6 +113,7 @@ export function parseGallerySearchParams(
     roomSort,
     categories: parseCategoryParam(sp.get('category')),
     query: sp.get('q') ?? '',
+    pick,
   };
 }
 
@@ -118,6 +126,7 @@ export function buildGallerySearchParams(state: {
   /** @deprecated Prefer `categories`. Single slug still accepted. */
   category?: string | null;
   query?: string;
+  pick?: GalleryPickMode;
 }): string {
   const mode = state.mode ?? 'discover';
   const sp = new URLSearchParams();
@@ -139,6 +148,7 @@ export function buildGallerySearchParams(state: {
   }
 
   if (state.query?.trim()) sp.set('q', state.query.trim());
+  if (state.pick === 'checklist') sp.set('pick', 'checklist');
   const s = sp.toString();
   return s ? `?${s}` : '';
 }

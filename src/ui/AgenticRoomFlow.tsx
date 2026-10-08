@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FloorPlan } from '../lib/floorPlanGeometry';
-import { formatLength, rectanglePlan } from '../lib/floorPlanGeometry';
+import { rectanglePlan } from '../lib/floorPlanGeometry';
 import type { AgenticItemAsk, AgenticRoomRequest, AgenticVibeId } from '../lib/agenticRoomPrompt';
 import type { AgenticFurnitureListResult } from '../lib/agenticRoomListTypes';
 import {
@@ -41,6 +41,20 @@ import {
 } from '../lib/agenticCommunityMatch';
 import { trackAffiliateClicked } from '../lib/analytics';
 import { galleryPath, navigate } from '../hooks/useRoute';
+import {
+  createManualChecklistResult,
+  mergeAiSuggestionsIntoList,
+} from '../lib/agenticManualChecklist';
+import { buildGallerySearchParams } from '../lib/galleryCatalogHelpers';
+import {
+  drainAgenticChecklistPicks,
+  loadAgenticChecklistSession,
+  mergePendingPicksIntoSession,
+  resolvedRowsToSavedPicks,
+  saveAgenticChecklistSession,
+  setAgenticChecklistPickMode,
+  type AgenticChecklistSession,
+} from '../lib/agenticChecklistSession';
 import {
   applySavedResolvedPicks,
   buildAgenticChecklistDraft,
@@ -122,7 +136,7 @@ function CommunityMatches({
     <div className="agentic-room-item__community">
       <p className="agentic-room-item__community-title">Similar in Community Gallery</p>
       <ul className="agentic-room-item__community-list">
-        {matches.slice(0, 1).map((match, matchIndex) => (
+        {matches.slice(0, 3).map((match, matchIndex) => (
           <li key={`${match.kind}-${matchIndex}`} className="agentic-room-item__community-row">
             <button
               type="button"
@@ -551,6 +565,9 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   const [communityLoadingQueries, setCommunityLoadingQueries] = useState<Set<string>>(() => new Set());
   const [showMoreSuggestions, setShowMoreSuggestions] = useState(false);
   const [itemResolutions, setItemResolutions] = useState<Map<number, 'have' | 'skip'>>(new Map());
+  const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const [enhancePrompt, setEnhancePrompt] = useState('');
+  const [enhancing, setEnhancing] = useState(false);
 
   const themeSuggestions = useMemo(() => rotatedThemeSuggestions(8), []);
   const visibleSuggestions = showMoreSuggestions
@@ -561,6 +578,77 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     () => items.map((i) => `${i.query.trim().toLowerCase()}:${i.qty}`).join('|'),
     [items],
   );
+
+  const shoppableItems = useMemo(
+    () => items.filter((item) => item.query.trim().length > 0),
+    [itemsKey, items],
+  );
+
+  const applyChecklistSession = useCallback((session: AgenticChecklistSession) => {
+    setPrompt(session.prompt);
+    setResult(session.result);
+    setItems(session.items);
+    setSavedPicks(session.savedPicks);
+    setActiveDraftId(session.activeDraftId ?? null);
+    setSaveTitle(session.saveTitle ?? defaultChecklistTitle(session.prompt, session.result));
+    setItemResolutions(new Map(session.itemResolutions ?? []));
+    setParseError(null);
+    setShowAiPrompt(session.result?.source === 'cursor');
+  }, []);
+
+  const buildSessionSnapshot = useCallback((): AgenticChecklistSession => {
+    return {
+      prompt,
+      result,
+      items,
+      savedPicks:
+        savedPicks ??
+        (resolved.length > 0 ? resolvedRowsToSavedPicks(resolved) : undefined),
+      activeDraftId,
+      saveTitle: saveTitle || defaultChecklistTitle(prompt, result),
+      itemResolutions: [...itemResolutions.entries()],
+    };
+  }, [
+    prompt,
+    result,
+    items,
+    savedPicks,
+    resolved,
+    activeDraftId,
+    saveTitle,
+    itemResolutions,
+  ]);
+
+  const openGalleryForPick = useCallback(() => {
+    saveAgenticChecklistSession(buildSessionSnapshot());
+    setAgenticChecklistPickMode({ returnPath: '/' });
+    navigate(
+      galleryPath(
+        buildGallerySearchParams({
+          mode: 'models',
+          source: 'community',
+          pick: 'checklist',
+        }),
+      ),
+    );
+  }, [buildSessionSnapshot]);
+
+  useEffect(() => {
+    const session = loadAgenticChecklistSession();
+    const picks = drainAgenticChecklistPicks();
+    if (!session && picks.length === 0) return;
+    const merged = session
+      ? mergePendingPicksIntoSession(session, picks)
+      : null;
+    if (!merged) return;
+    applyChecklistSession(merged);
+    saveAgenticChecklistSession(merged);
+    if (picks.length > 0) {
+      setSaveMessage(
+        `Added ${picks.length} community item${picks.length === 1 ? '' : 's'} to your checklist.`,
+      );
+    }
+  }, [applyChecklistSession]);
 
   useEffect(() => {
     let cancelled = false;
@@ -583,6 +671,49 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     };
   }, []);
 
+  const startManualChecklist = useCallback(() => {
+    const manual = createManualChecklistResult();
+    setParseError(null);
+    setResult(manual);
+    setItems(manual.items);
+    setSavedPicks(undefined);
+    setActiveDraftId(null);
+    setActiveDraftCreatedAt(null);
+    setSaveMessage(null);
+    setSaveTitle('My checklist');
+    setItemResolutions(new Map());
+    setPrompt('');
+    setShowAiPrompt(false);
+  }, []);
+
+  const patchListResult = useCallback((patch: Partial<AgenticFurnitureListResult>) => {
+    setResult((prev) => (prev ? { ...prev, ...patch } : prev));
+  }, []);
+
+  const runEnhanceWithAi = useCallback(async () => {
+    const hint = enhancePrompt.trim() || prompt.trim();
+    if (!hint || !result) return;
+    setEnhancing(true);
+    setParseError(null);
+    try {
+      const suggested = await fetchFurnitureListFromCursor(hint);
+      if (suggested.items.length === 0) {
+        setParseError(suggested.warnings[0] ?? 'No new items suggested.');
+        return;
+      }
+      const merged = mergeAiSuggestionsIntoList(result, suggested);
+      setResult(merged);
+      setItems(merged.items);
+      setSaveMessage(
+        `Added ${merged.items.length - result.items.length} item${merged.items.length - result.items.length === 1 ? '' : 's'} from AI.`,
+      );
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Could not enhance checklist');
+    } finally {
+      setEnhancing(false);
+    }
+  }, [enhancePrompt, prompt, result]);
+
   const runGenerate = useCallback(async () => {
     setParseError(null);
     setGenerating(true);
@@ -604,6 +735,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
       setSaveMessage(null);
       setSaveTitle(defaultChecklistTitle(prompt, next));
       setItemResolutions(new Map());
+      setShowAiPrompt(true);
     } catch (e) {
       setParseError(e instanceof Error ? e.message : 'Could not generate list');
       setResult(null);
@@ -615,8 +747,8 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   }, [prompt]);
 
   useEffect(() => {
-    if (!result || catalogLoading || items.length === 0) return;
-    const listInput: AgenticFurnitureListResult = { ...result, items };
+    if (!result || catalogLoading || shoppableItems.length === 0) return;
+    const listInput: AgenticFurnitureListResult = { ...result, items: shoppableItems };
     const matchResult = resolveAgenticList(listInput, products, prompt);
     const withPicks = applySavedResolvedPicks(matchResult.items, savedPicks, products);
     const totalCents = withPicks.reduce((sum, it) => {
@@ -631,7 +763,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     setResolved(withPicks);
     setOverBudget(overBudget);
     setTotalCents(totalCents);
-  }, [result, catalogLoading, products, itemsKey, savedPicks, prompt]);
+  }, [result, catalogLoading, products, shoppableItems, itemsKey, savedPicks, prompt]);
 
   const communityQueryKey = useMemo(() => {
     if (!result || items.length === 0) return '';
@@ -671,6 +803,66 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
       return next;
     });
   }, []);
+
+  const reindexItemResolutionsAfterRemove = useCallback((removedIndex: number) => {
+    setItemResolutions((prev) => {
+      const next = new Map<number, 'have' | 'skip'>();
+      prev.forEach((value, key) => {
+        if (key < removedIndex) next.set(key, value);
+        else if (key > removedIndex) next.set(key - 1, value);
+      });
+      return next;
+    });
+  }, []);
+
+  const removeSavedPickForQuery = useCallback((query: string) => {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) return;
+    setSavedPicks((prev) =>
+      prev?.filter((pick) => pick.query.trim().toLowerCase() !== normalized),
+    );
+  }, []);
+
+  const removeResolvedItemAt = useCallback(
+    (index: number) => {
+      let queryToRemove = '';
+      setResolved((prev) => {
+        const removed = prev[index];
+        if (!removed) return prev;
+        queryToRemove = removed.query.trim().toLowerCase();
+        return prev.filter((_, i) => i !== index);
+      });
+      if (!queryToRemove) return;
+      setItems((prev) => {
+        let found = false;
+        return prev.filter((row) => {
+          if (!found && row.query.trim().toLowerCase() === queryToRemove) {
+            found = true;
+            return false;
+          }
+          return true;
+        });
+      });
+      removeSavedPickForQuery(queryToRemove);
+      reindexItemResolutionsAfterRemove(index);
+    },
+    [removeSavedPickForQuery, reindexItemResolutionsAfterRemove],
+  );
+
+  const removeListItemAt = useCallback(
+    (index: number) => {
+      let queryToRemove = '';
+      setItems((prev) => {
+        const removed = prev[index];
+        if (!removed) return prev;
+        queryToRemove = removed.query.trim().toLowerCase();
+        return prev.filter((_, i) => i !== index);
+      });
+      if (queryToRemove) removeSavedPickForQuery(queryToRemove);
+      reindexItemResolutionsAfterRemove(index);
+    },
+    [removeSavedPickForQuery, reindexItemResolutionsAfterRemove],
+  );
 
   const updateItem = useCallback(
     (index: number, patch: Partial<AgenticReviewRow>) => {
@@ -713,16 +905,6 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     },
     [products, updateItem, resolved],
   );
-
-  const sizeLabel = useMemo(() => {
-    if (result?.widthIn && result?.depthIn) {
-      return `${formatLength(result.widthIn, 'ft-in')} × ${formatLength(result.depthIn, 'ft-in')}`;
-    }
-    if (request) {
-      return `${formatLength(request.widthIn, 'ft-in')} × ${formatLength(request.depthIn, 'ft-in')}`;
-    }
-    return null;
-  }, [result, request]);
 
   const liveEstimateTotal = useMemo(() => {
     let total = 0;
@@ -819,7 +1001,8 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     (row) => row.placeInRoom && (rowCanPlaceInRoom(row) || row.communityModel || row.bankPoster),
   );
   const canCreateRoom = resolved.length > 0 && (hasCatalogMatch || hasPlaceableSelection);
-  const showProductRows = Boolean(result && !catalogLoading && resolved.length > 0);
+  const showProductRows = Boolean(result && resolved.length > 0);
+  const isManualList = result?.source === 'manual';
   const activeDraft = activeDraftId
     ? savedDrafts.find((d) => d.id === activeDraftId) ?? null
     : null;
@@ -880,34 +1063,29 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
           ← Back
         </Button>
         <p className="room-preset-goal-hint">
-          Tell us about your room in your own words — size, vibe, budget, whatever you know. We&apos;ll
-          build a shopping list and match catalog or search links.
+          Build a shopping checklist from scratch, pick community models, or let AI suggest items —
+          then create a furnished room.
         </p>
       </div>
 
-      <div className="agentic-room-flow__saved">
-        <p className="agentic-room-flow__saved-title">Your saved checklists</p>
-        {savedDrafts.length === 0 ? (
-          <p className="agentic-room-flow__saved-empty">No saved checklists yet.</p>
-        ) : (
+      {savedDrafts.length > 0 ? (
+        <div className="agentic-room-flow__saved">
+          <p className="agentic-room-flow__saved-title">Continue a saved checklist</p>
           <ul className="agentic-room-flow__saved-list">
             {savedDrafts.map((draft) => (
               <li key={draft.id} className="agentic-room-flow__saved-card">
-                <div className="agentic-room-flow__saved-card-copy">
+                <button
+                  type="button"
+                  className="agentic-room-flow__saved-card-main"
+                  disabled={disabled || submitting || generating}
+                  onClick={() => openDraft(draft)}
+                >
                   <span className="agentic-room-flow__saved-card-title">{draft.title}</span>
                   <span className="agentic-room-flow__saved-card-meta">
                     {draft.items.length} items · {formatSavedChecklistDate(draft.updatedAt)}
                   </span>
-                </div>
+                </button>
                 <div className="agentic-room-flow__saved-card-actions">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={disabled || submitting || generating}
-                    onClick={() => openDraft(draft)}
-                  >
-                    Open
-                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
@@ -920,46 +1098,101 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
               </li>
             ))}
           </ul>
-        )}
-      </div>
-
-      <Field label="Tell us about your room">
-        <textarea
-          className="kit-input agentic-room-flow__textarea"
-          value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
-          placeholder="e.g. minecraft dorm with a desk and somewhere to sleep, around $600"
-          rows={4}
-          disabled={disabled || generating || submitting}
-        />
-      </Field>
-
-      <div className="agentic-room-flow__examples">
-        <span className="agentic-room-flow__examples-label">Try an idea:</span>
-        <div className="agentic-room-flow__examples-list">
-          {visibleSuggestions.map((suggestion) => (
-            <button
-              key={suggestion.prompt}
-              type="button"
-              className="agentic-room-flow__example-chip"
-              disabled={disabled || generating || submitting}
-              onClick={() => setPrompt(suggestion.prompt)}
-            >
-              {suggestion.prompt}
-            </button>
-          ))}
-          {themeSuggestions.length > 4 ? (
-            <button
-              type="button"
-              className="agentic-room-flow__example-chip agentic-room-flow__example-chip--more"
-              disabled={disabled || generating || submitting}
-              onClick={() => setShowMoreSuggestions((v) => !v)}
-            >
-              {showMoreSuggestions ? 'Fewer ideas' : 'More ideas'}
-            </button>
-          ) : null}
         </div>
-      </div>
+      ) : null}
+
+      {!result ? (
+        <div className="agentic-room-flow__start">
+          <p className="agentic-room-flow__start-title">How do you want to start?</p>
+          <div className="agentic-room-flow__start-options">
+            <button
+              type="button"
+              className="agentic-room-flow__start-card"
+              disabled={disabled || generating || submitting}
+              onClick={() => {
+                setShowAiPrompt(true);
+                setParseError(null);
+              }}
+            >
+              <span className="agentic-room-flow__start-card-title">Suggest with AI</span>
+              <span className="agentic-room-flow__start-card-copy">
+                Describe your room and we&apos;ll draft a shopping list to edit.
+              </span>
+            </button>
+            <button
+              type="button"
+              className="agentic-room-flow__start-card"
+              disabled={disabled || generating || submitting}
+              onClick={startManualChecklist}
+            >
+              <span className="agentic-room-flow__start-card-title">Build my own checklist</span>
+              <span className="agentic-room-flow__start-card-copy">
+                Start with common dorm essentials, add items, and pick community models.
+              </span>
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {!result && showAiPrompt ? (
+        <>
+          <Field label="Tell us about your room">
+            <textarea
+              className="kit-input agentic-room-flow__textarea"
+              value={prompt}
+              onChange={(e) => setPrompt(e.target.value)}
+              placeholder="e.g. minecraft dorm with a desk and somewhere to sleep, around $600"
+              rows={4}
+              disabled={disabled || generating || submitting}
+            />
+          </Field>
+
+          <div className="agentic-room-flow__examples">
+            <span className="agentic-room-flow__examples-label">Try an idea:</span>
+            <div className="agentic-room-flow__examples-list">
+              {visibleSuggestions.map((suggestion) => (
+                <button
+                  key={suggestion.prompt}
+                  type="button"
+                  className="agentic-room-flow__example-chip"
+                  disabled={disabled || generating || submitting}
+                  onClick={() => setPrompt(suggestion.prompt)}
+                >
+                  {suggestion.prompt}
+                </button>
+              ))}
+              {themeSuggestions.length > 4 ? (
+                <button
+                  type="button"
+                  className="agentic-room-flow__example-chip agentic-room-flow__example-chip--more"
+                  disabled={disabled || generating || submitting}
+                  onClick={() => setShowMoreSuggestions((v) => !v)}
+                >
+                  {showMoreSuggestions ? 'Fewer ideas' : 'More ideas'}
+                </button>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="agentic-room-flow__actions">
+            <Button
+              size="md"
+              disabled={disabled || generating || submitting || !prompt.trim()}
+              onClick={() => void runGenerate()}
+            >
+              {generating ? 'Generating…' : 'Generate shopping list'}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={disabled || generating || submitting}
+              onClick={() => setShowAiPrompt(false)}
+            >
+              Back
+            </Button>
+          </div>
+        </>
+      ) : null}
 
       {catalogLoading ? (
         <p className="agentic-room-flow__status">
@@ -968,16 +1201,6 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
       ) : null}
       {catalogError ? <Banner tone="error">{catalogError}</Banner> : null}
       {parseError ? <Banner tone="error">{parseError}</Banner> : null}
-
-      <div className="agentic-room-flow__actions">
-        <Button
-          size="md"
-          disabled={disabled || generating || submitting || !prompt.trim()}
-          onClick={() => void runGenerate()}
-        >
-          {generating ? 'Generating…' : 'Generate shopping list'}
-        </Button>
-      </div>
 
       {statusMessage ? (
         <p className="agentic-room-flow__status">
@@ -990,6 +1213,31 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
           {result.source === 'cursor' ? (
             <p className="agentic-room-flow__source-badge">Shopping list by Cursor</p>
           ) : null}
+          {result.source === 'manual' ? (
+            <p className="agentic-room-flow__source-badge">Your checklist</p>
+          ) : null}
+
+          <div className="agentic-room-flow__checklist-toolbar">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={disabled || generating || submitting}
+              onClick={() => setItems((prev) => [...prev, { query: '', qty: 1 }])}
+            >
+              Add item
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={disabled || generating || submitting}
+              onClick={openGalleryForPick}
+            >
+              Browse community gallery
+            </Button>
+          </div>
+          <p className="agentic-room-flow__checklist-hint">
+            Edit each line, pick a community model when we find a match, then create your room.
+          </p>
 
           {result.warnings.length > 0 ? (
             <div className="agentic-room-flow__warnings">
@@ -1002,31 +1250,67 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
           ) : null}
 
           <div className="agentic-room-flow__summary">
-            {sizeLabel ? (
-              <Field label="Room size">
-                <Input value={sizeLabel} readOnly disabled aria-readonly />
-              </Field>
-            ) : null}
-            {result.roomType ? (
-              <Field label="Room type">
-                <Input value={result.roomType} readOnly disabled aria-readonly />
-              </Field>
-            ) : null}
-            {result.theme ? (
-              <Field label="Theme">
-                <Input value={result.theme} readOnly disabled aria-readonly />
-              </Field>
-            ) : null}
-            {result.vibe ? (
-              <Field label="Vibe">
-                <Input
-                  value={VIBE_OPTIONS.find((v) => v.id === result.vibe)?.label ?? result.vibe}
-                  readOnly
-                  disabled
-                  aria-readonly
-                />
-              </Field>
-            ) : null}
+            <Field label="Room width (feet)">
+              <Input
+                type="number"
+                min={6}
+                max={30}
+                value={String(Math.round((result.widthIn ?? 120) / 12))}
+                disabled={disabled || generating || submitting}
+                onChange={(e) => {
+                  const feet = Math.max(6, Number(e.target.value) || 10);
+                  patchListResult({ widthIn: feet * 12 });
+                }}
+              />
+            </Field>
+            <Field label="Room depth (feet)">
+              <Input
+                type="number"
+                min={6}
+                max={30}
+                value={String(Math.round((result.depthIn ?? 144) / 12))}
+                disabled={disabled || generating || submitting}
+                onChange={(e) => {
+                  const feet = Math.max(6, Number(e.target.value) || 12);
+                  patchListResult({ depthIn: feet * 12 });
+                }}
+              />
+            </Field>
+            <Field label="Room type">
+              <Input
+                value={result.roomType ?? ''}
+                placeholder="dorm bedroom"
+                disabled={disabled || generating || submitting}
+                onChange={(e) => patchListResult({ roomType: e.target.value || undefined })}
+              />
+            </Field>
+            <Field label="Theme">
+              <Input
+                value={result.theme ?? ''}
+                placeholder="gothic, coastal, minecraft…"
+                disabled={disabled || generating || submitting}
+                onChange={(e) => patchListResult({ theme: e.target.value || undefined })}
+              />
+            </Field>
+            <Field label="Vibe">
+              <select
+                className="kit-input"
+                value={result.vibe ?? ''}
+                disabled={disabled || generating || submitting}
+                onChange={(e) =>
+                  patchListResult({
+                    vibe: (e.target.value || undefined) as AgenticVibeId | undefined,
+                  })
+                }
+              >
+                <option value="">Auto</option>
+                {VIBE_OPTIONS.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.label}
+                  </option>
+                ))}
+              </select>
+            </Field>
             {result.budgetCents != null ? (
               <p className="agentic-room-flow__budget">
                 Budget: {formatAgenticPrice(result.budgetCents)}
@@ -1094,18 +1378,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                     }}
                     onPlaceInRoom={(checked) => updateItem(index, { placeInRoom: checked })}
                     onUseCommunityModel={(match) => useCommunityModel(index, match)}
-                    onRemove={() => {
-                      setResolved((prev) => prev.filter((_, i) => i !== index));
-                      setItems((prev) => prev.filter((_, i) => i !== index));
-                      setItemResolutions((prev) => {
-                        const next = new Map<number, 'have' | 'skip'>();
-                        prev.forEach((value, key) => {
-                          if (key < index) next.set(key, value);
-                          else if (key > index) next.set(key - 1, value);
-                        });
-                        return next;
-                      });
-                    }}
+                    onRemove={() => removeResolvedItemAt(index)}
                   />
                 ))
               : items.map((item, index) => (
@@ -1129,31 +1402,41 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                         prev.map((row, i) => (i === index ? { ...row, qty } : row)),
                       )
                     }
-                    onRemove={() => {
-                      setItems((prev) => prev.filter((_, i) => i !== index));
-                      setItemResolutions((prev) => {
-                        const next = new Map<number, 'have' | 'skip'>();
-                        prev.forEach((value, key) => {
-                          if (key < index) next.set(key, value);
-                          else if (key > index) next.set(key - 1, value);
-                        });
-                        return next;
-                      });
-                    }}
+                    onRemove={() => removeListItemAt(index)}
                   />
                 ))}
           </div>
 
-          {!showProductRows ? (
+          <div className="agentic-room-flow__enhance">
+            <Field label="Optional: suggest more items with AI">
+              <textarea
+                className="kit-input agentic-room-flow__textarea agentic-room-flow__textarea--compact"
+                value={enhancePrompt}
+                onChange={(e) => setEnhancePrompt(e.target.value)}
+                placeholder={
+                  isManualList
+                    ? 'e.g. add a dresser, mirror, and more decor for a gothic dorm'
+                    : 'Add more items based on your room description'
+                }
+                rows={2}
+                disabled={disabled || generating || submitting || enhancing}
+              />
+            </Field>
             <Button
               size="sm"
               variant="outline"
-              disabled={disabled || generating || submitting}
-              onClick={() => setItems((prev) => [...prev, { query: '', qty: 1 }])}
+              disabled={
+                disabled ||
+                generating ||
+                submitting ||
+                enhancing ||
+                !(enhancePrompt.trim() || prompt.trim())
+              }
+              onClick={() => void runEnhanceWithAi()}
             >
-              Add item
+              {enhancing ? 'Suggesting…' : 'Add AI suggestions'}
             </Button>
-          ) : null}
+          </div>
 
           <div className="agentic-room-flow__save-panel">
             <Field

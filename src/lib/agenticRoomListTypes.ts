@@ -13,5 +13,5 @@ export interface AgenticFurnitureListResult {
   /** Sum of line estimates when Cursor provides them. */
   estimatedTotalCents?: number;
   warnings: string[];
-  source: 'cursor' | 'rules-fallback';
+  source: 'cursor' | 'rules-fallback' | 'manual';
 }

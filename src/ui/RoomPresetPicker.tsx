@@ -27,6 +27,7 @@ import type { RoomEnvironment } from '../store';
 import { Button, Field, Input, Modal, Plate, Tabs } from './kit';
 import { RoomGallery } from './RoomGallery';
 import { RoomPreview } from './RoomPreview';
+import { consumeAgenticChecklistResume } from '../lib/agenticChecklistSession';
 import { AgenticRoomFlow, type AgenticRoomConfirmPayload } from './AgenticRoomFlow';
 
 export type RoomPresetPickerSelection =
@@ -60,6 +61,8 @@ interface RoomPresetPickerProps {
   cancelLabel?: string;
   onClose: () => void;
   onSelect: (selection: RoomPresetPickerSelection, name: string) => void | Promise<void>;
+  /** Opens the create-room flow when returning from community gallery pick mode. */
+  onResumeAgenticChecklist?: () => void;
 }
 
 interface StarterPreview {
@@ -81,6 +84,7 @@ export function RoomPresetPicker({
   cancelLabel = 'Cancel',
   onClose,
   onSelect,
+  onResumeAgenticChecklist,
 }: RoomPresetPickerProps) {
   const isPage = variant === 'page';
   const active = isPage || open;
@@ -104,6 +108,14 @@ export function RoomPresetPicker({
     setGalleryQuery('');
     setMode('presets');
   }, [active, defaultName]);
+
+  useEffect(() => {
+    if (!active) return;
+    if (consumeAgenticChecklistResume()) {
+      onResumeAgenticChecklist?.();
+      setMode('describe');
+    }
+  }, [active, onResumeAgenticChecklist]);
 
   const liveForGoal = useStarterTemplatesForGoal(goal);
   const isUChicago = goal === 'uchicago';

@@ -52,6 +52,12 @@ describe('agenticRoomVibe', () => {
     expect(bed.tintColor).toBe('#6b4f33');
   });
 
+  it('enables themed lamp emitters with palette bulb color', () => {
+    const [lamp] = applyAgenticThemeToItems([builtinItem('lamp')], 'gothic', 'gothic bedroom');
+    expect(lamp.emitter?.enabled).toBe(true);
+    expect(lamp.emitter?.color).toBe('#6a7a9a');
+  });
+
   it('keeps wood and brown labels out of the grey studio palette', () => {
     const [woodDesk, brownShelf] = applyAgenticThemeToItems(
       [

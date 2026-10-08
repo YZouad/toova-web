@@ -7,7 +7,7 @@ import { isChecklistRug } from './checklistPublicGlbs';
 import type { RoomAppearance } from './roomAppearance';
 import { DEFAULT_APPEARANCE } from './roomAppearance';
 import type { MaterialPresetId } from './roomMaterials';
-import type { Item } from '../store';
+import { DEFAULT_EMITTER, type Item } from '../store';
 import {
   resolveAgenticThemeProfile,
   type AgenticThemeProfile,
@@ -51,6 +51,8 @@ export interface AgenticVibeFurnishings {
   blanketColor: string;
   topColor: string;
   rugTint: string;
+  /** Point-light bulb color for lamps placed in agentic rooms. */
+  lampColor: string;
 }
 
 /** Builtin furniture tints aligned with each vibe (oak / laminate / charcoal / sage). */
@@ -64,6 +66,7 @@ export const AGENTIC_VIBE_FURNISHINGS: Record<AgenticVibeId, AgenticVibeFurnishi
     blanketColor: '#b89b7a',
     topColor: '#e8d8b0',
     rugTint: '#d8d0c2',
+    lampColor: '#ffd090',
   },
   neutral: {
     woodTint: '#a98662',
@@ -74,6 +77,7 @@ export const AGENTIC_VIBE_FURNISHINGS: Record<AgenticVibeId, AgenticVibeFurnishi
     blanketColor: '#7a8fa3',
     topColor: '#e8d8b0',
     rugTint: '#cfc7b8',
+    lampColor: '#fff4e0',
   },
   studio: {
     woodTint: '#5c6166',
@@ -84,6 +88,7 @@ export const AGENTIC_VIBE_FURNISHINGS: Record<AgenticVibeId, AgenticVibeFurnishi
     blanketColor: '#9aa3ad',
     topColor: '#f2efe8',
     rugTint: '#b8bcc2',
+    lampColor: '#f2efe8',
   },
   moody: {
     woodTint: '#3a3a3a',
@@ -94,6 +99,7 @@ export const AGENTIC_VIBE_FURNISHINGS: Record<AgenticVibeId, AgenticVibeFurnishi
     blanketColor: '#2c3a4f',
     topColor: '#5c6166',
     rugTint: '#4a4a4a',
+    lampColor: '#8090b0',
   },
   sage: {
     woodTint: '#6b7f6a',
@@ -104,6 +110,7 @@ export const AGENTIC_VIBE_FURNISHINGS: Record<AgenticVibeId, AgenticVibeFurnishi
     blanketColor: '#5c7a6a',
     topColor: '#d8d0c2',
     rugTint: '#8a9a82',
+    lampColor: '#c8e8a0',
   },
 };
 
@@ -206,8 +213,31 @@ export function explicitFinishFromLabel(
   return null;
 }
 
+function isLampItem(item: Item): boolean {
+  return item.kind === 'lamp' || (item.kind === 'imported' && /\blamp\b/i.test(item.label ?? ''));
+}
+
+function lampEmitterForPalette(item: Item, palette: AgenticVibeFurnishings): Item['emitter'] {
+  const base = item.emitter ?? {
+    ...DEFAULT_EMITTER,
+    enabled: false,
+    intensity: 1.8,
+    range: 90,
+  };
+  return {
+    ...base,
+    enabled: true,
+    color: palette.lampColor,
+    intensity: base.intensity ?? 1.8,
+    range: base.range ?? 90,
+  };
+}
+
 function applyPaletteToItems(items: Item[], palette: AgenticVibeFurnishings): Item[] {
   return items.map((item) => {
+    if (isLampItem(item)) {
+      return { ...item, emitter: lampEmitterForPalette(item, palette) };
+    }
     if (item.kind === 'imported' && isChecklistRug(item)) {
       const namedRug = rugTintFromQuery(item.label ?? '');
       return { ...item, tintColor: namedRug ?? palette.rugTint };

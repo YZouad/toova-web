@@ -225,6 +225,7 @@ function resolveBuiltinKind(query: string): GalleryFurnitureKind | null {
   if (/\bdesk\s+lamps?\b/.test(n) || /\bfloor\s+lamps?\b/.test(n)) return 'lamp';
   if (/\bstring\s+lights?\b/.test(n) || /\bfairy\s+lights?\b/.test(n)) return null;
   if (NOT_FURNITURE.test(n)) return null;
+  if (/\b(chair|stool)\b/.test(n) && !/\bcushion\b/.test(n)) return 'chair';
   if (QUERY_TO_BUILTIN[n]) return QUERY_TO_BUILTIN[n]!;
 
   let best: { kind: GalleryFurnitureKind; score: number } | null = null;

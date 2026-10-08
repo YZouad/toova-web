@@ -40,6 +40,11 @@ const catalog: CuratedProduct[] = [
   mockProduct({ slug: 'fairlylights1', name: 'Fairy lights', placeHangingKind: 'lights' }),
   mockProduct({ slug: 'leaves', name: 'Artificial ivy leaves', placeHangingKind: 'leaves' }),
   mockProduct({ slug: 'fridge', name: 'Fridge', placeCatalogKind: 'custom-fridge' }),
+  mockProduct({
+    slug: 'uchicago-mini-fridge',
+    name: 'Uchicago Mini Fridge',
+    placeCatalogKind: 'custom-mini-fridge',
+  }),
 ];
 
 describe('agenticCatalogBankMatch', () => {
@@ -70,5 +75,18 @@ describe('agenticCatalogBankMatch', () => {
   it('marks string lights as hanging decor, not desk lamps', () => {
     expect(isHangingDecorQuery('minecraft string lights')).toBe(true);
     expect(isHangingDecorQuery('desk lamp')).toBe(false);
+  });
+
+  it('resolves mini fridge and bedroom fridges to the mini model', () => {
+    const mini = resolveCatalogBankProduct('mini fridge', catalog);
+    expect(mini?.slug).toBe('uchicago-mini-fridge');
+
+    const bedroom = resolveCatalogBankProduct('fridge', catalog, 'small dorm bedroom');
+    expect(bedroom?.slug).toBe('uchicago-mini-fridge');
+  });
+
+  it('keeps full-size fridge for non-bedroom contexts', () => {
+    const kitchen = resolveCatalogBankProduct('fridge', catalog, 'kitchen pantry');
+    expect(kitchen?.slug).toBe('fridge');
   });
 });
