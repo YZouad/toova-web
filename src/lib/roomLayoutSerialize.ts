@@ -5,6 +5,7 @@
 import { DEFAULT_SHELF_COLOR, isWallShelfKind, type FurnitureKind } from '../furniture/registry';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './checklistPublicGlbs';
 import {
+  itemSupportsDrawerColor,
   itemSupportsTopColor,
   itemUsesCustomFinish,
   itemUsesTintColor,
@@ -21,6 +22,7 @@ import {
   parseHangingConfig,
   type HangingDecorationConfig,
 } from './hangingDecorGeometry';
+import { parseFurnitureBuild, type FurnitureBuild } from './furnitureBuild';
 
 const KNOWN_KINDS: FurnitureKind[] = [
   'bed',
@@ -67,11 +69,13 @@ export interface RoomItemRow {
   tint_color?: string | null;
   mattress_color?: string | null;
   top_color?: string | null;
+  drawer_color?: string | null;
   bedding_config?: BeddingConfig | null;
   emitter?: EmitterConfig | null;
   curated_product_id?: string | null;
   instance_key?: string | null;
   hanging_config?: HangingDecorationConfig | null;
+  build_config?: FurnitureBuild | null;
 }
 
 export type RoomItemInsert = {
@@ -98,11 +102,13 @@ export type RoomItemInsert = {
   tint_color: string | null;
   mattress_color: string | null;
   top_color: string | null;
+  drawer_color: string | null;
   bedding_config: BeddingConfig | null;
   emitter?: EmitterConfig | null;
   curated_product_id: string | null;
   instance_key: string;
   hanging_config: HangingDecorationConfig | null;
+  build_config: FurnitureBuild | null;
 };
 
 function n(v: string | number): number {
@@ -230,9 +236,16 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
       ? String(row.top_color).trim()
       : undefined;
 
+  const drawerColor =
+    row.drawer_color != null && String(row.drawer_color).trim()
+      ? String(row.drawer_color).trim()
+      : undefined;
+
   const hanging =
     row.kind === 'hanging' ? parseHangingConfig(row.hanging_config) : undefined;
   if (row.kind === 'hanging' && !hanging) return null;
+
+  const build = parseFurnitureBuild(row.build_config);
 
   return {
     id: row.id,
@@ -248,6 +261,7 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     tintColor,
     mattressColor,
     topColor,
+    drawerColor,
     beddingConfig: resolvedBeddingConfig,
 
     blanketTexturePath,
@@ -260,6 +274,7 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     attachmentKey,
     hanging: hanging ?? undefined,
     wallMounted: isWallShelfKind(row.kind) ? true : undefined,
+    build,
   };
 }
 
@@ -341,6 +356,8 @@ export function serializeLayoutForRoom(
         it.kind === 'bed' && it.mattressColor ? it.mattressColor : null,
       top_color:
         itemSupportsTopColor(it) && it.topColor ? it.topColor : null,
+      drawer_color:
+        itemSupportsDrawerColor(it.kind) && it.drawerColor ? it.drawerColor : null,
 
       blanket_texture_path:
         it.kind === 'bed' && it.blanketTexturePath
@@ -358,6 +375,7 @@ export function serializeLayoutForRoom(
       emitter: it.emitter?.enabled ? it.emitter : null,
       instance_key: it.attachmentKey || newAttachmentKey(),
       hanging_config: it.kind === 'hanging' && it.hanging ? it.hanging : null,
+      build_config: it.build ?? null,
     };
     out.push(row);
   }

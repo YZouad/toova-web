@@ -12,6 +12,7 @@ export const MANUAL_CHECKLIST_STARTER_ITEMS: AgenticItemAsk[] = [
   { query: 'area rug', qty: 1 },
   { query: 'string lights', qty: 1 },
   { query: 'mini fridge', qty: 1 },
+  { query: 'full length mirror', qty: 1 },
 ];
 
 export function createManualChecklistResult(
@@ -60,6 +61,8 @@ export function mergeAiSuggestionsIntoList(
     roomType: current.roomType ?? suggested.roomType,
     theme: current.theme ?? suggested.theme,
     vibe: current.vibe ?? suggested.vibe,
+    colorScheme: current.colorScheme ?? suggested.colorScheme,
+    windowCurtains: current.windowCurtains ?? suggested.windowCurtains,
     items: nextItems,
     estimatedTotalCents: nextItems.some((item) => item.estimatedCents != null)
       ? estimatedTotalCents

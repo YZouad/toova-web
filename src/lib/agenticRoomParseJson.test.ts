@@ -139,6 +139,7 @@ describe('enrichFurnitureListWithTheme', () => {
       'minecraft dorm, need desk and bed',
     );
     expect(enriched.theme).toBe('minecraft');
+    expect(enriched.colorScheme?.[0]).toBe('#5c7f3a');
     expect(enriched.items.map((item) => item.query)).toEqual(
       expect.arrayContaining([
         'minecraft area rug',
@@ -146,6 +147,20 @@ describe('enrichFurnitureListWithTheme', () => {
         'desk',
       ]),
     );
+  });
+
+  it('fills color scheme from theme when Cursor omits colorScheme', () => {
+    const enriched = enrichFurnitureListWithTheme(
+      {
+        items: [{ query: 'twin bed frame', qty: 1 }],
+        theme: 'ocean',
+        roomType: 'bedroom',
+        warnings: [],
+        source: 'cursor',
+      },
+      '',
+    );
+    expect(enriched.colorScheme?.[0]).toBe('#c8ddd8');
   });
 });
 

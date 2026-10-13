@@ -33,6 +33,7 @@ function mockRow(partial: Partial<AgenticPackRow> & { query: string }): AgenticP
     score: partial.score ?? 0,
     builtinKind: partial.builtinKind ?? null,
     warnings: partial.warnings ?? [],
+    build: partial.build,
     searchOffers: partial.searchOffers ?? [],
     placeInRoom: partial.placeInRoom ?? true,
     communityModel: partial.communityModel ?? null,
@@ -43,6 +44,76 @@ function mockRow(partial: Partial<AgenticPackRow> & { query: string }): AgenticP
 describe('agenticRoomPack', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+  });
+
+  it('applies build config to builtin placeholders', async () => {
+    const rows = [
+      mockRow({
+        query: 'dresser',
+        builtinKind: 'dresser',
+        build: { drawerRows: 5, drawerColumns: 1 },
+      }),
+    ];
+    const plan = rectanglePlan(inches(10), inches(12));
+    const pieces = await buildAgenticPackPieces(rows, plan);
+    expect(pieces).toHaveLength(1);
+    expect(pieces[0]!.build).toMatchObject({
+      drawers: 5,
+      drawerRows: 5,
+      drawerColumns: 1,
+      columns: 1,
+      widthIn: expect.any(Number),
+      depthIn: expect.any(Number),
+      heightIn: expect.any(Number),
+    });
+    const packed = packAgenticFloorItems(rectanglePlan(inches(10), inches(12)), pieces);
+    expect(packed.items[0]?.build).toMatchObject({
+      drawers: 5,
+      drawerRows: 5,
+      drawerColumns: 1,
+      columns: 1,
+      widthIn: expect.any(Number),
+    });
+  });
+
+  it('uses agent widthIn on dresser and clamps to room', async () => {
+    const plan = rectanglePlan(96, 96, 96);
+    const rows = [
+      mockRow({
+        query: 'dresser',
+        builtinKind: 'dresser',
+        build: { drawerRows: 4, drawerColumns: 1, widthIn: 26, depthIn: 16, heightIn: 32 },
+      }),
+    ];
+    const pieces = await buildAgenticPackPieces(rows, plan);
+    expect(pieces[0]!.size[0]).toBe(26);
+    expect(pieces[0]!.size[2]).toBe(16);
+  });
+
+  it('applies desk side cabinets and under-drawer build from agent', async () => {
+    const rows = [
+      mockRow({
+        query: 'desk',
+        builtinKind: 'desk',
+        build: {
+          deskPedestal: 'both',
+          deskPullOut: 'front',
+          pullOutWidthIn: 36,
+          pullOutDepthIn: 7,
+          drawerRows: 2,
+          drawerColumns: 1,
+        },
+      }),
+    ];
+    const pieces = await buildAgenticPackPieces(rows);
+    expect(pieces[0]!.build).toMatchObject({
+      deskPedestal: 'both',
+      deskPullOut: 'front',
+      pullOutWidthIn: 36,
+      pullOutDepthIn: 7,
+      drawerRows: 2,
+      drawerColumns: 1,
+    });
   });
 
   it('defaults bedding and generic poster rows to checklist-only', () => {

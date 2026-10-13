@@ -3,10 +3,16 @@ import { DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, newAttachmentKey, type Item } f
 import { CHECKLIST_RUG_MODEL_PATH, DEFAULT_RUG_COLOR } from './checklistPublicGlbs';
 import type { AgenticReviewRow } from './agenticRoomResolveFromList';
 export { defaultPlaceInRoom, rowCanPlaceInRoom } from './agenticRoomPlacement';
+import { clampAgenticPieceSize, enrichBuildDimensionsForRoom } from './agenticRoomFit';
 import { type FloorPlan } from './floorPlanGeometry';
 import { arrangeRoomItems, type LayoutVariant } from './roomLayoutArrange';
 export { WALL_POSTER_CENTER_Y } from './roomLayoutArrange';
 import { bedFrameSpecificity, isBedFrameQuery, resolveBedFootprint } from './agenticBedSize';
+import {
+  applyBuildSizeOverride,
+  resolveFurnitureBuild,
+  type FurnitureBuild,
+} from './furnitureBuild';
 import { parseInchDims } from './importedItemSize';
 import { shouldStandImportedUpright, standUpFlatBounds } from './importedUpright';
 import { resolvePlaceHangingKind } from './dormChecklist';
@@ -35,6 +41,7 @@ export interface AgenticPackPiece {
   blanketColor?: string;
   /** Wall-mounted poster from the built-in CC0 bank. */
   wallPoster?: boolean;
+  build?: FurnitureBuild;
 }
 
 export interface AgenticPackResult {
@@ -75,22 +82,36 @@ function builtinPiece(
   query: string,
   kind: GalleryFurnitureKind,
   label: string,
+  plan: FloorPlan | undefined,
   curatedProductId?: string,
   sizeOverride?: [number, number, number],
+  rawBuild?: FurnitureBuild,
 ): AgenticPackPiece {
   const def = FURNITURE[kind];
-  const size =
+  const resolved = resolveFurnitureBuild(kind, query, rawBuild ?? null);
+  const build =
+    plan && resolved
+      ? enrichBuildDimensionsForRoom(plan, kind, resolved, query)
+      : resolved;
+  let size =
     sizeOverride ??
     (kind === 'bed' ? bedPieceSize(query) : ([...def.size] as [number, number, number]));
+  if (build && kind !== 'bed') {
+    size = applyBuildSizeOverride(kind, size, build);
+  }
+  if (plan && kind !== 'bed') {
+    size = clampAgenticPieceSize(plan, kind, size);
+  }
   return {
     query,
-    label,
+    label: kind === 'lamp' && /\bdesk\s*lamp\b/i.test(query) ? 'Desk lamp' : label,
     kind,
     size,
     isLamp: kind === 'lamp',
     curatedProductId,
     beddingEnabled: kind === 'bed' ? true : undefined,
     blanketColor: kind === 'bed' ? DEFAULT_BLANKET_COLOR : undefined,
+    build,
   };
 }
 
@@ -134,7 +155,7 @@ function importedPiece(input: {
     label: input.label,
     kind: 'imported',
     size,
-    isLamp: /\blamp\b/i.test(input.label),
+    isLamp: /\blamp\b/i.test(input.label) || /\blamp\b/i.test(input.query),
     curatedProductId: input.curatedProductId,
     importedStoragePath: input.storagePath,
     catalogKind: input.catalogKind,
@@ -144,7 +165,10 @@ function importedPiece(input: {
 }
 
 /** Expand checked rows into placeable pieces (async catalog lookups). */
-export async function buildAgenticPackPieces(rows: AgenticPackRow[]): Promise<AgenticPackPiece[]> {
+export async function buildAgenticPackPieces(
+  rows: AgenticPackRow[],
+  plan?: FloorPlan,
+): Promise<AgenticPackPiece[]> {
   const pieces: AgenticPackPiece[] = [];
   const collapsed = collapseBedPackRows(rows);
   const seenPosterKinds = new Set<string>();
@@ -203,7 +227,7 @@ export async function buildAgenticPackPieces(rows: AgenticPackRow[]): Promise<Ag
     if (product?.placeBuiltinKind && product.placeBuiltinKind in FURNITURE) {
       const kind = product.placeBuiltinKind as GalleryFurnitureKind;
       for (let i = 0; i < qty; i++) {
-        pieces.push(builtinPiece(row.query, kind, product.name, product.id));
+        pieces.push(builtinPiece(row.query, kind, product.name, plan, product.id, undefined, row.build));
       }
       continue;
     }
@@ -233,7 +257,9 @@ export async function buildAgenticPackPieces(rows: AgenticPackRow[]): Promise<Ag
 
     if (row.builtinKind) {
       for (let i = 0; i < qty; i++) {
-        pieces.push(builtinPiece(row.query, row.builtinKind, label, product?.id));
+        pieces.push(
+          builtinPiece(row.query, row.builtinKind, label, plan, product?.id, undefined, row.build),
+        );
       }
     }
   }
@@ -291,6 +317,7 @@ function pieceToItem(piece: AgenticPackPiece, id: string, position: [number, num
     curatedProductId: piece.curatedProductId,
     wallMounted: isWallShelfKind(piece.kind) ? true : undefined,
     attachmentKey: newAttachmentKey(),
+    build: piece.build,
     ...(piece.isLamp || piece.kind === 'lamp' ? { emitter: defaultLampEmitter() } : {}),
   };
 }

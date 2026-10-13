@@ -100,7 +100,7 @@ export function Room({ interactive = true }: { interactive?: boolean }) {
         visible={appearance.showBaseboards}
       />
       <DoorAssemblies geom={geom} trimPreset={appearance.trimPreset} />
-      <WindowLightAndGlass geom={geom} trimPreset={appearance.trimPreset} />
+      <WindowLightAndGlass geom={geom} trimPreset={appearance.trimPreset} interactive={interactive} />
       <RecessedLights geom={geom} enabled={appearance.recessedLights} />
     </group>
   );
@@ -109,9 +109,11 @@ export function Room({ interactive = true }: { interactive?: boolean }) {
 function WindowLightAndGlass({
   geom,
   trimPreset,
+  interactive = false,
 }: {
   geom: RoomGeometry;
   trimPreset: import('../lib/roomMaterials').MaterialPresetId;
+  interactive?: boolean;
 }) {
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
@@ -137,6 +139,7 @@ function WindowLightAndGlass({
       glassTint={sun.glassTint}
       fillIntensity={fillIntensity}
       castWindowShadows={windowShadows}
+      interactive={interactive}
     />
   );
 }

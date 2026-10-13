@@ -391,6 +391,8 @@ function formatRoomDbError(message: string): string {
     message.includes("'room_geometry'") ||
     message.includes("'instance_key'") ||
     message.includes("'hanging_config'") ||
+    message.includes("'build_config'") ||
+    message.includes("'drawer_color'") ||
     message.includes('schema cache')
   ) {
     return `Database is missing room layout columns. ${ROOM_SCHEMA_MIGRATION_HINT}`;

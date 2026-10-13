@@ -31,7 +31,20 @@ const VIBE_SYNONYMS = {
   green: 'sage',
 };
 
+function loadAgenticBuildSchemaDocs() {
+  const schemaPath = path.join(ROOT, 'src/lib/agenticRoomBuildSchema.ts');
+  try {
+    const raw = readFileSync(schemaPath, 'utf8');
+    const m = raw.match(/export const AGENTIC_BUILD_SCHEMA_DOCS = `([\s\S]*?)`;/);
+    if (m) return m[1];
+  } catch {
+    /* fallback below */
+  }
+  return 'Optional "build" on desk/dresser/nightstand — see src/lib/agenticRoomBuildSchema.ts';
+}
+
 function buildCursorFurniturePrompt(userPrompt) {
+  const buildDocs = loadAgenticBuildSchemaDocs();
   return `You are a furniture and decor shopping assistant. Given a room description, produce a buyable shopping checklist with rough price estimates.
 
 Return ONLY valid JSON. No markdown fences, no commentary, no prose before or after the JSON.
@@ -51,24 +64,32 @@ Schema:
   "theme": string | null,
   "vibe": "warm" | "neutral" | "studio" | "moody" | "sage" | null,
   "estimatedTotalCents": number | null,
+  "windowCurtains": { "enabled": boolean, "color": "#RRGGBB", "openness": number } | null,
+  "colorScheme": ["#RRGGBB"] | null,
   "items": [
     {
       "query": string,
       "qty": number,
-      "estimatedCents": number
+      "estimatedCents": number,
+      "build": object | null
     }
   ]
 }
 
+${buildDocs}
+
 Rules for items:
 - Each item must be a buyable furniture or decor product (queen bed, desk lamp, area rug, string lights, hanging ivy leaves, mini fridge, hangers, shelf unit, dresser, mirror, etc.)
 - Dorm/bedroom lists should include decor that Toova can place in 3D: area rug, string lights, hanging ivy leaves, and mini fridge when they fit the room
+- windowCurtains: built-in 3D curtains on every window (enabled, hex color, openness 0–1). Use with a shopping line for curtains when they need to buy fabric.
+- colorScheme: 2–5 hex colors for walls and furniture when the user names colors or a palette (wall, wood, accent, optional top, optional lamp).
 - query = short search phrase you'd type into a store (e.g. "queen bed frame", "blackout curtains", "over-door hooks")
 - Include commonly needed pieces for the room type and size, not only words copied from the description
 - NEVER list the theme, room type, or vibe as its own item (bad: "gothic", "minecraft", "bedroom", "cozy")
 - When a specific theme is named (Minecraft, gothic, coastal, etc.), put that theme in the search phrase for decor and textiles: bedding, rug, curtains, pillows, posters, string lights. Examples: "Minecraft twin XL bedding set", "Minecraft area rug", "Minecraft string lights"
 - For wall posters use descriptive, trademark-free titles the Toova poster bank can match: "{theme adjective} {subject} wall poster" (good: "Gothic cathedral architecture wall poster", "Coastal beach shoreline wall poster", "Retro pixel gaming wall poster"; bad: "gothic poster", "Minecraft creeper poster")
-- Include at least three theme-specific decor items. Keep structural furniture generic (bed frame, desk, chair, mattress) so a normal catalog can match it
+- Include at least three theme-specific decor items. Keep structural furniture generic (bed frame, desk, chair, mattress) so a normal catalog can match it — drawer grids, desk pedestals, under-drawer size, and shelf tiers go in "build", not query
+- When the user mentions drawer layout (rows/columns, pedestals, pencil drawer, filled sides, back panel), always set "build" on that desk/dresser/nightstand line with widthIn/depthIn/heightIn sized to the room
 - Every dorm/bedroom must include separate generic lines for bed frame, desk, chair, and desk lamp
 - NEVER list built-in architecture as items unless shopping for organizers (bad: "closet" — good: "closet organizer")
 - qty defaults to 1
@@ -184,6 +205,10 @@ function validateFurnitureListJson(raw) {
     vibe,
     estimatedTotalCents:
       parseOptionalNumber(raw.estimatedTotalCents) ?? sumItemEstimates(items),
+    windowCurtains: raw.windowCurtains ?? undefined,
+    colorScheme: Array.isArray(raw.colorScheme)
+      ? raw.colorScheme.filter((c) => typeof c === 'string')
+      : undefined,
     warnings: [],
     source: 'cursor',
   };

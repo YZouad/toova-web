@@ -1,4 +1,5 @@
 import { ft, inches, ROOM } from '../units';
+import type { FurnitureBuild } from './furnitureBuild';
 import { parseVibeToken, type AgenticVibeId } from './agenticRoomVibe';
 
 export type { AgenticVibeId } from './agenticRoomVibe';
@@ -9,6 +10,8 @@ export interface AgenticItemAsk {
   qty: number;
   /** Rough USD-cent estimate for this line (qty included). From Cursor shopping list. */
   estimatedCents?: number;
+  /** Procedural built-in structure when placing Toova placeholders (not for catalog GLBs). */
+  build?: FurnitureBuild;
 }
 
 export interface AgenticRoomRequest {

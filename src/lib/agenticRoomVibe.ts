@@ -233,6 +233,13 @@ function lampEmitterForPalette(item: Item, palette: AgenticVibeFurnishings): Ite
   };
 }
 
+export function applyAgenticPaletteToItems(
+  items: Item[],
+  palette: AgenticVibeFurnishings,
+): Item[] {
+  return applyPaletteToItems(items, palette);
+}
+
 function applyPaletteToItems(items: Item[], palette: AgenticVibeFurnishings): Item[] {
   return items.map((item) => {
     if (isLampItem(item)) {

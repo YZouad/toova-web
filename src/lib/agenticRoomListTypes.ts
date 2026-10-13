@@ -1,4 +1,5 @@
 import type { AgenticItemAsk, AgenticVibeId } from './agenticRoomPrompt';
+import type { WindowCurtains } from './floorPlanGeometry';
 
 export interface AgenticFurnitureListResult {
   items: AgenticItemAsk[];
@@ -12,6 +13,10 @@ export interface AgenticFurnitureListResult {
   vibe?: AgenticVibeId;
   /** Sum of line estimates when Cursor provides them. */
   estimatedTotalCents?: number;
+  /** Built-in window curtains for the 3D room (not a shopping line item). */
+  windowCurtains?: WindowCurtains | null;
+  /** User- or agent-chosen palette (#RRGGBB), applied to walls and furniture. */
+  colorScheme?: string[];
   warnings: string[];
   source: 'cursor' | 'rules-fallback' | 'manual';
 }

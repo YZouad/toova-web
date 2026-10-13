@@ -201,6 +201,9 @@ function classifyItem(item: Item): ItemRole {
 function hostTopY(host: PlacedItem): number {
   if (host.item.kind === 'imported') return host.item.size[1];
   if (host.role === 'bed') return host.item.size[1];
+  if (host.role === 'desk' || host.role === 'nightstand' || host.role === 'storage') {
+    return host.item.size[1];
+  }
   return FURNITURE[host.item.kind as GalleryFurnitureKind].size[1];
 }
 
@@ -1213,12 +1216,28 @@ function placeLampOnHost(lamp: Item, host: PlacedItem, occupants: PlacedItem[]):
   };
 }
 
+function isDeskLampItem(item: Item): boolean {
+  const label = (item.label ?? '').toLowerCase();
+  if (/\bfloor\s+lamp\b/.test(label)) return false;
+  if (/\b(bedside|nightstand|table)\s+lamp\b/.test(label)) return false;
+  if (/\bdesk\s*lamp\b/.test(label)) return true;
+  if (item.kind !== 'lamp') return false;
+  return !/\b(bedside|nightstand|floor)\b/.test(label);
+}
+
+function lampHostPriority(lamp: Item): ItemRole[] {
+  if (isDeskLampItem(lamp)) {
+    return ['desk', 'nightstand', 'storage'];
+  }
+  return ['nightstand', 'desk', 'storage'];
+}
+
 function findLampHost(
+  lamp: Item,
   hosts: PlacedItem[],
   usedHostKeys: Set<string>,
 ): PlacedItem | null {
-  const priority: ItemRole[] = ['nightstand', 'desk', 'storage'];
-  for (const role of priority) {
+  for (const role of lampHostPriority(lamp)) {
     const host = hosts.find(
       (h) => h.role === role && !usedHostKeys.has(`${h.cx},${h.cz}`),
     );
@@ -2130,7 +2149,7 @@ export function arrangeRoomItems(
     (p) => p.role !== 'lamp' && p.role !== 'wallPoster' && p.role !== 'screen' && p.role !== 'mirror',
   );
   for (const lamp of lamps) {
-    const host = findLampHost(floorHosts, usedLampHosts);
+    const host = findLampHost(lamp, floorHosts, usedLampHosts);
     if (!host) {
       skippedIds.push(lamp.id);
       continue;

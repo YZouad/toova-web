@@ -5126,6 +5126,141 @@ button.landing-nav-brand { cursor: pointer; }
   font: var(--type-body-sm);
   color: var(--ink-muted, #666);
 }
+.agentic-room-flow__summary-colors {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 8px;
+  background: var(--paper-0, #fff);
+}
+.agentic-room-flow__summary-colors-label {
+  margin: 0;
+  font: var(--type-ui-xs, 11px/1.2 system-ui);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted, #666);
+}
+.agentic-scheme-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.agentic-scheme-editor__toggle-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 10px 12px;
+}
+.agentic-scheme-editor__toggle {
+  flex: none;
+  min-width: 44px;
+  padding: 6px 12px;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.15));
+  border-radius: 999px;
+  background: var(--paper-1, #f5f2eb);
+  font: var(--type-ui-sm);
+  cursor: pointer;
+}
+.agentic-scheme-editor__toggle.is-on {
+  border-color: var(--accent, #8a3b12);
+  background: var(--accent-soft, rgba(138, 59, 18, 0.08));
+  font-weight: 600;
+}
+.agentic-scheme-editor__toggle:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.agentic-scheme-editor__lead {
+  margin: 0;
+  flex: 1;
+  min-width: 200px;
+  font: var(--type-body-sm);
+  color: var(--ink-muted, #666);
+  line-height: 1.45;
+}
+.agentic-scheme-editor__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.agentic-scheme-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 160px) 1fr;
+  gap: 8px 14px;
+  align-items: center;
+}
+@media (max-width: 520px) {
+  .agentic-scheme-row {
+    grid-template-columns: 1fr;
+  }
+}
+.agentic-scheme-row__head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.agentic-scheme-row__label {
+  font: var(--type-ui-sm);
+  font-weight: 600;
+}
+.agentic-scheme-row__hint {
+  font: var(--type-body-sm);
+  color: var(--ink-muted, #666);
+}
+.agentic-scheme-row__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.agentic-scheme-row__picker {
+  width: 40px;
+  height: 40px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 10px;
+  background: transparent;
+  cursor: pointer;
+  overflow: hidden;
+}
+.agentic-scheme-row__picker::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.agentic-scheme-row__picker::-webkit-color-swatch {
+  border: 0;
+}
+.agentic-scheme-row__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+.agentic-scheme-row__swatch {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.12));
+  border-radius: 50%;
+  cursor: pointer;
+}
+.agentic-scheme-row__swatch.is-active {
+  border-color: var(--accent, #8a3b12);
+  box-shadow: 0 0 0 2px var(--paper-0, #fff), 0 0 0 3px var(--accent, #8a3b12);
+}
+.agentic-scheme-row__swatch:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.agentic-scheme-editor__extras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
 .agentic-room-flow__enhance {
   margin-top: 12px;
   padding-top: 12px;
@@ -5613,6 +5748,48 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .fp-field-row-dims .fp-field { flex: 1; min-width: 60px; margin-bottom: 0; }
 .fp-field-row-presets { margin-top: 4px; }
+.fp-curtain-field {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.fp-curtain-swatches {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.fp-curtain-swatch,
+.fp-curtain-color-input {
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+}
+.fp-curtain-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--fp-panel), 0 0 0 3px var(--accent-line);
+}
+.fp-curtain-swatch:focus-visible,
+.fp-curtain-color-input:focus-visible,
+.fp-curtain-range:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 2px;
+}
+.fp-curtain-color-input {
+  border-radius: 8px;
+  background: transparent;
+  overflow: hidden;
+}
+.fp-curtain-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.fp-curtain-color-input::-webkit-color-swatch { border: 0; }
+.fp-curtain-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
 .fp-chip {
   cursor: pointer;
   border: 1px solid var(--border);

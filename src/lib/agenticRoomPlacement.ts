@@ -10,7 +10,7 @@ import {
 
 /** Bedding and generic poster queries stay checklist-only unless a bank poster matched. */
 const CHECKLIST_ONLY =
-  /\b(bedding|comforter|sheets|duvet|pillow|mattress|blanket|throw|poster|print|artwork|wall art|canvas)\b/i;
+  /\b(bedding|comforter|sheets|duvet|pillow|mattress|blanket|throw|poster|print|artwork|wall art|canvas|curtains?|drapes?|window\s+treatments?)\b/i;
 
 const CHECKLIST_RUG_KIND = 'checklist-rug';
 

@@ -21,7 +21,9 @@ import type { InspectorTab } from './chromeTypes';
 import { FinishTab } from './FinishEditor';
 import { HangingPaletteEditor } from './HangingPaletteEditor';
 import { InspectorThrixelReviseSection } from './InspectorThrixelReviseSection';
+import { FurnitureBuildEditor } from './FurnitureBuildEditor';
 import { PanelSection } from './PanelShell';
+import { WindowOpeningInspector } from './WindowOpeningInspector';
 
 export interface InspectorPanelProps {
   compact?: boolean;
@@ -56,6 +58,12 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
   const thrixelLinked = useCatalogThrixelLinked(item?.catalogKind);
   const roomGeometry = useStore((s) => s.roomGeometry);
+  const selectedOpeningId = useStore((s) => s.selectedOpeningId);
+  const selectOpening = useStore((s) => s.selectOpening);
+  const selectedOpening =
+    selectedOpeningId != null
+      ? roomGeometry.openings.find((o) => o.id === selectedOpeningId && o.kind === 'window') ?? null
+      : null;
   const updateRotation = useStore((s) => s.updateRotation);
   const setItemSize = useStore((s) => s.setItemSize);
   const setItemElevation = useStore((s) => s.setItemElevation);
@@ -67,6 +75,19 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
   const beginHangingDraft = useStore((s) => s.beginHangingDraft);
   const duplicateItem = useStore((s) => s.duplicateItem);
   const removeItem = useStore((s) => s.removeItem);
+
+  if (selectedOpening) {
+    return (
+      <WindowOpeningInspector
+        opening={selectedOpening}
+        compact={compact}
+        onClose={() => {
+          selectOpening(null);
+          onClose();
+        }}
+      />
+    );
+  }
 
   if (!item) {
     return (
@@ -82,7 +103,7 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
         </div>
         <div className="dg-sheet-body">
           <p style={{ font: '400 13px/1.5 var(--font-sans)', color: 'var(--ink-4)' }}>
-            Click a piece to edit its size, finish, or lighting.
+            Click furniture to edit size and finish, or click a window to add curtains.
           </p>
         </div>
       </aside>
@@ -224,6 +245,7 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
                       style={{ width: '100%', accentColor: 'var(--accent)' }}
                     />
                   </PanelSection>
+                  <FurnitureBuildEditor item={item} />
                 </>
               ) : (
                 <p className="dg-row__meta">Measuring model…</p>

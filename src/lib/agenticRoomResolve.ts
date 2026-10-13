@@ -1,5 +1,6 @@
 import { FURNITURE, type GalleryFurnitureKind } from '../furniture/registry';
 import type { CuratedProduct } from './dormChecklist';
+import type { FurnitureBuild } from './furnitureBuild';
 import type { AgenticItemAsk, AgenticRoomRequest } from './agenticRoomPrompt';
 import {
   isHangingDecorQuery,
@@ -157,6 +158,7 @@ export interface ResolvedAgenticItem {
   score: number;
   builtinKind: GalleryFurnitureKind | null;
   warnings: string[];
+  build?: FurnitureBuild;
 }
 
 export interface AgenticResolveResult {
@@ -254,11 +256,11 @@ function priceForItem(item: ResolvedAgenticItem): number {
 }
 
 function resolveOneItem(
-  query: string,
-  qty: number,
+  ask: AgenticItemAsk,
   products: CuratedProduct[],
   sourcePrompt?: string,
 ): ResolvedAgenticItem {
+  const { query, qty, build } = ask;
   const ranked = rankProductsForQuery(query, products);
   const top = ranked[0];
   const warnings: string[] = [];
@@ -273,6 +275,7 @@ function resolveOneItem(
       score: 100,
       builtinKind: null,
       warnings,
+      build,
     };
   }
 
@@ -285,6 +288,7 @@ function resolveOneItem(
       score: top.score,
       builtinKind: null,
       warnings,
+      build,
     };
   }
 
@@ -299,6 +303,7 @@ function resolveOneItem(
       score: top?.score ?? 0,
       builtinKind,
       warnings,
+      build,
     };
   }
 
@@ -311,6 +316,7 @@ function resolveOneItem(
     score: top?.score ?? 0,
     builtinKind: null,
     warnings,
+    build,
   };
 }
 
@@ -362,7 +368,7 @@ export function resolveAgenticItems(
   sourcePrompt?: string,
 ): AgenticResolveResult {
   let items = request.items.map((ask: AgenticItemAsk) =>
-    resolveOneItem(ask.query, ask.qty, products, sourcePrompt),
+    resolveOneItem(ask, products, sourcePrompt),
   );
   items = optimizeForBudget(items, request.budgetCents, products);
 

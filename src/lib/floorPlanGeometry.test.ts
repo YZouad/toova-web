@@ -346,6 +346,30 @@ describe('floorPlanGeometry', () => {
     expect(next.height).toBe(78);
   });
 
+  it('persists and clamps per-window curtains', () => {
+    const plan = defaultRectanglePlan();
+    const window = plan.openings.find((o) => o.kind === 'window')!;
+    const updated = updateOpening(plan, window.id, {
+      curtains: { color: '#87917b', openness: 1.4 },
+    });
+    const parsed = parseFloorPlan(JSON.parse(JSON.stringify(updated)));
+    const curtains = parsed!.openings.find((o) => o.id === window.id)!.curtains;
+
+    expect(curtains).toEqual({ color: '#87917b', openness: 1 });
+  });
+
+  it('drops curtain data from doors when parsing', () => {
+    const plan = defaultRectanglePlan();
+    const door = plan.openings.find((o) => o.kind === 'door')!;
+    const raw = JSON.parse(JSON.stringify(plan));
+    raw.openings.find((o: { id: string }) => o.id === door.id).curtains = {
+      color: '#ffffff',
+      openness: 0,
+    };
+
+    expect(parseFloorPlan(raw)!.openings.find((o) => o.id === door.id)!.curtains).toBeUndefined();
+  });
+
   it('aligns hole world position with opening placement on every wall orientation', () => {
     const plan: FloorPlan = {
       version: 2,

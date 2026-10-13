@@ -1,4 +1,6 @@
+import { parseAgentColorScheme } from './agenticColorScheme';
 import type { AgenticFurnitureListResult } from './agenticRoomListTypes';
+import { parseAgentWindowCurtains } from './agenticRoomWindowDressing';
 import type { AgenticItemAsk, AgenticVibeId } from './agenticRoomPrompt';
 import type { CuratedProduct } from './dormChecklist';
 import type { AgenticReviewRow } from './agenticRoomResolveFromList';
@@ -91,6 +93,8 @@ function parseListResult(raw: unknown): AgenticFurnitureListResult | null {
         : undefined,
     warnings,
     source,
+    colorScheme: parseAgentColorScheme(o.colorScheme),
+    windowCurtains: parseAgentWindowCurtains(o.windowCurtains),
   };
 }
 

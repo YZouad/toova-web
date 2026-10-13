@@ -156,6 +156,30 @@ describe('roomLayoutArrange', () => {
     expect(along).toBeLessThan(-2);
   });
 
+  it('places a desk lamp on the desk when a nightstand is also in the room', () => {
+    const plan = rectanglePlan(inches(10), inches(12));
+    const items: Item[] = [
+      floorItem('bed', 'bed-1'),
+      floorItem('nightstand', 'ns-1'),
+      floorItem('desk', 'desk-1'),
+      floorItem('lamp', 'lamp-1', { label: 'Desk lamp' }),
+    ];
+    const { items: arranged } = arrangeRoomItems(plan, items, 0);
+    const desk = arranged.find((it) => it.id === 'desk-1')!;
+    const nightstand = arranged.find((it) => it.id === 'ns-1')!;
+    const lamp = arranged.find((it) => it.id === 'lamp-1')!;
+    expect(lamp.position[1]).toBe(FURNITURE.desk.size[1]);
+    const distDesk = Math.hypot(
+      lamp.position[0] - desk.position[0],
+      lamp.position[2] - desk.position[2],
+    );
+    const distNs = Math.hypot(
+      lamp.position[0] - nightstand.position[0],
+      lamp.position[2] - nightstand.position[2],
+    );
+    expect(distDesk).toBeLessThan(distNs);
+  });
+
   it('wall-mounts poster at eye level', () => {
     const plan = rectanglePlan(inches(10), inches(12));
     const items: Item[] = [

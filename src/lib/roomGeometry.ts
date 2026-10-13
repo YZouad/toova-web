@@ -26,6 +26,7 @@ import {
   clampPlanHeight,
   outerFaceVertices,
   sanitizeWallGraph,
+  updateOpening,
 } from './floorPlanGeometry';
 
 export type RoomGeometry = FloorPlan;
@@ -57,6 +58,7 @@ export {
   clampPlanHeight,
   outerFaceVertices,
   sanitizeWallGraph,
+  updateOpening,
 };
 
 export const DEFAULT_ROOM_GEOMETRY: RoomGeometry = defaultRectanglePlan();

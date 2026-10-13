@@ -4,12 +4,21 @@ import { rectanglePlan } from '../lib/floorPlanGeometry';
 import type { AgenticItemAsk, AgenticRoomRequest, AgenticVibeId } from '../lib/agenticRoomPrompt';
 import type { AgenticFurnitureListResult } from '../lib/agenticRoomListTypes';
 import {
+  curtainColorFromScheme,
+  furnishingsFromColorScheme,
+  inferColorSchemeFromTheme,
+  mergeAppearanceWithColorScheme,
+} from '../lib/agenticColorScheme';
+import { AgenticColorSchemeEditor } from './AgenticColorSchemeEditor';
+import {
   appearanceForAgenticTheme,
   appearanceForAgenticVibe,
+  applyAgenticPaletteToItems,
   applyAgenticThemeToItems,
   applyAgenticVibeToItems,
+  furnishingsForAgenticVibe,
 } from '../lib/agenticRoomVibe';
-import { rotatedThemeSuggestions } from '../lib/agenticThemeProfile';
+import { resolveAgenticThemeProfile, rotatedThemeSuggestions } from '../lib/agenticThemeProfile';
 import {
   manifestFromResolved,
   type AgenticShoppingManifestEntry,
@@ -24,6 +33,10 @@ import {
   type AgenticReviewRow,
 } from '../lib/agenticRoomResolveFromList';
 import { shoppingEntriesFromResolved } from '../lib/agenticRoomApplyChecklist';
+import {
+  applyWindowCurtainsToPlan,
+  resolveAgentWindowCurtains,
+} from '../lib/agenticRoomWindowDressing';
 import {
   buildAgenticPackPieces,
   defaultPlaceInRoom,
@@ -47,6 +60,7 @@ import {
 } from '../lib/agenticManualChecklist';
 import { buildGallerySearchParams } from '../lib/galleryCatalogHelpers';
 import {
+  clearAgenticChecklistSession,
   drainAgenticChecklistPicks,
   loadAgenticChecklistSession,
   mergePendingPicksIntoSession,
@@ -686,6 +700,36 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     setShowAiPrompt(false);
   }, []);
 
+  const resetChecklistFlow = useCallback(
+    (options?: { deleteActiveDraft?: boolean }) => {
+      if (options?.deleteActiveDraft && activeDraftId) {
+        setSavedDrafts(deleteAgenticChecklistDraft(activeDraftId));
+      }
+      clearAgenticChecklistSession();
+      setResult(null);
+      setItems([]);
+      setPrompt('');
+      setResolved([]);
+      setRequest(null);
+      setGeneratePhase('idle');
+      setGenerating(false);
+      setOverBudget(false);
+      setTotalCents(0);
+      setSavedPicks(undefined);
+      setActiveDraftId(null);
+      setActiveDraftCreatedAt(null);
+      setSaveTitle('');
+      setSaveMessage(null);
+      setItemResolutions(new Map());
+      setParseError(null);
+      setShowAiPrompt(false);
+      setEnhancePrompt('');
+      setCommunityByQuery({});
+      setCommunityLoadingQueries(new Set());
+    },
+    [activeDraftId],
+  );
+
   const patchListResult = useCallback((patch: Partial<AgenticFurnitureListResult>) => {
     setResult((prev) => (prev ? { ...prev, ...patch } : prev));
   }, []);
@@ -929,16 +973,28 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     if (!request || resolved.length === 0 || disabled || submitting) return;
     setSubmitting(true);
     try {
-      const plan = rectanglePlan(request.widthIn, request.depthIn, request.heightIn);
+      let plan = rectanglePlan(request.widthIn, request.depthIn, request.heightIn);
+      let windowCurtains = result ? resolveAgentWindowCurtains(result) : undefined;
+      const schemeColors = result?.colorScheme;
+      if (windowCurtains?.enabled && schemeColors?.length) {
+        const curtainColor = curtainColorFromScheme(schemeColors);
+        if (curtainColor) {
+          windowCurtains = { ...windowCurtains, color: curtainColor };
+        }
+      }
+      plan = applyWindowCurtainsToPlan(plan, windowCurtains);
       const theme = result?.theme ?? null;
       const vibeAppearance = appearanceForAgenticVibe(request.vibe);
       const themeAppearance = appearanceForAgenticTheme(theme, prompt);
       const environment: RoomEnvironment = {
         ...DEFAULT_ENVIRONMENT,
-        appearance: {
-          ...vibeAppearance,
-          ...(themeAppearance ?? {}),
-        },
+        appearance: mergeAppearanceWithColorScheme(
+          {
+            ...vibeAppearance,
+            ...(themeAppearance ?? {}),
+          },
+          schemeColors,
+        ),
       };
       const activeResolved = resolved.filter((_, index) => itemResolutions.get(index) !== 'skip');
       const shoppingList = shoppingEntriesFromResolved(
@@ -958,13 +1014,20 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
         const resolution = itemResolutions.get(index);
         return row.placeInRoom && resolution !== 'skip' && resolution !== 'have';
       });
-      const pieces = await buildAgenticPackPieces(packRows);
+      const pieces = await buildAgenticPackPieces(packRows, plan);
       const packed = packAgenticRoomItems(plan, pieces, packRows);
-      const vibeItems = applyAgenticThemeToItems(
+      let vibeItems = applyAgenticThemeToItems(
         applyAgenticVibeToItems(packed.items, request.vibe),
         theme,
         prompt,
       );
+      const vibePalette = furnishingsForAgenticVibe(result?.vibe ?? request.vibe);
+      const profile = resolveAgenticThemeProfile(theme, prompt);
+      let palette = profile?.furnishings ?? vibePalette;
+      if (schemeColors?.length) {
+        palette = furnishingsFromColorScheme(schemeColors, palette);
+        vibeItems = applyAgenticPaletteToItems(vibeItems, palette);
+      }
       await resolveStarterItemAssets(vibeItems);
       await onConfirm({
         plan,
@@ -1234,6 +1297,24 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
             >
               Browse community gallery
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={disabled || generating || submitting}
+              onClick={() => resetChecklistFlow()}
+            >
+              Start over
+            </Button>
+            {activeDraftId ? (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={disabled || generating || submitting}
+                onClick={() => resetChecklistFlow({ deleteActiveDraft: true })}
+              >
+                Delete checklist
+              </Button>
+            ) : null}
           </div>
           <p className="agentic-room-flow__checklist-hint">
             Edit each line, pick a community model when we find a match, then create your room.
@@ -1289,9 +1370,26 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                 value={result.theme ?? ''}
                 placeholder="gothic, coastal, minecraft…"
                 disabled={disabled || generating || submitting}
-                onChange={(e) => patchListResult({ theme: e.target.value || undefined })}
+                onChange={(e) => {
+                  const theme = e.target.value || undefined;
+                  const colorScheme = theme
+                    ? inferColorSchemeFromTheme(theme, prompt)
+                    : undefined;
+                  patchListResult({
+                    theme,
+                    ...(colorScheme ? { colorScheme } : {}),
+                  });
+                }}
               />
             </Field>
+            <div className="agentic-room-flow__summary-colors">
+              <p className="agentic-room-flow__summary-colors-label">Color scheme</p>
+              <AgenticColorSchemeEditor
+                value={result.colorScheme}
+                disabled={disabled || generating || submitting}
+                onChange={(colorScheme) => patchListResult({ colorScheme })}
+              />
+            </div>
             <Field label="Vibe">
               <select
                 className="kit-input"

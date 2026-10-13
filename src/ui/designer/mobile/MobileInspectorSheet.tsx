@@ -13,6 +13,7 @@ import {
 } from '../../../lib/bedding/config';
 import type { BeddingConfigPatch } from '../../../lib/bedding/types';
 import { proportionalSizesFromMaxSide } from '../../../lib/uniformItemSize';
+import { FurnitureBuildEditor } from '../FurnitureBuildEditor';
 import { planBounds } from '../../../lib/roomGeometry';
 import { useAuth } from '../../../hooks/useAuth';
 import { useCatalogThrixelLinked } from '../../../hooks/useCatalogThrixelLinked';
@@ -23,6 +24,7 @@ import { HangingPaletteEditor } from '../HangingPaletteEditor';
 import { InspectorThrixelReviseSection } from '../InspectorThrixelReviseSection';
 import { inspectorTabsForKind } from '../inspectorTabs';
 import { MobileSheet } from './MobileSheet';
+import { WindowOpeningInspector } from '../WindowOpeningInspector';
 
 export interface MobileInspectorSheetProps {
   onClose: () => void;
@@ -46,6 +48,12 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
   const thrixelLinked = useCatalogThrixelLinked(item?.catalogKind);
   const roomGeometry = useStore((s) => s.roomGeometry);
+  const selectedOpeningId = useStore((s) => s.selectedOpeningId);
+  const selectOpening = useStore((s) => s.selectOpening);
+  const selectedOpening =
+    selectedOpeningId != null
+      ? roomGeometry.openings.find((o) => o.id === selectedOpeningId && o.kind === 'window') ?? null
+      : null;
   const updateRotation = useStore((s) => s.updateRotation);
   const setItemSize = useStore((s) => s.setItemSize);
   const setItemElevation = useStore((s) => s.setItemElevation);
@@ -58,10 +66,23 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
   const duplicateItem = useStore((s) => s.duplicateItem);
   const removeItem = useStore((s) => s.removeItem);
 
+  if (selectedOpening) {
+    return (
+      <WindowOpeningInspector
+        opening={selectedOpening}
+        compact
+        onClose={() => {
+          selectOpening(null);
+          onClose();
+        }}
+      />
+    );
+  }
+
   if (!item) {
     return (
       <MobileSheet kind="inspect" title="No selection" onClose={onClose}>
-        <p className="dgm-empty__hint">Tap a piece to edit its size, finish, or lighting.</p>
+        <p className="dgm-empty__hint">Tap furniture to edit it, or tap a window to add curtains.</p>
       </MobileSheet>
     );
   }
@@ -169,6 +190,7 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
                     ))}
                   </div>
                 </section>
+                <FurnitureBuildEditor item={item} />
               </>
             ) : (
               <p className="dgm-empty__hint">Measuring model…</p>

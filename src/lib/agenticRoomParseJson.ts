@@ -1,3 +1,7 @@
+import { AGENTIC_BUILD_SCHEMA_DOCS } from './agenticRoomBuildSchema';
+import { inferColorSchemeFromTheme, parseAgentColorScheme } from './agenticColorScheme';
+import { parseAgentWindowCurtains } from './agenticRoomWindowDressing';
+import { parseFurnitureBuild } from './furnitureBuild';
 import type { AgenticItemAsk, AgenticVibeId } from './agenticRoomPrompt';
 import { parseVibeToken } from './agenticRoomVibe';
 import type { AgenticFurnitureListResult } from './agenticRoomListTypes';
@@ -40,7 +44,7 @@ export function inferThemeFromPrompt(prompt: string): string | undefined {
   const patterns: RegExp[] = [
     /\b([a-z0-9][\w\s-]{0,30}?)\s+(?:theme|themed|vibe|aesthetic|style)\b/i,
     /\b(?:theme|style|vibe|aesthetic)\s*(?:is|:)?\s*["']?([a-z0-9][\w\s-]{0,30}?)["']?(?:\s|$|[,.])/i,
-    /\b(minecraft|gothic|coastal|vintage|retro|anime|k-pop|harry potter|star wars|marvel|nintendo|zelda|pokemon|cottagecore|dark academia|light academia)\b/i,
+    /\b(minecraft|gothic|coastal|ocean|nautical|beach|vintage|retro|anime|k-pop|harry potter|star wars|marvel|nintendo|zelda|pokemon|cottagecore|dark academia|light academia)\b/i,
   ];
 
   for (const re of patterns) {
@@ -61,13 +65,18 @@ export function enrichFurnitureListWithTheme(
 ): AgenticFurnitureListResult {
   const theme = shoppableTheme(list.theme) ?? inferThemeFromPrompt(userPrompt);
   const withTheme = theme ? { ...list, theme } : list;
-  return ensureCatalogBankExtras(
+  const enriched = ensureCatalogBankExtras(
     ensureDeskPairings(
       ensureRoomEssentials(applyNamedThemeToList(withTheme, userPrompt), userPrompt),
       userPrompt,
     ),
     userPrompt,
   );
+  if (enriched.colorScheme?.length) return enriched;
+  const themeForColors = shoppableTheme(enriched.theme) ?? inferThemeFromPrompt(userPrompt);
+  if (!themeForColors) return enriched;
+  const colorScheme = inferColorSchemeFromTheme(themeForColors, userPrompt);
+  return colorScheme ? { ...enriched, colorScheme } : enriched;
 }
 
 function isBedroomLike(list: AgenticFurnitureListResult, userPrompt: string): boolean {
@@ -117,6 +126,9 @@ export function ensureRoomEssentials(
   }
   if (!hasDesk) {
     extras.push({ query: 'desk', qty: 1, estimatedCents: 12000 });
+  }
+  if (!has(/\bmirror\b/i)) {
+    extras.push({ query: 'full length mirror', qty: 1, estimatedCents: 4500 });
   }
 
   return appendExtras(list, extras);
@@ -273,24 +285,37 @@ Schema:
   "theme": string | null,
   "vibe": "warm" | "neutral" | "studio" | "moody" | "sage" | null,
   "estimatedTotalCents": number | null,
+  "windowCurtains": {
+    "enabled": boolean,
+    "color": "#RRGGBB",
+    "openness": number
+  } | null,
+  "colorScheme": ["#RRGGBB", "..."] | null,
   "items": [
     {
       "query": string,
       "qty": number,
-      "estimatedCents": number
+      "estimatedCents": number,
+      "build": object | null
     }
   ]
 }
 
+${AGENTIC_BUILD_SCHEMA_DOCS}
+
 Rules for items:
 - Each item must be a buyable furniture or decor product (queen bed, desk lamp, area rug, string lights, hanging ivy leaves, mini fridge, hangers, shelf unit, dresser, mirror, etc.)
 - Dorm/bedroom lists should include decor that Toova can place in 3D: area rug, string lights, hanging ivy leaves, and mini fridge when they fit the room
+- windowCurtains controls built-in 3D curtains on every window (not a furniture item). When the user wants curtains, set windowCurtains.enabled true with a hex color and openness 0–1 (blackout ≈ 0.1, sheer ≈ 0.85). Still list a "blackout curtains" shopping line if they need to buy fabric, but the 3D room uses windowCurtains.
+- colorScheme = 2–5 hex colors (#RRGGBB) for walls + furniture + accents when the user names colors or a palette ("sage green walls, walnut furniture, cream bedding"). Order: wall, wood/furniture, accent/textile, optional top/desktop, optional lamp glow.
 - query = short search phrase you'd type into a store (e.g. "queen bed frame", "blackout curtains", "over-door hooks")
 - Include commonly needed pieces for the room type and size, not only words copied from the description
 - NEVER list the theme, room type, or vibe as its own item (bad: "gothic", "minecraft", "bedroom", "cozy")
 - When a specific theme is named (Minecraft, gothic, coastal, etc.), put that theme in the search phrase for decor and textiles: bedding, rug, curtains, pillows, posters, string lights. Examples: "Minecraft twin XL bedding set", "Minecraft area rug", "Minecraft string lights"
 - For wall posters use descriptive, trademark-free titles the Toova poster bank can match: "{theme adjective} {subject} wall poster" (good: "Gothic cathedral architecture wall poster", "Coastal beach shoreline wall poster", "Retro pixel gaming wall poster"; bad: "gothic poster", "Minecraft creeper poster")
-- Include at least three theme-specific decor items. Keep structural furniture generic (bed frame, desk, chair, mattress) so a normal catalog can match it
+- Include at least three theme-specific decor items. Keep structural furniture generic (bed frame, desk, chair, mattress) so a normal catalog can match it — put drawer grids, desk pedestals, under-drawer size, shelf tiers, and chair style in "build", not in query
+- When the user mentions drawer layout (rows/columns, pedestals, pencil drawer, filled sides, back panel), always set "build" on that desk/dresser/nightstand line with the fields from the schema above
+- For dresser, nightstand, and desk lines, always include build.widthIn, build.depthIn, and build.heightIn sized to widthIn/depthIn of the room (leave walking clearance; do not exceed ~50% of the shorter wall span)
 - Every dorm/bedroom must include separate generic lines for bed frame, desk, chair, and desk lamp
 - NEVER list built-in architecture as items unless shopping for organizers (bad: "closet" — good: "closet organizer")
 - qty defaults to 1
@@ -342,7 +367,9 @@ function parseItem(raw: unknown): AgenticItemAsk | null {
     typeof estRaw === 'number' && Number.isFinite(estRaw) && estRaw >= 0
       ? Math.round(estRaw)
       : undefined;
-  return estimatedCents != null ? { query, qty, estimatedCents } : { query, qty };
+  const build = parseFurnitureBuild(o.build);
+  const base = estimatedCents != null ? { query, qty, estimatedCents } : { query, qty };
+  return build ? { ...base, build } : base;
 }
 
 function parseOptionalNumber(v: unknown): number | undefined {
@@ -394,6 +421,9 @@ export function validateFurnitureListJson(raw: unknown): AgenticFurnitureListRes
   const estimatedTotalCents =
     parseOptionalNumber(o.estimatedTotalCents) ?? sumItemEstimates(items);
 
+  const windowCurtainsRaw = parseAgentWindowCurtains(o.windowCurtains);
+  const colorScheme = parseAgentColorScheme(o.colorScheme);
+
   const base: AgenticFurnitureListResult = {
     items,
     widthIn: parseOptionalNumber(o.widthIn),
@@ -403,6 +433,8 @@ export function validateFurnitureListJson(raw: unknown): AgenticFurnitureListRes
     theme: parseOptionalString(o.theme),
     vibe,
     estimatedTotalCents,
+    windowCurtains: windowCurtainsRaw,
+    colorScheme,
     warnings: [],
     source: 'cursor',
   };

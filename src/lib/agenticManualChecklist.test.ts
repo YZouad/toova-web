@@ -14,6 +14,7 @@ describe('agenticManualChecklist', () => {
     expect(queries.some((q) => /\bchair\b/.test(q))).toBe(true);
     expect(queries.some((q) => /\blamp\b/.test(q))).toBe(true);
     expect(queries.some((q) => /\bfridge\b/.test(q))).toBe(true);
+    expect(queries.some((q) => /\bmirror\b/.test(q))).toBe(true);
   });
 
   it('merges AI suggestions without duplicating existing queries', () => {
