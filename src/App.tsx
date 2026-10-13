@@ -84,9 +84,12 @@ import {
   setAnalyticsIdentityReady,
   setCurrentRoom,
   setInternalUser,
+  trackCheckoutCompleted,
   trackPageView,
   type AuthMethod,
 } from './lib/analytics';
+import { useEntitlements } from './hooks/useEntitlements';
+import { PricingPage } from './ui/billing/PricingPage';
 import { buildGallerySearchParams } from './lib/galleryCatalog';
 import type { FurnitureKind } from './furniture/registry';
 import { galleryModelImportedSize, galleryModelPlacesAsImport, isProceduralBuiltinKind } from './lib/placeGalleryModel';
@@ -250,7 +253,10 @@ function AppContent() {
     route.name === 'terms' ||
     route.name === 'privacy' ||
     route.name === 'safety' ||
-    route.name === 'resetPassword';
+    route.name === 'resetPassword' ||
+    route.name === 'pricing';
+
+  const { billing: userBilling } = useEntitlements();
 
   const {
     isAdmin,
@@ -277,14 +283,23 @@ function AppContent() {
     const provider = String(user.app_metadata?.provider ?? 'email');
     const authMethod: AuthMethod =
       provider === 'google' ? 'google' : provider === 'facebook' ? 'facebook' : 'email';
+    const tier = userBilling?.tier ?? (isAdmin ? 'pro' : 'free');
     identifyUser(user.id, {
       auth_method: authMethod,
       role: isAdmin ? 'admin' : 'user',
       is_guest: false,
-      subscription_tier: isAdmin ? 'pro' : 'free',
+      subscription_tier: tier,
       created_at: user.created_at,
     });
-  }, [user, isAdmin, adminStatsLoading]);
+  }, [user, isAdmin, adminStatsLoading, userBilling?.tier]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('checkout') === 'success') {
+      trackCheckoutCompleted({ kind: 'stripe' });
+    }
+  }, []);
 
   useEffect(() => {
     const path = typeof window === 'undefined'
@@ -901,6 +916,17 @@ function AppContent() {
           }
           setScreen('landing');
           if (routeIsPublic) navigate('/', true);
+        }}
+      />
+    );
+  }
+
+  if (route.name === 'pricing') {
+    return (
+      <PricingPage
+        onBack={() => {
+          navigate('/');
+          setScreen(user ? 'dashboard' : 'landing');
         }}
       />
     );

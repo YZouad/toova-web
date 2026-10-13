@@ -3,16 +3,20 @@ export const FREE_PLAN_MAX_ROOMS = 5;
 
 export function isAtRoomLimit(
   roomCount: number,
-  options?: { unlimited?: boolean },
+  options?: { unlimited?: boolean; maxRooms?: number | null },
 ): boolean {
   if (options?.unlimited) return false;
-  return roomCount >= FREE_PLAN_MAX_ROOMS;
+  const cap = options?.maxRooms ?? FREE_PLAN_MAX_ROOMS;
+  if (cap == null) return false;
+  return roomCount >= cap;
 }
 
 export function roomsRemaining(
   roomCount: number,
-  options?: { unlimited?: boolean },
+  options?: { unlimited?: boolean; maxRooms?: number | null },
 ): number | null {
   if (options?.unlimited) return null;
-  return Math.max(0, FREE_PLAN_MAX_ROOMS - roomCount);
+  const cap = options?.maxRooms ?? FREE_PLAN_MAX_ROOMS;
+  if (cap == null) return null;
+  return Math.max(0, cap - roomCount);
 }

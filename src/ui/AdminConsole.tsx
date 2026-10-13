@@ -11,6 +11,7 @@ import { lastActiveSortValue } from '../lib/adminUserOverview';
 import { formatRelativeTime, shortenId } from '../lib/userDisplay';
 import { AdminAnalyticsPanel } from './AdminAnalyticsPanel';
 import { AdminShoppingPanel } from './AdminShoppingPanel';
+import { AdminBundlesPanel } from './AdminBundlesPanel';
 import { AdminReportsPanel } from './AdminReportsPanel';
 import { AdminStartersPanel } from './AdminStartersPanel';
 import { AdminUserViewer } from './AdminUserViewer';
@@ -738,7 +739,14 @@ export function AdminConsole({
             <AdminAnalyticsPanel enabled onOpenUser={setSelectedUserId} />
           ) : null}
 
-          {tab === 'shopping' ? <AdminShoppingPanel /> : null}
+          {tab === 'shopping' ? (
+            <>
+              <AdminShoppingPanel />
+              <div style={{ marginTop: 32 }}>
+                <AdminBundlesPanel />
+              </div>
+            </>
+          ) : null}
           {tab === 'starters' ? (
             <AdminStartersPanel onEnterRoom={onEnterStarter} initialSelectedId={initialStarterId} />
           ) : null}

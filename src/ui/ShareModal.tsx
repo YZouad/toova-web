@@ -15,7 +15,8 @@ import {
   listRoomCollaboratorProfiles,
   type CollaboratorProfileRow,
 } from '../lib/profiles';
-import { navigate, profilePath } from '../hooks/useRoute';
+import { navigate, pricingPath, profilePath } from '../hooks/useRoute';
+import { useEntitlements } from '../hooks/useEntitlements';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
 import { Field } from './kit/Field';
@@ -32,6 +33,7 @@ interface ShareModalProps {
 }
 
 export function ShareModal({ roomId, userId, onClose }: ShareModalProps) {
+  const { entitlements } = useEntitlements();
   const [shares, setShares] = useState<RoomShareRow[]>([]);
   const [collaborators, setCollaborators] = useState<CollaboratorProfileRow[]>([]);
   const [forkCount, setForkCount] = useState(0);
@@ -172,6 +174,18 @@ export function ShareModal({ roomId, userId, onClose }: ShareModalProps) {
             Editor links let anyone who opens them save changes to your room (last write wins).
           </MonoMeta>
         ) : null}
+        {entitlements?.share_ttl_days != null ? (
+          <MonoMeta size="sm" tone="dense">
+            New links expire after {entitlements.share_ttl_days} days on your plan.{' '}
+            <button type="button" className="tv-link-button" onClick={() => navigate(pricingPath())}>
+              Pro links never expire
+            </button>
+          </MonoMeta>
+        ) : (
+          <MonoMeta size="sm" tone="dense">
+            Your plan includes share links that do not expire.
+          </MonoMeta>
+        )}
         <Button size="sm" disabled={busy} onClick={() => void handleCreate()}>
           Create link &amp; copy
         </Button>

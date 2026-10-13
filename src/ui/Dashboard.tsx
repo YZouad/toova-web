@@ -15,7 +15,7 @@ import { FeedbackModal } from './FeedbackModal';
 import { RoomPreview, type RoomPreviewItem } from './RoomPreview';
 import { listSharedWithMeRooms, type PublicAttribution, type ShareRole } from '../lib/roomShares';
 import { fetchRoomAttribution, setRoomVisibility } from '../lib/profiles';
-import { navigate, profilePath } from '../hooks/useRoute';
+import { profilePath } from '../hooks/useRoute';
 import type { RoomGallerySortParam } from '../lib/galleryCatalog';
 import type { Profile } from '../lib/profiles';
 import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
@@ -39,6 +39,8 @@ import {
   isAtRoomLimit,
   roomsRemaining,
 } from '../lib/roomLimits';
+import { useEntitlements } from '../hooks/useEntitlements';
+import { navigate, pricingPath } from '../hooks/useRoute';
 
 const KNOWN_KINDS = new Set([
   'bed',
@@ -154,6 +156,7 @@ export function Dashboard({
   onContact,
   onPitchMadness,
 }: DashboardProps) {
+  const { entitlements, billing } = useEntitlements();
   const [rooms, setRooms] = useState<ListedRoomRow[]>([]);
   const [listError, setListError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
@@ -293,9 +296,15 @@ export function Dashboard({
   }, [fetchRooms, fetchSharedWithMe]);
 
   const totalPlacements = rooms.reduce((s, r) => s + r.item_count, 0);
-  const unlimitedRooms = Boolean(showAdmin);
-  const atLimit = isAtRoomLimit(rooms.length, { unlimited: unlimitedRooms });
-  const remainingRooms = roomsRemaining(rooms.length, { unlimited: unlimitedRooms });
+  const unlimitedRooms = entitlements?.unlimited_rooms ?? Boolean(showAdmin);
+  const maxRooms = entitlements?.max_rooms ?? FREE_PLAN_MAX_ROOMS;
+  const atLimit = isAtRoomLimit(rooms.length, { unlimited: unlimitedRooms, maxRooms });
+  const remainingRooms = roomsRemaining(rooms.length, { unlimited: unlimitedRooms, maxRooms });
+  const roomCapLabel = unlimitedRooms
+    ? 'Studio'
+    : maxRooms != null
+      ? `${billing?.display_name ?? 'Free'} plan · ${rooms.length} of ${maxRooms} rooms`
+      : `${billing?.display_name ?? 'Free'} plan · ${rooms.length} rooms`;
   const forkRooms = rooms.filter((r) => r.forked_from);
   const hasSharedTab = sharedWithMe.length > 0;
   const hasForksTab = forkRooms.length > 0;
@@ -312,7 +321,7 @@ export function Dashboard({
 
   async function handleDuplicate(roomId: string, roomName: string) {
     if (atLimit) {
-      setActionError(`Room limit reached (${FREE_PLAN_MAX_ROOMS} rooms).`);
+      setActionError(`Room limit reached (${maxRooms ?? FREE_PLAN_MAX_ROOMS} rooms).`);
       return;
     }
     setMenuRoomId(null);
@@ -407,7 +416,7 @@ export function Dashboard({
 
   function handleNewRoom() {
     if (atLimit) {
-      setActionError(`Room limit reached (${FREE_PLAN_MAX_ROOMS} rooms).`);
+      setActionError(`Room limit reached (${maxRooms ?? FREE_PLAN_MAX_ROOMS} rooms).`);
       return;
     }
     setActionError(null);
@@ -593,6 +602,9 @@ export function Dashboard({
           <Button variant="mono" onClick={() => setFeedbackOpen(true)}>
             Feedback
           </Button>
+          <Button variant="outline" size="sm" onClick={() => navigate(pricingPath())}>
+            Plans
+          </Button>
           <Button size="sm" onClick={handleNewRoom} disabled={atLimit}>
             New room
           </Button>
@@ -610,11 +622,7 @@ export function Dashboard({
       <SectionOpener
         level={5}
         title="Your rooms."
-        note={
-          unlimitedRooms
-            ? `Studio · ${rooms.length} room${rooms.length === 1 ? '' : 's'}${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`
-            : `Free plan · ${rooms.length} of ${FREE_PLAN_MAX_ROOMS} rooms${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`
-        }
+        note={`${roomCapLabel}${totalPlacements ? ` · ${totalPlacements} pieces placed` : ''}`}
       />
 
       <Tabs

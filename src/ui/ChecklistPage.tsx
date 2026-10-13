@@ -28,6 +28,7 @@ import {
   Spinner,
 } from './kit';
 import { FeedbackModal } from './FeedbackModal';
+import { BundleCards } from './billing/BundleCards';
 import { ChecklistAdminPanel } from './ChecklistAdminPanel';
 import { ChecklistBudgetFoot } from './designer/ChecklistBudgetFoot';
 import { ChecklistCheckoutPanel } from './ChecklistCheckoutPanel';
@@ -195,6 +196,12 @@ export function ChecklistPage({
             ? 'Pick a subcategory to see curated options. Shop links when available, or place a model in your room when one is attached.'
             : 'Browse by category, then subcategory. Tap a pick to shop, add it to your list, or place it in your room when a model is ready.'}
         </p>
+
+        {!activeGroup ? (
+          <div style={{ marginBottom: 32 }}>
+            <BundleCards />
+          </div>
+        ) : null}
 
         {loading ? <Spinner label="Loading checklist…" /> : null}
         {error ? <Banner tone="error">{error}</Banner> : null}

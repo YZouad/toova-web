@@ -1,7 +1,7 @@
 import type { CatalogVisibility } from './catalogEngagement';
 import { supabase } from './supabase';
 
-export type AdminUserPlan = 'free' | 'pro';
+export type AdminUserPlan = 'free' | 'lite' | 'pro';
 export type AdminUserRoomVisibility = 'private' | 'unlisted' | 'public';
 
 export interface AdminUserProfile {
@@ -16,6 +16,24 @@ export interface AdminUserProfile {
   last_active_at: string | null;
   last_sign_in_at: string | null;
   plan: AdminUserPlan;
+  is_admin: boolean;
+}
+
+export interface AdminUserBillingSubscription {
+  tier: string;
+  status: string;
+  source: string;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  has_stripe: boolean;
+}
+
+export interface AdminUserBilling {
+  effective_tier: AdminUserPlan;
+  monthly_balance: number;
+  purchased_balance: number;
+  monthly_period_end: string | null;
+  subscription: AdminUserBillingSubscription | null;
 }
 
 export interface AdminUserRoomRow {
@@ -81,6 +99,7 @@ export interface AdminUserAnalytics {
 
 export interface AdminUserOverview {
   user: AdminUserProfile;
+  billing: AdminUserBilling | null;
   rooms: AdminUserRoomRow[];
   models: AdminUserModelRow[];
   analytics: AdminUserAnalytics;
@@ -130,7 +149,8 @@ function asRoomVisibility(value: unknown): AdminUserRoomVisibility {
 }
 
 function asPlan(value: unknown): AdminUserPlan {
-  return value === 'pro' ? 'pro' : 'free';
+  if (value === 'pro' || value === 'lite') return value;
+  return 'free';
 }
 
 export function lastActiveSortValue(iso: string | null | undefined): number {
@@ -156,6 +176,29 @@ function parseUser(raw: unknown): AdminUserProfile | null {
     last_active_at: asIso(row.last_active_at),
     last_sign_in_at: asIso(row.last_sign_in_at),
     plan: asPlan(row.plan),
+    is_admin: asBool(row.is_admin),
+  };
+}
+
+function parseBilling(raw: unknown): AdminUserBilling | null {
+  const row = asRecord(raw);
+  if (!row) return null;
+  const subRow = asRecord(row.subscription);
+  return {
+    effective_tier: asPlan(row.effective_tier),
+    monthly_balance: asNum(row.monthly_balance),
+    purchased_balance: asNum(row.purchased_balance),
+    monthly_period_end: asIso(row.monthly_period_end),
+    subscription: subRow
+      ? {
+          tier: asString(subRow.tier) ?? 'free',
+          status: asString(subRow.status) ?? 'canceled',
+          source: asString(subRow.source) ?? 'admin',
+          current_period_end: asIso(subRow.current_period_end),
+          cancel_at_period_end: asBool(subRow.cancel_at_period_end),
+          has_stripe: asBool(subRow.has_stripe),
+        }
+      : null,
   };
 }
 
@@ -267,6 +310,7 @@ export function parseAdminUserOverview(raw: unknown): AdminUserOverview | null {
     : [];
   return {
     user,
+    billing: parseBilling(row.billing),
     rooms,
     models,
     analytics: parseAnalytics(row.analytics),
@@ -281,4 +325,46 @@ export async function fetchAdminUserOverview(userId: string): Promise<AdminUserO
   const parsed = parseAdminUserOverview(data);
   if (!parsed) throw new Error('User not found');
   return parsed;
+}
+
+export async function adminGrantPlan(
+  userId: string,
+  tier: 'lite' | 'pro',
+  months: number | null,
+): Promise<{ ok: boolean; error?: string; message?: string }> {
+  const { data, error } = await supabase.rpc('admin_grant_plan', {
+    p_user_id: userId,
+    p_tier: tier,
+    p_months: months,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? { ok: false }) as { ok: boolean; error?: string; message?: string };
+}
+
+export async function adminRevokePlan(
+  userId: string,
+): Promise<{ ok: boolean; error?: string; message?: string }> {
+  const { data, error } = await supabase.rpc('admin_revoke_plan', {
+    p_user_id: userId,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? { ok: false }) as { ok: boolean; error?: string; message?: string };
+}
+
+export async function adminGrantCredits(
+  userId: string,
+  credits: number,
+  note?: string,
+): Promise<{ ok: boolean; purchased_balance?: number; message?: string }> {
+  const { data, error } = await supabase.rpc('admin_grant_credits', {
+    p_user_id: userId,
+    p_credits: credits,
+    p_note: note ?? null,
+  });
+  if (error) throw new Error(error.message);
+  return (data ?? { ok: false }) as {
+    ok: boolean;
+    purchased_balance?: number;
+    message?: string;
+  };
 }
