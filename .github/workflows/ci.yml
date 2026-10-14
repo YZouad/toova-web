@@ -40,6 +40,13 @@ jobs:
         with:
           version: latest
       - name: Start Supabase
-        run: supabase start
+        run: |
+          # Public ECR pulls occasionally hit rate limits on GitHub-hosted runners.
+          for attempt in 1 2 3 4 5; do
+            if supabase start; then exit 0; fi
+            echo "supabase start failed (attempt ${attempt}), retrying in 15s…"
+            sleep 15
+          done
+          exit 1
       - name: Run database tests
         run: npm run test:db

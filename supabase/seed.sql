@@ -1,0 +1,1 @@
+-- Optional seed data for local `supabase db reset`. Billing/db tests insert their own fixtures.
