@@ -156,6 +156,125 @@ CREATE UNIQUE INDEX IF NOT EXISTS profiles_handle_unique ON public.profiles (han
 
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
 
+CREATE SCHEMA IF NOT EXISTS private;
+
+CREATE TABLE IF NOT EXISTS public.profile_handle_aliases (
+  handle     text PRIMARY KEY,
+  profile_id uuid NOT NULL REFERENCES public.profiles (id) ON DELETE CASCADE,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT profile_handle_aliases_format CHECK (handle ~ '^[a-z0-9_]{3,30}$')
+);
+
+CREATE INDEX IF NOT EXISTS idx_profile_handle_aliases_profile
+  ON public.profile_handle_aliases (profile_id);
+
+-- Shared helpers from profiles_and_copies.sql (manual pre-migration SQL on prod).
+CREATE OR REPLACE FUNCTION private.resolve_profile_id(p_handle text)
+RETURNS uuid
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  h text := lower(trim(coalesce(p_handle, '')));
+  pid uuid;
+BEGIN
+  IF h !~ '^[a-z0-9_]{3,30}$' THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT p.id INTO pid FROM public.profiles p WHERE p.handle = h;
+  IF pid IS NOT NULL THEN
+    RETURN pid;
+  END IF;
+
+  SELECT a.profile_id INTO pid
+  FROM public.profile_handle_aliases a
+  WHERE a.handle = h;
+
+  RETURN pid;
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION private.safe_owner_display(p_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT CASE
+    WHEN p.is_public THEN p.display_name
+    ELSE 'Toova designer'
+  END
+  FROM public.profiles p
+  WHERE p.id = p_id;
+$$;
+
+CREATE OR REPLACE FUNCTION private.safe_owner_handle(p_id uuid)
+RETURNS text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT CASE
+    WHEN p.is_public THEN p.handle
+    ELSE NULL
+  END
+  FROM public.profiles p
+  WHERE p.id = p_id;
+$$;
+
+CREATE OR REPLACE FUNCTION private.public_attribution(p_forked_from uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  src public.rooms%ROWTYPE;
+  owner_prof public.profiles%ROWTYPE;
+BEGIN
+  IF p_forked_from IS NULL THEN
+    RETURN NULL;
+  END IF;
+
+  SELECT * INTO src FROM public.rooms WHERE id = p_forked_from;
+  IF NOT FOUND THEN
+    RETURN jsonb_build_object('visible', false);
+  END IF;
+
+  SELECT * INTO owner_prof FROM public.profiles WHERE id = src.user_id;
+
+  IF src.visibility = 'public'
+     AND owner_prof.is_public
+  THEN
+    RETURN jsonb_build_object(
+      'visible', true,
+      'room_id', src.id,
+      'room_name', src.name,
+      'owner_handle', owner_prof.handle,
+      'owner_display', owner_prof.display_name
+    );
+  END IF;
+
+  RETURN jsonb_build_object('visible', false);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION private.room_preview_items(p_room_id uuid)
+RETURNS jsonb
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT '[]'::jsonb;
+$$;
+
 -- Columns expected by room_sharing fork RPC (added later in timestamped migrations on prod).
 ALTER TABLE public.rooms
   ADD COLUMN IF NOT EXISTS environment jsonb DEFAULT NULL,
