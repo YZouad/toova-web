@@ -122,9 +122,7 @@ export async function ensureTrellisReady(
       .filter((value): value is string => typeof value === 'string' && value.length > 0)
       .join(' ');
     if (INSUFFICIENT_SPACE_RE.test(statusDetail)) {
-      onProgress?.(TRELLIS_GPU_WAIT_STATUS);
-      await sleep(TRELLIS_STATUS_POLL_MS * 2, signal);
-      continue;
+      throw new Error(formatTrellisError(statusDetail, TRELLIS_INSUFFICIENT_SPACE_MESSAGE));
     }
 
     onProgress?.(TRELLIS_GPU_WAIT_STATUS);
