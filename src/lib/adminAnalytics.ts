@@ -109,6 +109,27 @@ export interface AdminAnalyticsDashboard {
   };
 }
 
+export interface RetentionFirstAiRow {
+  key: string;
+  label: string;
+  users: number;
+  returned: number;
+}
+
+export interface AdminRetentionRelational {
+  generated_at: string;
+  range: { from: string; to: string };
+  activation: {
+    signups: number;
+    with_room: number;
+    items_5_plus: number;
+    activated_24h: number;
+    funnel: AnalyticsFunnelStep[];
+  };
+  cohorts: AnalyticsCohortRow[];
+  by_first_ai: RetentionFirstAiRow[];
+}
+
 export interface AdminUserAnalyticsExtras {
   range?: { from: string; to: string };
   totals?: Record<string, number>;
@@ -417,6 +438,57 @@ export async function fetchAdminAnalytics(
   if (error) throw new Error(error.message);
   const parsed = parseAdminAnalyticsDashboard(data);
   if (!parsed) throw new Error('Invalid analytics payload');
+  return parsed;
+}
+
+export function parseAdminRetentionRelational(raw: unknown): AdminRetentionRelational | null {
+  const row = asRecord(raw);
+  if (!row) return null;
+  const range = asRecord(row.range);
+  const activation = asRecord(row.activation) ?? {};
+  const byFirstAi = Array.isArray(row.by_first_ai)
+    ? row.by_first_ai
+        .map((item) => {
+          const r = asRecord(item);
+          if (!r || !asString(r.key)) return null;
+          return {
+            key: String(r.key),
+            label: asString(r.label) ?? String(r.key),
+            users: asNum(r.users),
+            returned: asNum(r.returned),
+          };
+        })
+        .filter((r): r is RetentionFirstAiRow => r != null)
+    : [];
+  return {
+    generated_at: asIso(row.generated_at) ?? new Date().toISOString(),
+    range: {
+      from: asIso(range?.from) ?? new Date(Date.now() - 90 * 86400000).toISOString(),
+      to: asIso(range?.to) ?? new Date().toISOString(),
+    },
+    activation: {
+      signups: asNum(activation.signups),
+      with_room: asNum(activation.with_room),
+      items_5_plus: asNum(activation.items_5_plus),
+      activated_24h: asNum(activation.activated_24h),
+      funnel: parseFunnel(activation.funnel),
+    },
+    cohorts: parseCohorts(row.cohorts),
+    by_first_ai: byFirstAi,
+  };
+}
+
+export async function fetchAdminRetentionRelational(
+  from: Date,
+  to: Date,
+): Promise<AdminRetentionRelational> {
+  const { data, error } = await supabase.rpc('admin_retention_relational', {
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
+  });
+  if (error) throw new Error(error.message);
+  const parsed = parseAdminRetentionRelational(data);
+  if (!parsed) throw new Error('Invalid retention payload');
   return parsed;
 }
 

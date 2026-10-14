@@ -76,6 +76,7 @@ describe('mobile chrome reducer', () => {
       light: 'auto',
       look: 'auto',
       pieces: '380px',
+      credits: 'auto',
     });
   });
 });

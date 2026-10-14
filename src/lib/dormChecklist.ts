@@ -3,6 +3,7 @@
 import { resolveBeddingConfig } from './bedding/config';
 import type { BeddingConfig } from './bedding/types';
 import type { HangingDecorKind } from './hangingDecorGeometry';
+import { isRoomTag, type RoomTag } from './roomTags';
 
 /** Bed inspector layers linked to checklist categories. */
 export type BeddingPlacementKind = 'sheets' | 'comforter' | 'pillow';
@@ -18,6 +19,11 @@ export interface ChecklistCategory {
   imagePath: string | null;
   /** Public URL when image_path is set. */
   imageUrl: string | null;
+  /**
+   * Room area tags this category applies to.
+   * Empty / missing means the category shows for every area.
+   */
+  roomTags?: RoomTag[];
 }
 
 export interface CuratedProduct {
@@ -28,6 +34,8 @@ export interface CuratedProduct {
   description: string;
   retailer: string;
   affiliateUrl: string;
+  /** Amazon ASIN when known (needed for multi-add cart). */
+  asin: string | null;
   priceCents: number | null;
   currency: string;
   imagePath: string | null;
@@ -697,4 +705,43 @@ export function categoryProductCount(
 ): number {
   if (category.products.length > 0) return category.products.length;
   return childCategories(all, category.id).reduce((n, c) => n + c.products.length, 0);
+}
+
+/** Parse room_tags from a DB row into validated RoomTag values. */
+export function parseCategoryRoomTags(raw: unknown): RoomTag[] {
+  if (!Array.isArray(raw)) return [];
+  const out: RoomTag[] = [];
+  for (const entry of raw) {
+    if (isRoomTag(entry) && !out.includes(entry)) out.push(entry);
+  }
+  return out;
+}
+
+/**
+ * Empty roomTags means the category applies to every area.
+ * When a tag is provided, keep categories that are unscoped or include the tag.
+ */
+export function categoryMatchesRoomTag(
+  category: ChecklistCategory,
+  tag: RoomTag | null | undefined,
+): boolean {
+  if (!tag) return true;
+  if (!category.roomTags || category.roomTags.length === 0) return true;
+  return category.roomTags.includes(tag);
+}
+
+/** Filter categories for a tagged area (parents kept if any child matches). */
+export function filterCategoriesByRoomTag<T extends ChecklistCategory>(
+  categories: T[],
+  tag: RoomTag | null | undefined,
+): T[] {
+  if (!tag) return categories;
+  const matchingIds = new Set(
+    categories.filter((c) => categoryMatchesRoomTag(c, tag)).map((c) => c.id),
+  );
+  // Keep parents of matching leaves so hierarchy stays intact.
+  for (const c of categories) {
+    if (c.parentId && matchingIds.has(c.id)) matchingIds.add(c.parentId);
+  }
+  return categories.filter((c) => matchingIds.has(c.id));
 }

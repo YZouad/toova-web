@@ -25,6 +25,7 @@ export const ALLOWED_EVENTS = new Set([
   'limit_reached',
   'page_view',
   'session_started',
+  'room_opened',
 ]);
 
 export const ALLOWED_PROPERTIES = new Set([
@@ -61,6 +62,7 @@ export const ALLOWED_PROPERTIES = new Set([
   'page_title',
   'page_referrer',
   'page_location',
+  'is_owner',
 ]);
 
 export const BLOCKED_PROPERTIES = new Set([

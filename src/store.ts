@@ -351,6 +351,8 @@ interface StoreState {
       catalogKind?: string;
       curatedProductId?: string;
       tintColor?: string;
+      /** Optional plan-space spawn (x, z inches). Defaults to room centroid. */
+      spawnAt?: [number, number];
     },
   ) => string;
   /** Clone an item with a new id, slight position offset; appends and selects it. */
@@ -981,7 +983,11 @@ export const useStore = create<StoreState>((set, get) => ({
     }
 
     const shelfPose = isWallShelfKind(kind) ? defaultWallShelfPose(room, itemSize) : null;
-    const position: [number, number, number] = shelfPose ? shelfPose.position : [cx, 0, cz];
+    const spawnX = opts?.spawnAt?.[0] ?? cx;
+    const spawnZ = opts?.spawnAt?.[1] ?? cz;
+    const position: [number, number, number] = shelfPose
+      ? shelfPose.position
+      : [spawnX, 0, spawnZ];
     const rotationY = shelfPose ? shelfPose.rotationY : 0;
 
     const item: Item = {

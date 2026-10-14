@@ -3,6 +3,7 @@ import { useGalleryRooms, type GalleryRoom } from '../hooks/useGalleryRooms';
 import { galleryPath, navigate, publicRoomPath } from '../hooks/useRoute';
 import { buildGallerySearchParams } from '../lib/galleryCatalog';
 import { publicModelAssetUrl } from '../lib/modelStorage';
+import { PlanColumns } from './billing/PlanColumns';
 import { FeedbackModal } from './FeedbackModal';
 import { HeroTurntable } from './HeroTurntable';
 import { MarketingObjectTurntable, STEP_CHAIR_URL } from './MarketingObjectTurntable';
@@ -17,7 +18,6 @@ import {
   MarketingNav,
   MarketingNavAuthActions,
   NumberedStep,
-  PriceColumn,
   RuledList,
   SectionOpener,
   Spinner,
@@ -107,7 +107,7 @@ const FAQ: { question: string; answer: string }[] = [
   },
   {
     question: 'Is Toova free?',
-    answer: 'Free for five rooms; Studio is $18/month.',
+    answer: 'Free for five rooms. Lite is $2.99 a month or $29.99 a year. Pro is $7.99 a month or $59 a year.',
   },
 ];
 
@@ -400,25 +400,9 @@ export function LandingPage({
 
       {/* Pricing */}
       <div className="toova-frame landing-section-pad" ref={pricingRef}>
-        <SectionOpener id="pricing" title="Two prices." note="Cancel any time · no card to start" />
-        <div className="toova-grid-2-responsive" style={{ gap: 'var(--col-gap-wide)', paddingTop: 36 }}>
-          <PriceColumn
-            name="Free"
-            price="$0"
-            blurb="Everything you need to plan your first rooms."
-            features={['Up to 5 rooms', 'Photo → 3D conversion', 'Full furniture catalog']}
-            cta={loggedIn ? 'Go to dashboard' : 'Get started'}
-            onCta={primaryAction}
-          />
-          <PriceColumn
-            name="Studio"
-            price="$18"
-            blurb="For anyone styling several spaces at once."
-            features={['Unlimited rooms', 'Priority 3D processing', 'Shareable room links', 'Early features']}
-            cta={loggedIn ? 'Go to dashboard' : 'Start free trial'}
-            ctaVariant="primary"
-            onCta={primaryAction}
-          />
+        <SectionOpener id="pricing" title="Lite and Pro." note="Cancel any time" />
+        <div style={{ paddingTop: 36 }}>
+          <PlanColumns context="landing" loggedIn={loggedIn} onRequireAccount={onLogin} />
         </div>
       </div>
 

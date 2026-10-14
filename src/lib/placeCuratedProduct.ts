@@ -16,15 +16,20 @@ export function startChecklistDrawPlacement(product: CuratedProduct): boolean {
 }
 
 /** Place a curated checklist product into the room (builtin, catalog GLB, or draw feature). */
-export async function placeCuratedProduct(product: CuratedProduct): Promise<string | null> {
+export async function placeCuratedProduct(
+  product: CuratedProduct,
+  opts?: { spawnAt?: [number, number] },
+): Promise<string | null> {
   if (startChecklistDrawPlacement(product)) return null;
 
   const { addItem } = useStore.getState();
+  const spawnAt = opts?.spawnAt;
 
   if (product.placeBuiltinKind && product.placeBuiltinKind in FURNITURE) {
     return addItem(product.placeBuiltinKind as Exclude<FurnitureKind, 'imported' | 'hanging' | 'light'>, {
       label: product.name,
       curatedProductId: product.id,
+      spawnAt,
     });
   }
 
@@ -54,6 +59,7 @@ export async function placeCuratedProduct(product: CuratedProduct): Promise<stri
     catalogSizeIn: catalogSizeIn ?? undefined,
     catalogKind: product.placeCatalogKind,
     curatedProductId: product.id,
+    spawnAt,
   });
   void recordCatalogView(String(data.kind)).catch(() => {});
   void recordCatalogDownload(String(data.kind)).catch(() => {});

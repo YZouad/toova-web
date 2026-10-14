@@ -14,8 +14,12 @@ import {
 import type { BeddingConfigPatch } from '../../lib/bedding/types';
 import { proportionalSizesFromMaxSide } from '../../lib/uniformItemSize';
 import { planBounds } from '../../lib/roomGeometry';
+import { useShoppingCatalogContext } from '../../context/ShoppingCatalogContext';
 import { useAuth } from '../../hooks/useAuth';
 import { useCatalogThrixelLinked } from '../../hooks/useCatalogThrixelLinked';
+import { resolveAffiliateForItem } from '../../lib/affiliateLinks';
+import { trackAffiliateClicked } from '../../lib/analytics';
+import { formatPriceCents } from '../../lib/dormChecklist';
 import { DEFAULT_EMITTER, useStore } from '../../store';
 import type { InspectorTab } from './chromeTypes';
 import { FinishTab } from './FinishEditor';
@@ -52,6 +56,7 @@ function TabBtn({
 
 export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelProps) {
   const { user } = useAuth();
+  const { productsById } = useShoppingCatalogContext();
   const selectedId = useStore((s) => s.selectedId);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
   const thrixelLinked = useCatalogThrixelLinked(item?.catalogKind);
@@ -101,6 +106,17 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
   const canEditSize = item.kind !== 'imported' || !!item.importedNaturalSize;
   const emitter = item.emitter ?? DEFAULT_EMITTER;
   const hang = item.hanging;
+  const shopOffer = resolveAffiliateForItem(item, productsById)[0] ?? null;
+  const shopPrice = shopOffer
+    ? formatPriceCents(shopOffer.priceCents ?? null, shopOffer.currency)
+    : null;
+  const shopLabel = shopOffer
+    ? shopOffer.approximate
+      ? 'Shop similar on Amazon'
+      : shopPrice
+        ? `Buy on Amazon · ${shopPrice}`
+        : 'Buy on Amazon'
+    : null;
 
   const shellClass = compact
     ? 'dg-mobile-sheet dg-mobile-sheet--tall'
@@ -133,6 +149,36 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
             ×
           </button>
         </div>
+
+        {shopOffer && shopLabel ? (
+          <div style={{ padding: '0 12px 10px' }}>
+            <a
+              className="dg-footer-btn"
+              href={shopOffer.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'flex',
+                width: '100%',
+                justifyContent: 'center',
+                textDecoration: 'none',
+                background: 'var(--ink-0)',
+                color: 'var(--bg-0, #fff)',
+                borderColor: 'var(--ink-0)',
+              }}
+              onClick={() =>
+                trackAffiliateClicked({
+                  retailer: shopOffer.retailer,
+                  product_id: shopOffer.productId,
+                  is_price_approximate: shopOffer.approximate,
+                  source: 'designer_inspector',
+                })
+              }
+            >
+              {shopLabel}
+            </a>
+          </div>
+        ) : null}
 
         <div className="dg-tabs" style={{ margin: '0 12px', borderRadius: 7 }}>
           {isFurniture ? (

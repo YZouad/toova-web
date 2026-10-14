@@ -1930,11 +1930,23 @@
   margin: 12px 16px 0;
 }
 
+.dg-page.is-phone .dgm-checklist-area-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: none;
+  margin: 10px 16px 0;
+  padding: 2px 0 4px;
+  position: relative;
+  z-index: 2;
+  background: var(--paper-0);
+}
+
 .dg-page.is-phone .dgm-checklist-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 8px 16px 12px;
+  padding: 10px 16px 12px;
 }
 
 .dg-page.is-phone .dgm-checklist-group__head {
@@ -1968,18 +1980,44 @@
   gap: 4px;
 }
 
+.dg-page.is-phone .dgm-checklist-item-row {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+}
+
 .dg-page.is-phone .dgm-checklist-item {
   display: flex;
   align-items: center;
   gap: 11px;
   min-height: 60px;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   padding: 10px 11px;
   background: var(--paper-0);
   border: 1px solid var(--rule-soft);
   border-radius: 13px;
   cursor: pointer;
   text-align: left;
+}
+
+.dg-page.is-phone .dgm-checklist-item__list {
+  flex: none;
+  align-self: center;
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 99px;
+  background: var(--paper-1);
+  border: 1px solid var(--rule-soft);
+  font: 600 12px/1 var(--font-sans);
+  color: var(--accent-text);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.dg-page.is-phone .dgm-checklist-item__list:disabled {
+  opacity: 0.55;
+  cursor: default;
 }
 
 .dg-page.is-phone .dgm-checklist-item.is-placed .dgm-checklist-item__name {
@@ -2506,6 +2544,30 @@
 .dg-page.is-phone .dgm-more-menu__item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.dg-page.is-phone .dgm-more-menu__item--split {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dg-page.is-phone .dgm-more-menu__meta {
+  font: var(--type-mono-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ink-6);
+}
+
+.dg-page.is-phone .dgm-more-menu__rule {
+  height: 1px;
+  background: var(--rule-soft);
+  margin: 4px 8px;
+}
+
+.dg-page.is-phone .dg-credits-pack,
+.dg-page.is-phone .dgm-sheet .dg-more-menu__item {
+  min-height: 44px;
+  border-radius: 10px;
 }
 
 .dg-page.is-phone .dgm-scene-chips {

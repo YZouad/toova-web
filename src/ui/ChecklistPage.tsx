@@ -7,9 +7,12 @@ import {
   childCategories,
   leafCategories,
   topLevelCategories,
+  formatPriceCents,
 } from '../lib/dormChecklist';
 import { useShoppingCatalogContext } from '../context/ShoppingCatalogContext';
 import { useAuth } from '../hooks/useAuth';
+import { shopUrlForProduct } from '../lib/affiliateLinks';
+import { trackAffiliateClicked } from '../lib/analytics';
 import { fetchAdminShoppingCatalog } from '../lib/shoppingCatalog';
 import { deleteCuratedProduct } from '../lib/shoppingCatalogAdmin';
 import { ProductDrawer } from './ProductDrawer';
@@ -32,6 +35,16 @@ import { BundleCards } from './billing/BundleCards';
 import { ChecklistAdminPanel } from './ChecklistAdminPanel';
 import { ChecklistBudgetFoot } from './designer/ChecklistBudgetFoot';
 import { ChecklistCheckoutPanel } from './ChecklistCheckoutPanel';
+
+function pickTopProduct(products: CuratedProduct[]): CuratedProduct | null {
+  const published = products.filter((p) => p.published);
+  if (published.length === 0) return null;
+  const recommended = published.find(
+    (p) => /recommended/i.test(p.name) || /recommended/i.test(p.description),
+  );
+  if (recommended) return recommended;
+  return [...published].sort((a, b) => a.sortOrder - b.sortOrder)[0] ?? null;
+}
 
 interface ChecklistPageProps {
   onBack: () => void;
@@ -133,6 +146,21 @@ export function ChecklistPage({
     [leaves, isCategoryDone],
   );
 
+  const topPicks = useMemo(() => {
+    if (activeGroup) return [];
+    const picks: { groupName: string; product: CuratedProduct }[] = [];
+    for (const group of groups) {
+      const children = childCategories(categories, group.id);
+      const pool =
+        children.length > 0
+          ? children.flatMap((c) => c.products)
+          : group.products;
+      const product = pickTopProduct(pool);
+      if (product) picks.push({ groupName: group.name, product });
+    }
+    return picks;
+  }, [activeGroup, categories, groups]);
+
   const placeProduct = useCallback(
     async (product: CuratedProduct) => {
       await addToList(product.id);
@@ -205,6 +233,56 @@ export function ChecklistPage({
 
         {loading ? <Spinner label="Loading checklist…" /> : null}
         {error ? <Banner tone="error">{error}</Banner> : null}
+
+        {!loading && !error && !activeGroup && topPicks.length > 0 ? (
+          <section className="checklist-top-picks" aria-label="Top picks">
+            <MonoMeta size="xs" tone="dense" upper style={{ display: 'block', marginBottom: 12 }}>
+              Top picks · shop in one tap
+            </MonoMeta>
+            <div className="checklist-top-picks__row">
+              {topPicks.map(({ groupName, product }) => {
+                const shop = shopUrlForProduct(product);
+                const price = formatPriceCents(product.priceCents, product.currency);
+                return (
+                  <a
+                    key={product.id}
+                    className="checklist-top-picks__card"
+                    href={shop.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={() =>
+                      trackAffiliateClicked({
+                        retailer: product.retailer,
+                        product_id: product.id,
+                        is_price_approximate: shop.approximate,
+                        source: 'checklist_top_picks',
+                      })
+                    }
+                  >
+                    <div className="checklist-top-picks__media" aria-hidden>
+                      {product.imageUrl ? (
+                        <img src={product.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                      ) : (
+                        <span>{product.name.slice(0, 1)}</span>
+                      )}
+                    </div>
+                    <div className="checklist-top-picks__body">
+                      <MonoMeta size="xs" tone="dense">{groupName}</MonoMeta>
+                      <span className="checklist-top-picks__name">{product.name}</span>
+                      <span className="checklist-top-picks__cta">
+                        {shop.approximate
+                          ? shop.label
+                          : price
+                            ? `Shop ${price}`
+                            : shop.label}
+                      </span>
+                    </div>
+                  </a>
+                );
+              })}
+            </div>
+          </section>
+        ) : null}
 
         {!loading && !error ? (
           <div className="checklist-page-budget" style={{ marginBottom: 24, maxWidth: 420 }}>

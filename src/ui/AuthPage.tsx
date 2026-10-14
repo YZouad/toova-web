@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase';
 import { resetPasswordRedirectTo } from '../hooks/useRoute';
 import { loadGuestDesignSnapshot } from '../lib/guestDesignSnapshot';
 import { dobIsoFromMonthYear, isAtLeast13, parseBirthMonthYear } from '../lib/ageGate';
+import { markPostAuthRedirect } from '../lib/postAuthRedirect';
 import { BirthMonthYearFields } from './BirthMonthYearFields';
 import {
   acceptLegalTerms,
@@ -136,6 +137,7 @@ export function AuthPage({
     }
     setOauthBusy(provider);
     try {
+      markPostAuthRedirect();
       const { error: err } = await supabase.auth.signInWithOAuth({
         provider,
         options: {
@@ -199,6 +201,7 @@ export function AuthPage({
       if (mode === 'signin') {
         const { data, error: err } = await supabase.auth.signInWithPassword({ email: emailTrimmed, password });
         if (err) throw err;
+        markPostAuthRedirect();
         trackLoggedIn({ user_id: data.user?.id ?? '', method: 'email' });
       } else {
         const { data, error: err } = await supabase.auth.signUp({
@@ -207,6 +210,7 @@ export function AuthPage({
           options: name.trim() ? { data: { full_name: name.trim() } } : undefined,
         });
         if (err) throw err;
+        markPostAuthRedirect();
         trackSignedUp({
           user_id: data.user?.id ?? '',
           method: 'email',

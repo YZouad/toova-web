@@ -4,6 +4,7 @@
  */
 
 import { DOOR, ROOM, WINDOW } from '../units';
+import { isRoomTag, type RoomTag } from './roomTags';
 
 export const FLOOR_PLAN_VERSION = 2 as const;
 export const GRID_SNAP_IN = 6;
@@ -48,12 +49,34 @@ export interface FloorPlanOpening {
   hinge?: DoorHinge;
 }
 
+/** Labeled anchor point inside an enclosed floor area (kitchen, bedroom, …). */
+export interface FloorPlanZone {
+  id: string;
+  tag: RoomTag;
+  /** Optional custom label, e.g. "Primary bedroom". */
+  name?: string;
+  /** Anchor in plan inches — resolves to whichever face contains it. */
+  x: number;
+  z: number;
+}
+
 export interface FloorPlan {
   version: typeof FLOOR_PLAN_VERSION;
   height: number;
   vertices: FloorPlanVertex[];
   walls: FloorPlanWall[];
   openings: FloorPlanOpening[];
+  /** Optional per-area tags anchored inside enclosed faces. */
+  zones?: FloorPlanZone[];
+}
+
+/** A floor face with its resolved zone tag (if any). */
+export interface ResolvedArea {
+  faceKey: string;
+  face: FloorPlanVertex[];
+  areaSqIn: number;
+  labelAnchor: [number, number];
+  zone: FloorPlanZone | null;
 }
 
 export interface FloorPlanBounds {
@@ -102,6 +125,10 @@ export function bumpIdFromPlan(plan: FloorPlan) {
   }
   for (const o of plan.openings) {
     const m = /-(\d+)$/.exec(o.id);
+    if (m) nextId = Math.max(nextId, Number(m[1]) + 1);
+  }
+  for (const z of plan.zones ?? []) {
+    const m = /-(\d+)$/.exec(z.id);
     if (m) nextId = Math.max(nextId, Number(m[1]) + 1);
   }
 }
@@ -288,6 +315,7 @@ export function emptyPlan(height = ROOM.height): FloorPlan {
     vertices: [],
     walls: [],
     openings: [],
+    zones: [],
   };
 }
 
@@ -538,6 +566,11 @@ export function normalizePlanOrigin(plan: FloorPlan): FloorPlan {
       x: v.x - b.minX,
       z: v.z - b.minZ,
     })),
+    zones: (plan.zones ?? []).map((z) => ({
+      ...z,
+      x: z.x - b.minX,
+      z: z.z - b.minZ,
+    })),
   };
 }
 
@@ -563,7 +596,7 @@ export function clampPlan(plan: FloorPlan): FloorPlan {
     const h = clamp(o.height, 12, height);
     return { ...o, width, offset, height: h };
   });
-  return { ...plan, height, openings };
+  return { ...plan, height, openings, zones: plan.zones ?? [] };
 }
 
 export function removeWall(plan: FloorPlan, wallId: string): FloorPlan {
@@ -575,7 +608,8 @@ export function removeWall(plan: FloorPlan, wallId: string): FloorPlan {
     usedVerts.add(w.endId);
   }
   const vertices = plan.vertices.filter((v) => usedVerts.has(v.id));
-  return { ...plan, walls, openings, vertices };
+  // Zones are preserved; serialize/prune later drops orphans / duplicates.
+  return { ...plan, walls, openings, vertices, zones: plan.zones ?? [] };
 }
 
 export function removeOpening(plan: FloorPlan, openingId: string): FloorPlan {
@@ -830,7 +864,7 @@ export function sanitizeWallGraph(plan: FloorPlan): FloorPlan {
   }
   const vertices = next.vertices.filter((v) => (degree.get(v.id) ?? 0) > 0);
 
-  return { ...next, vertices };
+  return { ...next, vertices, zones: plan.zones ?? [] };
 }
 
 function segmentsIntersect(
@@ -1049,6 +1083,196 @@ export function floorFaceLoops(plan: FloorPlan): FloorPlanVertex[][] {
   }
 
   return loops;
+}
+
+/** Stable key for a floor face (order-independent vertex coordinates). */
+export function faceLoopKey(verts: FloorPlanVertex[]): string {
+  return verts
+    .map((v) => `${snapToGrid(v.x)},${snapToGrid(v.z)}`)
+    .sort()
+    .join('|');
+}
+
+/** Ray-cast point-in-polygon against a face loop. */
+export function pointInFace(x: number, z: number, face: FloorPlanVertex[]): boolean {
+  if (face.length < 3) return false;
+  let inside = false;
+  for (let i = 0, j = face.length - 1; i < face.length; j = i++) {
+    const xi = face[i]!.x;
+    const zi = face[i]!.z;
+    const xj = face[j]!.x;
+    const zj = face[j]!.z;
+    const intersect =
+      zi > z !== zj > z && x < ((xj - xi) * (z - zi)) / (zj - zi + 1e-9) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** Absolute area of a face loop in square inches. */
+export function faceAreaSqIn(face: FloorPlanVertex[]): number {
+  return Math.abs(polygonAreaVerts(face));
+}
+
+/**
+ * Interior label anchor for a face. Uses the polygon centroid when it lies
+ * inside (works for convex rooms); otherwise insets from the longest edge.
+ */
+export function zoneAnchorFor(face: FloorPlanVertex[]): [number, number] {
+  if (face.length === 0) return [0, 0];
+  let cx = 0;
+  let cz = 0;
+  for (const v of face) {
+    cx += v.x;
+    cz += v.z;
+  }
+  cx /= face.length;
+  cz /= face.length;
+  if (pointInFace(cx, cz, face)) return [cx, cz];
+
+  let bestLen = -1;
+  let best: [number, number] = [cx, cz];
+  for (let i = 0; i < face.length; i++) {
+    const a = face[i]!;
+    const b = face[(i + 1) % face.length]!;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dz);
+    if (len < bestLen) continue;
+    const mx = (a.x + b.x) / 2;
+    const mz = (a.z + b.z) / 2;
+    const nx = -dz / (len || 1);
+    const nz = dx / (len || 1);
+    const candidates: [number, number][] = [
+      [mx + nx * 12, mz + nz * 12],
+      [mx - nx * 12, mz - nz * 12],
+      [mx + nx * 6, mz + nz * 6],
+      [mx - nx * 6, mz - nz * 6],
+    ];
+    for (const [px, pz] of candidates) {
+      if (pointInFace(px, pz, face)) {
+        bestLen = len;
+        best = [px, pz];
+        break;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Resolve each enclosed floor face to its zone tag (if any).
+ * Orphaned anchors (outside every face) and duplicate anchors in one face
+ * are ignored here; {@link pruneZones} drops them on serialize.
+ */
+export function resolveZones(plan: FloorPlan): ResolvedArea[] {
+  const faces = floorFaceLoops(plan);
+  const zones = plan.zones ?? [];
+  const claimed = new Set<string>();
+  const areas: ResolvedArea[] = faces.map((face) => {
+    const faceKey = faceLoopKey(face);
+    const areaSqIn = faceAreaSqIn(face);
+    const labelAnchor = zoneAnchorFor(face);
+    return { faceKey, face, areaSqIn, labelAnchor, zone: null };
+  });
+
+  for (const zone of zones) {
+    const area = areas.find(
+      (a) => !claimed.has(a.faceKey) && pointInFace(zone.x, zone.z, a.face),
+    );
+    if (!area) continue;
+    claimed.add(area.faceKey);
+    area.zone = zone;
+    area.labelAnchor = [zone.x, zone.z];
+  }
+
+  return areas;
+}
+
+/** Find the resolved area containing a plan-space point, or null. */
+export function zoneAtPoint(plan: FloorPlan, x: number, z: number): ResolvedArea | null {
+  const areas = resolveZones(plan);
+  return areas.find((a) => pointInFace(x, z, a.face)) ?? null;
+}
+
+/** Drop orphaned / duplicate zone anchors so each face has at most one tag. */
+export function pruneZones(plan: FloorPlan): FloorPlanZone[] {
+  const faces = floorFaceLoops(plan);
+  if (faces.length === 0) return [];
+  const claimed = new Set<string>();
+  const kept: FloorPlanZone[] = [];
+  for (const zone of plan.zones ?? []) {
+    if (!isRoomTag(zone.tag)) continue;
+    const face = faces.find((f) => pointInFace(zone.x, zone.z, f));
+    if (!face) continue;
+    const key = faceLoopKey(face);
+    if (claimed.has(key)) continue;
+    claimed.add(key);
+    const [ax, az] = [zone.x, zone.z];
+    kept.push({
+      id: zone.id,
+      tag: zone.tag,
+      x: ax,
+      z: az,
+      ...(zone.name?.trim() ? { name: zone.name.trim() } : {}),
+    });
+  }
+  return kept;
+}
+
+/** Tag (or retag) the face containing (x, z). Creates a zone at the face anchor. */
+export function setZoneTag(
+  plan: FloorPlan,
+  x: number,
+  z: number,
+  tag: RoomTag,
+  name?: string,
+): FloorPlan {
+  const area = zoneAtPoint(plan, x, z);
+  if (!area) return plan;
+  const [ax, az] = area.labelAnchor;
+  const existing = area.zone;
+  const nextZone: FloorPlanZone = {
+    id: existing?.id ?? genId('zone'),
+    tag,
+    x: existing ? existing.x : ax,
+    z: existing ? existing.z : az,
+    ...(name !== undefined
+      ? name.trim()
+        ? { name: name.trim() }
+        : {}
+      : existing?.name
+        ? { name: existing.name }
+        : {}),
+  };
+  const others = (plan.zones ?? []).filter((z) => z.id !== nextZone.id);
+  // Also drop any other zone that lands in this face.
+  const filtered = others.filter((z) => !pointInFace(z.x, z.z, area.face));
+  return { ...plan, zones: [...filtered, nextZone] };
+}
+
+/** Clear the zone tag for the face containing (x, z). */
+export function clearZoneAt(plan: FloorPlan, x: number, z: number): FloorPlan {
+  const area = zoneAtPoint(plan, x, z);
+  if (!area?.zone) return plan;
+  return {
+    ...plan,
+    zones: (plan.zones ?? []).filter((z) => z.id !== area.zone!.id),
+  };
+}
+
+/** Update the custom name of the zone for the face containing (x, z). */
+export function setZoneName(plan: FloorPlan, x: number, z: number, name: string): FloorPlan {
+  const area = zoneAtPoint(plan, x, z);
+  if (!area?.zone) return plan;
+  const zones = (plan.zones ?? []).map((zone) => {
+    if (zone.id !== area.zone!.id) return zone;
+    if (!name) {
+      return { id: zone.id, tag: zone.tag, x: zone.x, z: zone.z };
+    }
+    return { ...zone, name };
+  });
+  return { ...plan, zones };
 }
 
 function walkSingleLoopVertices(plan: FloorPlan): FloorPlanVertex[] {
@@ -1427,7 +1651,35 @@ export function parseFloorPlan(raw: unknown): FloorPlan | null {
         hinge: r.hinge === 'left' || r.hinge === 'right' ? r.hinge : undefined,
       });
     }
-    return clampPlan(normalizePlanOrigin(sanitizeWallGraph({ version: FLOOR_PLAN_VERSION, height: o.height, vertices, walls, openings })));
+    const zones: FloorPlanZone[] = [];
+    if (Array.isArray(o.zones)) {
+      for (const entry of o.zones) {
+        if (!entry || typeof entry !== 'object') continue;
+        const r = entry as Record<string, unknown>;
+        if (typeof r.id !== 'string' || typeof r.x !== 'number' || typeof r.z !== 'number') continue;
+        if (!isRoomTag(r.tag)) continue;
+        zones.push({
+          id: r.id,
+          tag: r.tag,
+          x: r.x,
+          z: r.z,
+          ...(typeof r.name === 'string' && r.name.trim() ? { name: r.name.trim() } : {}),
+        });
+      }
+    }
+    const parsed = clampPlan(
+      normalizePlanOrigin(
+        sanitizeWallGraph({
+          version: FLOOR_PLAN_VERSION,
+          height: o.height,
+          vertices,
+          walls,
+          openings,
+          zones,
+        }),
+      ),
+    );
+    return { ...parsed, zones: pruneZones(parsed) };
   }
 
   // Legacy v1 box format
@@ -1456,5 +1708,6 @@ export function parseFloorPlan(raw: unknown): FloorPlan | null {
 }
 
 export function serializeFloorPlan(plan: FloorPlan): FloorPlan {
-  return clampPlan(normalizePlanOrigin(sanitizeWallGraph(plan)));
+  const cleaned = clampPlan(normalizePlanOrigin(sanitizeWallGraph(plan)));
+  return { ...cleaned, zones: pruneZones(cleaned) };
 }

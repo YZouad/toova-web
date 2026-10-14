@@ -330,6 +330,23 @@ export function trackDesignItemAdded(params: {
   track(EVENTS.DESIGN_ITEM_ADDED, { room_id: currentRoomId, ...params });
 }
 
+export function trackRoomAreaTagged(params: { tag: string }): void {
+  track(EVENTS.ROOM_AREA_TAGGED, { room_id: currentRoomId, tag: params.tag });
+}
+
+export function trackRoomTagSuggestionPlaced(params: {
+  tag: string;
+  kind: string;
+  essential?: boolean;
+}): void {
+  track(EVENTS.ROOM_TAG_SUGGESTION_PLACED, {
+    room_id: currentRoomId,
+    tag: params.tag,
+    kind: params.kind,
+    ...(params.essential != null ? { essential: params.essential } : {}),
+  });
+}
+
 export function trackModelGenerationStarted(params: {
   job_id: string;
   source_type: 'photo' | 'text_prompt' | 'product_link';
@@ -366,11 +383,14 @@ export function trackAffiliateClicked(params: {
   is_price_approximate: boolean;
   source:
     | 'checklist_checkout'
+    | 'checklist_checkout_amazon_cart'
     | 'product_drawer'
-    | 'purchase_review'
-    | 'shared_tobuy'
     | 'designer_checklist_ticker'
-    | 'designer_checklist_mobile';
+    | 'designer_checklist_mobile'
+    | 'designer_inspector'
+    | 'checklist_top_picks'
+    | 'bundle_cart'
+    | 'ticker_inline';
 }): void {
   track(EVENTS.PRODUCT_AFFILIATE_CLICKED, params);
 }
@@ -381,6 +401,13 @@ export function trackRoomShared(params: { room_id: string; role: 'viewer' | 'edi
 
 export function trackRoomLiked(params: { room_id: string }): void {
   track(EVENTS.ROOM_LIKED, params);
+}
+
+export function trackRoomOpened(params: {
+  room_id: string;
+  is_owner?: boolean;
+}): void {
+  track(EVENTS.ROOM_OPENED, params);
 }
 
 export function trackCatalogSearched(params: {

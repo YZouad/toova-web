@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { AppRail, Logo, type AppShellNavId } from './kit';
+import { NotificationsBell } from './NotificationsBell';
 
 const BASE = [
   { id: 'home' as const, label: 'Home', glyph: '⌂' },
@@ -55,8 +56,9 @@ export function AppRailChrome({
     closeMenu();
   };
 
-  const footer = (
+  const renderFooter = () => (
     <div className="kit-app-shell__rail-footer">
+      <NotificationsBell enabled placement="rail" />
       <button
         type="button"
         className="kit-app-shell__avatar"
@@ -109,7 +111,7 @@ export function AppRailChrome({
         active={active}
         items={items}
         onNavigate={handleNavigate}
-        footer={footer}
+        footer={renderFooter()}
       />
 
       <button
@@ -156,7 +158,7 @@ export function AppRailChrome({
           active={active}
           items={items}
           onNavigate={handleNavigate}
-          footer={footer}
+          footer={renderFooter()}
         />
       </aside>
     </>

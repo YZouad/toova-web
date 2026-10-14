@@ -5,6 +5,7 @@ import {
   prepareGlbForCatalogUpload,
   readGlbAxisBoundsWithTimeout,
 } from '../lib/glbImportPipeline';
+import { parseAsinFromAffiliateUrl } from '../lib/affiliateLinks';
 import {
   createChecklistProductWithModel,
   parsePriceDollarsToCents,
@@ -47,6 +48,7 @@ export function ChecklistProductModal({
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [affiliateUrl, setAffiliateUrl] = useState('');
+  const [asin, setAsin] = useState('');
   const [priceDollars, setPriceDollars] = useState('');
   const [retailer, setRetailer] = useState('Amazon');
   const [published, setPublished] = useState(true);
@@ -83,6 +85,7 @@ export function ChecklistProductModal({
       setName(product.name);
       setDescription(product.description);
       setAffiliateUrl(product.affiliateUrl);
+      setAsin(product.asin ?? parseAsinFromAffiliateUrl(product.affiliateUrl) ?? '');
       setPriceDollars(
         product.priceCents != null ? String(product.priceCents / 100) : '',
       );
@@ -92,6 +95,7 @@ export function ChecklistProductModal({
       setName('');
       setDescription('');
       setAffiliateUrl('');
+      setAsin('');
       setPriceDollars('');
       setRetailer('Amazon');
       setPublished(true);
@@ -262,6 +266,7 @@ export function ChecklistProductModal({
           name: name.trim(),
           description,
           affiliateUrl,
+          asin: asin.trim() || null,
           priceCents,
           retailer,
           published,
@@ -279,6 +284,7 @@ export function ChecklistProductModal({
           name: name.trim(),
           description,
           affiliateUrl,
+          asin: asin.trim() || null,
           priceCents,
           retailer,
           published,
@@ -334,12 +340,26 @@ export function ChecklistProductModal({
           <Field label="Affiliate URL">
             <Input
               value={affiliateUrl}
-              onChange={(e) => setAffiliateUrl(e.target.value)}
-              placeholder="https://amzn.to/… (optional)"
+              onChange={(e) => {
+                const next = e.target.value;
+                setAffiliateUrl(next);
+                const parsed = parseAsinFromAffiliateUrl(next);
+                if (parsed) setAsin(parsed);
+              }}
+              placeholder="https://amzn.to/… or amazon.com/dp/… (optional)"
               disabled={busy}
             />
           </Field>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <Field label="ASIN">
+              <Input
+                value={asin}
+                onChange={(e) => setAsin(e.target.value.toUpperCase())}
+                placeholder="B0XXXXXXXX"
+                disabled={busy}
+                maxLength={10}
+              />
+            </Field>
             <Field label="Price (USD)">
               <Input
                 value={priceDollars}

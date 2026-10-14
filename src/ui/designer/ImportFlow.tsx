@@ -156,6 +156,21 @@ export function ImportFlow({
     open && (route === 'thrixel' || thrixelSubmissionId != null),
   );
 
+  // Pre-wake Trellis when the photo import route opens.
+  useEffect(() => {
+    if (!open || route !== 'photo') return;
+    const controller = new AbortController();
+    void (async () => {
+      try {
+        const { ensureTrellisReady } = await import('../../lib/trellisApi');
+        await ensureTrellisReady(controller.signal);
+      } catch {
+        /* best-effort */
+      }
+    })();
+    return () => controller.abort();
+  }, [open, route]);
+
   const [posterImageFile, setPosterImageFile] = useState<File | null>(null);
   const [posterPreviewUrl, setPosterPreviewUrl] = useState<string | null>(null);
   const [posterCroppedBlob, setPosterCroppedBlob] = useState<Blob | null>(null);

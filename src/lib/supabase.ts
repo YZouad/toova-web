@@ -14,12 +14,20 @@ type ToovaGlobal = typeof globalThis & { __toovaSupabase?: SupabaseClient };
  * timeout 0 while initialize (or another tab / a Vite HMR zombie) still
  * holds it, and the thrown LockAcquireTimeoutError is uncaught in Firefox.
  */
+let authLockTail: Promise<unknown> = Promise.resolve();
+
+/** Serialize auth storage reads/writes without Navigator LockManager (Firefox timeout issues). */
 async function inProcessAuthLock<T>(
   _name: string,
   _acquireTimeout: number,
   fn: () => Promise<T>,
 ): Promise<T> {
-  return await fn();
+  const run = authLockTail.then(fn, fn);
+  authLockTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return await run;
 }
 
 function createToovaClient(): SupabaseClient {

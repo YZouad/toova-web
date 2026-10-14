@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useGalleryCatalog } from '../../hooks/useGalleryCatalog';
 import {
@@ -14,8 +14,15 @@ import {
   type CatalogCategorySlug,
 } from '../../lib/catalogCategories';
 import type { GallerySort, GallerySource } from '../../lib/galleryCatalog';
+import {
+  buildRoomTagSuggestions,
+  essentialLabel,
+  suggestionForSelection,
+  type AreaSuggestion,
+} from '../../lib/roomTagSuggestions';
+import { trackRoomTagSuggestionPlaced } from '../../lib/analytics';
 import type { CatalogModel } from './chromeTypes';
-import type { HangingDecorKind } from '../../store';
+import { useStore, type HangingDecorKind } from '../../store';
 import { IconFreeLight, IconHangingLeaves, IconHangingLights, IconLedStrip, IconMeasure } from './icons';
 import { PanelShell } from './PanelShell';
 import { placeFromCatalog } from './placeCatalogModel';
@@ -60,6 +67,37 @@ export function LibraryPanel({
   const [categories, setCategories] = useState<CatalogCategorySlug[]>([]);
   const [query, setQuery] = useState('');
   const [sortOpen, setSortOpen] = useState(false);
+  const [activeFaceKey, setActiveFaceKey] = useState<string | null>(null);
+
+  const roomGeometry = useStore((s) => s.roomGeometry);
+  const items = useStore((s) => s.items);
+  const order = useStore((s) => s.order);
+  const selectedId = useStore((s) => s.selectedId);
+  const addItem = useStore((s) => s.addItem);
+
+  const itemList = useMemo(
+    () => order.map((id) => items[id]).filter((it): it is NonNullable<typeof it> => !!it),
+    [order, items],
+  );
+  const selectedItem = selectedId ? items[selectedId] ?? null : null;
+
+  const suggestionReport = useMemo(
+    () => buildRoomTagSuggestions(roomGeometry, itemList),
+    [roomGeometry, itemList],
+  );
+
+  const activeSuggestion: AreaSuggestion | null = useMemo(() => {
+    if (activeFaceKey) {
+      return suggestionReport.areas.find((a) => a.faceKey === activeFaceKey) ?? null;
+    }
+    return suggestionForSelection(suggestionReport, roomGeometry, selectedItem);
+  }, [activeFaceKey, suggestionReport, roomGeometry, selectedItem]);
+
+  useEffect(() => {
+    if (!activeFaceKey && activeSuggestion) {
+      setActiveFaceKey(activeSuggestion.faceKey);
+    }
+  }, [activeFaceKey, activeSuggestion]);
 
   const {
     models,
@@ -81,10 +119,38 @@ export function LibraryPanel({
 
   const place = useCallback(
     (model: CatalogModel) => {
-      void placeFromCatalog(model, user?.id);
+      const spawnAt = activeSuggestion?.labelAnchor;
+      void placeFromCatalog(model, { userId: user?.id, spawnAt }).then((id) => {
+        if (id && activeSuggestion) {
+          trackRoomTagSuggestionPlaced({
+            tag: activeSuggestion.tag,
+            kind: model.kind,
+          });
+        }
+      });
     },
-    [user?.id],
+    [user?.id, activeSuggestion],
   );
+
+  const placeEssential = useCallback(
+    (kind: AreaSuggestion['missingEssentials'][number]) => {
+      if (!activeSuggestion) return;
+      const id = addItem(kind, { spawnAt: activeSuggestion.labelAnchor });
+      if (id) {
+        trackRoomTagSuggestionPlaced({
+          tag: activeSuggestion.tag,
+          kind,
+          essential: true,
+        });
+      }
+    },
+    [activeSuggestion, addItem],
+  );
+
+  const applySuggestionCategories = useCallback((area: AreaSuggestion) => {
+    setActiveFaceKey(area.faceKey);
+    setCategories(area.catalogCategories.slice(0, MAX_CATALOG_CATEGORIES));
+  }, []);
 
   const toggleCat = useCallback((slug: CatalogCategorySlug) => {
     setCategories((cur) => toggleCatalogCategory(cur, slug));
@@ -327,9 +393,68 @@ export function LibraryPanel({
     </div>
   );
 
+  const suggestionsBlock =
+    suggestionReport.areas.length > 0 ? (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 14 }}>
+        <span
+          style={{
+            font: 'var(--type-mono-xs)',
+            letterSpacing: 'var(--tracking-eyebrow)',
+            textTransform: 'uppercase',
+            color: 'var(--ink-6)',
+          }}
+        >
+          Suggested for {activeSuggestion?.label ?? 'area'}
+        </span>
+        <div className="dg-chip-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+          {suggestionReport.areas.map((area) => (
+            <button
+              key={area.faceKey}
+              type="button"
+              className={`dg-chip${activeSuggestion?.faceKey === area.faceKey ? ' is-accent' : ''}`}
+              onClick={() => applySuggestionCategories(area)}
+            >
+              {area.label}
+            </button>
+          ))}
+        </div>
+        {activeSuggestion && activeSuggestion.missingEssentials.length > 0 ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ font: '400 11px/1.4 var(--font-sans)', color: 'var(--ink-4)' }}>
+              Missing essentials
+            </span>
+            <div className="dg-chip-row" style={{ flexWrap: 'wrap', gap: 6 }}>
+              {activeSuggestion.missingEssentials.map((kind) => (
+                <button
+                  key={kind}
+                  type="button"
+                  className="dg-chip"
+                  onClick={() => placeEssential(kind)}
+                  title={`Place ${essentialLabel(kind)} in ${activeSuggestion.label}`}
+                >
+                  + {essentialLabel(kind)}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        {activeSuggestion ? (
+          <button
+            type="button"
+            className="dg-footer-btn"
+            style={{ alignSelf: 'flex-start' }}
+            onClick={() => applySuggestionCategories(activeSuggestion)}
+          >
+            Show {activeSuggestion.label} picks
+          </button>
+        ) : null}
+      </div>
+    ) : null;
+
   const filters = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minHeight: 0, flex: 1 }}>
       {createRows}
+      {suggestionsBlock}
       <div className="dg-row dg-row--between" style={{ padding: '4px 0 8px', minHeight: 0 }}>
         <span
           style={{
@@ -573,7 +698,9 @@ export function LibraryPanel({
             Upload or generate a model
           </button>
           <span style={{ flex: 1, font: '400 11px/1.4 var(--font-sans)', color: 'var(--ink-4)' }}>
-            Anything you add lands in the middle of the room.
+            {activeSuggestion
+              ? `New pieces drop into ${activeSuggestion.label}.`
+              : 'Anything you add lands in the middle of the room.'}
           </span>
         </>
       }

@@ -1,10 +1,12 @@
 import { useMemo, useState } from 'react';
 import { useShoppingCatalogContext } from '../../../context/ShoppingCatalogContext';
 import { useAuth } from '../../../hooks/useAuth';
+import { shopUrlForProduct } from '../../../lib/affiliateLinks';
 import { trackAffiliateClicked } from '../../../lib/analytics';
 import { productHasPlaceableModel } from '../../../lib/checklistPublicGlbs';
 import {
   categoryIdsSatisfiedByPlacements,
+  filterCategoriesByRoomTag,
   formatPriceCents,
   getProductDrawKind,
   roomItemsToPlacementRefs,
@@ -25,6 +27,8 @@ import {
   placeCuratedProduct,
   startChecklistDrawPlacement,
 } from '../../../lib/placeCuratedProduct';
+import { resolveZones } from '../../../lib/floorPlanGeometry';
+import { roomTagLabel, type RoomTag } from '../../../lib/roomTags';
 import { useStore, type HangingDecorKind } from '../../../store';
 import {
   ChecklistBudgetFoot,
@@ -144,6 +148,7 @@ export function MobileChecklistSheet({
 }: MobileChecklistSheetProps) {
   const items = useStore((s) => s.items);
   const order = useStore((s) => s.order);
+  const roomGeometry = useStore((s) => s.roomGeometry);
   const select = useStore((s) => s.select);
   const removeItem = useStore((s) => s.removeItem);
   const { categories, categoriesById, list, addToList, removeFromList, getResolution, setResolution, getOwnedProduct, markCategoryAsOwned, budgetSummary, setMoveInBudget, purchaseCartLines } = useShoppingCatalogContext();
@@ -157,6 +162,17 @@ export function MobileChecklistSheet({
   const [downloadKind, setDownloadKind] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [areaTag, setAreaTag] = useState<RoomTag | null>(null);
+
+  const taggedAreas = useMemo(
+    () => resolveZones(roomGeometry).filter((a) => a.zone != null),
+    [roomGeometry],
+  );
+
+  const scopedCategories = useMemo(
+    () => filterCategoriesByRoomTag(categories, areaTag),
+    [categories, areaTag],
+  );
 
   const listQty = useMemo(() => {
     const map = new Map<string, number>();
@@ -165,19 +181,19 @@ export function MobileChecklistSheet({
   }, [list]);
 
   const placedCategoryIds = useMemo(() => {
-    return categoryIdsSatisfiedByPlacements(categories, roomItemsToPlacementRefs(items, order));
-  }, [categories, items, order]);
+    return categoryIdsSatisfiedByPlacements(scopedCategories, roomItemsToPlacementRefs(items, order));
+  }, [scopedCategories, items, order]);
 
   const lines = useMemo(
     (): ChecklistLine[] =>
       buildChecklistLines({
-        categories,
+        categories: scopedCategories,
         categoriesById,
         placedCategoryIds,
         getResolution,
         listQty,
       }),
-    [categories, categoriesById, listQty, placedCategoryIds, getResolution],
+    [scopedCategories, categoriesById, listQty, placedCategoryIds, getResolution],
   );
 
   const { placed: placedCount, todo: todoCount, total: totalCount, resolved: resolvedCount, progressPct } =
@@ -240,7 +256,13 @@ export function MobileChecklistSheet({
         onClose();
         return;
       }
-      const id = await placeCuratedProduct(product);
+      const spawnArea = areaTag
+        ? taggedAreas.find((a) => a.zone?.tag === areaTag)
+        : null;
+      const id = await placeCuratedProduct(
+        product,
+        spawnArea ? { spawnAt: spawnArea.labelAnchor } : undefined,
+      );
       if (!id) setActionError('No 3D model linked for this option yet.');
       else select(id);
     } catch (err) {
@@ -290,16 +312,18 @@ export function MobileChecklistSheet({
     }
   };
 
-  const shopProduct = (product: CuratedProduct) => {
-    const url = product.affiliateUrl?.trim();
-    if (!url) return;
+  const shopProduct = (
+    product: CuratedProduct,
+    source: 'designer_checklist_mobile' | 'ticker_inline' = 'designer_checklist_mobile',
+  ) => {
+    const shop = shopUrlForProduct(product);
     trackAffiliateClicked({
       retailer: product.retailer,
       product_id: product.id,
-      is_price_approximate: false,
-      source: 'designer_checklist_mobile',
+      is_price_approximate: shop.approximate,
+      source,
     });
-    window.open(url, '_blank', 'noopener,noreferrer');
+    window.open(shop.url, '_blank', 'noopener,noreferrer');
   };
 
   if (activeLine) {
@@ -381,7 +405,7 @@ export function MobileChecklistSheet({
           ) : (
             detailProducts.map((product) => {
               const price = formatPriceCents(product.priceCents, product.currency);
-              const shopUrl = product.affiliateUrl?.trim();
+              const shop = shopUrlForProduct(product);
               const roomId = findRoomItemForProduct(product, items, order);
               const inRoom = !!roomId;
                 const placeable = productHasPlaceableModel(product);
@@ -422,28 +446,24 @@ export function MobileChecklistSheet({
                     <p className="dgm-offer-card__desc">{product.description}</p>
                   ) : null}
 
-                  {shopUrl ? (
-                    <a
+                  <a
                       className="dgm-shop-btn"
-                      href={shopUrl}
+                      href={shop.url}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={() =>
                         trackAffiliateClicked({
                           retailer: product.retailer,
                           product_id: product.id,
-                          is_price_approximate: false,
+                          is_price_approximate: shop.approximate,
                           source: 'designer_checklist_mobile',
                         })
                       }
                     >
-                      Shop {price ?? ''} at {retailer}
+                      {shop.approximate
+                        ? `${shop.label}${price ? ` · ${price}` : ''}`
+                        : `Shop ${price ?? ''} at ${retailer}`}
                     </a>
-                  ) : (
-                    <button type="button" className="dgm-shop-btn" disabled>
-                      Shop link coming soon
-                    </button>
-                  )}
 
                   <div className="dgm-offer-card__actions">
                     {inRoom && roomId ? (
@@ -549,6 +569,32 @@ export function MobileChecklistSheet({
         ))}
       </div>
 
+      {taggedAreas.length > 0 ? (
+        <div className="dgm-checklist-area-filters" role="group" aria-label="Filter by room area">
+          <button
+            type="button"
+            className={`dg-chip${!areaTag ? ' is-accent' : ''}`}
+            onClick={() => setAreaTag(null)}
+          >
+            All areas
+          </button>
+          {taggedAreas.map((area) => {
+            const tag = area.zone!.tag;
+            const label = area.zone!.name?.trim() || roomTagLabel(tag);
+            return (
+              <button
+                key={area.faceKey}
+                type="button"
+                className={`dg-chip${areaTag === tag ? ' is-accent' : ''}`}
+                onClick={() => setAreaTag(tag)}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div className="dgm-checklist-scroll">
         {totalCount === 0 ? (
           <p className="dgm-empty__hint">Checklist items will show up here once the catalog loads.</p>
@@ -573,8 +619,18 @@ export function MobileChecklistSheet({
               <ul className="dgm-checklist-group__list">
                 {group.lines.map((line) => {
                   const statusChip = checklistLineStatusLabel(line.status);
+                  const topPick =
+                    [...line.products].sort(
+                      (a, b) => (a.priceCents ?? Infinity) - (b.priceCents ?? Infinity),
+                    )[0] ?? null;
+                  const onList = topPick
+                    ? list.some((e) => e.productId === topPick.id)
+                    : false;
+                  const inlinePrice = topPick
+                    ? formatPriceCents(topPick.priceCents, topPick.currency)
+                    : null;
                   return (
-                  <li key={line.categoryId}>
+                  <li key={line.categoryId} className="dgm-checklist-item-row">
                     <button
                       type="button"
                       className={`dgm-checklist-item${line.placed ? ' is-placed' : ''}${line.status === 'have' || line.status === 'skip' ? ' is-resolved' : ''}`}
@@ -589,8 +645,29 @@ export function MobileChecklistSheet({
                           {optionsLabel(line.optionCount, line.fromPriceCents, line.currency)}
                         </span>
                       </span>
-                      <span className="dgm-checklist-item__cue">Shop ›</span>
+                      <span className="dgm-checklist-item__cue">Options ›</span>
                     </button>
+                    {topPick ? (
+                      <button
+                        type="button"
+                        className="dgm-checklist-item__list"
+                        onClick={() => shopProduct(topPick, 'ticker_inline')}
+                      >
+                        {inlinePrice ? `Shop ${inlinePrice}` : 'Shop'}
+                      </button>
+                    ) : null}
+                    {topPick ? (
+                      <button
+                        type="button"
+                        className="dgm-checklist-item__list"
+                        disabled={onList}
+                        onClick={() => {
+                          if (!onList) void addToList(topPick.id);
+                        }}
+                      >
+                        {onList ? 'On list' : '+ List'}
+                      </button>
+                    ) : null}
                   </li>
                   );
                 })}
@@ -621,6 +698,7 @@ export function MobileChecklistSheet({
       </div>
       {checkoutOpen ? (
         <ChecklistCheckoutPanel
+          variant="designer"
           lines={purchaseCartLines}
           onClose={() => setCheckoutOpen(false)}
           onRemoveFromList={(productId) => void removeFromList(productId)}
