@@ -128,23 +128,30 @@ ON CONFLICT (slug) DO UPDATE SET
   sort_order = EXCLUDED.sort_order,
   updated_at = now();
 
+-- Resolve products by checklist slug (fresh DBs use gen_random_uuid() for product ids).
 INSERT INTO public.bundle_items (bundle_id, product_id, quantity, sort_order)
-VALUES
-  -- Desk setup
-  ('a1000001-0000-4000-8000-000000000001', '34f4f3f7-6ca8-470d-a216-a928addd2aa1', 1, 10), -- desk lamp
-  ('a1000001-0000-4000-8000-000000000001', '7a7843af-e7d8-4a74-b44c-ae55b6948d2b', 1, 20), -- power strip
-  ('a1000001-0000-4000-8000-000000000001', 'dca8a7f4-9b3b-4274-af41-5dc18a56bbcf', 1, 30), -- chair cushion
-  ('a1000001-0000-4000-8000-000000000001', '3e6bc316-91ca-4fd3-a3ab-edb47f5a6a64', 1, 40), -- small whiteboard
-  ('a1000001-0000-4000-8000-000000000001', 'ee14ef92-c53d-4415-af11-ee9c4290d12a', 1, 50), -- 3-in-1 charger
-  -- Bed basics
-  ('a1000001-0000-4000-8000-000000000002', '92953c53-2ea4-4e77-9eaf-2617806b4431', 1, 10), -- bed sheets
-  ('a1000001-0000-4000-8000-000000000002', 'dda1d582-b831-4baa-93fd-ededc66bf5f1', 1, 20), -- bed comforter
-  ('a1000001-0000-4000-8000-000000000002', 'bcdbef89-9512-4442-8a01-177a13f11abd', 1, 30), -- work in bed pillow
-  -- Bathroom kit
-  ('a1000001-0000-4000-8000-000000000003', '80fe7eac-29ca-4559-a475-a7a2c28d5702', 1, 10), -- shower caddie
-  ('a1000001-0000-4000-8000-000000000003', '917d8c5f-b37c-47a9-ad65-fc7ecde5ec72', 1, 20), -- towel
-  ('a1000001-0000-4000-8000-000000000003', '3dda35d1-c399-425f-9962-12616a6abd20', 1, 30), -- soap
-  ('a1000001-0000-4000-8000-000000000003', '942ad01a-19d4-4d82-a0c3-c828e5161a23', 1, 40)  -- shower shoes
+SELECT
+  b.id,
+  p.id,
+  v.quantity,
+  v.sort_order
+FROM (
+  VALUES
+    ('desk-setup', 'desk-lamp-warm', 1, 10),
+    ('desk-setup', 'power-strip', 1, 20),
+    ('desk-setup', 'desk-chair-cushion', 1, 30),
+    ('desk-setup', 'smallwhiteboard', 1, 40),
+    ('desk-setup', 'charger', 1, 50),
+    ('bed-basics', 'bed-sheets', 1, 10),
+    ('bed-basics', 'bed-comforter', 1, 20),
+    ('bed-basics', 'bed-pillow', 1, 30),
+    ('bathroom-kit', 'shower-caddie', 1, 10),
+    ('bathroom-kit', 'towel', 1, 20),
+    ('bathroom-kit', 'soap', 1, 30),
+    ('bathroom-kit', 'shower-shoes', 1, 40)
+) AS v(bundle_slug, product_slug, quantity, sort_order)
+JOIN public.bundles b ON b.slug = v.bundle_slug
+JOIN public.curated_products p ON p.slug = v.product_slug
 ON CONFLICT (bundle_id, product_id) DO UPDATE SET
   quantity = EXCLUDED.quantity,
   sort_order = EXCLUDED.sort_order;
