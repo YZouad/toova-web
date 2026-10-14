@@ -60,6 +60,7 @@ const categories: ChecklistCategoryWithProducts[] = [
     parentId: null,
     imagePath: null,
     imageUrl: null,
+    roomTags: [],
     products: [lampProduct],
   },
   {

@@ -86,6 +86,8 @@ export interface UpdateCategoryInput {
   sortOrder?: number;
   parentId?: string | null;
   imagePath?: string | null;
+  /** Empty array = show for every room area. */
+  roomTags?: string[];
 }
 
 export async function updateChecklistCategory(
@@ -103,6 +105,7 @@ export async function updateChecklistCategory(
   if (input.sortOrder != null) patch.sort_order = input.sortOrder;
   if (input.parentId !== undefined) patch.parent_id = input.parentId;
   if (input.imagePath !== undefined) patch.image_path = input.imagePath;
+  if (input.roomTags !== undefined) patch.room_tags = input.roomTags;
 
   const { error } = await supabase.from('checklist_categories').update(patch).eq('id', id);
   if (error) throw new Error(error.message);

@@ -1,3 +1,4 @@
+import { requireAccessToken } from './authAccessToken';
 import {
   checkoutReturnUrls,
   clearCheckoutReturn,
@@ -25,6 +26,8 @@ export interface BillingSnapshot {
   entitlements: PlanEntitlements;
   monthly_balance: number;
   purchased_balance: number;
+  /** Credits owed after a refund clawback when spendable purchased balance was insufficient. */
+  purchased_debt: number;
   monthly_period_end: string | null;
   subscription: {
     status: string;
@@ -49,6 +52,11 @@ export function totalCredits(billing: BillingSnapshot | null): number {
   return billing.monthly_balance + billing.purchased_balance;
 }
 
+export function purchasedDebt(billing: BillingSnapshot | null): number {
+  if (!billing) return 0;
+  return Math.max(0, billing.purchased_debt ?? 0);
+}
+
 export async function fetchMyBilling(): Promise<BillingSnapshot | null> {
   const { data, error } = await supabase.rpc('get_my_billing');
   if (error) {
@@ -67,12 +75,14 @@ export async function startCheckout(
     : undefined;
   rememberCheckoutReturn();
   try {
+    const accessToken = await requireAccessToken('Sign in to purchase credits.');
     const { data, error } = await supabase.functions.invoke('billing-checkout', {
       body: {
         kind,
         success_url: urls?.successUrl ?? defaults?.successUrl,
         cancel_url: urls?.cancelUrl ?? defaults?.cancelUrl,
       },
+      headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (error) throw new Error(error.message);
     const url = (data as { url?: string })?.url;
@@ -88,8 +98,10 @@ export async function startCheckout(
 }
 
 export async function openBillingPortal(returnUrl?: string): Promise<string> {
+  const accessToken = await requireAccessToken('Sign in to manage billing.');
   const { data, error } = await supabase.functions.invoke('billing-portal', {
     body: { return_url: returnUrl },
+    headers: { Authorization: `Bearer ${accessToken}` },
   });
   if (error) throw new Error(error.message);
   const url = (data as { url?: string })?.url;

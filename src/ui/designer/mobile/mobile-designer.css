@@ -1930,11 +1930,23 @@
   margin: 12px 16px 0;
 }
 
+.dg-page.is-phone .dgm-checklist-area-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: none;
+  margin: 10px 16px 0;
+  padding: 2px 0 4px;
+  position: relative;
+  z-index: 2;
+  background: var(--paper-0);
+}
+
 .dg-page.is-phone .dgm-checklist-scroll {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  padding: 8px 16px 12px;
+  padding: 10px 16px 12px;
 }
 
 .dg-page.is-phone .dgm-checklist-group__head {

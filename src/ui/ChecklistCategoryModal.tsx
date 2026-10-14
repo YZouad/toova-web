@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ChecklistCategoryWithProducts } from '../lib/dormChecklist';
+import { ROOM_TAG_DEFS, type RoomTag } from '../lib/roomTags';
 import {
   attachCategoryCoverImage,
   updateChecklistCategory,
@@ -21,6 +22,7 @@ export function ChecklistCategoryModal({
 }: ChecklistCategoryModalProps) {
   const [name, setName] = useState('');
   const [sortOrder, setSortOrder] = useState('');
+  const [roomTags, setRoomTags] = useState<RoomTag[]>([]);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,13 +31,20 @@ export function ChecklistCategoryModal({
     if (!open || !category) return;
     setName(category.name);
     setSortOrder(String(category.sortOrder));
+    setRoomTags([...(category.roomTags ?? [])]);
     setCoverFile(null);
     setError(null);
-  }, [open, category?.id, category?.name, category?.sortOrder]);
+  }, [open, category?.id, category?.name, category?.sortOrder, category?.roomTags]);
 
   const handleClose = () => {
     if (submitting) return;
     onClose();
+  };
+
+  const toggleTag = (tag: RoomTag) => {
+    setRoomTags((cur) =>
+      cur.includes(tag) ? cur.filter((t) => t !== tag) : [...cur, tag],
+    );
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -52,6 +61,7 @@ export function ChecklistCategoryModal({
       await updateChecklistCategory(category.id, {
         name: name.trim(),
         sortOrder: Number(sortOrder) || category.sortOrder,
+        roomTags,
       });
       if (coverFile) {
         await attachCategoryCoverImage(category.id, coverFile);
@@ -84,6 +94,31 @@ export function ChecklistCategoryModal({
 
         <Field label="Sort order">
           <Input value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} disabled={submitting} />
+        </Field>
+
+        <Field label="Room areas">
+          <div className="fp-tag-grid" style={{ marginTop: 4 }}>
+            {ROOM_TAG_DEFS.map((def) => {
+              const on = roomTags.includes(def.id);
+              return (
+                <button
+                  key={def.id}
+                  type="button"
+                  className={`fp-chip fp-chip-tag${on ? ' active' : ''}`}
+                  disabled={submitting}
+                  onClick={() => toggleTag(def.id)}
+                >
+                  <span className="fp-chip-tag-glyph" aria-hidden>
+                    {def.glyph}
+                  </span>
+                  {def.label}
+                </button>
+              );
+            })}
+          </div>
+          <small style={{ display: 'block', marginTop: 6, color: 'var(--ink-4)' }}>
+            Leave empty to show this category for every area.
+          </small>
         </Field>
 
         <Field label="Cover photo">

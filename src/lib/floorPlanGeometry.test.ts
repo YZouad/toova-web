@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   type FloorPlan,
   allWallSegments,
+  clearZoneAt,
   defaultRectanglePlan,
   floorFaceLoops,
   formatLength,
@@ -16,17 +17,58 @@ import {
   openingWorldPlacement,
   parseFloorPlan,
   pointInPolygon,
+  pruneZones,
   rectanglePlan,
   resolveWallAnchor,
+  resolveZones,
   sanitizeWallGraph,
+  serializeFloorPlan,
   setWallLength,
+  setZoneTag,
   signedArea,
   snapToGrid,
   updateOpening,
   validateFloorPlan,
   wallLength,
+  zoneAtPoint,
+  zoneAnchorFor,
 } from '../lib/floorPlanGeometry';
 import { ROOM } from '../units';
+
+function partitionedPlan(): FloorPlan {
+  return {
+    version: 2,
+    height: 96,
+    vertices: [
+      { id: 'v0', x: 0, z: 0 },
+      { id: 'v1', x: 60, z: 0 },
+      { id: 'v2', x: 120, z: 0 },
+      { id: 'v3', x: 120, z: 120 },
+      { id: 'v4', x: 60, z: 120 },
+      { id: 'v5', x: 0, z: 120 },
+    ],
+    walls: [
+      { id: 'w0', startId: 'v0', endId: 'v1' },
+      { id: 'w1', startId: 'v1', endId: 'v2' },
+      { id: 'w2', startId: 'v2', endId: 'v3' },
+      { id: 'w3', startId: 'v3', endId: 'v4' },
+      { id: 'w4', startId: 'v4', endId: 'v5' },
+      { id: 'w5', startId: 'v5', endId: 'v0' },
+      { id: 'w6', startId: 'v1', endId: 'v4' },
+    ],
+    openings: [
+      {
+        id: 'd0',
+        wallId: 'w2',
+        kind: 'door',
+        offset: 44,
+        width: 32,
+        height: 80,
+        hinge: 'left',
+      },
+    ],
+  };
+}
 
 describe('floorPlanGeometry', () => {
   it('snaps to 6 inch grid', () => {
@@ -380,5 +422,51 @@ describe('floorPlanGeometry', () => {
       const wz = seg.innerFaceCenter[2] - hole!.x * Math.sin(rotY);
       expect(Math.hypot(wx - p.cx, wz - p.cz)).toBeLessThan(0.01);
     }
+  });
+
+  it('tags each partitioned area independently', () => {
+    const plan = setZoneTag(setZoneTag(partitionedPlan(), 30, 60, 'bedroom'), 90, 60, 'kitchen');
+    const areas = resolveZones(plan);
+    expect(areas).toHaveLength(2);
+    const tags = areas.map((a) => a.zone?.tag).sort();
+    expect(tags).toEqual(['bedroom', 'kitchen']);
+    expect(zoneAtPoint(plan, 30, 60)?.zone?.tag).toBe('bedroom');
+    expect(zoneAtPoint(plan, 90, 60)?.zone?.tag).toBe('kitchen');
+  });
+
+  it('keeps zone after partition merge and drops the orphaned duplicate', () => {
+    let plan = setZoneTag(setZoneTag(partitionedPlan(), 30, 60, 'bedroom'), 90, 60, 'kitchen');
+    // Remove the partition wall — both anchors land in one face.
+    plan = { ...plan, walls: plan.walls.filter((w) => w.id !== 'w6') };
+    const pruned = pruneZones(plan);
+    expect(pruned).toHaveLength(1);
+    expect(pruned[0]!.tag).toBe('bedroom');
+  });
+
+  it('drops orphaned zone anchors outside every face', () => {
+    const plan: FloorPlan = {
+      ...defaultRectanglePlan(),
+      zones: [{ id: 'zone-1', tag: 'office', x: -50, z: -50 }],
+    };
+    expect(pruneZones(plan)).toHaveLength(0);
+    expect(serializeFloorPlan(plan).zones).toHaveLength(0);
+  });
+
+  it('preserves zones through parse/serialize', () => {
+    const plan = setZoneTag(defaultRectanglePlan(), 60, 90, 'living_room', 'Lounge');
+    const roundTrip = parseFloorPlan(serializeFloorPlan(plan));
+    expect(roundTrip).not.toBeNull();
+    expect(roundTrip!.zones).toHaveLength(1);
+    expect(roundTrip!.zones![0]!.tag).toBe('living_room');
+    expect(roundTrip!.zones![0]!.name).toBe('Lounge');
+  });
+
+  it('clears a zone tag and finds an interior anchor for L-shapes', () => {
+    const l = lShapePlan(120, 120, 48, 48);
+    const [ax, az] = zoneAnchorFor(floorFaceLoops(l)[0]!);
+    expect(pointInPolygon(ax, az, l, 0)).toBe(true);
+    const tagged = setZoneTag(l, ax, az, 'dining');
+    const cleared = clearZoneAt(tagged, ax, az);
+    expect(cleared.zones ?? []).toHaveLength(0);
   });
 });

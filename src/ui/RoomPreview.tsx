@@ -3,9 +3,11 @@ import {
   getWallSegment,
   orderedVertices,
   planBounds,
+  resolveZones,
   type FloorPlan,
 } from '../lib/floorPlanGeometry';
 import { furnitureFill } from '../lib/floorPlanFurniture';
+import { roomTagDef, roomTagLabel } from '../lib/roomTags';
 import type { Item } from '../store';
 
 export { KIND_COLORS } from '../lib/floorPlanFurniture';
@@ -77,6 +79,7 @@ export function RoomPreview({ geometry, items }: RoomPreviewProps) {
 
   const verts = showGeometry ? orderedVertices(geometry) : [];
   const floorPoints = verts.length >= 3 ? verts.map((v) => `${v.x},${v.z}`).join(' ') : '';
+  const areas = showGeometry ? resolveZones(geometry) : [];
 
   return (
     <svg
@@ -85,7 +88,18 @@ export function RoomPreview({ geometry, items }: RoomPreviewProps) {
       preserveAspectRatio="xMidYMid meet"
       aria-hidden
     >
-      {floorPoints ? <polygon className="room-preview-floor" points={floorPoints} /> : null}
+      {areas.length > 0
+        ? areas.map((area) => (
+            <polygon
+              key={area.faceKey}
+              className="room-preview-floor"
+              points={area.face.map((v) => `${v.x},${v.z}`).join(' ')}
+              style={area.zone ? { fill: roomTagDef(area.zone.tag).color } : undefined}
+            />
+          ))
+        : floorPoints
+          ? <polygon className="room-preview-floor" points={floorPoints} />
+          : null}
       {showGeometry
         ? geometry.walls.map((w) => {
             const seg = getWallSegment(geometry, w);
@@ -121,6 +135,24 @@ export function RoomPreview({ geometry, items }: RoomPreviewProps) {
           />
         );
       })}
+      {areas
+        .filter((a) => a.zone)
+        .map((area) => {
+          const [lx, lz] = area.labelAnchor;
+          const label = area.zone!.name?.trim() || roomTagLabel(area.zone!.tag);
+          return (
+            <text
+              key={`label-${area.faceKey}`}
+              className="room-preview-area-label"
+              x={lx}
+              y={lz}
+              textAnchor="middle"
+              dominantBaseline="middle"
+            >
+              {label}
+            </text>
+          );
+        })}
     </svg>
   );
 }

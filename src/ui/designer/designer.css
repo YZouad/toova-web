@@ -468,6 +468,18 @@
   border-radius: var(--dg-pill);
   flex: none;
 }
+.dg-ticker-area-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: none;
+  margin: 0 14px 8px;
+  padding: 2px 0 6px;
+  /* Keep chips above scrolled group headers when the card is max-height constrained. */
+  position: relative;
+  z-index: 1;
+  background: rgba(251, 247, 240, 0.92);
+}
 .dg-ticker-tab {
   flex: 1; min-height: 30px; padding: 7px 8px;
   border: none; border-radius: var(--dg-pill);
@@ -484,7 +496,7 @@
 }
 
 .dg-ticker-body {
-  padding: 10px 14px 4px;
+  padding: 6px 14px 4px;
   display: flex;
   flex-direction: column;
   gap: 14px;
@@ -492,6 +504,10 @@
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
+}
+.dg-ticker-area-filters + .dg-ticker-body {
+  padding-top: 4px;
+  border-top: 1px solid var(--rule-soft);
 }
 
 .dg-ticker-empty {

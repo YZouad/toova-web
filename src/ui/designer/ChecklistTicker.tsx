@@ -6,6 +6,7 @@ import { trackAffiliateClicked } from '../../lib/analytics';
 import { productHasPlaceableModel } from '../../lib/checklistPublicGlbs';
 import {
   categoryIdsSatisfiedByPlacements,
+  filterCategoriesByRoomTag,
   formatPriceCents,
   getProductDrawKind,
   roomItemsToPlacementRefs,
@@ -19,6 +20,7 @@ import {
   type ChecklistLineModel,
 } from '../../lib/checklistLines';
 import { checklistProgressCounts } from '../../lib/checklistProgress';
+import { resolveZones } from '../../lib/floorPlanGeometry';
 import { downloadCatalogModelByKind } from '../../lib/modelStorage';
 import {
   countRoomPlacementsForProduct,
@@ -26,6 +28,7 @@ import {
   placeCuratedProduct,
   startChecklistDrawPlacement,
 } from '../../lib/placeCuratedProduct';
+import { roomTagLabel, type RoomTag } from '../../lib/roomTags';
 import { useStore, type HangingDecorKind } from '../../store';
 import {
   ChecklistBudgetFoot,
@@ -167,6 +170,7 @@ function productBadges(
 export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDraw }: ChecklistTickerProps) {
   const items = useStore((s) => s.items);
   const order = useStore((s) => s.order);
+  const roomGeometry = useStore((s) => s.roomGeometry);
   const select = useStore((s) => s.select);
   const removeItem = useStore((s) => s.removeItem);
   const { categories, categoriesById, list, addToList, removeFromList, getResolution, setResolution, getOwnedProduct, markCategoryAsOwned, budgetSummary, setMoveInBudget, purchaseCartLines } = useShoppingCatalogContext();
@@ -183,6 +187,17 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
   const [downloadKind, setDownloadKind] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
+  const [areaTag, setAreaTag] = useState<RoomTag | null>(null);
+
+  const taggedAreas = useMemo(
+    () => resolveZones(roomGeometry).filter((a) => a.zone != null),
+    [roomGeometry],
+  );
+
+  const scopedCategories = useMemo(
+    () => filterCategoriesByRoomTag(categories, areaTag),
+    [categories, areaTag],
+  );
 
   const listQty = useMemo(() => {
     const map = new Map<string, number>();
@@ -191,19 +206,19 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
   }, [list]);
 
   const placedCategoryIds = useMemo(() => {
-    return categoryIdsSatisfiedByPlacements(categories, roomItemsToPlacementRefs(items, order));
-  }, [categories, items, order]);
+    return categoryIdsSatisfiedByPlacements(scopedCategories, roomItemsToPlacementRefs(items, order));
+  }, [scopedCategories, items, order]);
 
   const lines = useMemo(
     (): TickerLine[] =>
       buildChecklistLines({
-        categories,
+        categories: scopedCategories,
         categoriesById,
         placedCategoryIds,
         getResolution,
         listQty,
       }),
-    [categories, categoriesById, listQty, placedCategoryIds, getResolution],
+    [scopedCategories, categoriesById, listQty, placedCategoryIds, getResolution],
   );
 
   const { placed: placedCount, todo: todoCount, total: totalCount, resolved: resolvedCount, progressPct } =
@@ -306,7 +321,13 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
         closeDetail();
         return;
       }
-      const id = await placeCuratedProduct(product);
+      const spawnArea = areaTag
+        ? taggedAreas.find((a) => a.zone?.tag === areaTag)
+        : null;
+      const id = await placeCuratedProduct(
+        product,
+        spawnArea ? { spawnAt: spawnArea.labelAnchor } : undefined,
+      );
       if (!id) setActionError('No 3D model linked for this option yet.');
       else select(id);
     } catch (err) {
@@ -698,6 +719,32 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
             </button>
           ))}
         </div>
+
+        {taggedAreas.length > 0 ? (
+          <div className="dg-ticker-area-filters" role="group" aria-label="Filter by room area">
+            <button
+              type="button"
+              className={`dg-chip${!areaTag ? ' is-accent' : ''}`}
+              onClick={() => setAreaTag(null)}
+            >
+              All areas
+            </button>
+            {taggedAreas.map((area) => {
+              const tag = area.zone!.tag;
+              const label = area.zone!.name?.trim() || roomTagLabel(tag);
+              return (
+                <button
+                  key={area.faceKey}
+                  type="button"
+                  className={`dg-chip${areaTag === tag ? ' is-accent' : ''}`}
+                  onClick={() => setAreaTag(tag)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
 
         <div className="dg-ticker-body">
           {totalCount === 0 ? (

@@ -330,6 +330,23 @@ export function trackDesignItemAdded(params: {
   track(EVENTS.DESIGN_ITEM_ADDED, { room_id: currentRoomId, ...params });
 }
 
+export function trackRoomAreaTagged(params: { tag: string }): void {
+  track(EVENTS.ROOM_AREA_TAGGED, { room_id: currentRoomId, tag: params.tag });
+}
+
+export function trackRoomTagSuggestionPlaced(params: {
+  tag: string;
+  kind: string;
+  essential?: boolean;
+}): void {
+  track(EVENTS.ROOM_TAG_SUGGESTION_PLACED, {
+    room_id: currentRoomId,
+    tag: params.tag,
+    kind: params.kind,
+    ...(params.essential != null ? { essential: params.essential } : {}),
+  });
+}
+
 export function trackModelGenerationStarted(params: {
   job_id: string;
   source_type: 'photo' | 'text_prompt' | 'product_link';

@@ -32,6 +32,7 @@ export interface AdminUserBilling {
   effective_tier: AdminUserPlan;
   monthly_balance: number;
   purchased_balance: number;
+  purchased_debt: number;
   monthly_period_end: string | null;
   subscription: AdminUserBillingSubscription | null;
 }
@@ -188,6 +189,7 @@ function parseBilling(raw: unknown): AdminUserBilling | null {
     effective_tier: asPlan(row.effective_tier),
     monthly_balance: asNum(row.monthly_balance),
     purchased_balance: asNum(row.purchased_balance),
+    purchased_debt: asNum(row.purchased_debt),
     monthly_period_end: asIso(row.monthly_period_end),
     subscription: subRow
       ? {

@@ -3,9 +3,11 @@ import {
   getWallSegment,
   orderedVertices,
   planBounds,
+  resolveZones,
   type FloorPlan,
 } from './floorPlanGeometry';
 import { furniturePlanItemMarkup } from './floorPlanFurniture';
+import { roomTagDef, roomTagLabel } from './roomTags';
 import type { Item } from '../store';
 
 export const ROOM_THUMB_WIDTH = 1200;
@@ -88,6 +90,34 @@ function buildSvgMarkup(
         .join('')
     : '';
 
+  const areas = showGeometry ? resolveZones(geometry) : [];
+  const areaFillsXml = areas
+    .map((area) => {
+      const points = area.face.map((v) => `${v.x},${v.z}`).join(' ');
+      const fill = area.zone ? roomTagDef(area.zone.tag).color : 'rgba(251,247,240,0.72)';
+      return `<polygon points="${points}" fill="${fill}" />`;
+    })
+    .join('');
+
+  const fontSize = Math.max(vbW, vbH) * 0.045;
+  const areaLabelsXml = areas
+    .filter((a) => a.zone)
+    .map((area) => {
+      const [lx, lz] = area.labelAnchor;
+      const label = area.zone!.name?.trim() || roomTagLabel(area.zone!.tag);
+      const escaped = label
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+      return (
+        `<text x="${lx}" y="${lz}" text-anchor="middle" dominant-baseline="middle" ` +
+        `fill="#3A3228" font-family="Georgia, serif" font-size="${fontSize}" font-weight="600" ` +
+        `stroke="#FBF7F0" stroke-width="${fontSize * 0.22}" paint-order="stroke fill">${escaped}</text>`
+      );
+    })
+    .join('');
+
   const itemsXml = floorItems
     .map((item) => {
       const [w, , d] = item.size;
@@ -104,15 +134,16 @@ function buildSvgMarkup(
     })
     .join('');
 
-  const floorXml = floorPoints
-    ? `<polygon points="${floorPoints}" fill="rgba(251,247,240,0.72)" />`
-    : '';
+  const floorXml =
+    areaFillsXml ||
+    (floorPoints ? `<polygon points="${floorPoints}" fill="rgba(251,247,240,0.72)" />` : '');
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="${viewBox}" preserveAspectRatio="xMidYMid meet">` +
     floorXml +
     wallsXml +
     itemsXml +
+    areaLabelsXml +
     `</svg>`
   );
 }

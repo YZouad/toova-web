@@ -34,8 +34,11 @@ export function CreditMenuBody({ onDone }: CreditMenuBodyProps) {
     }
   }
 
+  const debt = billing?.purchased_debt ?? 0;
   const planLine = billing
-    ? `${billing.display_name} · ${billing.monthly_balance} monthly · ${billing.purchased_balance} purchased`
+    ? `${billing.display_name} · ${billing.monthly_balance} monthly · ${billing.purchased_balance} purchased${
+        debt > 0 ? ` · ${debt} debt` : ''
+      }`
     : 'Free';
 
   return (

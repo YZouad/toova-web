@@ -401,7 +401,11 @@ export function AdminUserViewer({
                   <>
                     <KeyValueRow
                       label="Credits"
-                      value={`${overview.billing.monthly_balance} monthly · ${overview.billing.purchased_balance} purchased`}
+                      value={`${overview.billing.monthly_balance} monthly · ${overview.billing.purchased_balance} purchased${
+                        overview.billing.purchased_debt > 0
+                          ? ` · ${overview.billing.purchased_debt} debt`
+                          : ''
+                      }`}
                     />
                     <KeyValueRow
                       label="Subscription"

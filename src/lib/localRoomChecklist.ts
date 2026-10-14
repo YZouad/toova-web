@@ -236,6 +236,7 @@ export function mergeLocalProductsIntoCategories(
     parentId: null,
     imagePath: null,
     imageUrl: cover,
+    roomTags: [],
     products: [],
   };
   const childCategories = localProducts.map((product) => {
@@ -249,6 +250,7 @@ export function mergeLocalProductsIntoCategories(
       parentId: LOCAL_CHECKLIST_CATEGORY_ID,
       imagePath: null,
       imageUrl: product.imageUrl,
+      roomTags: [],
       products: [normalized],
     } satisfies ChecklistCategoryWithProducts;
   });

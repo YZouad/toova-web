@@ -1845,6 +1845,16 @@ button.landing-nav-brand { cursor: pointer; }
 .room-preview-floor {
   fill: rgba(251, 247, 240, 0.72);
 }
+.room-preview-area-label {
+  fill: #3a3228;
+  stroke: #fbf7f0;
+  stroke-width: 3px;
+  paint-order: stroke fill;
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
 .room-preview-wall {
   stroke: #9A7B5A;
   stroke-width: 2.5;
@@ -5073,6 +5083,62 @@ button.landing-nav-brand { cursor: pointer; }
   stroke: #8a9a72;
   stroke-width: 1;
   pointer-events: none;
+}
+.fp-area-fill {
+  fill: rgba(200, 190, 170, 0.12);
+  stroke: rgba(200, 190, 170, 0.28);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+  transition: fill 120ms ease, stroke 120ms ease;
+}
+.fp-area.selected .fp-area-fill {
+  stroke: rgba(246, 222, 180, 0.85);
+  stroke-width: 1.75;
+  filter: drop-shadow(0 0 8px rgba(246, 222, 180, 0.25));
+}
+.fp-area-label {
+  fill: var(--fp-ink);
+  stroke: var(--fp-board-edge);
+  stroke-width: 3.5px;
+  paint-order: stroke fill;
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+  opacity: 0.92;
+}
+.fp-area-sqft {
+  font-family: var(--font-mono);
+  font-size: 8px;
+  font-weight: 500;
+  opacity: 0.8;
+}
+.fp-tag-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.fp-chip-tag {
+  min-width: 0;
+  flex: 1 1 calc(50% - 6px);
+  justify-content: flex-start;
+  gap: 6px;
+  font-size: 12px;
+}
+.fp-chip-tag-glyph {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.4em;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  opacity: 0.7;
+}
+.fp-area-name-input {
+  width: 100%;
+  margin-top: 4px;
 }
 
 @media (prefers-reduced-motion: reduce) {

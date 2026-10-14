@@ -4,6 +4,7 @@ import {
   loadLocalMoveInBudgetCents,
   loadLocalResolutions,
   loadLocalShoppingList,
+  parseCategoryRoomTags,
   productImagePublicUrl,
   saveLocalMoveInBudgetCents,
   saveLocalResolutions,
@@ -14,6 +15,11 @@ import {
   type ShoppingListEntry,
 } from './dormChecklist';
 import { isRoomLocalProductId } from './ownedChecklistItems';
+
+const CATEGORY_SELECT =
+  'id,slug,name,sort_order,published,parent_id,image_path,room_tags';
+const CATEGORY_SELECT_LEGACY =
+  'id,slug,name,sort_order,published,parent_id,image_path';
 
 function mapCategory(row: Record<string, unknown>): ChecklistCategory {
   const imagePath =
@@ -32,6 +38,7 @@ function mapCategory(row: Record<string, unknown>): ChecklistCategory {
         : null,
     imagePath,
     imageUrl: productImagePublicUrl(imagePath),
+    roomTags: parseCategoryRoomTags(row.room_tags),
   };
 }
 
@@ -163,21 +170,24 @@ async function fetchCuratedProductRows(publishedOnly: boolean) {
   return first;
 }
 
-export async function fetchPublishedShoppingCatalog(): Promise<ChecklistCategoryWithProducts[]> {
-  const [{ data: catRows, error: catErr }, prodResult] = await Promise.all([
-    supabase
-      .from('checklist_categories')
-      .select('id,slug,name,sort_order,published,parent_id,image_path')
-      .eq('published', true)
-      .order('sort_order', { ascending: true }),
-    fetchCuratedProductRows(true),
-  ]);
+async function fetchChecklistCategoryRows(publishedOnly: boolean) {
+  let query = supabase.from('checklist_categories').select(CATEGORY_SELECT);
+  if (publishedOnly) query = query.eq('published', true);
+  const first = await query.order('sort_order', { ascending: true });
+  if (!first.error) return first;
+  const msg = first.error.message.toLowerCase();
+  if (msg.includes('room_tags') || msg.includes('column')) {
+    let legacy = supabase.from('checklist_categories').select(CATEGORY_SELECT_LEGACY);
+    if (publishedOnly) legacy = legacy.eq('published', true);
+    return legacy.order('sort_order', { ascending: true });
+  }
+  return first;
+}
 
-
-  if (catErr) throw new Error(catErr.message);
-  if (prodResult.error) throw new Error(prodResult.error.message);
-  const prodRows = prodResult.data;
-
+function assembleCatalog(
+  catRows: unknown[] | null,
+  prodRows: unknown[] | null,
+): ChecklistCategoryWithProducts[] {
   const productsByCat = new Map<string, CuratedProduct[]>();
   for (const raw of prodRows ?? []) {
     const p = mapProduct(raw as Record<string, unknown>);
@@ -185,7 +195,6 @@ export async function fetchPublishedShoppingCatalog(): Promise<ChecklistCategory
     list.push(p);
     productsByCat.set(p.categoryId, list);
   }
-
   return (catRows ?? []).map((raw) => {
     const cat = mapCategory(raw as Record<string, unknown>);
     return {
@@ -195,36 +204,27 @@ export async function fetchPublishedShoppingCatalog(): Promise<ChecklistCategory
   });
 }
 
+export async function fetchPublishedShoppingCatalog(): Promise<ChecklistCategoryWithProducts[]> {
+  const [catResult, prodResult] = await Promise.all([
+    fetchChecklistCategoryRows(true),
+    fetchCuratedProductRows(true),
+  ]);
+
+  if (catResult.error) throw new Error(catResult.error.message);
+  if (prodResult.error) throw new Error(prodResult.error.message);
+  return assembleCatalog(catResult.data, prodResult.data);
+}
+
 /** Admin: all categories/products including unpublished. */
 export async function fetchAdminShoppingCatalog(): Promise<ChecklistCategoryWithProducts[]> {
-  const [{ data: catRows, error: catErr }, prodResult] = await Promise.all([
-    supabase
-      .from('checklist_categories')
-      .select('id,slug,name,sort_order,published,parent_id,image_path')
-      .order('sort_order', { ascending: true }),
+  const [catResult, prodResult] = await Promise.all([
+    fetchChecklistCategoryRows(false),
     fetchCuratedProductRows(false),
   ]);
 
-
-  if (catErr) throw new Error(catErr.message);
+  if (catResult.error) throw new Error(catResult.error.message);
   if (prodResult.error) throw new Error(prodResult.error.message);
-  const prodRows = prodResult.data;
-
-  const productsByCat = new Map<string, CuratedProduct[]>();
-  for (const raw of prodRows ?? []) {
-    const p = mapProduct(raw as Record<string, unknown>);
-    const list = productsByCat.get(p.categoryId) ?? [];
-    list.push(p);
-    productsByCat.set(p.categoryId, list);
-  }
-
-  return (catRows ?? []).map((raw) => {
-    const cat = mapCategory(raw as Record<string, unknown>);
-    return {
-      ...cat,
-      products: productsByCat.get(cat.id) ?? [],
-    };
-  });
+  return assembleCatalog(catResult.data, prodResult.data);
 }
 
 export async function fetchUserChecklistProgress(
