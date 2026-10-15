@@ -7,6 +7,11 @@ import {
 } from '../lib/roomScanFrames';
 import { analyzeRoomVideoFrames } from '../lib/agenticRoomScanApi';
 import { appendSinglePhotoScanWarning, ROOM_SCAN_ESTIMATE_WARNING } from '../lib/roomScanManifest';
+import {
+  applyScanAppearanceToList,
+  mergeScanAppearance,
+  sampleAppearanceFromScanFrame,
+} from '../lib/roomScanAppearance';
 import type { AgenticRoomScanSession } from '../lib/roomScanSession';
 import { AgenticRoomFlow, type AgenticRoomConfirmPayload } from './AgenticRoomFlow';
 import { Banner, Button, Spinner } from './kit';
@@ -32,7 +37,22 @@ async function finishAnalyze(
     list = appendSinglePhotoScanWarning(list);
   }
   const photos = await attachScanPhotosToSidecar(frames, analyzed.sidecar);
-  return { list, sidecar: analyzed.sidecar, photos };
+  const primaryFrame = frames[0]!;
+  let sampled;
+  try {
+    sampled = await sampleAppearanceFromScanFrame(primaryFrame);
+  } catch {
+    sampled = undefined;
+  }
+  const merged = mergeScanAppearance(list.scanAppearance, sampled);
+  list = applyScanAppearanceToList(list, merged);
+  return {
+    list,
+    sidecar: analyzed.sidecar,
+    photos,
+    primaryFrame,
+    frames,
+  };
 }
 
 export function AgenticRoomScanFlow({ disabled, onConfirm, onBack }: AgenticRoomScanFlowProps) {

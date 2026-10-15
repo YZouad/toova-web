@@ -14,6 +14,26 @@ import {
 } from './agenticRoomPack';
 
 describe('roomScanManifest', () => {
+  it('parses appearance block onto list scanAppearance and colorScheme', () => {
+    const manifest = parseRoomScanManifest({
+      widthIn: 120,
+      depthIn: 144,
+      appearance: {
+        wallColor: '#E5E0D8',
+        floorPreset: 'lightOak',
+        colorScheme: ['#E5E0D8', '#C9A962', '#1B4332'],
+        rugColor: '#1B4332',
+        floorPatternApproximated: true,
+      },
+      items: [{ scanId: 'r1', query: 'dark green area rug', qty: 1 }],
+      warnings: [],
+    });
+    expect(manifest?.appearance?.floorPreset).toBe('lightOak');
+    const { list } = manifestToFurnitureList(manifest!);
+    expect(list.scanAppearance?.rugColor).toBe('#1b4332');
+    expect(list.colorScheme?.[2]).toBe('#1b4332');
+  });
+
   it('parses valid vision JSON and maps to furniture list', () => {
     const manifest = parseRoomScanManifest({
       widthIn: 120,

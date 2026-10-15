@@ -1,5 +1,6 @@
 import type { AgenticItemAsk, AgenticVibeId } from './agenticRoomPrompt';
 import type { WindowCurtains } from './floorPlanGeometry';
+import type { RoomScanAppearance } from './roomScanAppearance';
 
 export interface AgenticFurnitureListResult {
   items: AgenticItemAsk[];
@@ -21,4 +22,6 @@ export interface AgenticFurnitureListResult {
   heightIn?: number;
   warnings: string[];
   source: 'cursor' | 'rules-fallback' | 'manual' | 'room-scan';
+  /** Colors and floor preset inferred from scan (vision + optional client sampling). */
+  scanAppearance?: RoomScanAppearance;
 }

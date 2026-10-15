@@ -4639,6 +4639,92 @@ button.landing-nav-brand { cursor: pointer; }
   margin-bottom: 0.75rem;
 }
 
+.agentic-room-scan__photo-match {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.08));
+  border-radius: 10px;
+  background: var(--surface-raised, rgba(0, 0, 0, 0.02));
+}
+.agentic-room-scan__photo-match-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.agentic-room-scan__photo-match-title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.agentic-room-scan__photo-match-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.agentic-room-scan__photo-match-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #666);
+}
+.agentic-room-scan__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+.agentic-room-scan__swatch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.85rem;
+}
+.agentic-room-scan__swatch-chip {
+  width: 1.25rem;
+  height: 1.25rem;
+  border-radius: 4px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  flex-shrink: 0;
+}
+.agentic-room-scan__floor-presets-label {
+  margin: 0 0 0.35rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+}
+.agentic-room-scan__floor-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.agentic-room-scan__floor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  font-size: 0.78rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-subtle, rgba(0, 0, 0, 0.12));
+  background: var(--surface, #fff);
+  cursor: pointer;
+}
+.agentic-room-scan__floor-chip--active {
+  border-color: var(--accent, #2563eb);
+  box-shadow: 0 0 0 1px var(--accent, #2563eb);
+}
+.agentic-room-scan__floor-chip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.agentic-room-scan__floor-chip-swatch {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
 .agentic-room-flow {
   display: flex;
   flex-direction: column;

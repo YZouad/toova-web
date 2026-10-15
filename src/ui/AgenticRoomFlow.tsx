@@ -34,6 +34,23 @@ import {
   type AgenticReviewRow,
 } from '../lib/agenticRoomResolveFromList';
 import type { AgenticRoomScanSession } from '../lib/roomScanSession';
+import { analyzeRoomVideoFrames } from '../lib/agenticRoomScanApi';
+import {
+  applyScanAppearanceToList,
+  applyScanTintsToItems,
+  effectiveScanColorScheme,
+  mergeScanAppearance,
+  mergeScanAppearanceIntoEnvironment,
+  paletteFromScan,
+  sampleAppearanceFromScanFrame,
+  type RoomScanAppearance,
+} from '../lib/roomScanAppearance';
+import {
+  FLOOR_PRESET_OPTIONS,
+  MATERIAL_PRESETS,
+  materialLabel,
+  type MaterialPresetId,
+} from '../lib/roomMaterials';
 import { shoppingEntriesFromResolved } from '../lib/agenticRoomApplyChecklist';
 import {
   applyWindowCurtainsToPlan,
@@ -605,6 +622,12 @@ export function AgenticRoomFlow({
   const [enhancing, setEnhancing] = useState(false);
   const [scanSidecar, setScanSidecar] = useState(scanSession?.sidecar ?? null);
   const [scanPhotos, setScanPhotos] = useState(scanSession?.photos ?? null);
+  const [scanPrimaryFrame, setScanPrimaryFrame] = useState<string | null>(
+    scanSession?.primaryFrame ?? null,
+  );
+  const [scanFrames, setScanFrames] = useState<string[] | undefined>(scanSession?.frames);
+  const [resamplingColors, setResamplingColors] = useState(false);
+  const [reanalyzingScan, setReanalyzingScan] = useState(false);
 
   useEffect(() => {
     if (!scanSession) return;
@@ -612,6 +635,8 @@ export function AgenticRoomFlow({
     setItems(scanSession.list.items);
     setScanSidecar(scanSession.sidecar);
     setScanPhotos(scanSession.photos);
+    setScanPrimaryFrame(scanSession.primaryFrame);
+    setScanFrames(scanSession.frames);
     setPrompt(scanSession.list.roomType ?? 'Room scan');
     setSaveTitle(defaultChecklistTitle(scanSession.list.roomType ?? 'Room scan', scanSession.list));
     setShowAiPrompt(false);
@@ -768,6 +793,64 @@ export function AgenticRoomFlow({
   const patchListResult = useCallback((patch: Partial<AgenticFurnitureListResult>) => {
     setResult((prev) => (prev ? { ...prev, ...patch } : prev));
   }, []);
+
+  const patchScanAppearance = useCallback((patch: Partial<RoomScanAppearance>) => {
+    setResult((prev) => {
+      if (!prev) return prev;
+      const scanAppearance = { ...(prev.scanAppearance ?? {}), ...patch };
+      return {
+        ...prev,
+        scanAppearance,
+        ...(patch.colorScheme?.length ? { colorScheme: patch.colorScheme } : {}),
+      };
+    });
+  }, []);
+
+  const sampleColorsFromPhoto = useCallback(async () => {
+    const frame = scanPrimaryFrame;
+    if (!frame || !result) return;
+    setResamplingColors(true);
+    setParseError(null);
+    try {
+      const sampled = await sampleAppearanceFromScanFrame(frame);
+      const merged = mergeScanAppearance(result.scanAppearance, sampled);
+      const list = applyScanAppearanceToList(result, merged);
+      setResult(list);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Could not sample colors from photo');
+    } finally {
+      setResamplingColors(false);
+    }
+  }, [scanPrimaryFrame, result]);
+
+  const reAnalyzeScan = useCallback(async () => {
+    if (!scanFrames?.length || !result || reanalyzingScan) return;
+    setReanalyzingScan(true);
+    setParseError(null);
+    try {
+      const analyzed = await analyzeRoomVideoFrames(scanFrames);
+      if (!analyzed.ok) {
+        setParseError(analyzed.error ?? analyzed.warnings[0] ?? 'Re-analyze failed');
+        return;
+      }
+      const frame = scanPrimaryFrame ?? scanFrames[0]!;
+      let sampled: RoomScanAppearance | undefined;
+      try {
+        sampled = await sampleAppearanceFromScanFrame(frame);
+      } catch {
+        sampled = undefined;
+      }
+      const merged = mergeScanAppearance(analyzed.list.scanAppearance, sampled);
+      const list = applyScanAppearanceToList(analyzed.list, merged);
+      setResult(list);
+      setItems(list.items);
+      setScanSidecar(analyzed.sidecar);
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : 'Re-analyze failed');
+    } finally {
+      setReanalyzingScan(false);
+    }
+  }, [scanFrames, scanPrimaryFrame, result, reanalyzingScan]);
 
   const runEnhanceWithAi = useCallback(async () => {
     const hint = enhancePrompt.trim() || prompt.trim();
@@ -1018,7 +1101,11 @@ export function AgenticRoomFlow({
     try {
       let plan = rectanglePlan(request.widthIn, request.depthIn, request.heightIn);
       let windowCurtains = result ? resolveAgentWindowCurtains(result) : undefined;
-      const schemeColors = result?.colorScheme;
+      const isScan = result?.source === 'room-scan';
+      const scanAppearance = isScan ? result.scanAppearance : undefined;
+      const schemeColors = isScan
+        ? effectiveScanColorScheme(result, scanAppearance)
+        : result?.colorScheme;
       if (windowCurtains?.enabled && schemeColors?.length) {
         const curtainColor = curtainColorFromScheme(schemeColors);
         if (curtainColor) {
@@ -1029,15 +1116,18 @@ export function AgenticRoomFlow({
       const theme = result?.theme ?? null;
       const vibeAppearance = appearanceForAgenticVibe(request.vibe);
       const themeAppearance = appearanceForAgenticTheme(theme, prompt);
+      const baseAppearance = mergeAppearanceWithColorScheme(
+        {
+          ...vibeAppearance,
+          ...(themeAppearance ?? {}),
+        },
+        schemeColors,
+      );
       const environment: RoomEnvironment = {
         ...DEFAULT_ENVIRONMENT,
-        appearance: mergeAppearanceWithColorScheme(
-          {
-            ...vibeAppearance,
-            ...(themeAppearance ?? {}),
-          },
-          schemeColors,
-        ),
+        appearance: isScan
+          ? mergeScanAppearanceIntoEnvironment(baseAppearance, scanAppearance, schemeColors)
+          : baseAppearance,
       };
       const activeResolved = resolved.filter((_, index) => itemResolutions.get(index) !== 'skip');
       const shoppingList = shoppingEntriesFromResolved(
@@ -1070,7 +1160,13 @@ export function AgenticRoomFlow({
       const profile = resolveAgenticThemeProfile(theme, prompt);
       let palette = profile?.furnishings ?? vibePalette;
       if (schemeColors?.length) {
-        palette = furnishingsFromColorScheme(schemeColors, palette);
+        palette = isScan
+          ? paletteFromScan(palette, schemeColors)
+          : furnishingsFromColorScheme(schemeColors, palette);
+      }
+      if (isScan) {
+        vibeItems = applyScanTintsToItems(vibeItems, scanAppearance, palette);
+      } else if (schemeColors?.length) {
         vibeItems = applyAgenticPaletteToItems(vibeItems, palette);
       }
       await resolveStarterItemAssets(vibeItems);
@@ -1380,6 +1476,117 @@ export function AgenticRoomFlow({
             </div>
           ) : null}
 
+          {isRoomScanList ? (
+            <div className="agentic-room-scan__photo-match">
+              <div className="agentic-room-scan__photo-match-header">
+                <p className="agentic-room-scan__photo-match-title">Photo match</p>
+                <div className="agentic-room-scan__photo-match-actions">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={
+                      disabled || generating || submitting || resamplingColors || !scanPrimaryFrame
+                    }
+                    onClick={() => void sampleColorsFromPhoto()}
+                  >
+                    {resamplingColors ? (
+                      <>
+                        <Spinner /> Sampling…
+                      </>
+                    ) : (
+                      'Sample colors from photo'
+                    )}
+                  </Button>
+                  {scanFrames && scanFrames.length > 1 ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={disabled || generating || submitting || reanalyzingScan}
+                      onClick={() => void reAnalyzeScan()}
+                    >
+                      {reanalyzingScan ? (
+                        <>
+                          <Spinner /> Re-analyzing…
+                        </>
+                      ) : (
+                        'Re-analyze layout'
+                      )}
+                    </Button>
+                  ) : null}
+                </div>
+              </div>
+              <div className="agentic-room-scan__swatches">
+                {result.scanAppearance?.wallColor ||
+                result.colorScheme?.[0] ||
+                result.scanAppearance?.floorPreset ||
+                result.scanAppearance?.rugColor ? (
+                  <>
+                    {(result.scanAppearance?.wallColor ?? result.colorScheme?.[0]) ? (
+                      <span className="agentic-room-scan__swatch">
+                        <span
+                          className="agentic-room-scan__swatch-chip"
+                          style={{
+                            background:
+                              result.scanAppearance?.wallColor ?? result.colorScheme?.[0],
+                          }}
+                        />
+                        Wall
+                      </span>
+                    ) : null}
+                    {result.scanAppearance?.floorPreset ? (
+                      <span className="agentic-room-scan__swatch">
+                        <span
+                          className="agentic-room-scan__swatch-chip"
+                          style={{
+                            background:
+                              MATERIAL_PRESETS[result.scanAppearance.floorPreset].color,
+                          }}
+                        />
+                        Floor · {materialLabel(result.scanAppearance.floorPreset)}
+                      </span>
+                    ) : null}
+                    {result.scanAppearance?.rugColor ? (
+                      <span className="agentic-room-scan__swatch">
+                        <span
+                          className="agentic-room-scan__swatch-chip"
+                          style={{ background: result.scanAppearance.rugColor }}
+                        />
+                        Rug
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <p className="agentic-room-scan__photo-match-hint">
+                    Sample colors from your photo or edit the scheme below before creating the room.
+                  </p>
+                )}
+              </div>
+              <div className="agentic-room-scan__floor-presets">
+                <p className="agentic-room-scan__floor-presets-label">Floor</p>
+                <div className="agentic-room-scan__floor-chips">
+                  {FLOOR_PRESET_OPTIONS.map((id) => {
+                    const active = result.scanAppearance?.floorPreset === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        className={`agentic-room-scan__floor-chip${active ? ' agentic-room-scan__floor-chip--active' : ''}`}
+                        disabled={disabled || generating || submitting}
+                        onClick={() => patchScanAppearance({ floorPreset: id as MaterialPresetId })}
+                      >
+                        <span
+                          className="agentic-room-scan__floor-chip-swatch"
+                          style={{ background: MATERIAL_PRESETS[id].color }}
+                        />
+                        {materialLabel(id)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
           <div className="agentic-room-flow__summary">
             <Field label="Room width (feet)">
               <Input
@@ -1437,7 +1644,13 @@ export function AgenticRoomFlow({
               <AgenticColorSchemeEditor
                 value={result.colorScheme}
                 disabled={disabled || generating || submitting}
-                onChange={(colorScheme) => patchListResult({ colorScheme })}
+                onChange={(colorScheme) => {
+                  if (isRoomScanList) {
+                    patchScanAppearance({ colorScheme });
+                  } else {
+                    patchListResult({ colorScheme });
+                  }
+                }}
               />
             </div>
             <Field label="Vibe">

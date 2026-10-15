@@ -2,6 +2,10 @@ import type { AgenticFurnitureListResult } from './agenticRoomListTypes';
 import type { AgenticItemAsk } from './agenticRoomPrompt';
 import { parseVibeToken } from './agenticRoomVibe';
 import { ROOM } from '../units';
+import {
+  parseManifestAppearance,
+  type RoomScanAppearance,
+} from './roomScanAppearance';
 
 /** Origin: front-left floor corner; +X = width, +Z = depth (matches `rectanglePlan`). */
 export interface RoomScanPositionIn {
@@ -41,6 +45,7 @@ export interface RoomScanManifest {
   confidence?: number;
   items: RoomScanManifestItem[];
   warnings: string[];
+  appearance?: RoomScanAppearance;
 }
 
 export interface RoomScanItemSidecar {
@@ -160,6 +165,13 @@ export function parseRoomScanManifest(raw: unknown): RoomScanManifest | null {
     warnings.push('Room dimensions were clamped to a plausible range.');
   }
 
+  const appearance = parseManifestAppearance(o.appearance);
+  if (appearance?.floorPatternApproximated) {
+    warnings.push(
+      'Floor pattern approximated; use custom floor photo in the designer for a closer match.',
+    );
+  }
+
   return {
     widthIn: W,
     depthIn: D,
@@ -170,6 +182,7 @@ export function parseRoomScanManifest(raw: unknown): RoomScanManifest | null {
     confidence: num(o.confidence),
     items,
     warnings,
+    appearance,
   };
 }
 
@@ -209,6 +222,8 @@ export function manifestToFurnitureList(
     roomType: manifest.roomType,
     theme: manifest.theme,
     vibe,
+    colorScheme: manifest.appearance?.colorScheme,
+    scanAppearance: manifest.appearance,
     warnings: [...manifest.warnings],
     source: 'room-scan',
   };
