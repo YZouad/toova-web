@@ -9,6 +9,7 @@ import http from 'node:http';
 import { readFileSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { runCursorRoomScanAgent } from './room-scan-cursor.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -325,6 +326,26 @@ async function runCursorAgent(apiKey, userPrompt) {
   throw new Error('Cursor agent timed out after 90s');
 }
 
+async function handleAnalyze(cursorKey, frames) {
+  if (!Array.isArray(frames) || frames.length === 0) {
+    return { ok: false, error: 'At least one frame is required.' };
+  }
+  if (frames.length > 12) {
+    return { ok: false, error: 'Too many frames (max 12).' };
+  }
+  const totalChars = frames.reduce((n, f) => n + String(f).length, 0);
+  if (totalChars > 18_000_000) {
+    return { ok: false, error: 'Frames payload is too large.' };
+  }
+  try {
+    const manifest = await runCursorRoomScanAgent(cursorFetch, cursorKey, frames);
+    return { ok: true, manifest };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Vision analyze failed';
+    return { ok: false, error: message };
+  }
+}
+
 async function handleParse(apiKey, prompt) {
   const trimmed = prompt.trim();
   if (!trimmed) {
@@ -348,9 +369,15 @@ async function handleParse(apiKey, prompt) {
 const env = { ...process.env, ...loadEnvLocal() };
 const apiKey = env.CURSOR_API_KEY?.trim();
 
+function requestPathname(req) {
+  const raw = req.url ?? '/';
+  return raw.split('?')[0] || '/';
+}
+
 const server = http.createServer(async (req, res) => {
   const origin = req.headers.origin ?? null;
   const headers = corsHeaders(origin);
+  const pathname = requestPathname(req);
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204, headers);
@@ -358,13 +385,38 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === 'GET' && req.url === '/health') {
+  if (req.method === 'GET' && pathname === '/health') {
     res.writeHead(200, headers);
     res.end(JSON.stringify({ ok: true, hasKey: Boolean(apiKey) }));
     return;
   }
 
-  if (req.method !== 'POST' || req.url !== '/parse') {
+  if (req.method === 'POST' && pathname === '/analyze') {
+    if (!apiKey) {
+      res.writeHead(503, headers);
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: 'CURSOR_API_KEY missing. Add it to .env.local and restart the proxy.',
+        }),
+      );
+      return;
+    }
+    try {
+      const body = await readBody(req);
+      const parsed = JSON.parse(body);
+      const response = await handleAnalyze(apiKey, parsed.frames ?? []);
+      res.writeHead(response.ok ? 200 : 422, headers);
+      res.end(JSON.stringify(response));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      res.writeHead(502, headers);
+      res.end(JSON.stringify({ ok: false, error: message }));
+    }
+    return;
+  }
+
+  if (req.method !== 'POST' || pathname !== '/parse') {
     res.writeHead(404, headers);
     res.end(JSON.stringify({ ok: false, error: 'Not found' }));
     return;
@@ -397,6 +449,6 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, HOST, () => {
   console.log(`[cursor-agentic] listening on http://${HOST}:${PORT}`);
   if (!apiKey) {
-    console.warn('[cursor-agentic] CURSOR_API_KEY not set — /parse will return 503');
+    console.warn('[cursor-agentic] CURSOR_API_KEY not set — /parse and /analyze will return 503');
   }
 });

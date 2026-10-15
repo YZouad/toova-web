@@ -32,16 +32,27 @@ function manifestEntryId(query: string): string {
 }
 
 export function manifestFromResolved(rows: AgenticReviewRow[]): AgenticShoppingManifestEntry[] {
-  return rows.map((row) => ({
-    id: manifestEntryId(row.query),
-    query: row.query,
-    qty: row.qty,
-    estimatedCents: row.product?.priceCents ?? undefined,
-    placedInRoom: row.placeInRoom,
-    bankPosterLabel: row.bankPoster?.label ?? undefined,
-    catalogProductId: row.product?.id ?? null,
-    dismissed: false,
-  }));
+  const usedIds = new Set<string>();
+  return rows.map((row, index) => {
+    const base = row.scan?.scanId?.trim() || manifestEntryId(row.query);
+    let id = base;
+    let n = 0;
+    while (usedIds.has(id)) {
+      n += 1;
+      id = `${base}-${n}`;
+    }
+    usedIds.add(id);
+    return {
+      id,
+      query: row.query,
+      qty: row.qty,
+      estimatedCents: row.product?.priceCents ?? undefined,
+      placedInRoom: row.placeInRoom,
+      bankPosterLabel: row.bankPoster?.label ?? undefined,
+      catalogProductId: row.product?.id ?? null,
+      dismissed: false,
+    };
+  });
 }
 
 function scopedKey(roomId: string): string {

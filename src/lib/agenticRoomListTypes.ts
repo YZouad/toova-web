@@ -17,6 +17,8 @@ export interface AgenticFurnitureListResult {
   windowCurtains?: WindowCurtains | null;
   /** User- or agent-chosen palette (#RRGGBB), applied to walls and furniture. */
   colorScheme?: string[];
+  /** Wall height in inches when known (e.g. room scan). */
+  heightIn?: number;
   warnings: string[];
-  source: 'cursor' | 'rules-fallback' | 'manual';
+  source: 'cursor' | 'rules-fallback' | 'manual' | 'room-scan';
 }

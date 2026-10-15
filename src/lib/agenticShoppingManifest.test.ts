@@ -23,6 +23,14 @@ function mockRow(partial: Partial<AgenticReviewRow> & { query: string }): Agenti
 }
 
 describe('agenticShoppingManifest', () => {
+  it('assigns unique manifest ids when queries repeat', () => {
+    const rows = [mockRow({ query: 'desk lamp' }), mockRow({ query: 'desk lamp' })];
+    const manifest = manifestFromResolved(rows);
+    expect(manifest).toHaveLength(2);
+    expect(manifest[0]?.id).toBe('desk-lamp');
+    expect(manifest[1]?.id).toBe('desk-lamp-1');
+  });
+
   it('preserves all resolved rows in manifest', () => {
     const rows = [
       mockRow({ query: 'Minecraft bedding set' }),

@@ -14,6 +14,15 @@ import {
   type ResolvedAgenticItem,
 } from './agenticRoomResolve';
 import { inches, ROOM } from '../units';
+import type { RoomScanItemSidecar } from './roomScanManifest';
+
+export interface AgenticReviewScanMeta {
+  scanId: string;
+  scanSizeIn?: [number, number, number];
+  scanPose?: { x: number; z: number; rotationY: number };
+  scanLocationLabel?: string;
+  scanPhotoDataUrl?: string;
+}
 
 export interface ResolvedAgenticItemWithOffers extends ResolvedAgenticItem {
   searchOffers: AffiliateOffer[];
@@ -23,6 +32,7 @@ export interface AgenticReviewRow extends ResolvedAgenticItemWithOffers {
   placeInRoom: boolean;
   communityModel: AgenticCommunityMatch | null;
   bankPoster: AgenticPosterMatch | null;
+  scan?: AgenticReviewScanMeta;
 }
 
 export function toAgenticReviewRows(
@@ -61,11 +71,40 @@ export function listResultToRoomRequest(list: AgenticFurnitureListResult): Agent
   return {
     widthIn: list.widthIn ?? inches(10),
     depthIn: list.depthIn ?? inches(12),
-    heightIn: ROOM.height,
+    heightIn: list.heightIn ?? ROOM.height,
     items: list.items,
     budgetCents: list.budgetCents,
     vibe: list.vibe,
   };
+}
+
+export function attachScanSidecarToReviewRows(
+  rows: AgenticReviewRow[],
+  listItems: AgenticFurnitureListResult['items'],
+  sidecar: Record<string, RoomScanItemSidecar>,
+  photos?: Record<string, string>,
+): AgenticReviewRow[] {
+  return rows.map((row, index) => {
+    const scanId = listItems[index]?.scanId;
+    if (!scanId) return row;
+    const meta = sidecar[scanId];
+    if (!meta) return row;
+    const rotationY = meta.rotationY ?? 0;
+    const scan: AgenticReviewScanMeta = {
+      scanId,
+      scanSizeIn: meta.sizeIn,
+      scanLocationLabel: meta.locationLabel,
+      scanPhotoDataUrl: photos?.[scanId],
+    };
+    if (meta.positionIn) {
+      scan.scanPose = {
+        x: meta.positionIn.x,
+        z: meta.positionIn.z,
+        rotationY,
+      };
+    }
+    return { ...row, scan };
+  });
 }
 
 export function resolveAgenticList(

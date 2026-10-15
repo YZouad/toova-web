@@ -8,6 +8,8 @@ export interface AgenticItemAsk {
   /** Raw phrase from the prompt (“nightstand”, “desk lamp”). */
   query: string;
   qty: number;
+  /** Stable id from room-scan vision output (ties list rows to poses / photos). */
+  scanId?: string;
   /** Rough USD-cent estimate for this line (qty included). From Cursor shopping list. */
   estimatedCents?: number;
   /** Procedural built-in structure when placing Toova placeholders (not for catalog GLBs). */

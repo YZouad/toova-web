@@ -29,6 +29,7 @@ import { RoomGallery } from './RoomGallery';
 import { RoomPreview } from './RoomPreview';
 import { consumeAgenticChecklistResume } from '../lib/agenticChecklistSession';
 import { AgenticRoomFlow, type AgenticRoomConfirmPayload } from './AgenticRoomFlow';
+import { AgenticRoomScanFlow } from './AgenticRoomScanFlow';
 
 export type RoomPresetPickerSelection =
   | { kind: 'starter'; template: RoomStarterTemplate }
@@ -47,7 +48,7 @@ export type RoomPresetPickerSelection =
       packSkipped: string[];
     };
 
-type PickerMode = 'presets' | 'describe';
+type PickerMode = 'presets' | 'describe' | 'scan';
 
 interface RoomPresetPickerProps {
   open?: boolean;
@@ -296,12 +297,21 @@ export function RoomPresetPicker({
             tabs={[
               { id: 'presets', label: 'Pick a template' },
               { id: 'describe', label: 'Describe your room' },
+              { id: 'scan', label: 'Scan a room' },
             ]}
           />
         </div>
 
         {mode === 'describe' ? (
           <AgenticRoomFlow
+            disabled={disabled}
+            onBack={() => setMode('presets')}
+            onConfirm={handleAgenticConfirm}
+          />
+        ) : null}
+
+        {mode === 'scan' ? (
+          <AgenticRoomScanFlow
             disabled={disabled}
             onBack={() => setMode('presets')}
             onConfirm={handleAgenticConfirm}

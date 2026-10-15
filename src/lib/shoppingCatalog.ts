@@ -444,9 +444,14 @@ export async function upsertAgenticShoppingManifestEntries(
   entries: AgenticShoppingManifestEntry[],
 ): Promise<void> {
   if (entries.length === 0) return;
+  const byId = new Map<string, AgenticShoppingManifestEntry>();
+  for (const entry of entries) {
+    byId.set(entry.id, entry);
+  }
+  const deduped = [...byId.values()];
   const now = new Date().toISOString();
   const { error } = await supabase.from('user_agentic_shopping_items').upsert(
-    entries.map((entry) => ({
+    deduped.map((entry) => ({
       user_id: userId,
       room_id: roomId,
       id: entry.id,

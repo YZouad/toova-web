@@ -29,9 +29,11 @@ import {
   formatAgenticPrice,
 } from '../lib/agenticRoomResolve';
 import {
+  attachScanSidecarToReviewRows,
   resolveAgenticList,
   type AgenticReviewRow,
 } from '../lib/agenticRoomResolveFromList';
+import type { AgenticRoomScanSession } from '../lib/roomScanSession';
 import { shoppingEntriesFromResolved } from '../lib/agenticRoomApplyChecklist';
 import {
   applyWindowCurtainsToPlan,
@@ -99,6 +101,8 @@ interface AgenticRoomFlowProps {
   disabled?: boolean;
   onConfirm: (payload: AgenticRoomConfirmPayload) => void | Promise<void>;
   onBack: () => void;
+  flowMode?: 'describe' | 'scan';
+  scanSession?: AgenticRoomScanSession | null;
 }
 
 const VIBE_OPTIONS: { id: AgenticVibeId; label: string }[] = [
@@ -427,21 +431,31 @@ function ProductRow({
 }) {
   const product = item.product;
   const price = product ? formatAgenticPrice(product.priceCents) : '—';
+  const thumbUrl = item.scan?.scanPhotoDataUrl ?? product?.imageUrl;
   const showCatalogMatch =
     Boolean(product) &&
     product!.name.trim().toLowerCase() !== item.query.trim().toLowerCase();
   const resolved = resolution === 'have' || resolution === 'skip';
+  const scanSize = item.scan?.scanSizeIn;
 
   return (
     <div className={`agentic-room-item${resolved ? ' is-resolved' : ''}`}>
       <div className="agentic-room-item__main">
-        {product?.imageUrl ? (
-          <img src={product.imageUrl} alt="" className="agentic-room-item__img" />
+        {thumbUrl ? (
+          <img src={thumbUrl} alt="" className="agentic-room-item__img" />
         ) : (
           <div className="agentic-room-item__img agentic-room-item__img--empty" aria-hidden />
         )}
         <div className="agentic-room-item__copy">
           <div className="agentic-room-item__name">{item.query}</div>
+          {item.scan?.scanLocationLabel ? (
+            <div className="agentic-room-item__query">{item.scan.scanLocationLabel}</div>
+          ) : null}
+          {scanSize ? (
+            <div className="agentic-room-item__meta">
+              Est. size {Math.round(scanSize[0])}&quot; × {Math.round(scanSize[2])}&quot; footprint
+            </div>
+          ) : null}
           {showCatalogMatch ? (
             <div className="agentic-room-item__query">Catalog match: {product!.name}</div>
           ) : null}
@@ -552,7 +566,14 @@ function ProductRow({
   );
 }
 
-export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlowProps) {
+export function AgenticRoomFlow({
+  disabled,
+  onConfirm,
+  onBack,
+  flowMode = 'describe',
+  scanSession = null,
+}: AgenticRoomFlowProps) {
+  const isScanFlow = flowMode === 'scan';
   const [prompt, setPrompt] = useState('');
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -582,6 +603,20 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   const [showAiPrompt, setShowAiPrompt] = useState(false);
   const [enhancePrompt, setEnhancePrompt] = useState('');
   const [enhancing, setEnhancing] = useState(false);
+  const [scanSidecar, setScanSidecar] = useState(scanSession?.sidecar ?? null);
+  const [scanPhotos, setScanPhotos] = useState(scanSession?.photos ?? null);
+
+  useEffect(() => {
+    if (!scanSession) return;
+    setResult(scanSession.list);
+    setItems(scanSession.list.items);
+    setScanSidecar(scanSession.sidecar);
+    setScanPhotos(scanSession.photos);
+    setPrompt(scanSession.list.roomType ?? 'Room scan');
+    setSaveTitle(defaultChecklistTitle(scanSession.list.roomType ?? 'Room scan', scanSession.list));
+    setShowAiPrompt(false);
+    setParseError(null);
+  }, [scanSession]);
 
   const themeSuggestions = useMemo(() => rotatedThemeSuggestions(8), []);
   const visibleSuggestions = showMoreSuggestions
@@ -794,7 +829,15 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     if (!result || catalogLoading || shoppableItems.length === 0) return;
     const listInput: AgenticFurnitureListResult = { ...result, items: shoppableItems };
     const matchResult = resolveAgenticList(listInput, products, prompt);
-    const withPicks = applySavedResolvedPicks(matchResult.items, savedPicks, products);
+    let withPicks = applySavedResolvedPicks(matchResult.items, savedPicks, products);
+    if (result.source === 'room-scan' && scanSidecar) {
+      withPicks = attachScanSidecarToReviewRows(
+        withPicks,
+        shoppableItems,
+        scanSidecar,
+        scanPhotos ?? undefined,
+      );
+    }
     const totalCents = withPicks.reduce((sum, it) => {
       if (!it.product?.priceCents) return sum;
       return sum + it.product.priceCents * it.qty;
@@ -807,7 +850,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
     setResolved(withPicks);
     setOverBudget(overBudget);
     setTotalCents(totalCents);
-  }, [result, catalogLoading, products, shoppableItems, itemsKey, savedPicks, prompt]);
+  }, [result, catalogLoading, products, shoppableItems, itemsKey, savedPicks, prompt, scanSidecar, scanPhotos]);
 
   const communityQueryKey = useMemo(() => {
     if (!result || items.length === 0) return '';
@@ -1014,7 +1057,9 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
         const resolution = itemResolutions.get(index);
         return row.placeInRoom && resolution !== 'skip' && resolution !== 'have';
       });
-      const pieces = await buildAgenticPackPieces(packRows, plan);
+      const pieces = await buildAgenticPackPieces(packRows, plan, {
+        preserveAllBeds: result?.source === 'room-scan',
+      });
       const packed = packAgenticRoomItems(plan, pieces, packRows);
       let vibeItems = applyAgenticThemeToItems(
         applyAgenticVibeToItems(packed.items, request.vibe),
@@ -1066,6 +1111,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
   const canCreateRoom = resolved.length > 0 && (hasCatalogMatch || hasPlaceableSelection);
   const showProductRows = Boolean(result && resolved.length > 0);
   const isManualList = result?.source === 'manual';
+  const isRoomScanList = result?.source === 'room-scan';
   const activeDraft = activeDraftId
     ? savedDrafts.find((d) => d.id === activeDraftId) ?? null
     : null;
@@ -1126,12 +1172,13 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
           ← Back
         </Button>
         <p className="room-preset-goal-hint">
-          Build a shopping checklist from scratch, pick community models, or let AI suggest items —
-          then create a furnished room.
+          {isScanFlow
+            ? 'Review detected furniture, adjust room size if needed, then create your editable 3D room.'
+            : 'Build a shopping checklist from scratch, pick community models, or let AI suggest items — then create a furnished room.'}
         </p>
       </div>
 
-      {savedDrafts.length > 0 ? (
+      {savedDrafts.length > 0 && !isScanFlow ? (
         <div className="agentic-room-flow__saved">
           <p className="agentic-room-flow__saved-title">Continue a saved checklist</p>
           <ul className="agentic-room-flow__saved-list">
@@ -1278,6 +1325,9 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
           ) : null}
           {result.source === 'manual' ? (
             <p className="agentic-room-flow__source-badge">Your checklist</p>
+          ) : null}
+          {result.source === 'room-scan' ? (
+            <p className="agentic-room-flow__source-badge">Layout from your video</p>
           ) : null}
 
           <div className="agentic-room-flow__checklist-toolbar">
@@ -1505,6 +1555,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
                 ))}
           </div>
 
+          {!isRoomScanList ? (
           <div className="agentic-room-flow__enhance">
             <Field label="Optional: suggest more items with AI">
               <textarea
@@ -1535,6 +1586,7 @@ export function AgenticRoomFlow({ disabled, onConfirm, onBack }: AgenticRoomFlow
               {enhancing ? 'Suggesting…' : 'Add AI suggestions'}
             </Button>
           </div>
+          ) : null}
 
           <div className="agentic-room-flow__save-panel">
             <Field
