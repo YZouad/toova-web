@@ -506,30 +506,68 @@ export function itemPinsElevation(item: Item): boolean {
 /** Typical floating-shelf height (inches from floor to the underside of the board). */
 export const DEFAULT_SHELF_ELEVATION = 48;
 
+/** Eye-level center for a newly placed wall poster (inches from the floor). */
+export const DEFAULT_POSTER_CENTER_Y = 60;
+
+function longestMountWall(geom: RoomGeometry, alongWidth: number) {
+  const wideEnough = allWallSegments(geom).filter((s) => s.length >= alongWidth + 4);
+  const pool = wideEnough.length > 0 ? wideEnough : allWallSegments(geom);
+  return pool.slice().sort((a, b) => b.length - a.length)[0];
+}
+
+/** Flush an item against the longest wall. `alongIn` shifts it along that wall. */
+function poseAgainstLongestWall(
+  geom: RoomGeometry,
+  size: [number, number, number],
+  y: number,
+  alongIn = 0,
+): { position: [number, number, number]; rotationY: number } {
+  const [w, , d] = size;
+  const seg = longestMountWall(geom, w);
+  if (!seg) {
+    const [cx, cz] = planCentroid(geom);
+    return { position: [cx, y, cz], rotationY: 0 };
+  }
+  const maxAlong = Math.max(0, seg.length / 2 - w / 2 - 4);
+  const along = Math.max(-maxAlong, Math.min(maxAlong, alongIn));
+  const interiorX = -seg.outward[0];
+  const interiorZ = -seg.outward[1];
+  const inset = d / 2 + ROOM_INSET;
+  const raw: [number, number, number] = [
+    seg.innerFaceCenter[0] + interiorX * inset + seg.tangent[0] * along,
+    y,
+    seg.innerFaceCenter[2] + interiorZ * inset + seg.tangent[1] * along,
+  ];
+  const [x, , z] = clampPositionInRoom(raw, seg.rotationY, size, geom);
+  return { position: [x, y, z], rotationY: seg.rotationY };
+}
+
 /** Place a wall shelf flush against the longest wall, board parallel to the floor. */
 export function defaultWallShelfPose(
   geom: RoomGeometry,
   size: [number, number, number],
 ): { position: [number, number, number]; rotationY: number } {
-  const [, h, d] = size;
+  const [, h] = size;
   const y = Math.max(0, Math.min(DEFAULT_SHELF_ELEVATION, geom.height - h));
-  const wideEnough = allWallSegments(geom).filter((s) => s.length >= size[0] + 4);
-  const pool = wideEnough.length > 0 ? wideEnough : allWallSegments(geom);
-  const seg = pool.slice().sort((a, b) => b.length - a.length)[0];
-  if (!seg) {
-    const [cx, cz] = planCentroid(geom);
-    return { position: [cx, y, cz], rotationY: 0 };
-  }
-  const interiorX = -seg.outward[0];
-  const interiorZ = -seg.outward[1];
-  const inset = d / 2 + ROOM_INSET;
-  const raw: [number, number, number] = [
-    seg.innerFaceCenter[0] + interiorX * inset,
-    y,
-    seg.innerFaceCenter[2] + interiorZ * inset,
-  ];
-  const [x, , z] = clampPositionInRoom(raw, seg.rotationY, size, geom);
-  return { position: [x, y, z], rotationY: seg.rotationY };
+  return poseAgainstLongestWall(geom, size, y, 0);
+}
+
+/**
+ * Hang a poster on the longest wall, centered near eye level.
+ * `slot` 0 is the wall center; later slots step to either side.
+ */
+export function defaultWallPosterPose(
+  geom: RoomGeometry,
+  size: [number, number, number],
+  slot = 0,
+): { position: [number, number, number]; rotationY: number } {
+  const [, h] = size;
+  const y = Math.max(0, Math.min(DEFAULT_POSTER_CENTER_Y - h / 2, geom.height - h));
+  const step = size[0] + 8;
+  const index = Math.ceil(slot / 2);
+  const sign = slot % 2 === 0 ? 1 : -1;
+  const along = slot === 0 ? 0 : sign * index * step;
+  return poseAgainstLongestWall(geom, size, y, along);
 }
 
 export function clampToRoom(item: Item, proposedX: number, proposedZ: number): [number, number] {

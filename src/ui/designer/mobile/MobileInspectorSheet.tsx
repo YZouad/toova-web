@@ -19,6 +19,7 @@ import { useCatalogThrixelLinked } from '../../../hooks/useCatalogThrixelLinked'
 import { DEFAULT_EMITTER, useStore } from '../../../store';
 import type { InspectorTab } from '../chromeTypes';
 import { FinishTab } from '../FinishEditor';
+import { HeadboardEditor } from '../HeadboardEditor';
 import { HangingPaletteEditor } from '../HangingPaletteEditor';
 import { InspectorThrixelReviseSection } from '../InspectorThrixelReviseSection';
 import { inspectorTabsForKind } from '../inspectorTabs';
@@ -265,6 +266,7 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
 
         {tab === 'bedding' && isBed ? (
           <MobileBeddingTab
+            item={item}
             config={resolveBeddingConfig(item)}
             patch={(p) => setBeddingConfig(item.id, p)}
           />
@@ -485,9 +487,11 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
 }
 
 function MobileBeddingTab({
+  item,
   config,
   patch,
 }: {
+  item: import('../../../store').Item;
   config: ReturnType<typeof resolveBeddingConfig>;
   patch: (p: BeddingConfigPatch) => void;
 }) {
@@ -513,6 +517,7 @@ function MobileBeddingTab({
 
   return (
     <div className="dgm-stack">
+      <HeadboardEditor item={item} compact />
       <section className="dgm-section">
         <label className="dgm-check-row">
           <input

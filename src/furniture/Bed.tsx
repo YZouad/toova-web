@@ -1,3 +1,10 @@
+import {
+  HEADBOARD_DEPTH_IN,
+  headboardHeightIn,
+  headboardTopY,
+  headboardWidthScale,
+  resolveHeadboardColor,
+} from '../lib/bedHeadboard';
 import { DEFAULT_MATTRESS_COLOR } from '../lib/furnitureFinish';
 import { Item } from '../store';
 import { BedBedding, beddingSelectionExtraHeight } from './BedBedding';
@@ -37,7 +44,12 @@ export function Bed({ item, selected, invalid }: Props) {
 
   const yFrameMid = legH + frameH / 2;
   const yMattressMid = legH + frameH + mattressH / 2;
-  const outlineH = totalH + beddingSelectionExtraHeight(item, w, d, totalH, legH);
+  const headH = headboardHeightIn(item);
+  const headW = w * headboardWidthScale(item);
+  const headColor = resolveHeadboardColor(item, finish.color);
+  const headTop = headboardTopY(item, legH);
+  const outlineBase = item.headboardEnabled ? Math.max(totalH, headTop) : totalH;
+  const outlineH = outlineBase + beddingSelectionExtraHeight(item, w, d, totalH, legH);
 
   return (
     <group>
@@ -68,6 +80,21 @@ export function Bed({ item, selected, invalid }: Props) {
           roughness={0.9}
         />
       </mesh>
+
+      {item.headboardEnabled ? (
+        <mesh
+          position={[0, legH + headH / 2, -d / 2 + HEADBOARD_DEPTH_IN / 2]}
+          castShadow
+          receiveShadow
+        >
+          <boxGeometry args={[headW, headH, HEADBOARD_DEPTH_IN]} />
+          <meshStandardMaterial
+            color={headColor}
+            map={finish.map ?? undefined}
+            roughness={0.7}
+          />
+        </mesh>
+      ) : null}
 
       <BedBedding item={item} w={w} d={d} totalH={totalH} legH={legH} />
 

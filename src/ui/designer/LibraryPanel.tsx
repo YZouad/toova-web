@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useGalleryCatalog } from '../../hooks/useGalleryCatalog';
+import { usePosterBankOptions } from '../../hooks/usePosterBankOptions';
 import {
   getBuiltinPreviewUrl,
   requestBuiltinPreview,
@@ -14,11 +15,14 @@ import {
   type CatalogCategorySlug,
 } from '../../lib/catalogCategories';
 import type { GallerySort, GallerySource } from '../../lib/galleryCatalog';
+import { posterOptionMatchesQuery } from '../../lib/posterBank';
 import type { CatalogModel } from './chromeTypes';
 import type { HangingDecorKind } from '../../store';
 import { IconFreeLight, IconHangingLeaves, IconHangingLights, IconLedStrip, IconMeasure } from './icons';
 import { PanelShell } from './PanelShell';
-import { placeFromCatalog } from './placeCatalogModel';
+import { placeFromCatalog, placePosterOption } from './placeCatalogModel';
+
+type LibrarySource = GallerySource | 'posters';
 
 const SORT_OPTIONS: { id: GallerySort; label: string }[] = [
   { id: 'hot', label: 'Popular now' },
@@ -28,10 +32,11 @@ const SORT_OPTIONS: { id: GallerySort; label: string }[] = [
   { id: 'newest', label: 'Newest' },
 ];
 
-const SOURCE_TABS: { id: GallerySource; label: string; sub: string }[] = [
+const SOURCE_TABS: { id: LibrarySource; label: string; sub: string }[] = [
   { id: 'toova', label: 'Toova library', sub: 'Curated' },
   { id: 'community', label: 'Community', sub: 'Shared' },
   { id: 'mine', label: 'Your models', sub: 'Uploads' },
+  { id: 'posters', label: 'Posters', sub: 'Wall art' },
 ];
 
 export interface LibraryPanelProps {
@@ -55,11 +60,19 @@ export function LibraryPanel({
 }: LibraryPanelProps) {
   const { user } = useAuth();
   const builtinPreviews = useBuiltinPreviews();
-  const [source, setSource] = useState<GallerySource>('toova');
+  const [source, setSource] = useState<LibrarySource>('toova');
+  const [placingPosterKind, setPlacingPosterKind] = useState<string | null>(null);
   const [sort, setSort] = useState<GallerySort>('hot');
   const [categories, setCategories] = useState<CatalogCategorySlug[]>([]);
   const [query, setQuery] = useState('');
   const [sortOpen, setSortOpen] = useState(false);
+
+  const showingPosters = source === 'posters';
+  const posterBank = usePosterBankOptions(showingPosters);
+  const posters = useMemo(
+    () => posterBank.options.filter((option) => posterOptionMatchesQuery(option, query)),
+    [posterBank.options, query],
+  );
 
   const {
     models,
@@ -70,8 +83,8 @@ export function LibraryPanel({
     hasMore,
     loadMore,
   } = useGalleryCatalog({
-    enabled: true,
-    source,
+    enabled: source !== 'posters',
+    source: source === 'posters' ? 'toova' : source,
     sort,
     categories,
     query,
@@ -85,6 +98,13 @@ export function LibraryPanel({
     },
     [user?.id],
   );
+
+  const placePoster = useCallback((kind: string) => {
+    const option = posterBank.options.find((entry) => entry.kind === kind);
+    if (!option || placingPosterKind) return;
+    setPlacingPosterKind(kind);
+    void placePosterOption(option).finally(() => setPlacingPosterKind(null));
+  }, [placingPosterKind, posterBank.options]);
 
   const toggleCat = useCallback((slug: CatalogCategorySlug) => {
     setCategories((cur) => toggleCatalogCategory(cur, slug));
@@ -175,7 +195,110 @@ export function LibraryPanel({
     [onAddLight, onStartDraw, onStartMeasure],
   );
 
-  const list = (
+  const posterList = (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, flex: 1 }}>
+      {posterBank.error ? (
+        <p style={{ color: 'var(--danger)', font: '400 13px/1.4 var(--font-sans)' }}>{posterBank.error}</p>
+      ) : null}
+      {posterBank.loading && posters.length === 0 ? (
+        <p style={{ color: 'var(--ink-6)', font: '400 13px/1.4 var(--font-sans)', padding: 24, textAlign: 'center' }}>
+          Loading posters…
+        </p>
+      ) : null}
+      {!posterBank.loading && posters.length === 0 ? (
+        <div style={{ padding: 24, textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 9, alignItems: 'center' }}>
+          <span style={{ font: '500 17px/1.2 var(--font-serif)', color: 'var(--ink-0)' }}>No posters match</span>
+          <span style={{ font: '400 12px/1.5 var(--font-sans)', color: 'var(--ink-4)', maxWidth: 280 }}>
+            Try another word, like coastal, gothic, or space.
+          </span>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: compact ? '1fr' : '1fr 1fr', gap: '4px 10px' }}>
+          {posters.map((option) => {
+            const dims = `${Math.round(option.widthIn)}×${Math.round(option.heightIn)}″`;
+            const creator = option.isCurated ? 'Toova' : 'Yours';
+            const letter = (option.label.trim()[0] ?? '?').toUpperCase();
+            return (
+              <div
+                key={option.kind}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 11,
+                  padding: '9px 10px',
+                  borderRadius: 9,
+                  border: '1px solid transparent',
+                }}
+              >
+                <span
+                  style={{
+                    width: 36,
+                    height: 48,
+                    borderRadius: 6,
+                    overflow: 'hidden',
+                    border: '1px solid rgba(36,31,25,0.12)',
+                    flex: 'none',
+                    background: 'var(--paper-2)',
+                    display: 'grid',
+                    placeItems: 'center',
+                  }}
+                >
+                  {option.previewUrl ? (
+                    <img
+                      src={option.previewUrl}
+                      alt=""
+                      draggable={false}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  ) : (
+                    <span aria-hidden style={{ font: '600 13px/1 var(--font-sans)', color: 'var(--ink-4)' }}>
+                      {letter}
+                    </span>
+                  )}
+                </span>
+                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span
+                    style={{
+                      font: '500 13px/1.2 var(--font-sans)',
+                      color: 'var(--ink-0)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {option.label}
+                  </span>
+                  <span
+                    style={{
+                      font: 'var(--type-mono-xs)',
+                      color: 'var(--ink-6)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {creator} · {dims}
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  className="dg-sheet-header__close"
+                  style={{ width: 26, height: 26, borderRadius: '50%' }}
+                  aria-label={`Add ${option.label}`}
+                  disabled={placingPosterKind === option.kind}
+                  onClick={() => placePoster(option.kind)}
+                >
+                  +
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+
+  const list = showingPosters ? posterList : (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minHeight: 0, flex: 1 }}>
       {error ? (
         <p style={{ color: 'var(--danger)', font: '400 13px/1.4 var(--font-sans)' }}>{error}</p>
@@ -330,6 +453,13 @@ export function LibraryPanel({
   const filters = (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, minHeight: 0, flex: 1 }}>
       {createRows}
+      {showingPosters ? (
+        <p style={{ margin: '8px 4px 0', font: '400 12px/1.45 var(--font-sans)', color: 'var(--ink-4)' }}>
+          Pick a print. It hangs on the longest wall, and the next one steps aside.
+        </p>
+      ) : null}
+      {showingPosters ? null : (
+      <>
       <div className="dg-row dg-row--between" style={{ padding: '4px 0 8px', minHeight: 0 }}>
         <span
           style={{
@@ -403,6 +533,8 @@ export function LibraryPanel({
       <div style={{ paddingTop: 10, font: 'var(--type-mono-xs)', color: 'var(--ink-6)' }}>
         Up to {MAX_CATALOG_CATEGORIES} categories
       </div>
+      </>
+      )}
     </div>
   );
 
@@ -421,7 +553,7 @@ export function LibraryPanel({
               onClick={() => {
                 setSource(tab.id);
                 if (tab.id === 'mine' && sort === 'hot') setSort('newest');
-                else if (tab.id !== 'mine' && sort === 'newest') setSort('hot');
+                else if (tab.id !== 'mine' && tab.id !== 'posters' && sort === 'newest') setSort('hot');
               }}
             >
               <span>{tab.label}</span>
@@ -431,8 +563,15 @@ export function LibraryPanel({
         })}
       </div>
       <span className="dg-row__meta" style={{ marginLeft: 'auto' }}>
-        {loading && models.length === 0 ? '…' : `${total} models`}
+        {showingPosters
+          ? posterBank.loading && posters.length === 0
+            ? '…'
+            : `${posters.length} posters`
+          : loading && models.length === 0
+            ? '…'
+            : `${total} models`}
       </span>
+      {showingPosters ? null : (
       <div style={{ position: 'relative' }}>
         <button
           type="button"
@@ -472,6 +611,7 @@ export function LibraryPanel({
           </div>
         ) : null}
       </div>
+      )}
     </div>
   );
 
@@ -491,7 +631,7 @@ export function LibraryPanel({
       <span aria-hidden style={{ color: 'var(--ink-6)', fontSize: 12 }}>⌕</span>
       <input
         type="search"
-        placeholder="Search models"
+        placeholder={showingPosters ? 'Search posters' : 'Search models'}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         style={{
@@ -510,7 +650,7 @@ export function LibraryPanel({
   const body = (
     <>
       {sourceBar}
-      {categories.length > 0 ? (
+      {!showingPosters && categories.length > 0 ? (
         <div className="dg-chip-row" style={{ marginBottom: 10 }}>
           {categories.map((slug) => {
             const def = CATALOG_CATEGORY_DEFS.find((c) => c.slug === slug);
@@ -573,7 +713,9 @@ export function LibraryPanel({
             Upload or generate a model
           </button>
           <span style={{ flex: 1, font: '400 11px/1.4 var(--font-sans)', color: 'var(--ink-4)' }}>
-            Anything you add lands in the middle of the room.
+            {showingPosters
+              ? 'Posters hang on the longest wall.'
+              : 'Anything you add lands in the middle of the room.'}
           </span>
         </>
       }

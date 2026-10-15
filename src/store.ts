@@ -2,6 +2,14 @@ import { create } from 'zustand';
 import { lampMinHeight } from './furniture/lampGeometry';
 import { DEFAULT_SHELF_COLOR, FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE, isWallShelfKind } from './furniture/registry';
 import {
+  DEFAULT_HEADBOARD_HEIGHT_IN,
+  DEFAULT_HEADBOARD_WIDTH_SCALE,
+  MAX_HEADBOARD_HEIGHT_IN,
+  MAX_HEADBOARD_WIDTH_SCALE,
+  MIN_HEADBOARD_HEIGHT_IN,
+  MIN_HEADBOARD_WIDTH_SCALE,
+} from './lib/bedHeadboard';
+import {
   itemSupportsTopColor,
   itemUsesCustomFinish,
   itemUsesTintColor,
@@ -228,6 +236,13 @@ export interface Item {
   tintColor?: string;
   /** Hex color for the builtin bed mattress (not sheets/comforter). */
   mattressColor?: string;
+  /** Builtin bed: panel at the head (-Z). */
+  headboardEnabled?: boolean;
+  headboardColor?: string;
+  /** Headboard height in inches, measured from the top of the legs. */
+  headboardHeightIn?: number;
+  /** Fraction of bed width (0.6–1). */
+  headboardWidthScale?: number;
   /** Hex color for a dresser top that differs from the base. */
   topColor?: string;
   /** Supabase Storage path for blanket pattern image (`model-files` bucket). */
@@ -372,6 +387,7 @@ interface StoreState {
       curatedProductId?: string;
       tintColor?: string;
       wallMounted?: boolean;
+      pose?: { position: [number, number, number]; rotationY: number };
     },
   ) => string;
   /** Clone an item with a new id, slight position offset; appends and selects it. */
@@ -392,6 +408,10 @@ interface StoreState {
   setBlanketColor: (id: string, hex: string) => void;
   setTintColor: (id: string, hex: string) => void;
   setMattressColor: (id: string, hex: string) => void;
+  setHeadboardEnabled: (id: string, enabled: boolean) => void;
+  setHeadboardColor: (id: string, hex: string) => void;
+  setHeadboardHeight: (id: string, heightIn: number) => void;
+  setHeadboardWidthScale: (id: string, scale: number) => void;
   setTopColor: (id: string, hex: string) => void;
   setBlanketTexture: (
     id: string,
@@ -1047,9 +1067,14 @@ export const useStore = create<StoreState>((set, get) => ({
       if (catalogSizeIn) catalogSizeIn = standUpFlatBounds(catalogSizeIn);
     }
 
-    const shelfPose = isWallShelfKind(kind) ? defaultWallShelfPose(room, itemSize) : null;
-    const position: [number, number, number] = shelfPose ? shelfPose.position : [cx, 0, cz];
-    const rotationY = shelfPose ? shelfPose.rotationY : 0;
+    const shelfPose =
+      opts?.pose || !isWallShelfKind(kind) ? null : defaultWallShelfPose(room, itemSize);
+    const position: [number, number, number] = opts?.pose
+      ? opts.pose.position
+      : shelfPose
+        ? shelfPose.position
+        : [cx, 0, cz];
+    const rotationY = opts?.pose ? opts.pose.rotationY : shelfPose ? shelfPose.rotationY : 0;
 
     const item: Item = {
       id,
@@ -1347,6 +1372,68 @@ export const useStore = create<StoreState>((set, get) => ({
       const it = s.items[id];
       if (!it || it.kind !== 'bed') return s;
       return { items: { ...s.items, [id]: { ...it, mattressColor: hex } } };
+    }),
+
+  setHeadboardEnabled: (id, enabled) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'bed') return s;
+      if (!enabled) {
+        return {
+          items: {
+            ...s.items,
+            [id]: {
+              ...it,
+              headboardEnabled: undefined,
+              headboardColor: undefined,
+              headboardHeightIn: undefined,
+              headboardWidthScale: undefined,
+            },
+          },
+        };
+      }
+      return {
+        items: {
+          ...s.items,
+          [id]: {
+            ...it,
+            headboardEnabled: true,
+            headboardHeightIn: it.headboardHeightIn ?? DEFAULT_HEADBOARD_HEIGHT_IN,
+            headboardWidthScale: it.headboardWidthScale ?? DEFAULT_HEADBOARD_WIDTH_SCALE,
+          },
+        },
+      };
+    }),
+
+  setHeadboardColor: (id, hex) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'bed' || !it.headboardEnabled) return s;
+      return { items: { ...s.items, [id]: { ...it, headboardColor: hex } } };
+    }),
+
+  setHeadboardHeight: (id, heightIn) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'bed' || !it.headboardEnabled) return s;
+      const clamped = clamp(
+        heightIn,
+        MIN_HEADBOARD_HEIGHT_IN,
+        MAX_HEADBOARD_HEIGHT_IN,
+      );
+      return { items: { ...s.items, [id]: { ...it, headboardHeightIn: clamped } } };
+    }),
+
+  setHeadboardWidthScale: (id, scale) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'bed' || !it.headboardEnabled) return s;
+      const clamped = clamp(
+        scale,
+        MIN_HEADBOARD_WIDTH_SCALE,
+        MAX_HEADBOARD_WIDTH_SCALE,
+      );
+      return { items: { ...s.items, [id]: { ...it, headboardWidthScale: clamped } } };
     }),
 
   setTopColor: (id, hex) =>

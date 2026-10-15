@@ -19,6 +19,7 @@ import { useCatalogThrixelLinked } from '../../hooks/useCatalogThrixelLinked';
 import { DEFAULT_EMITTER, useStore } from '../../store';
 import type { InspectorTab } from './chromeTypes';
 import { FinishTab } from './FinishEditor';
+import { HeadboardEditor } from './HeadboardEditor';
 import { HangingPaletteEditor } from './HangingPaletteEditor';
 import { InspectorThrixelReviseSection } from './InspectorThrixelReviseSection';
 import { PanelSection } from './PanelShell';
@@ -314,7 +315,7 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
 
           {tab === 'bedding' && isBed ? (
             <BeddingTab
-              itemId={item.id}
+              item={item}
               patch={(p) => setBeddingConfig(item.id, p)}
               config={resolveBeddingConfig(item)}
             />
@@ -514,15 +515,14 @@ export function InspectorPanel({ compact, tab, onTab, onClose }: InspectorPanelP
 }
 
 function BeddingTab({
-  itemId: _itemId,
+  item,
   config,
   patch,
 }: {
-  itemId: string;
+  item: import('../../store').Item;
   config: ReturnType<typeof resolveBeddingConfig>;
   patch: (p: BeddingConfigPatch) => void;
 }) {
-  void _itemId;
   const colorList = (colors: typeof SHEET_COLORS, value: string, onPick: (id: string) => void) => (
     <div className="dg-swatch-grid">
       {colors.slice(0, 8).map((c) => (
@@ -540,6 +540,7 @@ function BeddingTab({
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <HeadboardEditor item={item} />
       <PanelSection title="Sheets">
         <label className="dg-row" style={{ padding: 0 }}>
           <input

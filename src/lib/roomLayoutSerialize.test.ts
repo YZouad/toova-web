@@ -166,6 +166,55 @@ describe('roomLayoutSerialize furniture finish', () => {
     expect(rows[0]!.top_color).toBe('#f2efe8');
   });
 
+  it('round-trips bed headboard settings', () => {
+    const bed: Item = {
+      id: 'b1',
+      kind: 'bed',
+      position: [0, 0, 0],
+      rotationY: 0,
+      size: [38, 24, 75],
+      label: 'Twin Bed',
+      attachmentKey: 'att-bed-hb',
+      headboardEnabled: true,
+      headboardColor: '#4a3728',
+      headboardHeightIn: 32,
+      headboardWidthScale: 0.85,
+    };
+    const rows = serializeLayoutForRoom('room-1', { [bed.id]: bed }, [bed.id]);
+    expect(rows[0]!.headboard_enabled).toBe(true);
+    expect(rows[0]!.headboard_color).toBe('#4a3728');
+    expect(rows[0]!.headboard_height_in).toBe(32);
+    expect(rows[0]!.headboard_width_scale).toBe(0.85);
+
+    const restored = dbRowToItem({
+      id: 'b1',
+      room_id: 'room-1',
+      kind: 'bed',
+      label: 'Twin Bed',
+      pos_x: 0,
+      pos_y: 0,
+      pos_z: 0,
+      rotation_y: 0,
+      size_w: 38,
+      size_h: 24,
+      size_d: 75,
+      bed_leg_height: null,
+      natural_w: null,
+      natural_h: null,
+      natural_d: null,
+      sort_order: 0,
+      headboard_enabled: true,
+      headboard_color: '#4a3728',
+      headboard_height_in: 32,
+      headboard_width_scale: 0.85,
+      instance_key: 'att-bed-hb',
+    });
+    expect(restored?.headboardEnabled).toBe(true);
+    expect(restored?.headboardColor).toBe('#4a3728');
+    expect(restored?.headboardHeightIn).toBe(32);
+    expect(restored?.headboardWidthScale).toBe(0.85);
+  });
+
   it('round-trips a dresser top color separately from the base', () => {
     const dresser: Item = {
       id: 'd1',

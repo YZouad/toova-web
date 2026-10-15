@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGalleryCatalog } from '../../../hooks/useGalleryCatalog';
+import { usePosterBankOptions } from '../../../hooks/usePosterBankOptions';
 import {
   getBuiltinPreviewUrl,
   requestBuiltinPreview,
@@ -14,11 +15,14 @@ import {
   type CatalogCategorySlug,
 } from '../../../lib/catalogCategories';
 import type { GallerySort, GallerySource } from '../../../lib/galleryCatalog';
+import { posterOptionMatchesQuery } from '../../../lib/posterBank';
 import type { CatalogModel } from '../chromeTypes';
 import type { HangingDecorKind } from '../../../store';
 import { IconHangingLeaves, IconHangingLights, IconLedStrip, IconMeasure } from '../icons';
-import { placeFromCatalog } from '../placeCatalogModel';
+import { placeFromCatalog, placePosterOption } from '../placeCatalogModel';
 import { MobileSheet } from './MobileSheet';
+
+type LibrarySource = GallerySource | 'posters';
 
 const SORT_OPTIONS: { id: GallerySort; label: string; short: string }[] = [
   { id: 'hot', label: 'Popular now', short: 'Hot' },
@@ -28,10 +32,11 @@ const SORT_OPTIONS: { id: GallerySort; label: string; short: string }[] = [
   { id: 'newest', label: 'Newest', short: 'New' },
 ];
 
-const SOURCE_TABS: { id: GallerySource; label: string }[] = [
+const SOURCE_TABS: { id: LibrarySource; label: string }[] = [
   { id: 'toova', label: 'Toova' },
   { id: 'community', label: 'Community' },
   { id: 'mine', label: 'Yours' },
+  { id: 'posters', label: 'Posters' },
 ];
 
 export interface MobileLibrarySheetProps {
@@ -53,12 +58,20 @@ export function MobileLibrarySheet({
 }: MobileLibrarySheetProps) {
   const { user } = useAuth();
   const builtinPreviews = useBuiltinPreviews();
-  const [source, setSource] = useState<GallerySource>('toova');
+  const [source, setSource] = useState<LibrarySource>('toova');
+  const [placingPosterKind, setPlacingPosterKind] = useState<string | null>(null);
   const [sort, setSort] = useState<GallerySort>('hot');
   const [sortOpen, setSortOpen] = useState(false);
   const [categories, setCategories] = useState<CatalogCategorySlug[]>([]);
   const [query, setQuery] = useState('');
   const sortWrapRef = useRef<HTMLDivElement>(null);
+
+  const showingPosters = source === 'posters';
+  const posterBank = usePosterBankOptions(showingPosters);
+  const posters = useMemo(
+    () => posterBank.options.filter((option) => posterOptionMatchesQuery(option, query)),
+    [posterBank.options, query],
+  );
 
   const {
     models,
@@ -69,8 +82,8 @@ export function MobileLibrarySheet({
     hasMore,
     loadMore,
   } = useGalleryCatalog({
-    enabled: true,
-    source,
+    enabled: source !== 'posters',
+    source: source === 'posters' ? 'toova' : source,
     sort,
     categories,
     query,
@@ -83,11 +96,24 @@ export function MobileLibrarySheet({
     [user?.id],
   );
 
+  const placePoster = useCallback((kind: string) => {
+    const option = posterBank.options.find((entry) => entry.kind === kind);
+    if (!option || placingPosterKind) return;
+    setPlacingPosterKind(kind);
+    void placePosterOption(option).finally(() => setPlacingPosterKind(null));
+  }, [placingPosterKind, posterBank.options]);
+
   const toggleCat = useCallback((slug: CatalogCategorySlug) => {
     setCategories((cur) => toggleCatalogCategory(cur, slug));
   }, []);
 
-  const countLabel = loading && models.length === 0 ? '…' : `${total} models`;
+  const countLabel = showingPosters
+    ? posterBank.loading && posters.length === 0
+      ? '…'
+      : `${posters.length} posters`
+    : loading && models.length === 0
+      ? '…'
+      : `${total} models`;
   const sortLabel = SORT_OPTIONS.find((o) => o.id === sort)?.short ?? 'Hot';
 
   useEffect(() => {
@@ -175,6 +201,7 @@ export function MobileLibrarySheet({
       headerEnd={
         <>
           <span className="dgm-sheet-count">{countLabel}</span>
+          {showingPosters ? null : (
           <div className="dgm-lib-sort" ref={sortWrapRef}>
             <button
               type="button"
@@ -211,6 +238,7 @@ export function MobileLibrarySheet({
               </div>
             ) : null}
           </div>
+          )}
         </>
       }
     >
@@ -222,13 +250,13 @@ export function MobileLibrarySheet({
           </svg>
           <input
             type="search"
-            placeholder="Search models"
+            placeholder={showingPosters ? 'Search posters' : 'Search models'}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
         </label>
 
-        <div className="dgm-segment-row dgm-segment-row--3" role="tablist" aria-label="Model source">
+        <div className="dgm-segment-row dgm-segment-row--3 dgm-segment-row--sources" role="tablist" aria-label="Model source">
           {SOURCE_TABS.map((tab) => {
             if (tab.id === 'mine' && !user) return null;
             return (
@@ -241,7 +269,7 @@ export function MobileLibrarySheet({
                 onClick={() => {
                   setSource(tab.id);
                   if (tab.id === 'mine' && sort === 'hot') setSort('newest');
-                  else if (tab.id !== 'mine' && sort === 'newest') setSort('hot');
+                  else if (tab.id !== 'mine' && tab.id !== 'posters' && sort === 'newest') setSort('hot');
                 }}
               >
                 {tab.label}
@@ -250,6 +278,7 @@ export function MobileLibrarySheet({
           })}
         </div>
 
+        {showingPosters ? null : (
         <div className="dgm-chip-scroll" role="group" aria-label="Categories">
           {CATALOG_CATEGORY_DEFS.map((c) => {
             const on = categories.includes(c.slug);
@@ -268,9 +297,58 @@ export function MobileLibrarySheet({
             );
           })}
         </div>
+        )}
       </div>
 
       <div className="dgm-library-list">
+        {showingPosters ? (
+          <>
+            {posterBank.error ? <p className="dgm-error">{posterBank.error}</p> : null}
+            {posterBank.loading && posters.length === 0 ? (
+              <p className="dgm-empty__hint">Loading posters…</p>
+            ) : null}
+            {!posterBank.loading && posters.length === 0 ? (
+              <div className="dgm-empty">
+                <p className="dgm-empty__title">No posters match</p>
+                <p className="dgm-empty__hint">Try another word, like coastal, gothic, or space.</p>
+              </div>
+            ) : (
+              posters.map((option) => {
+                const dims = `${Math.round(option.widthIn)}×${Math.round(option.heightIn)}″`;
+                const letter = (option.label.trim()[0] ?? '?').toUpperCase();
+                return (
+                  <div key={option.kind} className="dgm-catalog-row">
+                    <span className="dgm-catalog-row__main">
+                      <span className="dgm-catalog-row__thumb">
+                        {option.previewUrl ? (
+                          <img src={option.previewUrl} alt="" draggable={false} />
+                        ) : (
+                          <span aria-hidden>{letter}</span>
+                        )}
+                      </span>
+                      <span className="dgm-catalog-row__copy">
+                        <span className="dgm-catalog-row__name">{option.label}</span>
+                        <span className="dgm-catalog-row__meta">
+                          {option.isCurated ? 'Toova' : 'Yours'} · {dims}
+                        </span>
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="dgm-catalog-row__add"
+                      aria-label={`Add ${option.label}`}
+                      disabled={placingPosterKind === option.kind}
+                      onClick={() => placePoster(option.kind)}
+                    >
+                      +
+                    </button>
+                  </div>
+                );
+              })
+            )}
+          </>
+        ) : (
+          <>
         {error ? <p className="dgm-error">{error}</p> : null}
         {loading && models.length === 0 ? (
           <p className="dgm-empty__hint">Loading models…</p>
@@ -344,6 +422,8 @@ export function MobileLibrarySheet({
             {loadingMore ? 'Loading…' : 'Load more'}
           </button>
         ) : null}
+          </>
+        )}
       </div>
 
       {footer}

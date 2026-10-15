@@ -40,6 +40,13 @@ export function curatedPosterOptions(): PosterBankOption[] {
   return AGENTIC_POSTER_BANK.map(curatedOption);
 }
 
+export function posterOptionMatchesQuery(option: PosterBankOption, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  if (option.label.toLowerCase().includes(q)) return true;
+  return option.tags.some((tag) => tag.toLowerCase().includes(q));
+}
+
 /** Resolve signed model/thumbnail URLs for static checklist-refs paths. */
 export async function resolvePosterOptionUrls(
   option: PosterBankOption,

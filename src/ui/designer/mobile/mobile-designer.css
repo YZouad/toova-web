@@ -1427,6 +1427,11 @@
   padding: 0 8px;
 }
 
+.dg-page.is-phone .dgm-segment-row--sources .dgm-segment-btn {
+  padding: 0 4px;
+  font-size: 11px;
+}
+
 .dg-page.is-phone .dgm-segment-row--3 .dgm-segment-btn {
   height: 40px;
   border-radius: 9px;

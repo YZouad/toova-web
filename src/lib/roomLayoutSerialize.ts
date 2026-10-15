@@ -67,6 +67,10 @@ export interface RoomItemRow {
   tint_color?: string | null;
   mattress_color?: string | null;
   top_color?: string | null;
+  headboard_enabled?: boolean | null;
+  headboard_color?: string | null;
+  headboard_height_in?: string | number | null;
+  headboard_width_scale?: string | number | null;
   bedding_config?: BeddingConfig | null;
   emitter?: EmitterConfig | null;
   curated_product_id?: string | null;
@@ -98,6 +102,10 @@ export type RoomItemInsert = {
   tint_color: string | null;
   mattress_color: string | null;
   top_color: string | null;
+  headboard_enabled: boolean;
+  headboard_color: string | null;
+  headboard_height_in: number | null;
+  headboard_width_scale: number | null;
   bedding_config: BeddingConfig | null;
   emitter?: EmitterConfig | null;
   curated_product_id: string | null;
@@ -230,6 +238,23 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
       ? String(row.top_color).trim()
       : undefined;
 
+  const headboardEnabled =
+    row.kind === 'bed' && row.headboard_enabled === true ? true : undefined;
+  const headboardColor =
+    row.kind === 'bed' &&
+    row.headboard_color != null &&
+    String(row.headboard_color).trim()
+      ? String(row.headboard_color).trim()
+      : undefined;
+  const headboardHeightIn =
+    row.kind === 'bed' && row.headboard_height_in != null
+      ? n(row.headboard_height_in)
+      : undefined;
+  const headboardWidthScale =
+    row.kind === 'bed' && row.headboard_width_scale != null
+      ? n(row.headboard_width_scale)
+      : undefined;
+
   const hanging =
     row.kind === 'hanging' ? parseHangingConfig(row.hanging_config) : undefined;
   if (row.kind === 'hanging' && !hanging) return null;
@@ -248,6 +273,10 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     tintColor,
     mattressColor,
     topColor,
+    headboardEnabled,
+    headboardColor,
+    headboardHeightIn,
+    headboardWidthScale,
     beddingConfig: resolvedBeddingConfig,
 
     blanketTexturePath,
@@ -341,6 +370,19 @@ export function serializeLayoutForRoom(
         it.kind === 'bed' && it.mattressColor ? it.mattressColor : null,
       top_color:
         itemSupportsTopColor(it) && it.topColor ? it.topColor : null,
+      headboard_enabled: it.kind === 'bed' ? !!it.headboardEnabled : false,
+      headboard_color:
+        it.kind === 'bed' && it.headboardEnabled && it.headboardColor
+          ? it.headboardColor
+          : null,
+      headboard_height_in:
+        it.kind === 'bed' && it.headboardEnabled && it.headboardHeightIn != null
+          ? it.headboardHeightIn
+          : null,
+      headboard_width_scale:
+        it.kind === 'bed' && it.headboardEnabled && it.headboardWidthScale != null
+          ? it.headboardWidthScale
+          : null,
 
       blanket_texture_path:
         it.kind === 'bed' && it.blanketTexturePath
