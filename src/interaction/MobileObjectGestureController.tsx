@@ -25,6 +25,7 @@ type PendingTap = {
   startY: number;
   itemId: string | null;
   wallId: string | null;
+  openingId: string | null;
 };
 
 type PendingObject = {
@@ -328,6 +329,33 @@ export function MobileObjectGestureController({
       return null;
     };
 
+    const hitAnyOpeningId = (clientX: number, clientY: number): string | null => {
+      const { roomGeometry } = useStore.getState();
+      const rect = canvas.getBoundingClientRect();
+      ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(ndc, camera);
+      const intersections = raycaster.intersectObjects(scene.children, true);
+      for (const ix of intersections) {
+        let obj: THREE.Object3D | null = ix.object;
+        while (obj) {
+          if (obj.userData?.itemId) return null;
+          const openingId = obj.userData?.openingId as string | undefined;
+          const wallId = obj.userData?.wallId as string | undefined;
+          if (
+            openingId &&
+            wallId &&
+            roomGeometry.openings.some((o) => o.id === openingId && o.kind === 'window') &&
+            !getOrbitHiddenWallIds().has(wallId)
+          ) {
+            return openingId;
+          }
+          obj = obj.parent;
+        }
+      }
+      return null;
+    };
+
     const hitAnyWallId = (clientX: number, clientY: number): string | null => {
       const { roomGeometry } = useStore.getState();
       const rect = canvas.getBoundingClientRect();
@@ -438,13 +466,15 @@ export function MobileObjectGestureController({
       }
 
       const itemId = hitAnyItemId(e.clientX, e.clientY);
+      const openingId = itemId ? null : hitAnyOpeningId(e.clientX, e.clientY);
       pendingRef.current = {
         kind: 'tap',
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
         itemId,
-        wallId: itemId ? null : hitAnyWallId(e.clientX, e.clientY),
+        openingId,
+        wallId: itemId || openingId ? null : hitAnyWallId(e.clientX, e.clientY),
       };
     };
 
@@ -572,6 +602,8 @@ export function MobileObjectGestureController({
       if (!isTapMovement(dx, dy)) return;
       if (pending.itemId) {
         useStore.getState().select(pending.itemId);
+      } else if (pending.openingId) {
+        useStore.getState().selectOpening(pending.openingId);
       } else if (pending.wallId) {
         useStore.getState().selectWall(pending.wallId);
       } else {

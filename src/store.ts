@@ -9,6 +9,12 @@ import {
 import { defaultWallShelfPose, findValidElevation, resolveValidXZ, settleGravity, validatePlacement } from './interaction/collision';
 import { trackDesignItemAdded } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
+import { isPosterItem } from './lib/posterItem';
+import {
+  posterCatalogSize,
+  posterPositionPreservingCenterY,
+  posterSizeForItemAfterNatural,
+} from './lib/posterSize';
 import { shouldStandImportedUpright, standUpFlatBounds } from './lib/importedUpright';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './lib/checklistPublicGlbs';
 import {
@@ -18,8 +24,10 @@ import {
   normalizeRoomGeometry,
   planBounds,
   planCentroid,
+  updateOpening,
   type RoomGeometry,
 } from './lib/roomGeometry';
+import type { FloorPlanOpening } from './lib/floorPlanGeometry';
 import { clampPositionInRoom } from './interaction/collision';
 import type { Weather } from './lib/environment';
 import {
@@ -207,6 +215,8 @@ export interface Item {
   catalogSizeIn?: [number, number, number];
   /** furniture_catalog.kind for imported GLBs (checklist + gallery placement). */
   catalogKind?: string;
+  /** furniture_catalog.tags for imported GLBs (runtime; backfilled on load). */
+  catalogTags?: string[];
   label: string;
   /** Gravity off on drag only when checked AND touching a wall; height slider ignores this flag. */
   wallMounted?: boolean;
@@ -251,11 +261,15 @@ interface StoreState {
   selectedIds: string[];
   /** Floor-plan wall selected for independent paint. Cleared with furniture selection. */
   selectedWallId: string | null;
+  /** Window opening selected in the 3D room for curtain editing. */
+  selectedOpeningId: string | null;
   /**
    * Bumped on every wall click (including re-clicking the same wall) so the
    * Look panel can reopen after the user closed it or orbited away.
    */
   wallSelectEpoch: number;
+  /** Bumped on every window click so the inspector can reopen. */
+  openingSelectEpoch: number;
   /**
    * Wall segment ids currently hidden by orbit cutaway (sorted).
    * Mirrored from the frame loop so React can drop pointer handlers — R3F
@@ -300,6 +314,11 @@ interface StoreState {
   /** Paint every wall, or one wall when `wallId` is set. */
   setWallPaint: (color: string, wallId?: string | null) => void;
   selectWall: (wallId: string | null) => void;
+  selectOpening: (openingId: string | null) => void;
+  patchOpening: (
+    openingId: string,
+    patch: Partial<Pick<FloorPlanOpening, 'offset' | 'width' | 'height' | 'sill' | 'hinge' | 'curtains'>>,
+  ) => void;
   setOrbitHiddenWallIds: (ids: string[]) => void;
   setVisualQuality: (q: RenderQualityTier) => void;
   setRelightImports: (on: boolean) => void;
@@ -349,8 +368,10 @@ interface StoreState {
       size?: [number, number, number];
       catalogSizeIn?: [number, number, number];
       catalogKind?: string;
+      catalogTags?: string[];
       curatedProductId?: string;
       tintColor?: string;
+      wallMounted?: boolean;
     },
   ) => string;
   /** Clone an item with a new id, slight position offset; appends and selects it. */
@@ -394,6 +415,18 @@ interface StoreState {
       url: string;
       storagePath: string;
       catalogSizeIn?: [number, number, number];
+    },
+  ) => void;
+  /** Replace one wall poster placement while preserving pose and wall mount. */
+  swapPosterItem: (
+    id: string,
+    replacement: {
+      label: string;
+      catalogKind: string;
+      url: string;
+      storagePath: string;
+      size: [number, number, number];
+      catalogTags?: string[];
     },
   ) => void;
   setImportedSize: (id: string, size: [number, number, number]) => void;
@@ -498,7 +531,9 @@ export const useStore = create<StoreState>((set, get) => ({
   selectedId: null,
   selectedIds: [],
   selectedWallId: null,
+  selectedOpeningId: null,
   wallSelectEpoch: 0,
+  openingSelectEpoch: 0,
   orbitHiddenWallIds: [],
   invalid: false,
 
@@ -565,18 +600,41 @@ export const useStore = create<StoreState>((set, get) => ({
   selectWall: (wallId) =>
     set((s) => {
       if (wallId && !s.roomGeometry.walls.some((w) => w.id === wallId)) {
-        return { selectedWallId: null, ...selectionOf([]) };
+        return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([]) };
       }
       if (wallId === null) {
-        if (s.selectedWallId === null && s.selectedId === null) return s;
-        return { selectedWallId: null, ...selectionOf([]) };
+        if (s.selectedWallId === null && s.selectedId === null && s.selectedOpeningId === null) return s;
+        return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([]) };
       }
       // Always bump epoch so re-clicking the same wall re-opens Look.
       return {
         selectedWallId: wallId,
+        selectedOpeningId: null,
         wallSelectEpoch: s.wallSelectEpoch + 1,
         ...selectionOf([]),
       };
+    }),
+  selectOpening: (openingId) =>
+    set((s) => {
+      if (openingId && !s.roomGeometry.openings.some((o) => o.id === openingId && o.kind === 'window')) {
+        return { selectedOpeningId: null, selectedWallId: null, ...selectionOf([]) };
+      }
+      if (openingId === null) {
+        if (s.selectedOpeningId === null) return s;
+        return { selectedOpeningId: null };
+      }
+      return {
+        selectedOpeningId: openingId,
+        selectedWallId: null,
+        openingSelectEpoch: s.openingSelectEpoch + 1,
+        ...selectionOf([]),
+      };
+    }),
+  patchOpening: (openingId, patch) =>
+    set((s) => {
+      if (!s.roomGeometry.openings.some((o) => o.id === openingId)) return s;
+      const roomGeometry = updateOpening(s.roomGeometry, openingId, patch);
+      return { roomGeometry };
     }),
   setOrbitHiddenWallIds: (ids) =>
     set((s) => {
@@ -633,9 +691,15 @@ export const useStore = create<StoreState>((set, get) => ({
       const appearance = pruneWallColors(s.environment.appearance, wallIds);
       const selectedWallId =
         s.selectedWallId && wallIds.includes(s.selectedWallId) ? s.selectedWallId : null;
+      const selectedOpeningId =
+        s.selectedOpeningId &&
+        roomGeometry.openings.some((o) => o.id === s.selectedOpeningId && o.kind === 'window')
+          ? s.selectedOpeningId
+          : null;
       return {
         roomGeometry,
         selectedWallId,
+        selectedOpeningId,
         environment:
           appearance === s.environment.appearance
             ? s.environment
@@ -919,6 +983,7 @@ export const useStore = create<StoreState>((set, get) => ({
         order: [...orderIds],
         ...selectionOf([]),
         selectedWallId: null,
+        selectedOpeningId: null,
         invalid: false,
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
@@ -933,6 +998,7 @@ export const useStore = create<StoreState>((set, get) => ({
       },
       roomGeometry: normalizeRoomGeometry(roomGeometry),
       selectedWallId: null,
+      selectedOpeningId: null,
     })),
 
   resetLayout: () =>
@@ -943,6 +1009,7 @@ export const useStore = create<StoreState>((set, get) => ({
         order: [],
         ...selectionOf([]),
         selectedWallId: null,
+        selectedOpeningId: null,
         invalid: false,
         environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
         roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
@@ -995,9 +1062,10 @@ export const useStore = create<StoreState>((set, get) => ({
       importedStoragePath: opts?.storagePath,
       catalogSizeIn,
       catalogKind: opts?.catalogKind,
+      catalogTags: opts?.catalogTags?.length ? [...opts.catalogTags] : undefined,
       label,
       curatedProductId: opts?.curatedProductId,
-      wallMounted: isWallShelfKind(kind) ? true : undefined,
+      wallMounted: opts?.wallMounted ?? (isWallShelfKind(kind) ? true : undefined),
       tintColor:
         opts?.tintColor ??
         (isWallShelfKind(kind)
@@ -1439,6 +1507,15 @@ export const useStore = create<StoreState>((set, get) => ({
       const it = s.items[id];
       if (!it || it.kind !== 'imported') return s;
       if (!it.importedNaturalSize) {
+        if (isPosterItem(it)) {
+          const size = posterSizeForItemAfterNatural(it, natural);
+          return {
+            items: {
+              ...s.items,
+              [id]: { ...it, importedNaturalSize: natural, size, catalogSizeIn: size },
+            },
+          };
+        }
         const size = resolveImportedInitialSize(it.size, natural, it.catalogSizeIn);
         return {
           items: {
@@ -1483,6 +1560,40 @@ export const useStore = create<StoreState>((set, get) => ({
       return changed ? { items } : s;
     }),
 
+  swapPosterItem: (id, replacement) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'imported') return s;
+
+      const newSize = posterCatalogSize(
+        replacement.size[0],
+        replacement.size[1],
+        replacement.size[2],
+      );
+      const position = posterPositionPreservingCenterY(it.position, it.size[1], newSize[1]);
+
+      return {
+        items: {
+          ...s.items,
+          [id]: {
+            ...it,
+            label: replacement.label,
+            catalogKind: replacement.catalogKind,
+            catalogTags: replacement.catalogTags?.length
+              ? [...replacement.catalogTags]
+              : it.catalogTags,
+            importedUrl: replacement.url,
+            importedStoragePath: replacement.storagePath,
+            catalogSizeIn: [...newSize] as [number, number, number],
+            size: newSize,
+            position,
+            importedNaturalSize: undefined,
+            wallMounted: it.wallMounted ?? true,
+          },
+        },
+      };
+    }),
+
   setImportedSize: (id, sizeInput) =>
     set((s) => {
       const it = s.items[id];
@@ -1501,15 +1612,19 @@ export const useStore = create<StoreState>((set, get) => ({
 
   select: (id, opts) =>
     set((s) => {
-      if (id === null) return { selectedWallId: null, ...selectionOf([]) };
+      if (id === null) return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([]) };
       if (!s.items[id]) return s;
       if (opts?.additive) {
         if (s.selectedIds.includes(id)) {
-          return { selectedWallId: null, ...selectionOf(s.selectedIds.filter((x) => x !== id)) };
+          return {
+            selectedWallId: null,
+            selectedOpeningId: null,
+            ...selectionOf(s.selectedIds.filter((x) => x !== id)),
+          };
         }
-        return { selectedWallId: null, ...selectionOf([...s.selectedIds, id]) };
+        return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([...s.selectedIds, id]) };
       }
-      return { selectedWallId: null, ...selectionOf([id]) };
+      return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([id]) };
     }),
   setInvalid: (v) => set({ invalid: v }),
 }));

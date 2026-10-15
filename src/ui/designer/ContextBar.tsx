@@ -1,3 +1,4 @@
+import { isPosterItem } from '../../lib/posterItem';
 import { proportionalSizesFromMaxSide } from '../../lib/uniformItemSize';
 import { planBounds } from '../../lib/roomGeometry';
 import { useStore } from '../../store';
@@ -8,6 +9,7 @@ export interface ContextBarProps {
   detailLabel?: string;
   onReviseWithThrixel?: () => void;
   showReviseWithThrixel?: boolean;
+  onChangePoster?: () => void;
 }
 
 export function ContextBar({
@@ -15,6 +17,7 @@ export function ContextBar({
   detailLabel = 'Edit details',
   onReviseWithThrixel,
   showReviseWithThrixel = false,
+  onChangePoster,
 }: ContextBarProps) {
   const selectedId = useStore((s) => s.selectedId);
   const selectedIds = useStore((s) => s.selectedIds);
@@ -32,6 +35,7 @@ export function ContextBar({
   const displayName = multiCount > 1 ? `${multiCount} selected` : item.label;
 
   const isHanging = item.kind === 'hanging';
+  const isPoster = isPosterItem(item);
   const canSize = !isHanging && (item.kind !== 'imported' || !!item.importedNaturalSize);
   const maxSide = Math.max(item.size[0], item.size[1], item.size[2]);
   const maxFootprint = Math.max(planBounds(roomGeometry).width, planBounds(roomGeometry).depth, 200);
@@ -135,6 +139,12 @@ export function ContextBar({
       {showReviseWithThrixel && onReviseWithThrixel ? (
         <button type="button" className="dg-context-btn" onClick={onReviseWithThrixel}>
           Revise with Thrixel
+        </button>
+      ) : null}
+
+      {isPoster && onChangePoster ? (
+        <button type="button" className="dg-context-btn" onClick={onChangePoster}>
+          Change poster
         </button>
       ) : null}
 

@@ -1,4 +1,5 @@
-import { Suspense, useEffect, useMemo } from 'react';
+import { Component, Suspense, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { isSameOriginModelUrl, probeModelUrl } from '../lib/modelUrlProbe';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { Item, useStore } from '../store';
@@ -26,18 +27,43 @@ interface Props {
  * User-uploaded GLTF/GLB: mesh stays at its natural bounds; a scale factor maps
  * `item.size` (inches for placement/collision) onto those bounds via `importedNaturalSize`.
  */
+class ImportedModelErrorBoundary extends Component<
+  { fallback: ReactNode; children: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  componentDidUpdate(prevProps: { fallback: ReactNode; children: ReactNode }) {
+    if (prevProps.children !== this.props.children && this.state.failed) {
+      this.setState({ failed: false });
+    }
+  }
+
+  render() {
+    if (this.state.failed) return this.props.fallback;
+    return this.props.children;
+  }
+}
+
 export function ImportedModel({ item, selected, invalid }: Props) {
   if (!item.importedUrl) return null;
+  const fallback = <ImportedLoadingBox item={item} selected={selected} invalid={invalid} />;
   return (
-    <Suspense fallback={<ImportedLoadingBox item={item} selected={selected} invalid={invalid} />}>
-      <Inner
-        key={`${item.importedUrl}::${IMPORT_MATERIAL_PASS}`}
-        item={item}
-        selected={selected}
-        invalid={invalid}
-        url={item.importedUrl}
-      />
-    </Suspense>
+    <ImportedModelErrorBoundary fallback={fallback}>
+      <Suspense fallback={fallback}>
+        <Inner
+          key={`${item.importedUrl}::${item.catalogKind ?? 'imported'}::${IMPORT_MATERIAL_PASS}`}
+          item={item}
+          selected={selected}
+          invalid={invalid}
+          url={item.importedUrl}
+        />
+      </Suspense>
+    </ImportedModelErrorBoundary>
   );
 }
 
@@ -78,6 +104,35 @@ function ImportedLoadingBox({ item, selected, invalid }: Props) {
 }
 
 function Inner({ item, selected, invalid, url }: Props & { url: string }) {
+  const [loadable, setLoadable] = useState<boolean | null>(
+    isSameOriginModelUrl(url) ? null : true,
+  );
+
+  useEffect(() => {
+    if (!isSameOriginModelUrl(url)) {
+      setLoadable(true);
+      return;
+    }
+    let cancelled = false;
+    setLoadable(null);
+    void probeModelUrl(url).then((ok) => {
+      if (!cancelled) setLoadable(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [url]);
+
+  if (loadable === null || loadable === false) {
+    return <ImportedLoadingBox item={item} selected={selected} invalid={invalid} />;
+  }
+
+  return (
+    <InnerLoaded item={item} selected={selected} invalid={invalid} url={url} />
+  );
+}
+
+function InnerLoaded({ item, selected, invalid, url }: Props & { url: string }) {
   const { scene } = useGLTF(url) as { scene: THREE.Object3D };
   const relightImports = useStore((s) => s.visual.relightImports);
   const registerNatural = useStore((s) => s.registerImportedNaturalSize);

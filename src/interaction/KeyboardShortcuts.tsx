@@ -33,13 +33,15 @@ export function KeyboardShortcuts() {
       const { selectedIds, items, updateRotation, removeItem, select, duplicateItem, setItemElevation } =
         state;
       const selectedWallId = state.selectedWallId;
+      const selectedOpeningId = state.selectedOpeningId;
 
       const mod = e.metaKey || e.ctrlKey;
 
       if (e.key === 'Escape') {
-        if (selectedIds.length === 0 && !selectedWallId) return;
+        if (selectedIds.length === 0 && !selectedWallId && !selectedOpeningId) return;
         e.preventDefault();
         select(null);
+        if (selectedOpeningId) state.selectOpening(null);
         return;
       }
 

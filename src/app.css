@@ -4910,6 +4910,48 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .fp-field-row-dims .fp-field { flex: 1; min-width: 60px; margin-bottom: 0; }
 .fp-field-row-presets { margin-top: 4px; }
+.fp-curtain-field {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.fp-curtain-swatches {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+.fp-curtain-swatch,
+.fp-curtain-color-input {
+  width: 28px;
+  height: 28px;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  padding: 0;
+  cursor: pointer;
+}
+.fp-curtain-swatch.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--fp-panel), 0 0 0 3px var(--accent-line);
+}
+.fp-curtain-swatch:focus-visible,
+.fp-curtain-color-input:focus-visible,
+.fp-curtain-range:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 2px;
+}
+.fp-curtain-color-input {
+  border-radius: 8px;
+  background: transparent;
+  overflow: hidden;
+}
+.fp-curtain-color-input::-webkit-color-swatch-wrapper { padding: 0; }
+.fp-curtain-color-input::-webkit-color-swatch { border: 0; }
+.fp-curtain-range {
+  width: 100%;
+  accent-color: var(--accent);
+}
 .fp-chip {
   cursor: pointer;
   border: 1px solid var(--border);

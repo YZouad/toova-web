@@ -15,7 +15,11 @@ import { HangingDecoration } from './HangingDecoration';
 import { ItemEmitter } from './ItemEmitter';
 import { EmitterGlow } from './EmitterGlow';
 
-export function ItemsLayer() {
+interface ItemsLayerProps {
+  onPosterActivate?: (id: string) => void;
+}
+
+export function ItemsLayer({ onPosterActivate }: ItemsLayerProps) {
   const items = useStore((s) => s.items);
   const order = useStore((s) => s.order);
   const selectedIds = useStore((s) => s.selectedIds);
@@ -41,7 +45,7 @@ export function ItemsLayer() {
               // Still raycastable for furniture anchors, but selection is suppressed upstream.
               <ItemVisual item={item} selected={false} invalid={false} />
             ) : (
-              <Selectable id={id}>
+              <Selectable id={id} onPosterActivate={onPosterActivate}>
                 <ItemVisual item={item} selected={isSelected} invalid={isSelected && invalid} />
               </Selectable>
             )}

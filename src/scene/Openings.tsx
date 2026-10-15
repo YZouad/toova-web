@@ -1,5 +1,7 @@
 import { useMemo, useEffect, useLayoutEffect, useRef } from 'react';
+import { type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
+import { getOrbitHiddenWallIds } from '../lib/orbitCutaway';
 import {
   doorOpenings,
   openingWorldPlacement,
@@ -9,6 +11,9 @@ import { getProceduralMaterialMaps } from '../lib/proceduralTextures';
 import type { MaterialPresetId } from '../lib/roomMaterials';
 import { useOrbitFade } from './useOrbitFade';
 import { SHADOW_ONLY_LAYER } from './shadowLayers';
+import { useStore } from '../store';
+
+const WINDOW_CLICK_PX = 6;
 
 /**
  * Door casing, leaf, threshold, and handle — fades with its host wall in orbit mode.
@@ -176,6 +181,7 @@ export function WindowAssemblies({
   glassTint,
   fillIntensity,
   castWindowShadows = false,
+  interactive = false,
 }: {
   geom: RoomGeometry;
   trimPreset: MaterialPresetId;
@@ -183,6 +189,7 @@ export function WindowAssemblies({
   fillIntensity: number;
   /** When Shadow roof blocks overhead sun, window spots cast furniture shadows. */
   castWindowShadows?: boolean;
+  interactive?: boolean;
 }) {
   const windows = geom.openings.filter((o) => o.kind === 'window');
 
@@ -200,6 +207,7 @@ export function WindowAssemblies({
             glassTint={glassTint}
             fillIntensity={fillIntensity}
             castShadows={castWindowShadows && i === 0}
+            interactive={interactive}
           />
         );
       })}
@@ -214,6 +222,7 @@ function WindowUnit({
   glassTint,
   fillIntensity,
   castShadows = false,
+  interactive = false,
 }: {
   placement: NonNullable<ReturnType<typeof openingWorldPlacement>>;
   sill: number;
@@ -221,10 +230,22 @@ function WindowUnit({
   glassTint: string;
   fillIntensity: number;
   castShadows?: boolean;
+  interactive?: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
+  const pendingClick = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const designerTool = useStore((s) => s.designerTool);
+  const selectedOpeningId = useStore((s) => s.selectedOpeningId);
+  const selectOpening = useStore((s) => s.selectOpening);
+  const openingId = placement.opening.id;
+  const wallId = placement.opening.wallId;
+  const selected = selectedOpeningId === openingId;
+  const canSelect = interactive && designerTool === 'select';
   const trimRef = useRef<THREE.MeshStandardMaterial>(null!);
   const glassRef = useRef<THREE.MeshPhysicalMaterial>(null!);
+  const curtainRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const rodRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const curtains = placement.opening.curtains;
 
   const trimMat = useMemo(() => {
     const maps = getProceduralMaterialMaps(trimPreset);
@@ -257,18 +278,76 @@ function WindowUnit({
       }),
     [glassTint],
   );
+  const curtainMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: curtains?.color ?? '#d8c4ad',
+        roughness: 0.92,
+        metalness: 0,
+        transparent: true,
+      }),
+    [curtains?.color],
+  );
+  const rodMat = useMemo(
+    () =>
+      new THREE.MeshStandardMaterial({
+        color: '#74685d',
+        roughness: 0.42,
+        metalness: 0.7,
+        transparent: true,
+      }),
+    [],
+  );
 
   useEffect(() => {
     trimRef.current = trimMat;
     glassRef.current = glassMat;
+    curtainRef.current = curtainMat;
+    rodRef.current = rodMat;
     return () => {
       trimMat.dispose();
       glassMat.dispose();
+      curtainMat.dispose();
+      rodMat.dispose();
     };
-  }, [trimMat, glassMat]);
+  }, [trimMat, glassMat, curtainMat, rodMat]);
+
+  useEffect(() => {
+    trimMat.emissive.set(selected ? '#c4a574' : '#000000');
+    trimMat.emissiveIntensity = selected ? 0.2 : 0;
+  }, [trimMat, selected]);
+
+  const clearPendingClick = () => {
+    pendingClick.current = null;
+  };
+
+  const handlePointerDown = (e: ThreeEvent<PointerEvent>) => {
+    if (!canSelect) return;
+    if (getOrbitHiddenWallIds().has(wallId)) return;
+    const pt = e.nativeEvent.pointerType;
+    if (pt === 'touch' || pt === 'pen') return;
+    pendingClick.current = {
+      pointerId: e.nativeEvent.pointerId,
+      x: e.nativeEvent.clientX,
+      y: e.nativeEvent.clientY,
+    };
+  };
+
+  const handlePointerUp = (e: ThreeEvent<PointerEvent>) => {
+    const pending = pendingClick.current;
+    clearPendingClick();
+    if (!pending || !canSelect) return;
+    if (pending.pointerId !== e.nativeEvent.pointerId) return;
+    if (getOrbitHiddenWallIds().has(wallId)) return;
+    const dx = e.nativeEvent.clientX - pending.x;
+    const dy = e.nativeEvent.clientY - pending.y;
+    if (dx * dx + dy * dy > WINDOW_CLICK_PX * WINDOW_CLICK_PX) return;
+    e.stopPropagation();
+    selectOpening(openingId);
+  };
 
   const center: [number, number, number] = [placement.cx, placement.cy, placement.cz];
-  useOrbitFade([trimRef, glassRef], placement.outward, center, {
+  useOrbitFade([trimRef, glassRef, curtainRef, rodRef], placement.outward, center, {
     groupRef,
     wallId: placement.opening.wallId,
   });
@@ -305,13 +384,97 @@ function WindowUnit({
         <mesh position={[w / 4, sill + h / 2, depth * 0.4]} material={glassMat}>
           <planeGeometry args={[w / 2 - 1.5, h - 2]} />
         </mesh>
+        {curtains ? (
+          <CurtainSet
+            width={w}
+            height={h}
+            sill={sill}
+            openness={curtains.openness}
+            depth={depth}
+            fabricMaterial={curtainMat}
+            rodMaterial={rodMat}
+          />
+        ) : null}
+        {canSelect ? (
+          <mesh
+            position={[0, sill + h / 2, depth * 0.42]}
+            userData={{ openingId, wallId }}
+            onPointerDown={handlePointerDown}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={clearPendingClick}
+            onPointerLeave={clearPendingClick}
+          >
+            <planeGeometry args={[w + 4, h + 6]} />
+            <meshBasicMaterial transparent opacity={0} depthWrite={false} />
+          </mesh>
+        ) : null}
       </group>
       <WindowFillLight
         placement={placement}
         color={glassTint}
-        intensity={fillIntensity}
+        intensity={fillIntensity * (curtains ? 0.25 + curtains.openness * 0.75 : 1)}
         castShadows={castShadows}
       />
+    </group>
+  );
+}
+
+function CurtainSet({
+  width,
+  height,
+  sill,
+  openness,
+  depth,
+  fabricMaterial,
+  rodMaterial,
+}: {
+  width: number;
+  height: number;
+  sill: number;
+  openness: number;
+  depth: number;
+  fabricMaterial: THREE.MeshStandardMaterial;
+  rodMaterial: THREE.MeshStandardMaterial;
+}) {
+  const rodWidth = width + 14;
+  const top = sill + height + 7;
+  const bottom = Math.max(2, sill - 5);
+  const panelHeight = top - bottom - 1;
+  const sideWidth = 5 + (rodWidth / 2 - 5) * (1 - openness);
+  const foldCount = 7;
+  const foldWidth = (sideWidth / foldCount) * 1.08;
+
+  const panel = (side: -1 | 1) => {
+    const outerEdge = side * rodWidth / 2;
+    const centerX = outerEdge - side * sideWidth / 2;
+    return (
+      <group position={[centerX, bottom + panelHeight / 2, depth + 2.7]}>
+        {Array.from({ length: foldCount }, (_, i) => {
+          const x = -sideWidth / 2 + foldWidth / 2 + i * (sideWidth / foldCount);
+          const z = i % 2 === 0 ? 0.65 : 0;
+          return (
+            <mesh key={i} position={[x, 0, z]} castShadow receiveShadow material={fabricMaterial}>
+              <boxGeometry args={[foldWidth, panelHeight, 0.7]} />
+            </mesh>
+          );
+        })}
+      </group>
+    );
+  };
+
+  return (
+    <group>
+      <mesh position={[0, top + 1.5, depth + 3.3]} rotation={[0, 0, Math.PI / 2]} castShadow material={rodMaterial}>
+        <cylinderGeometry args={[0.55, 0.55, rodWidth + 3, 12]} />
+      </mesh>
+      <mesh position={[-rodWidth / 2 - 2, top + 1.5, depth + 3.3]} rotation={[Math.PI / 2, 0, 0]} material={rodMaterial}>
+        <cylinderGeometry args={[1.1, 1.1, 0.7, 12]} />
+      </mesh>
+      <mesh position={[rodWidth / 2 + 2, top + 1.5, depth + 3.3]} rotation={[Math.PI / 2, 0, 0]} material={rodMaterial}>
+        <cylinderGeometry args={[1.1, 1.1, 0.7, 12]} />
+      </mesh>
+      {panel(-1)}
+      {panel(1)}
     </group>
   );
 }
