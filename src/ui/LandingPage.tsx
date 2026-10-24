@@ -24,6 +24,7 @@ import {
   StatRow,
   usePhoneNav,
 } from './kit';
+import { openCookieSettings } from '../lib/cookieConsent';
 
 interface LandingPageProps {
   onGetStarted: () => void;
@@ -453,6 +454,7 @@ export function LandingPage({
           { label: 'Privacy', href: '/privacy' },
           { label: 'Terms', href: '/terms' },
           { label: 'Child Safety', href: '/safety' },
+          { label: 'Cookie settings', onClick: openCookieSettings },
           ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
         ]}
       />

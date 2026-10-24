@@ -1,4 +1,5 @@
 import {
+  fetchActiveSubscriptionSource,
   fetchBillingProduct,
   fetchPlanPriceId,
   formBody,
@@ -14,6 +15,7 @@ Deno.serve((req: Request) =>
     getOrCreateStripeCustomer,
     fetchPlanPriceId,
     fetchBillingProduct,
+    fetchActiveSubscriptionSource,
     stripeRequest,
     formBody,
     envGet: (name) => Deno.env.get(name),

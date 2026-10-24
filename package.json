@@ -9,13 +9,15 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
+    "build:ios": "tsc -b && vite build --mode embed",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:billing": "vitest run supabase/functions/_shared supabase/functions/billing-checkout supabase/functions/billing-portal supabase/functions/stripe-webhook",
+    "test:billing": "vitest run supabase/functions/_shared supabase/functions/billing-checkout supabase/functions/billing-portal supabase/functions/stripe-webhook supabase/functions/appstore-notifications supabase/functions/report-content",
     "test:db": "supabase test db",
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
+    "backfill:catalog-thumbnails": "node scripts/backfill-catalog-thumbnails.mjs",
     "generate:unfurls": "node scripts/generate-static-unfurls.mjs"
   },
   "dependencies": {
@@ -34,11 +36,13 @@
     "zustand": "^4.5.5"
   },
   "devDependencies": {
+    "@peculiar/x509": "^1.12.3",
     "@playwright/test": "^1.62.1",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "@types/three": "^0.169.0",
     "@vitejs/plugin-react": "^4.3.3",
+    "jose": "^5.9.6",
     "typescript": "^5.6.3",
     "vite": "^6.4.3",
     "vitest": "^3.2.7"

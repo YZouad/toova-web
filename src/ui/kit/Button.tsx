@@ -1,9 +1,10 @@
-import type {
-  CSSProperties,
-  ElementType,
-  HTMLAttributes,
-  MouseEventHandler,
-  ReactNode,
+import {
+  forwardRef,
+  type CSSProperties,
+  type ElementType,
+  type HTMLAttributes,
+  type MouseEventHandler,
+  type ReactNode,
 } from 'react';
 
 export type ButtonVariant =
@@ -29,19 +30,22 @@ export interface ButtonProps extends HTMLAttributes<HTMLElement> {
   style?: CSSProperties;
 }
 
-export function Button({
-  variant = 'primary',
-  size = 'lg',
-  as: Tag = 'button',
-  disabled = false,
-  full = false,
-  type = 'button',
-  children,
-  className,
-  style,
-  onClick,
-  ...rest
-}: ButtonProps) {
+export const Button = forwardRef<HTMLElement, ButtonProps>(function Button(
+  {
+    variant = 'primary',
+    size = 'lg',
+    as: Tag = 'button',
+    disabled = false,
+    full = false,
+    type = 'button',
+    children,
+    className,
+    style,
+    onClick,
+    ...rest
+  },
+  ref,
+) {
   const classes = [
     'kit-btn',
     `kit-btn--${variant}`,
@@ -58,8 +62,8 @@ export function Button({
       : { onClick, 'aria-disabled': disabled || undefined };
 
   return (
-    <Tag className={classes} style={style} {...tagProps} {...rest}>
+    <Tag ref={ref} className={classes} style={style} {...tagProps} {...rest}>
       {children}
     </Tag>
   );
-}
+});

@@ -106,29 +106,48 @@ Deno.serve(async (req: Request) => {
     });
   } catch (error) {
     console.error(error);
+    const status = error instanceof HttpError ? error.status : 500;
     return json(
       { error: error instanceof Error ? error.message : "Lifecycle email failed." },
-      500,
+      status,
     );
   }
 });
 
 function assertAuthorized(req: Request): void {
   const cronSecret = Deno.env.get("LIFECYCLE_CRON_SECRET")?.trim();
-  const headerSecret = req.headers.get("x-cron-secret")?.trim();
-  if (cronSecret) {
-    if (headerSecret && headerSecret === cronSecret) return;
-  } else if (!cronSecret) {
-    // Bootstrap: allow cron drain until LIFECYCLE_CRON_SECRET is configured.
-    console.warn("LIFECYCLE_CRON_SECRET unset — allowing drain request");
-    return;
+  if (!cronSecret || cronSecret.length < 16) {
+    throw new HttpError(
+      503,
+      "LIFECYCLE_CRON_SECRET is not configured; drain refuses to run.",
+    );
   }
+
+  const headerSecret = req.headers.get("x-cron-secret")?.trim();
+  if (headerSecret && timingSafeEqual(headerSecret, cronSecret)) return;
 
   const auth = req.headers.get("Authorization") ?? "";
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")?.trim();
   if (serviceKey && auth === `Bearer ${serviceKey}`) return;
 
-  throw new Error("Unauthorized");
+  throw new HttpError(401, "Unauthorized");
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aa = enc.encode(a);
+  const bb = enc.encode(b);
+  if (aa.length !== bb.length) return false;
+  let out = 0;
+  for (let i = 0; i < aa.length; i++) out |= aa[i]! ^ bb[i]!;
+  return out === 0;
+}
+
+class HttpError extends Error {
+  constructor(readonly status: number, message: string) {
+    super(message);
+    this.name = "HttpError";
+  }
 }
 
 function serviceClient() {
@@ -179,8 +198,12 @@ function renderTemplate(
     ? `${functionsBase}?unsubscribe=${encodeURIComponent(unsubToken)}`
     : "";
 
-  const roomName = typeof payload.room_name === "string" ? payload.room_name : "your room";
-  const label = typeof payload.label === "string" ? payload.label : "your model";
+  const roomName = escapeHtml(
+    typeof payload.room_name === "string" ? payload.room_name : "your room",
+  );
+  const label = escapeHtml(
+    typeof payload.label === "string" ? payload.label : "your model",
+  );
 
   let subject = "Toova";
   let body = "";
@@ -263,6 +286,15 @@ async function sendResend(opts: {
     const detail = await res.text().catch(() => "");
     throw new Error(`Resend ${res.status}: ${detail.slice(0, 200)}`);
   }
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function requireEnv(name: string): string {

@@ -240,6 +240,9 @@ export interface Item {
   attachmentKey: string;
   /** Procedural hanging decoration payload (kind === 'hanging'). */
   hanging?: HangingDecorationConfig;
+  /** RoomPlan object id while scan placeholders resolve via AI. */
+  scanObjectId?: string;
+  scanStatus?: 'pending' | 'matching' | 'generating' | 'done' | 'failed';
 }
 
 interface StoreState {
@@ -336,6 +339,8 @@ interface StoreState {
 
   /** Replace layout from persisted data for the active room. */
   hydrateLayout: (payload: Item[], orderIds: string[]) => void;
+  /** Merge a scan-identified item update without changing selection order. */
+  patchScanItem: (item: Item) => void;
   hydrateRoomSettings: (environment: RoomEnvironment, roomGeometry: RoomGeometry) => void;
   /** Clear scene (switch room / sign out). */
   resetLayout: () => void;
@@ -924,6 +929,20 @@ export const useStore = create<StoreState>((set, get) => ({
         invalid: false,
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
+      };
+    }),
+
+  patchScanItem: (incoming) =>
+    set((s) => {
+      const normalized = ensureAttachmentKey(normalizeShelfItem(normalizeBedItem(incoming)));
+      const targetId =
+        Object.keys(s.items).find(
+          (id) => s.items[id]?.scanObjectId === normalized.scanObjectId,
+        ) ?? normalized.id;
+      if (!s.items[targetId] && !s.order.includes(normalized.id)) return s;
+      const id = s.items[targetId] ? targetId : normalized.id;
+      return {
+        items: { ...s.items, [id]: { ...s.items[id], ...normalized, id } },
       };
     }),
 

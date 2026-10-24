@@ -16,11 +16,12 @@ import {
   type NormalizedAnalyticsEvent,
 } from './analyticsSchema';
 import {
+  clearAnalyticsQueue,
   enqueueAnalyticsEvent,
   flushAnalyticsQueue,
   resetAnalyticsQueueForTests,
 } from './analyticsQueue';
-import { hasAcceptedAnalytics } from './cookieConsent';
+import { clearAnalyticsCookies, hasAcceptedAnalytics } from './cookieConsent';
 import { supabase } from './supabase';
 
 export { EVENTS, type EventName } from './analyticsSchema';
@@ -173,7 +174,7 @@ function flushSoon(): void {
 function emitGa4(name: EventName, properties?: Record<string, unknown>): void {
   if (!GA_ID || typeof window === 'undefined' || typeof window.gtag !== 'function') return;
   try {
-    window.gtag('event', name, properties);
+    window.gtag('event', name, sanitizeEventProperties(properties));
   } catch (e) {
     console.warn('[analytics] capture failed', e, name);
   }
@@ -187,8 +188,9 @@ function track(name: EventName, properties?: Record<string, unknown>): void {
   }
   if (isInternalUser) return;
   if (!hasAcceptedAnalytics()) return;
-  emitGa4(name, properties);
-  emitFirstParty(name, properties);
+  const sanitized = sanitizeEventProperties(properties);
+  emitGa4(name, sanitized);
+  emitFirstParty(name, sanitized);
 }
 
 function flushPending(): void {
@@ -197,8 +199,21 @@ function flushPending(): void {
   for (const item of queued) track(item.name, item.properties);
 }
 
+/** Consent withdrawn: stop GA4 for this page, drop queued events, and remove GA cookies. */
+export function disableAnalytics(): void {
+  pending.length = 0;
+  clearAnalyticsQueue();
+  if (GA_ID && typeof window !== 'undefined') {
+    (window as unknown as Record<string, unknown>)[`ga-disable-${GA_ID}`] = true;
+  }
+  clearAnalyticsCookies();
+}
+
 export function initAnalytics(): void {
   if (!hasAcceptedAnalytics()) return;
+  if (GA_ID && typeof window !== 'undefined') {
+    (window as unknown as Record<string, unknown>)[`ga-disable-${GA_ID}`] = false;
+  }
   if (!analyticsInitialized) {
     analyticsInitialized = true;
     if (GA_ID && typeof window !== 'undefined') {
@@ -290,13 +305,16 @@ export function resetIdentity(): void {
 }
 
 export function trackPageView(params?: { path?: string; title?: string; referrer?: string }): void {
-  const path = params?.path
+  const rawPath = params?.path
     ?? (typeof window === 'undefined' ? '/' : `${window.location.pathname}${window.location.search}`);
+  const path = sanitizeRoute(rawPath) ?? '/';
+  const rawLocation = typeof window === 'undefined' ? rawPath : window.location.href;
+  const rawReferrer = params?.referrer ?? (typeof document === 'undefined' ? '' : document.referrer);
   track(EVENTS.PAGE_VIEW, {
     page_path: path,
     page_title: params?.title ?? (typeof document === 'undefined' ? '' : document.title),
-    page_referrer: params?.referrer ?? (typeof document === 'undefined' ? '' : document.referrer),
-    page_location: typeof window === 'undefined' ? path : window.location.href,
+    page_referrer: sanitizeRoute(rawReferrer) ?? '',
+    page_location: sanitizeRoute(rawLocation) ?? path,
   });
 }
 

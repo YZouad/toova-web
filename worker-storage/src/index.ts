@@ -9,6 +9,8 @@ export interface Env {
   SUPABASE_URL: string;
   SUPABASE_ANON_KEY: string;
   SUPABASE_SERVICE_ROLE_KEY: string;
+  /** Shared with the delete-account edge function (ACCOUNT_PURGE_SECRET). */
+  ACCOUNT_PURGE_SECRET?: string;
 }
 
 const ALLOWED_ORIGINS = new Set([
@@ -37,6 +39,9 @@ export default {
       }
       if (request.method === 'POST' && url.pathname === '/v1/unmirror') {
         return withCors(origin, await unmirror(request, env));
+      }
+      if (request.method === 'POST' && url.pathname === '/v1/purge-user') {
+        return await purgeUser(request, env);
       }
       return withCors(origin, json({ error: 'Not found' }, 404));
     } catch (err) {
@@ -85,6 +90,46 @@ async function unmirror(request: Request, env: Env): Promise<Response> {
   }
   if (toDelete.length > 0) await env.PUBLIC_BUCKET.delete(toDelete);
   return json({ deleted: toDelete.length });
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Account erasure: delete every R2 object under `<userId>/` in both buckets. */
+async function purgeUser(request: Request, env: Env): Promise<Response> {
+  const secret = env.ACCOUNT_PURGE_SECRET?.trim();
+  const auth = request.headers.get('Authorization') || '';
+  const token = auth.startsWith('Bearer ') ? auth.slice(7).trim() : '';
+  if (!secret || secret.length < 16 || !timingSafeEqual(token, secret)) {
+    throw new HttpError(401, 'Unauthorized');
+  }
+  const body = (await request.json().catch(() => null)) as { userId?: unknown } | null;
+  const userId = typeof body?.userId === 'string' ? body.userId.trim() : '';
+  if (!UUID_RE.test(userId)) return json({ error: 'Invalid userId' }, 400);
+
+  let deleted = 0;
+  for (const bucket of [env.PUBLIC_BUCKET, env.PRIVATE_BUCKET]) {
+    let cursor: string | undefined;
+    do {
+      const page = await bucket.list({ prefix: `${userId}/`, cursor, limit: 1000 });
+      const keys = page.objects.map((o) => o.key);
+      if (keys.length > 0) {
+        await bucket.delete(keys);
+        deleted += keys.length;
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+  }
+  return json({ deleted });
+}
+
+function timingSafeEqual(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const ab = enc.encode(a);
+  const bb = enc.encode(b);
+  if (ab.length !== bb.length) return false;
+  let diff = 0;
+  for (let i = 0; i < ab.length; i++) diff |= ab[i] ^ bb[i];
+  return diff === 0;
 }
 
 async function copySupabaseToR2(env: Env, bucket: string, path: string): Promise<void> {

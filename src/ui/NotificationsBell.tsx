@@ -1,67 +1,108 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from 'react';
 import { createPortal } from 'react-dom';
-import { supabase } from '../lib/supabase';
+import { useNotificationsOptional } from '../context/NotificationsContext';
 import { formatRelativeTime } from '../lib/userDisplay';
 import { Button } from './kit/Button';
+import type { AppNotification } from '../lib/notifications';
 
-export type AppNotification = {
-  id: string;
-  kind: string;
-  title: string;
-  body: string | null;
-  payload: Record<string, unknown>;
-  read_at: string | null;
-  created_at: string;
-};
+export type { AppNotification };
 
 type Placement = 'header' | 'rail';
 
-type PanelPos = { top: number; left: number; maxHeight: number };
+type PanelSide = 'above' | 'below' | 'left' | 'right';
 
-async function fetchNotifications(): Promise<AppNotification[]> {
-  const { data, error } = await supabase.rpc('get_my_notifications', { p_limit: 30 });
-  if (error) throw new Error(error.message);
-  return ((data ?? []) as Array<Record<string, unknown>>).map((row) => ({
-    id: String(row.id),
-    kind: String(row.kind ?? 'system'),
-    title: String(row.title ?? 'Notification'),
-    body: row.body != null ? String(row.body) : null,
-    payload: (row.payload && typeof row.payload === 'object' ? row.payload : {}) as Record<
-      string,
-      unknown
-    >,
-    read_at: row.read_at != null ? String(row.read_at) : null,
-    created_at: String(row.created_at ?? ''),
-  }));
+type PanelPos = {
+  top: number;
+  left: number;
+  maxHeight: number;
+  side: PanelSide;
+  anchorOffset: number;
+};
+
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(Math.max(value, min), Math.max(min, max));
 }
 
-function computePanelPos(trigger: HTMLElement, placement: Placement): PanelPos {
+export function computePanelPos(
+  trigger: HTMLElement,
+  placement: Placement,
+  panel?: HTMLElement | null,
+): PanelPos {
   const rect = trigger.getBoundingClientRect();
-  const gap = 8;
+  const gap = 10;
+  const sideGap = 4;
   const width = Math.min(340, window.innerWidth - 24);
   const pad = 12;
-  const maxPanel = 360;
+  const maxHeight = Math.min(420, window.innerHeight - pad * 2);
+  const panelWidth = panel?.offsetWidth || width;
+  const panelHeight = Math.min(panel?.offsetHeight || 220, maxHeight);
+  const triggerCenterX = rect.left + rect.width / 2;
+  const triggerCenterY = rect.top + rect.height / 2;
 
   if (placement === 'rail') {
-    let left = rect.right + gap;
-    if (left + width > window.innerWidth - pad) {
-      left = Math.max(pad, rect.left - gap - width);
+    const fitsRight = rect.right + sideGap + panelWidth <= window.innerWidth - pad;
+    const fitsLeft = rect.left - sideGap - panelWidth >= pad;
+
+    if (fitsRight || fitsLeft) {
+      const side: PanelSide = fitsRight ? 'right' : 'left';
+      const left = fitsRight ? rect.right + sideGap : rect.left - sideGap - panelWidth;
+      const top = clamp(
+        triggerCenterY - panelHeight / 2,
+        pad,
+        window.innerHeight - pad - panelHeight,
+      );
+      return {
+        top,
+        left,
+        maxHeight,
+        side,
+        anchorOffset: clamp(triggerCenterY - top, 18, panelHeight - 18),
+      };
     }
-    const spaceBelow = window.innerHeight - rect.top - pad;
-    const spaceAbove = rect.bottom - pad;
-    const openUp = spaceBelow < 200 && spaceAbove > spaceBelow;
-    const maxHeight = Math.min(maxPanel, openUp ? spaceAbove - gap : spaceBelow - gap);
-    const top = openUp
-      ? Math.max(pad, rect.bottom - maxHeight)
-      : Math.min(rect.top, window.innerHeight - pad - Math.max(160, maxHeight));
-    return { top, left, maxHeight: Math.max(160, maxHeight) };
+
+    const openBelow =
+      window.innerHeight - rect.bottom >= panelHeight + gap ||
+      window.innerHeight - rect.bottom >= rect.top;
+    const top = openBelow
+      ? Math.min(rect.bottom + gap, window.innerHeight - pad - panelHeight)
+      : Math.max(pad, rect.top - gap - panelHeight);
+    const left = clamp(
+      triggerCenterX - panelWidth / 2,
+      pad,
+      window.innerWidth - pad - panelWidth,
+    );
+    return {
+      top,
+      left,
+      maxHeight,
+      side: openBelow ? 'below' : 'above',
+      anchorOffset: clamp(triggerCenterX - left, 18, panelWidth - 18),
+    };
   }
 
-  let left = rect.right - width;
-  left = Math.min(Math.max(pad, left), window.innerWidth - pad - width);
-  const top = rect.bottom + gap;
-  const maxHeight = Math.min(maxPanel, window.innerHeight - top - pad);
-  return { top, left, maxHeight: Math.max(160, maxHeight) };
+  const openBelow =
+    window.innerHeight - rect.bottom >= panelHeight + gap ||
+    window.innerHeight - rect.bottom >= rect.top;
+  const left = clamp(rect.right - panelWidth, pad, window.innerWidth - pad - panelWidth);
+  const top = openBelow
+    ? Math.min(rect.bottom + gap, window.innerHeight - pad - panelHeight)
+    : Math.max(pad, rect.top - gap - panelHeight);
+  return {
+    top,
+    left,
+    maxHeight,
+    side: openBelow ? 'below' : 'above',
+    anchorOffset: clamp(triggerCenterX - left, 18, panelWidth - 18),
+  };
 }
 
 function BellIcon() {
@@ -91,40 +132,57 @@ export function NotificationsBell({
   /** `rail` opens the panel beside the sidebar trigger (portaled). */
   placement?: Placement;
 }) {
+  const notifications = useNotificationsOptional();
   const [open, setOpen] = useState(false);
-  const [items, setItems] = useState<AppNotification[]>([]);
-  const [error, setError] = useState<string | null>(null);
   const [pos, setPos] = useState<PanelPos | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
+  const panelId = useId();
+  const panelTitleId = useId();
+  const liveId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLElement>(null);
+  const restoreFocusRef = useRef(false);
 
-  const reload = useCallback(async () => {
-    if (!enabled) return;
-    try {
-      setError(null);
-      setItems(await fetchNotifications());
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not load notifications');
-    }
-  }, [enabled]);
+  const items = notifications?.items ?? [];
+  const unread = notifications?.unread ?? 0;
+  const loading = notifications?.loading ?? false;
+  const error = actionError ?? notifications?.error ?? null;
+  const markingAll = notifications?.markingAll ?? false;
+  const markingId = notifications?.markingId ?? null;
 
   const updatePos = useCallback(() => {
     const el = rootRef.current;
     if (!el) return;
-    setPos(computePanelPos(el, placement));
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 || rect.height === 0) {
+      setOpen(false);
+      return;
+    }
+    setPos(computePanelPos(el, placement, panelRef.current));
   }, [placement]);
 
-  useEffect(() => {
-    if (!enabled) return;
-    void reload();
-    const timer = window.setInterval(() => void reload(), 60_000);
-    return () => window.clearInterval(timer);
-  }, [enabled, reload]);
+  const closePanel = useCallback((restoreFocus: boolean) => {
+    restoreFocusRef.current = restoreFocus;
+    setOpen(false);
+    setActionError(null);
+  }, []);
 
   useLayoutEffect(() => {
-    if (!open) return;
+    if (!open) {
+      if (restoreFocusRef.current) {
+        restoreFocusRef.current = false;
+        triggerRef.current?.focus();
+      }
+      return;
+    }
     updatePos();
-  }, [open, updatePos, items.length]);
+    const panel = panelRef.current;
+    if (panel) {
+      panel.focus({ preventScroll: true });
+    }
+  }, [open, updatePos, items.length, loading, error]);
 
   useEffect(() => {
     if (!open) return;
@@ -143,28 +201,62 @@ export function NotificationsBell({
       const target = e.target as Node;
       if (rootRef.current?.contains(target)) return;
       if (panelRef.current?.contains(target)) return;
-      setOpen(false);
+      closePanel(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        closePanel(true);
+      }
     };
-    document.addEventListener('click', onDoc);
+    document.addEventListener('pointerdown', onDoc);
     document.addEventListener('keydown', onKey);
     return () => {
-      document.removeEventListener('click', onDoc);
+      document.removeEventListener('pointerdown', onDoc);
       document.removeEventListener('keydown', onKey);
     };
-  }, [open]);
+  }, [open, closePanel]);
 
-  if (!enabled) return null;
+  if (!enabled || !notifications) return null;
 
-  const unread = items.filter((n) => !n.read_at).length;
+  async function handleActivate(notification: AppNotification) {
+    setActivatingId(notification.id);
+    setActionError(null);
+    try {
+      await notifications!.activate(notification);
+      closePanel(true);
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : 'Could not open notification');
+    } finally {
+      setActivatingId(null);
+    }
+  }
 
-  async function markAllRead() {
-    const unreadIds = items.filter((n) => !n.read_at).map((n) => n.id);
-    if (unreadIds.length === 0) return;
-    await supabase.rpc('mark_notifications_read', { p_ids: unreadIds });
-    setItems((prev) => prev.map((n) => ({ ...n, read_at: n.read_at ?? new Date().toISOString() })));
+  function focusItemAt(index: number) {
+    const buttons = panelRef.current?.querySelectorAll<HTMLButtonElement>('.notif-dropdown__item');
+    if (!buttons || buttons.length === 0) return;
+    const next = Math.max(0, Math.min(index, buttons.length - 1));
+    buttons[next]?.focus();
+  }
+
+  function onPanelKeyDown(event: ReactKeyboardEvent<HTMLDivElement>) {
+    const buttons = panelRef.current?.querySelectorAll<HTMLButtonElement>('.notif-dropdown__item');
+    if (!buttons || buttons.length === 0) return;
+    const currentIndex = Array.from(buttons).indexOf(document.activeElement as HTMLButtonElement);
+
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      focusItemAt(currentIndex < 0 ? 0 : currentIndex + 1);
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      focusItemAt(currentIndex < 0 ? buttons.length - 1 : currentIndex - 1);
+    } else if (event.key === 'Home') {
+      event.preventDefault();
+      focusItemAt(0);
+    } else if (event.key === 'End') {
+      event.preventDefault();
+      focusItemAt(buttons.length - 1);
+    }
   }
 
   const panel =
@@ -173,7 +265,12 @@ export function NotificationsBell({
           <div
             ref={panelRef}
             className="notif-dropdown"
-            role="menu"
+            id={panelId}
+            role="dialog"
+            aria-modal="false"
+            aria-labelledby={panelTitleId}
+            tabIndex={-1}
+            data-side={pos.side}
             style={{
               position: 'fixed',
               top: pos.top,
@@ -181,42 +278,78 @@ export function NotificationsBell({
               right: 'auto',
               maxHeight: pos.maxHeight,
               zIndex: 200,
+              '--notif-anchor': `${pos.anchorOffset}px`,
+            } as CSSProperties}
+            onClick={(event) => {
+              event.stopPropagation();
+            }}
+            onKeyDown={onPanelKeyDown}
+            onBlur={(event) => {
+              const next = event.relatedTarget as Node | null;
+              if (!next) return;
+              if (panelRef.current?.contains(next) || rootRef.current?.contains(next)) return;
+              closePanel(false);
             }}
           >
+            <span className="notif-dropdown__connector" aria-hidden />
             <div className="notif-dropdown__head">
-              <strong>Notifications</strong>
+              <div className="notif-dropdown__heading">
+                <strong id={panelTitleId}>Notifications</strong>
+                <span>{unread > 0 ? `${unread} unread` : 'All caught up'}</span>
+              </div>
               {unread > 0 ? (
-                <Button size="sm" variant="ghost" onClick={() => void markAllRead()}>
-                  Mark all read
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  disabled={markingAll}
+                  onClick={() => void notifications.markAllRead()}
+                >
+                  {markingAll ? 'Marking…' : 'Mark all read'}
                 </Button>
               ) : null}
             </div>
-            {error ? <p className="notif-dropdown__empty">{error}</p> : null}
-            {!error && items.length === 0 ? (
-              <p className="notif-dropdown__empty">No notifications yet.</p>
-            ) : null}
-            {items.map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                role="menuitem"
-                className={`notif-dropdown__item${!n.read_at ? ' is-unread' : ''}`}
-                onClick={() => {
-                  if (!n.read_at) {
-                    void supabase.rpc('mark_notifications_read', { p_ids: [n.id] });
-                    setItems((prev) =>
-                      prev.map((row) =>
-                        row.id === n.id ? { ...row, read_at: new Date().toISOString() } : row,
-                      ),
-                    );
-                  }
-                }}
-              >
-                <span className="notif-dropdown__title">{n.title}</span>
-                {n.body ? <span className="notif-dropdown__meta">{n.body}</span> : null}
-                <span className="notif-dropdown__meta">{formatRelativeTime(n.created_at)}</span>
-              </button>
-            ))}
+            <div className="notif-dropdown__list">
+              {error ? (
+                <div className="notif-dropdown__empty notif-dropdown__empty--error" role="alert">
+                  <span>{error}</span>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setActionError(null);
+                      notifications.clearError();
+                      void notifications.reload();
+                    }}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : null}
+              {loading && items.length === 0 ? (
+                <p className="notif-dropdown__empty">Loading notifications…</p>
+              ) : null}
+              {!error && !loading && items.length === 0 ? (
+                <p className="notif-dropdown__empty">No notifications yet.</p>
+              ) : null}
+              {items.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  className={`notif-dropdown__item${!n.read_at ? ' is-unread' : ''}`}
+                  disabled={markingId === n.id || activatingId === n.id}
+                  onClick={() => void handleActivate(n)}
+                >
+                  <span className="notif-dropdown__status" aria-hidden />
+                  <span className="notif-dropdown__content">
+                    <span className="notif-dropdown__title">{n.title}</span>
+                    {n.body ? <span className="notif-dropdown__body">{n.body}</span> : null}
+                    <time className="notif-dropdown__meta" dateTime={n.created_at}>
+                      {formatRelativeTime(n.created_at)}
+                    </time>
+                  </span>
+                </button>
+              ))}
+            </div>
           </div>,
           document.body,
         )
@@ -227,18 +360,28 @@ export function NotificationsBell({
       ref={rootRef}
       className={`notif-bell${placement === 'rail' ? ' notif-bell--rail' : ''}`}
     >
+      <span id={liveId} className="sr-only" aria-live="polite">
+        {loading ? 'Loading notifications' : unread > 0 ? `${unread} unread notifications` : ''}
+      </span>
       <Button
+        ref={triggerRef}
         size="sm"
         variant="outline"
         className={placement === 'rail' ? 'notif-bell__trigger' : undefined}
         aria-label={unread ? `${unread} unread notifications` : 'Notifications'}
         aria-expanded={open}
-        aria-haspopup="menu"
+        aria-haspopup="dialog"
+        aria-controls={open ? panelId : undefined}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => {
             const next = !v;
-            if (next) void reload();
+            if (next) {
+              updatePos();
+              void notifications.reload();
+            } else {
+              setActionError(null);
+            }
             return next;
           });
         }}

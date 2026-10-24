@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { AppRail, Logo, type AppShellNavId } from './kit';
+import { usePhoneLayout } from './kit/usePhoneNav';
 import { NotificationsBell } from './NotificationsBell';
 
 const BASE = [
@@ -31,6 +32,7 @@ export function AppRailChrome({
   const [menuOpen, setMenuOpen] = useState(false);
   const menuId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
+  const phoneLayout = usePhoneLayout();
   const items = showAdmin
     ? [...BASE, { id: 'admin' as const, label: 'Admin', glyph: '⚙' }]
     : BASE;
@@ -56,9 +58,9 @@ export function AppRailChrome({
     closeMenu();
   };
 
-  const renderFooter = () => (
+  const renderFooter = (withBell: boolean) => (
     <div className="kit-app-shell__rail-footer">
-      <NotificationsBell enabled placement="rail" />
+      {withBell ? <NotificationsBell enabled placement="rail" /> : null}
       <button
         type="button"
         className="kit-app-shell__avatar"
@@ -111,7 +113,7 @@ export function AppRailChrome({
         active={active}
         items={items}
         onNavigate={handleNavigate}
-        footer={renderFooter()}
+        footer={renderFooter(!phoneLayout)}
       />
 
       <button
@@ -158,7 +160,7 @@ export function AppRailChrome({
           active={active}
           items={items}
           onNavigate={handleNavigate}
-          footer={renderFooter()}
+          footer={renderFooter(phoneLayout)}
         />
       </aside>
     </>

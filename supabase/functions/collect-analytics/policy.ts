@@ -206,6 +206,18 @@ export function prepareCollectEvent(
   };
 }
 
+/**
+ * Server-side consent backstop: the client must state that analytics consent
+ * was granted on this device, and a Global Privacy Control signal always wins.
+ */
+export function hasAnalyticsConsent(body: unknown, gpcHeader: string | null): boolean {
+  if (gpcHeader?.trim() === '1') return false;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const consent = (body as { consent?: unknown }).consent;
+  if (!consent || typeof consent !== 'object') return false;
+  return (consent as { analytics?: unknown }).analytics === 'granted';
+}
+
 export function prepareCollectBatch(
   body: unknown,
   derivedUserId: string | null,

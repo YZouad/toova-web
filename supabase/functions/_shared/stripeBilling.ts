@@ -28,7 +28,10 @@ type JwtClaims = {
   exp?: number;
 };
 
-/** Decode Supabase access JWT claims (signature verified at the gateway when verify_jwt = true). */
+/**
+ * Decode Supabase access JWT claims without verifying the signature.
+ * Do not use for authorization — prefer requireUserId / auth.getUser.
+ */
 export function decodeAccessJwtClaims(token: string): JwtClaims | null {
   const parts = token.split(".");
   if (parts.length !== 3) return null;
@@ -43,15 +46,10 @@ export function decodeAccessJwtClaims(token: string): JwtClaims | null {
   }
 }
 
-function userIdFromVerifiedAccessJwt(token: string): string | null {
-  const claims = decodeAccessJwtClaims(token);
-  if (!claims?.sub || claims.role !== "authenticated") return null;
-  if (typeof claims.exp === "number" && claims.exp * 1000 <= Date.now()) {
-    return null;
-  }
-  return claims.sub;
-}
-
+/**
+ * Resolve the caller user id by verifying the access JWT with Supabase Auth.
+ * Never trusts base64-decoded claims alone.
+ */
 export async function requireUserId(req: Request): Promise<string> {
   const supabaseUrl = requireEnv("SUPABASE_URL");
   const anonKey = requireEnv("SUPABASE_ANON_KEY");
@@ -59,15 +57,18 @@ export async function requireUserId(req: Request): Promise<string> {
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
   if (!token) throw new HttpError(401, "Missing Authorization header.");
 
-  const fromJwt = userIdFromVerifiedAccessJwt(token);
-  if (fromJwt) return fromJwt;
-
   const res = await fetch(`${supabaseUrl}/auth/v1/user`, {
     headers: { apikey: anonKey, authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new HttpError(401, "Invalid or expired session.");
-  const data = await res.json() as { id?: string };
+  const data = await res.json() as { id?: string; role?: string };
   if (!data.id) throw new HttpError(401, "Invalid or expired session.");
+
+  // Auth API already verified the signature; still require an authenticated user.
+  const claims = decodeAccessJwtClaims(token);
+  if (claims?.role && claims.role !== "authenticated") {
+    throw new HttpError(401, "Invalid or expired session.");
+  }
   return data.id;
 }
 
@@ -216,6 +217,32 @@ export async function fetchPlanPriceId(tier: string, interval: "monthly" | "year
   const rows = await res.json() as Array<Record<string, string | null>>;
   const price = rows[0]?.[col];
   return typeof price === "string" && price.trim() ? price.trim() : null;
+}
+
+/** Returns subscription.source when the user has an active (or trialing, non-expired) plan. */
+export async function fetchActiveSubscriptionSource(
+  userId: string,
+): Promise<string | null> {
+  const supabaseUrl = requireEnv("SUPABASE_URL");
+  const serviceKey = requireServiceKey();
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/subscriptions?user_id=eq.${encodeURIComponent(userId)}&select=source,status,current_period_end`,
+    { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey } },
+  );
+  if (!res.ok) return null;
+  const rows = await res.json() as Array<{
+    source?: string;
+    status?: string;
+    current_period_end?: string | null;
+  }>;
+  const row = rows[0];
+  if (!row?.source) return null;
+  if (row.status !== "active" && row.status !== "trialing") return null;
+  if (row.current_period_end) {
+    const end = Date.parse(row.current_period_end);
+    if (Number.isFinite(end) && end <= Date.now()) return null;
+  }
+  return row.source;
 }
 
 export async function fetchBillingProduct(sku: string): Promise<{

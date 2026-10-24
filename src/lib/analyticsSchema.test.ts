@@ -5,6 +5,7 @@ import {
   isAllowedEventName,
   parseUtm,
   sanitizeEventProperties,
+  sanitizeUrlForAnalytics,
 } from './analyticsSchema';
 import { prepareCollectBatch, sanitizeProperties } from '../../supabase/functions/collect-analytics/policy';
 
@@ -41,6 +42,23 @@ describe('analyticsSchema', () => {
       utm_medium: 'social',
       utm_campaign: 'spring',
     });
+  });
+
+  it('redacts share tokens and strips auth URL material', () => {
+    expect(sanitizeUrlForAnalytics('/r/AbCdEfGhIjKlMnOpQrStUvWx')).toBe('/r/:token');
+    expect(
+      sanitizeUrlForAnalytics('https://toova.net/r/AbCdEfGhIjKlMnOpQrStUvWx?utm_source=ig'),
+    ).toBe('https://toova.net/r/:token?utm_source=ig');
+    expect(
+      sanitizeUrlForAnalytics('https://toova.net/#access_token=secret&refresh_token=r'),
+    ).toBe('https://toova.net/');
+    expect(sanitizeUrlForAnalytics('/auth/callback?code=abc123&utm_source=x')).toBe(
+      '/auth/callback?utm_source=x',
+    );
+    expect(
+      sanitizeUrlForAnalytics('/auth/confirm?token_hash=deadbeef&type=recovery'),
+    ).toBe('/auth/confirm');
+    expect(sanitizeUrlForAnalytics('/gallery')).toBe('/gallery');
   });
 });
 

@@ -22,9 +22,7 @@ import {
 import { fetchRoomAttribution, type RoomAttributionPayload } from '../lib/profiles';
 import { isGuestWorkspaceId } from '../lib/guestDesignSnapshot';
 import { isStarterEditWorkspaceId } from '../lib/starterTemplateOverrides';
-import { uploadRoomThumbnail } from '../lib/roomThumbnailStorage';
-import { renderRoomPreviewJpeg } from '../lib/roomPreviewThumbnail';
-import { resolvePreviewTintsForModelUrls } from '../lib/previewTintColor';
+import { captureAndUploadRoomThumbnail } from '../lib/roomThumbnailCapture';
 import { navigate, profilePath, publicRoomPath } from '../hooks/useRoute';
 import { trackPaywallShown } from '../lib/analytics';
 import { useEntitlements } from '../hooks/useEntitlements';
@@ -238,38 +236,7 @@ export function Designer({
 
     if (user?.id) {
       try {
-        const { items, order, roomGeometry } = useStore.getState();
-        const floorItems = order
-          .map((id) => items[id])
-          .filter((it): it is Item => Boolean(it) && it.kind !== 'hanging' && it.kind !== 'light');
-
-        const modelUrls = [
-          ...new Set(
-            floorItems
-              .filter((it) => it.kind === 'imported' && it.importedStoragePath)
-              .map((it) => it.importedStoragePath!),
-          ),
-        ];
-        const tints =
-          modelUrls.length > 0
-            ? await resolvePreviewTintsForModelUrls(modelUrls)
-            : new Map<string, string>();
-
-        const previewItems = floorItems.map((it) => ({
-          id: it.id,
-          kind: it.kind,
-          position: [...it.position] as [number, number, number],
-          rotationY: it.rotationY,
-          size: [...it.size] as [number, number, number],
-          tint:
-            it.kind === 'imported' && it.importedStoragePath
-              ? tints.get(it.importedStoragePath) ?? null
-              : null,
-        }));
-        const blob = await renderRoomPreviewJpeg(roomGeometry, previewItems);
-        if (blob) {
-          await uploadRoomThumbnail(blob, user.id, workspace.id);
-        }
+        await captureAndUploadRoomThumbnail(user.id, workspace.id);
       } catch (err) {
         console.warn('[toova] room thumbnail capture failed', err);
       }

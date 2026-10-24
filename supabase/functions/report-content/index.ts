@@ -8,6 +8,11 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import {
+  AUTO_QUARANTINE_REASONS,
+  autoQuarantineSkipNote,
+  shouldAutoQuarantine,
+} from "./quarantinePolicy.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -34,8 +39,6 @@ const REASONS = new Set([
   "stolen",
   "other",
 ]);
-
-const AUTO_QUARANTINE = new Set(["csam", "sexual_content"]);
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") {
@@ -78,12 +81,14 @@ Deno.serve(async (req: Request) => {
 
     const authHeader = req.headers.get("Authorization") ?? "";
     let reporterId: string | null = null;
+    let reporterEmailConfirmed = false;
     if (authHeader.toLowerCase().startsWith("bearer ") && authHeader.length > 20) {
       const userClient = createClient(supabaseUrl, requireEnv("SUPABASE_ANON_KEY"), {
         global: { headers: { Authorization: authHeader } },
       });
       const { data: userData } = await userClient.auth.getUser();
       reporterId = userData.user?.id ?? null;
+      reporterEmailConfirmed = Boolean(userData.user?.email_confirmed_at);
     }
 
     // Rate limit: 10/hour per user or IP fingerprint.
@@ -145,16 +150,29 @@ Deno.serve(async (req: Request) => {
       return json({ error: "Could not save report." }, 500);
     }
 
+    const reporter = { id: reporterId, emailConfirmed: reporterEmailConfirmed };
+    const autoQuarantineEligible = shouldAutoQuarantine(reason, reporter);
+    const createdNote = !autoQuarantineEligible && AUTO_QUARANTINE_REASONS.has(reason)
+      ? autoQuarantineSkipNote(reporter)
+      : reporterId
+      ? null
+      : "anonymous report";
+
     await admin.from("report_actions").insert({
       report_id: inserted.id,
       actor_id: reporterId,
       action: "created",
-      note: reporterId ? null : "anonymous report",
-      metadata: { via: "report-content" },
+      note: createdNote,
+      metadata: {
+        via: "report-content",
+        ...(createdNote && AUTO_QUARANTINE_REASONS.has(reason)
+          ? { auto_quarantine_skipped: true }
+          : {}),
+      },
     });
 
     let quarantined = false;
-    if (AUTO_QUARANTINE.has(reason)) {
+    if (autoQuarantineEligible) {
       if (targetType === "catalog_model") {
         const { error } = await admin.rpc("quarantine_catalog_model", {
           p_kind: targetId,
@@ -173,9 +191,9 @@ Deno.serve(async (req: Request) => {
       if (quarantined) {
         await admin.from("report_actions").insert({
           report_id: inserted.id,
-          actor_id: null,
+          actor_id: reporterId,
           action: "quarantine",
-          note: "auto-quarantine on csam/sexual_content",
+          note: "auto-quarantine on csam/sexual_content (verified reporter)",
         });
       }
     }
