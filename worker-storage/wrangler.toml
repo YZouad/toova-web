@@ -19,5 +19,6 @@ bucket_name = "toova-private"
 SUPABASE_URL = "https://xfifgtedssabneqlxbhf.supabase.co"
 SUPABASE_ANON_KEY = "sb_publishable_BKydIgobs2Vj7Wf-PNCl_w_FUm4y2xv"
 
-# Secret (wrangler secret put SUPABASE_SERVICE_ROLE_KEY):
+# Secrets (wrangler secret put <NAME>):
 #   SUPABASE_SERVICE_ROLE_KEY
+#   ACCOUNT_PURGE_SECRET — same value as the delete-account edge function secret

@@ -201,6 +201,11 @@ export function PricingPage({
               {busy === 'portal' ? 'Opening…' : 'Manage subscription'}
             </Button>
           ) : null}
+          {billing?.subscription?.source === 'app_store' ? (
+            <MonoMeta size="sm">
+              Plan managed through the App Store — open Billing in the Toova iOS app to change or cancel.
+            </MonoMeta>
+          ) : null}
           {loggedIn ? (
             <Button size="sm" variant="outline" onClick={() => void refresh()}>
               Refresh balance

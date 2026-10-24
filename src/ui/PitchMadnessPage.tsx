@@ -12,6 +12,7 @@ import {
   RuledList,
   SectionOpener,
 } from './kit';
+import { openCookieSettings } from '../lib/cookieConsent';
 
 interface PitchMadnessPageProps {
   onGoHome: () => void;
@@ -274,6 +275,7 @@ export function PitchMadnessPage({
           { label: 'Privacy', href: '/privacy' },
           { label: 'Terms', href: '/terms' },
           { label: 'Child Safety', href: '/safety' },
+          { label: 'Cookie settings', onClick: openCookieSettings },
           ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
         ]}
       />

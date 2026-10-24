@@ -30,6 +30,8 @@ export type CheckoutDeps = {
     grant_months: number | null;
     stripe_price_id: string | null;
   } | null>;
+  /** Active subscription source for this user, if any (`subscription` | `app_store` | …). */
+  fetchActiveSubscriptionSource?: (userId: string) => Promise<string | null>;
   stripeRequest: (
     path: string,
     init: RequestInit & { params?: Record<string, string> },
@@ -73,6 +75,21 @@ export async function handleBillingCheckout(
     let priceId: string | null = null;
     let metadataKind = kind;
     let tier: string | undefined;
+
+    const isSubscriptionKind =
+      kind === "lite_monthly" || kind === "lite_yearly"
+      || kind === "pro_monthly" || kind === "pro_yearly"
+      || kind === "semester_pass";
+
+    if (isSubscriptionKind && deps.fetchActiveSubscriptionSource) {
+      const source = await deps.fetchActiveSubscriptionSource(userId);
+      if (source === "app_store") {
+        return json({
+          error: "managed_on_app_store",
+          message: "Your plan is managed through the App Store. Change or cancel it there.",
+        }, 409);
+      }
+    }
 
     if (kind === "lite_monthly") {
       mode = "subscription";

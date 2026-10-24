@@ -72,6 +72,8 @@ export interface RoomItemRow {
   curated_product_id?: string | null;
   instance_key?: string | null;
   hanging_config?: HangingDecorationConfig | null;
+  scan_object_id?: string | null;
+  scan_status?: string | null;
 }
 
 export type RoomItemInsert = {
@@ -103,6 +105,8 @@ export type RoomItemInsert = {
   curated_product_id: string | null;
   instance_key: string;
   hanging_config: HangingDecorationConfig | null;
+  scan_object_id: string | null;
+  scan_status: string | null;
 };
 
 function n(v: string | number): number {
@@ -260,7 +264,27 @@ export function dbRowToItem(row: RoomItemRow): Item | null {
     attachmentKey,
     hanging: hanging ?? undefined,
     wallMounted: isWallShelfKind(row.kind) ? true : undefined,
+    scanObjectId:
+      row.scan_object_id != null && String(row.scan_object_id).trim()
+        ? String(row.scan_object_id).trim()
+        : undefined,
+    scanStatus: parseScanStatus(row.scan_status),
   };
+}
+
+function parseScanStatus(raw: string | null | undefined): Item['scanStatus'] {
+  if (raw == null) return undefined;
+  const v = String(raw).trim();
+  if (
+    v === 'pending' ||
+    v === 'matching' ||
+    v === 'generating' ||
+    v === 'done' ||
+    v === 'failed'
+  ) {
+    return v;
+  }
+  return undefined;
 }
 
 function parseEmitter(raw: unknown): EmitterConfig | undefined {
@@ -358,6 +382,8 @@ export function serializeLayoutForRoom(
       emitter: it.emitter?.enabled ? it.emitter : null,
       instance_key: it.attachmentKey || newAttachmentKey(),
       hanging_config: it.kind === 'hanging' && it.hanging ? it.hanging : null,
+      scan_object_id: it.scanObjectId ?? null,
+      scan_status: it.scanStatus ?? null,
     };
     out.push(row);
   }

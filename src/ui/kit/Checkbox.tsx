@@ -20,6 +20,12 @@ export function Checkbox({
   className,
   style,
 }: CheckboxProps) {
+  const toggle = () => {
+    if (!disabled) onChange(!checked);
+  };
+
+  const accessibleName = ariaLabel ?? (typeof label === 'string' ? label : undefined);
+
   return (
     <label
       className={[
@@ -31,7 +37,11 @@ export function Checkbox({
         .filter(Boolean)
         .join(' ')}
       style={style}
-      aria-label={ariaLabel ?? (typeof label === 'string' ? label : undefined)}
+      onClick={(e) => {
+        // Whole row is clickable; ignore nested interactive targets.
+        if ((e.target as HTMLElement).closest('a,button')) return;
+        toggle();
+      }}
     >
       <span
         className={['kit-checkbox__box', checked ? 'kit-checkbox__box--checked' : '']
@@ -39,8 +49,12 @@ export function Checkbox({
           .join(' ')}
         role="checkbox"
         aria-checked={checked}
+        aria-label={accessibleName}
         tabIndex={disabled ? -1 : 0}
-        onClick={() => !disabled && onChange(!checked)}
+        onClick={(e) => {
+          e.stopPropagation();
+          toggle();
+        }}
         onKeyDown={(e) => {
           if (disabled) return;
           if (e.key === ' ' || e.key === 'Enter') {

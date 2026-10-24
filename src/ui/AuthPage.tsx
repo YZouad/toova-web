@@ -3,7 +3,14 @@ import { trackLoggedIn, trackSignedUp } from '../lib/analytics';
 import { supabase } from '../lib/supabase';
 import { resetPasswordRedirectTo } from '../hooks/useRoute';
 import { loadGuestDesignSnapshot } from '../lib/guestDesignSnapshot';
-import { dobIsoFromMonthYear, isAtLeast13, parseBirthMonthYear } from '../lib/ageGate';
+import {
+  AGE_INELIGIBLE_MESSAGE,
+  dobIsoFromMonthYear,
+  isAtLeast13,
+  isDeviceAgeIneligible,
+  markDeviceAgeIneligible,
+  parseBirthMonthYear,
+} from '../lib/ageGate';
 import { markPostAuthRedirect } from '../lib/postAuthRedirect';
 import { BirthMonthYearFields } from './BirthMonthYearFields';
 import {
@@ -74,8 +81,8 @@ function describeAuthFailure(err: unknown, mode: Mode): string {
       ? 'Wrong password for this email, or no account uses this email.'
       : rawMsg || 'Something went wrong. Please try again.';
   }
-  if (msg.includes('at least 13')) {
-    return 'You must be at least 13 years old to use Toova.';
+  if (msg.includes('at least 13') || msg === 'underage' || msg.includes('account closed')) {
+    return AGE_INELIGIBLE_MESSAGE;
   }
   return rawMsg || 'Something went wrong. Please try again.';
 }
@@ -101,16 +108,20 @@ export function AuthPage({
   const [error, setError] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [oauthBusy, setOauthBusy] = useState<'google' | 'facebook' | null>(null);
+  const [oauthBusy, setOauthBusy] = useState<'google' | 'facebook' | 'apple' | null>(null);
+  const [ageIneligible, setAgeIneligible] = useState(() => isDeviceAgeIneligible());
 
   function validateSignupLegal(): string | null {
+    if (ageIneligible) return AGE_INELIGIBLE_MESSAGE;
     if (!agreed) {
       return 'Check the box to agree to the Terms and Privacy Policy.';
     }
     const parsed = parseBirthMonthYear(birthMonth, birthYear);
     if (!parsed) return 'Enter your birth month and year.';
     if (!isAtLeast13(parsed)) {
-      return 'You must be at least 13 years old to use Toova.';
+      markDeviceAgeIneligible();
+      setAgeIneligible(true);
+      return AGE_INELIGIBLE_MESSAGE;
     }
     return null;
   }
@@ -119,7 +130,7 @@ export function AuthPage({
     return dobIsoFromMonthYear(birthMonth, birthYear);
   }
 
-  async function handleOAuth(provider: 'google' | 'facebook') {
+  async function handleOAuth(provider: 'google' | 'facebook' | 'apple') {
     setError(null);
     setInfo(null);
     if (mode === 'signup') {
@@ -240,7 +251,7 @@ export function AuthPage({
   }
 
   const busy = loading || oauthBusy !== null;
-  const signupBlocked = mode === 'signup' && (!agreed || !birthMonth || !birthYear);
+  const signupBlocked = mode === 'signup' && (ageIneligible || !agreed || !birthMonth || !birthYear);
 
   return (
     <div className="auth-page-wrap toova-page">
@@ -303,11 +314,25 @@ export function AuthPage({
             </Banner>
           ) : null}
           {info ? <Banner tone="info" style={{ marginBottom: 18 }}>{info}</Banner> : null}
-          {error ? <Banner tone="error" style={{ marginBottom: 18 }}>{error}</Banner> : null}
+          {error ? (
+            <Banner tone="error" style={{ marginBottom: 18 }}>{error}</Banner>
+          ) : mode === 'signup' && ageIneligible ? (
+            <Banner tone="error" style={{ marginBottom: 18 }}>{AGE_INELIGIBLE_MESSAGE}</Banner>
+          ) : null}
 
           {mode !== 'forgot' ? (
             <>
               <div className="auth-oauth-stack">
+                <Button
+                  size="md"
+                  full
+                  variant="outline"
+                  type="button"
+                  disabled={busy || signupBlocked}
+                  onClick={() => void handleOAuth('apple')}
+                >
+                  {oauthBusy === 'apple' ? 'Redirecting…' : 'Continue with Apple'}
+                </Button>
                 <Button
                   size="md"
                   full

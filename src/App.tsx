@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
 import { ChecklistRoomProvider, useChecklistRoomScope } from './context/ChecklistRoomContext';
-import { getActiveChecklistRoomId } from './lib/dormChecklist';
+import {
+  NotificationsProvider,
+  useNotificationActivateHandler,
+} from './context/NotificationsContext';
+import { getActiveChecklistRoomId, setActiveChecklistRoomId } from './lib/dormChecklist';
+import { openReadyJobForSave } from './lib/generationQueue';
+import type { NotificationIntent } from './lib/notifications';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
 import { createRoomWithGeometry, saveRoomLayout, useRoomLoad } from './hooks/useRoomLayout';
@@ -12,6 +18,7 @@ import {
   galleryPath,
   timelinePath,
   profilePath,
+  pricingPath,
   resetPasswordPath,
   useRoute,
 } from './hooks/useRoute';
@@ -77,6 +84,7 @@ import { PublicRoomPage } from './ui/PublicRoomPage';
 import { GalleryPage } from './ui/GalleryPage';
 import { CreationsPage } from './ui/CreationsPage';
 import { GenerationQueueHost } from './ui/GenerationQueueHost';
+import { NotificationToastHost } from './ui/NotificationToastHost';
 import { AppRailChrome } from './ui/AppRailChrome';
 import { LegalPage } from './ui/LegalPage';
 import { CookieConsentBanner } from './ui/CookieConsentBanner';
@@ -210,9 +218,12 @@ function ARPage() {
 export default function App() {
   return (
     <ChecklistRoomProvider>
-      <GenerationQueueHost />
-      <AppContent />
-      <CookieConsentBanner />
+      <NotificationsProvider>
+        <GenerationQueueHost />
+        <NotificationToastHost />
+        <AppContent />
+        <CookieConsentBanner />
+      </NotificationsProvider>
     </ChecklistRoomProvider>
   );
 }
@@ -859,6 +870,80 @@ function AppContent() {
     setChecklistReturn(from);
     setScreen('checklist');
   }, []);
+
+  const handleNotificationActivate = useCallback(
+    async (_notification: { id: string }, intent: NotificationIntent) => {
+      if (intent.type === 'noop') return;
+
+      if (intent.type === 'dashboard') {
+        navigate('/');
+        setScreen('dashboard');
+        return;
+      }
+
+      if (intent.type === 'models') {
+        navigate('/');
+        setScreen('models');
+        return;
+      }
+
+      if (intent.type === 'pricing') {
+        navigate(pricingPath());
+        return;
+      }
+
+      if (intent.type === 'checklist') {
+        if (intent.roomId) {
+          setActiveChecklistRoomId(intent.roomId);
+          setRoomId(intent.roomId);
+        }
+        navigate('/');
+        openChecklistFrom('dashboard');
+        return;
+      }
+
+      if (intent.type === 'designer') {
+        if (!user) {
+          navigate('/');
+          setScreen('dashboard');
+          return;
+        }
+        const { data: room, error } = await supabase
+          .from('rooms')
+          .select('id, name')
+          .eq('id', intent.roomId)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!room) {
+          navigate('/');
+          setScreen('dashboard');
+          return;
+        }
+        await handlePickExisting({
+          id: String(room.id),
+          name: String(room.name ?? 'Room'),
+          isOwner: true,
+        });
+        return;
+      }
+
+      if (intent.type === 'modelJob') {
+        if (!user) {
+          navigate('/');
+          setScreen('models');
+          return;
+        }
+        const opened = await openReadyJobForSave(intent.jobId, user.id);
+        if (!opened) {
+          navigate('/');
+          setScreen('models');
+        }
+      }
+    },
+    [user, handlePickExisting, openChecklistFrom, setRoomId],
+  );
+
+  useNotificationActivateHandler(handleNotificationActivate);
 
   const requestGuestAuth = useCallback(
     (mode: 'signin' | 'signup', reason: string) => {

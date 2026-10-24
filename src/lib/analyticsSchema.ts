@@ -181,11 +181,70 @@ export function sanitizeId(value: unknown, max = MAX_ID_CHARS): string | null {
   return trimmed;
 }
 
+const SHARE_PATH_RE = /^\/r\/([A-Za-z0-9_-]{16,32})\/?$/;
+const SENSITIVE_QUERY_PARAMS = new Set([
+  'access_token',
+  'refresh_token',
+  'code',
+  'token_hash',
+  'token',
+  'type',
+  'unsubscribe',
+]);
+
+/**
+ * Redact share tokens, strip auth hashes, and drop sensitive query params
+ * before sending URLs to GA4 or first-party analytics.
+ */
+export function sanitizeUrlForAnalytics(url: string): string {
+  const trimmed = url.trim();
+  if (!trimmed) return trimmed;
+
+  try {
+    const base =
+      typeof window !== 'undefined' && window.location?.origin
+        ? window.location.origin
+        : 'https://toova.net';
+    const parsed = new URL(trimmed, base);
+    // OAuth / recovery flows put tokens in the hash — never send them.
+    parsed.hash = '';
+
+    const pathOnly = parsed.pathname.replace(/\/+$/, '') || '/';
+    if (SHARE_PATH_RE.test(parsed.pathname) || SHARE_PATH_RE.test(`${pathOnly}/`)) {
+      parsed.pathname = '/r/:token';
+    } else if (SHARE_PATH_RE.test(pathOnly)) {
+      parsed.pathname = '/r/:token';
+    }
+
+    for (const key of [...parsed.searchParams.keys()]) {
+      if (SENSITIVE_QUERY_PARAMS.has(key.toLowerCase())) {
+        parsed.searchParams.delete(key);
+      }
+    }
+
+    // Prefer path+search when the input was a relative route.
+    if (!/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) {
+      const q = parsed.searchParams.toString();
+      return truncateParam(`${parsed.pathname}${q ? `?${q}` : ''}`, MAX_ROUTE_CHARS);
+    }
+
+    return truncateParam(parsed.toString(), MAX_ROUTE_CHARS);
+  } catch {
+    // Fallback: redact share segment and drop hash without full URL parse.
+    const noHash = trimmed.split('#')[0] ?? trimmed;
+    const redacted = noHash.replace(
+      /\/r\/[A-Za-z0-9_-]{16,32}\/?/g,
+      '/r/:token',
+    );
+    return truncateParam(redacted, MAX_ROUTE_CHARS);
+  }
+}
+
 export function sanitizeRoute(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  return truncateParam(trimmed, MAX_ROUTE_CHARS);
+  return sanitizeUrlForAnalytics(trimmed);
 }
 
 export function newEventId(): string {

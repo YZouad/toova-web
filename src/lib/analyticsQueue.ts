@@ -2,6 +2,7 @@ import {
   MAX_BATCH_EVENTS,
   type NormalizedAnalyticsEvent,
 } from './analyticsSchema';
+import { hasAcceptedAnalytics } from './cookieConsent';
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from './supabase';
 
 export const ANALYTICS_QUEUE_KEY = 'toova-analytics-queue';
@@ -137,7 +138,10 @@ export async function flushAnalyticsQueue(options?: {
     const response = await fetchImpl(collectAnalyticsUrl(), {
       method: 'POST',
       headers,
-      body: JSON.stringify({ events: batch.map(({ attempts: _attempts, ...event }) => event) }),
+      body: JSON.stringify({
+        consent: { analytics: hasAcceptedAnalytics() ? 'granted' : 'denied' },
+        events: batch.map(({ attempts: _attempts, ...event }) => event),
+      }),
       keepalive: options?.keepalive ?? true,
     });
     if (response.ok || response.status === 204) {
@@ -167,6 +171,14 @@ export async function flushAnalyticsQueue(options?: {
     writeQueue([...retried, ...rest]);
     flushing = false;
     return { sent: 0, remaining: retried.length + rest.length, failed: true };
+  }
+}
+
+export function clearAnalyticsQueue(): void {
+  try {
+    getStore().removeItem(ANALYTICS_QUEUE_KEY);
+  } catch {
+    /* ignore */
   }
 }
 

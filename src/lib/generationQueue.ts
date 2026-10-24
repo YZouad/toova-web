@@ -458,6 +458,67 @@ export async function recoverGenerationQueue(userId: string): Promise<void> {
   return recoverPromise;
 }
 
+type PendingReview = { jobId: string; file: File };
+const reviewListeners = new Set<() => void>();
+let pendingReview: PendingReview | null = null;
+
+function emitPendingReview(): void {
+  reviewListeners.forEach((listener) => listener());
+}
+
+export function subscribePendingGenerationReview(listener: () => void): () => void {
+  reviewListeners.add(listener);
+  return () => reviewListeners.delete(listener);
+}
+
+export function getPendingGenerationReview(): PendingReview | null {
+  return pendingReview;
+}
+
+export function clearPendingGenerationReview(): void {
+  if (!pendingReview) return;
+  pendingReview = null;
+  emitPendingReview();
+}
+
+/** Recover a completed conversion job and request the save/review modal. */
+export async function openReadyJobForSave(
+  jobId: string,
+  userId: string,
+): Promise<boolean> {
+  const existing = items.find((item) => item.jobId === jobId && item.status === 'ready' && item.glbFile);
+  if (existing?.glbFile) {
+    pendingReview = { jobId, file: existing.glbFile };
+    emitPendingReview();
+    return true;
+  }
+
+  const job = await fetchConversionJob(jobId);
+  if (!job || job.status !== 'completed' || !job.result_path) {
+    return false;
+  }
+
+  const dismissed = readDismissedReady();
+  dismissed.delete(jobId);
+  writeDismissedReady(dismissed);
+
+  const glbFile = await downloadJobResult(job.result_path);
+  upsertItem({
+    jobId,
+    userId,
+    label: job.label || 'Image → 3D',
+    status: 'ready',
+    error: null,
+    sourceFile: null,
+    glbFile,
+    serverOwned: true,
+    statusMessage: 'Your model is ready',
+  });
+  pendingReview = { jobId, file: glbFile };
+  emitPendingReview();
+  return true;
+}
+
 async function recoverGenerationQueueOnce(userId: string): Promise<void> {
   bindPageHide();
   await cacheSessionToken();

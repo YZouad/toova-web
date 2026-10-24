@@ -1,12 +1,14 @@
 /**
  * Batch-collect consented first-party analytics events.
  * verify_jwt = false — function verifies JWT when present and derives user_id.
+ * Batches without `consent.analytics = "granted"`, or sent with Sec-GPC: 1, are rejected.
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
 import {
   MAX_BATCH,
   RATE_LIMIT_PER_MINUTE,
+  hasAnalyticsConsent,
   prepareCollectBatch,
 } from "./policy.ts";
 
@@ -26,6 +28,11 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    const body = await req.json().catch(() => null);
+    if (!hasAnalyticsConsent(body, req.headers.get("Sec-GPC"))) {
+      return json({ error: "Analytics consent required." }, 403);
+    }
+
     const supabaseUrl = requireEnv("SUPABASE_URL");
     const serviceKey = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
     const admin = createClient(supabaseUrl, serviceKey);
@@ -51,7 +58,6 @@ Deno.serve(async (req: Request) => {
       }
     }
 
-    const body = await req.json().catch(() => null);
     const prepared = prepareCollectBatch(body, userId);
     if ("error" in prepared) {
       return json({ error: prepared.error }, prepared.status);

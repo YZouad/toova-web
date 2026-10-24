@@ -8,6 +8,7 @@ import {
   MarketingNav,
   MonoMeta,
 } from './kit';
+import { openCookieSettings } from '../lib/cookieConsent';
 
 const SUPPORT_EMAILS = [
   { address: 'ag@toova.net', label: 'General support' },
@@ -134,6 +135,7 @@ export function ContactPage({
           { label: 'Privacy', href: '/privacy' },
           { label: 'Terms', href: '/terms' },
           { label: 'Child Safety', href: '/safety' },
+          { label: 'Cookie settings', onClick: openCookieSettings },
           ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
         ]}
       />

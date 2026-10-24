@@ -2,11 +2,14 @@ import { useEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { useAuth } from '../hooks/useAuth';
 import {
+  clearPendingGenerationReview,
   dismissGenerationQueueItem,
   getGenerationQueueSnapshot,
+  getPendingGenerationReview,
   processGenerationQueue,
   recoverGenerationQueue,
   subscribeGenerationQueue,
+  subscribePendingGenerationReview,
 } from '../lib/generationQueue';
 import { ImportModelModal } from './ImportModelModal';
 import { Button } from './kit/Button';
@@ -18,12 +21,23 @@ export function GenerationQueueHost() {
     getGenerationQueueSnapshot,
     getGenerationQueueSnapshot,
   );
+  const pendingReview = useSyncExternalStore(
+    subscribePendingGenerationReview,
+    getPendingGenerationReview,
+    getPendingGenerationReview,
+  );
   const [review, setReview] = useState<{ jobId: string; file: File } | null>(null);
 
   useEffect(() => {
     if (!user) return;
     void recoverGenerationQueue(user.id);
   }, [user?.id]);
+
+  useEffect(() => {
+    if (!pendingReview) return;
+    setReview(pendingReview);
+    clearPendingGenerationReview();
+  }, [pendingReview]);
 
   if (!user) return null;
 

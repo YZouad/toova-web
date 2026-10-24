@@ -30,7 +30,28 @@ async function inProcessAuthLock<T>(
   return await run;
 }
 
+/** The iOS app hosts `embed.html` and owns the session (refresh tokens are single-use). */
+export function isNativeDesignerEmbed(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.location?.pathname === 'string' &&
+    /\/embed\.html$/.test(window.location.pathname)
+  );
+}
+
 function createToovaClient(): SupabaseClient {
+  if (isNativeDesignerEmbed()) {
+    return createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: {
+        lock: inProcessAuthLock,
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      // Late-bound so the embed's fetch hooks (token refresh via the app) apply.
+      global: { fetch: (input, init) => window.fetch(input, init) },
+    });
+  }
   return createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: { lock: inProcessAuthLock },
   });
