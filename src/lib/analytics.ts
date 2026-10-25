@@ -405,6 +405,7 @@ export function trackAffiliateClicked(params: {
     | 'product_drawer'
     | 'designer_checklist_ticker'
     | 'designer_checklist_mobile'
+    | 'agentic_room'
     | 'designer_inspector'
     | 'checklist_top_picks'
     | 'bundle_cart'

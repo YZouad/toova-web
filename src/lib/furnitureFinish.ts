@@ -83,6 +83,15 @@ export function itemUsesTopColor(kind: FurnitureKind): boolean {
   return kind === 'dresser' || kind === 'desk';
 }
 
+export function itemSupportsDrawerColor(kind: FurnitureKind): boolean {
+  return kind === 'dresser' || kind === 'nightstand' || kind === 'desk';
+}
+
+/** Drawer front tint; defaults to the frame/base color. */
+export function furnitureDrawerColor(hex: string | undefined, bodyColor: string): string {
+  return hex ?? bodyColor;
+}
+
 /** Built-in or imported furniture with an independent top / desktop color. */
 export function itemSupportsTopColor(
   item: Pick<Item, 'kind' | 'label' | 'catalogKind'>,

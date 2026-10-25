@@ -22,15 +22,33 @@ import {
 } from '../lib/uchicagoDormTemplates';
 import { useStarterTemplatesForGoal } from '../hooks/useStarterTemplates';
 import type { RoomGallerySortParam } from '../lib/galleryCatalog';
+import type { ShoppingListEntry } from '../lib/dormChecklist';
+import type { RoomEnvironment } from '../store';
 import { Button, Field, Input, Modal, Plate, Tabs } from './kit';
 import { RoomGallery } from './RoomGallery';
 import { RoomPreview } from './RoomPreview';
+import { consumeAgenticChecklistResume } from '../lib/agenticChecklistSession';
+import { AgenticRoomFlow, type AgenticRoomConfirmPayload } from './AgenticRoomFlow';
+import { AgenticRoomScanFlow } from './AgenticRoomScanFlow';
 
 export type RoomPresetPickerSelection =
   | { kind: 'starter'; template: RoomStarterTemplate }
   | { kind: 'blank'; plan: FloorPlan; presetId: BlankPlanPresetId }
   | { kind: 'customize'; plan: FloorPlan; template?: RoomStarterTemplate }
-  | { kind: 'custom' };
+  | { kind: 'custom' }
+  | {
+      kind: 'agentic';
+      plan: FloorPlan;
+      environment: RoomEnvironment;
+      shoppingList: ShoppingListEntry[];
+      agenticShoppingManifest: import('../lib/agenticShoppingManifest').AgenticShoppingManifestEntry[];
+      budgetCents?: number | null;
+      seedItems: import('../store').Item[];
+      seedOrder: string[];
+      packSkipped: string[];
+    };
+
+type PickerMode = 'presets' | 'describe' | 'scan';
 
 interface RoomPresetPickerProps {
   open?: boolean;
@@ -46,6 +64,8 @@ interface RoomPresetPickerProps {
   cancelLabel?: string;
   onClose: () => void;
   onSelect: (selection: RoomPresetPickerSelection, name: string) => void | Promise<void>;
+  /** Opens the create-room flow when returning from community gallery pick mode. */
+  onResumeAgenticChecklist?: () => void;
 }
 
 interface StarterPreview {
@@ -68,6 +88,7 @@ export function RoomPresetPicker({
   cancelLabel = 'Cancel',
   onClose,
   onSelect,
+  onResumeAgenticChecklist,
 }: RoomPresetPickerProps) {
   const isPage = variant === 'page';
   const active = isPage || open;
@@ -78,6 +99,7 @@ export function RoomPresetPicker({
   const [error, setError] = useState<string | null>(null);
   const [gallerySort, setGallerySort] = useState<RoomGallerySortParam>('hot');
   const [galleryQuery, setGalleryQuery] = useState('');
+  const [mode, setMode] = useState<PickerMode>('presets');
 
   useEffect(() => {
     if (!active) return;
@@ -88,7 +110,16 @@ export function RoomPresetPicker({
     setError(null);
     setGallerySort('hot');
     setGalleryQuery('');
+    setMode('presets');
   }, [active, defaultName]);
+
+  useEffect(() => {
+    if (!active) return;
+    if (consumeAgenticChecklistResume()) {
+      onResumeAgenticChecklist?.();
+      setMode('describe');
+    }
+  }, [active, onResumeAgenticChecklist]);
 
   const liveForGoal = useStarterTemplatesForGoal(goal);
   const isUChicago = goal === 'uchicago';
@@ -157,6 +188,32 @@ export function RoomPresetPicker({
 
   const handleCustom = () => {
     void runSelect({ kind: 'custom' });
+  };
+
+  const handleAgenticConfirm = async (payload: AgenticRoomConfirmPayload) => {
+    if (disabled) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await onSelect(
+        {
+          kind: 'agentic',
+          plan: payload.plan,
+          environment: payload.environment,
+          shoppingList: payload.shoppingList,
+          agenticShoppingManifest: payload.agenticShoppingManifest,
+          budgetCents: payload.budgetCents,
+          seedItems: payload.seedItems,
+          seedOrder: payload.seedOrder,
+          packSkipped: payload.packSkipped,
+        },
+        resolvedName,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not create room');
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleGoalChange = (id: string) => {
@@ -241,61 +298,94 @@ export function RoomPresetPicker({
               onChange={(e) => setRoomName(e.target.value)}
               placeholder={defaultName}
               disabled={disabled}
-              autoFocus
+              autoFocus={mode === 'presets'}
               aria-label="Room name"
             />
           </Field>
         </div>
 
         <div className="room-preset-section">
-          <div className="room-preset-section-label">What kind of room?</div>
           <Tabs
-            className="room-preset-goal-tabs"
-            active={goal}
-            onChange={handleGoalChange}
-            tabs={ROOM_STARTER_GOALS.map((g) => ({ id: g.id, label: g.label }))}
+            className="room-preset-mode-tabs"
+            active={mode}
+            onChange={(id) => setMode(id as PickerMode)}
+            tabs={[
+              { id: 'presets', label: 'Pick a template' },
+              { id: 'describe', label: 'Describe your room' },
+              { id: 'scan', label: 'Scan a room' },
+            ]}
           />
-          <p className="room-preset-goal-hint">
-            {ROOM_STARTER_GOALS.find((g) => g.id === goal)?.description}
-          </p>
         </div>
 
-        {isUChicago ? (
-          <div className="room-preset-section">
-            <div className="room-preset-section-label">Residence hall</div>
-            <Tabs
-              className="room-preset-goal-tabs room-preset-dorm-tabs"
-              active={dormId}
-              onChange={(id) => setDormId(id as UChicagoDormId)}
-              tabs={UCHICAGO_DORMS.map((d) => ({ id: d.id, label: d.label }))}
-            />
-            <p className="room-preset-goal-hint">
-              Pick a layout — each starts as a blank room you can furnish.
-            </p>
-            <div
-              className="room-preset-grid room-preset-grid--blank room-preset-grid--dorms"
-              role="list"
-              aria-label="Dorm layout"
-            >
-              {starterPreviews.map(renderStarterCard)}
-            </div>
-          </div>
-        ) : (
-          <div className="room-preset-section">
-            <div className="room-preset-section-label">Starting look</div>
-            <div className="room-preset-tier-blurb-row" aria-hidden>
-              {ROOM_STARTER_TIERS.map((t) => (
-                <span key={t.id} className="room-preset-tier-chip">
-                  <strong>{t.label}</strong> — {t.blurb}
-                </span>
-              ))}
-            </div>
-            <div className="room-preset-grid room-preset-grid--tiers" role="list" aria-label="Furnishing tier">
-              {starterPreviews.map(renderStarterCard)}
-            </div>
-          </div>
-        )}
+        {mode === 'describe' ? (
+          <AgenticRoomFlow
+            disabled={disabled}
+            onBack={() => setMode('presets')}
+            onConfirm={handleAgenticConfirm}
+          />
+        ) : null}
 
+        {mode === 'scan' ? (
+          <AgenticRoomScanFlow
+            disabled={disabled}
+            onBack={() => setMode('presets')}
+            onConfirm={handleAgenticConfirm}
+          />
+        ) : null}
+
+        {mode === 'presets' && guestSimple ? null : mode === 'presets' ? (
+          <>
+            <div className="room-preset-section">
+              <div className="room-preset-section-label">What kind of room?</div>
+              <Tabs
+                className="room-preset-goal-tabs"
+                active={goal}
+                onChange={handleGoalChange}
+                tabs={ROOM_STARTER_GOALS.map((g) => ({ id: g.id, label: g.label }))}
+              />
+              <p className="room-preset-goal-hint">
+                {ROOM_STARTER_GOALS.find((g) => g.id === goal)?.description}
+              </p>
+            </div>
+
+            {isUChicago ? (
+              <div className="room-preset-section">
+                <div className="room-preset-section-label">Residence hall</div>
+                <Tabs
+                  className="room-preset-goal-tabs room-preset-dorm-tabs"
+                  active={dormId}
+                  onChange={(id) => setDormId(id as UChicagoDormId)}
+                  tabs={UCHICAGO_DORMS.map((d) => ({ id: d.id, label: d.label }))}
+                />
+                <p className="room-preset-goal-hint">
+                  Pick a layout — each starts as a blank room you can furnish.
+                </p>
+                <div
+                  className="room-preset-grid room-preset-grid--blank room-preset-grid--dorms"
+                  role="list"
+                  aria-label="Dorm layout"
+                >
+                  {starterPreviews.map(renderStarterCard)}
+                </div>
+              </div>
+            ) : (
+              <div className="room-preset-section">
+                <div className="room-preset-section-label">Starting look</div>
+                <div className="room-preset-tier-blurb-row" aria-hidden>
+                  {ROOM_STARTER_TIERS.map((t) => (
+                    <span key={t.id} className="room-preset-tier-chip">
+                      <strong>{t.label}</strong> — {t.blurb}
+                    </span>
+                  ))}
+                </div>
+                <div className="room-preset-grid room-preset-grid--tiers" role="list" aria-label="Furnishing tier">
+                  {starterPreviews.map(renderStarterCard)}
+                </div>
+              </div>
+            )}
+          </>
+        ) : null}
+        {mode === 'presets' ? (
         <div className={guestSimple ? 'room-preset-section' : 'room-preset-section room-preset-section--blank'}>
           <div className="room-preset-section-label">
             {guestSimple ? 'How do you want to start?' : 'Blank room'}
@@ -408,6 +498,7 @@ export function RoomPresetPicker({
             </div>
           </div>
         </div>
+        ) : null}
 
         {error ? (
           <p className="room-preset-error" role="alert">

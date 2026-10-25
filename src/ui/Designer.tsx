@@ -34,6 +34,7 @@ import { VIEW_PRESETS } from './designer/chromeTypes';
 import type { CatalogModel, ImportRoute } from './designer/chromeTypes';
 import { LibraryPanel } from './designer/LibraryPanel';
 import { LookPanel } from './designer/LookPanel';
+import { RevisePanel } from './designer/RevisePanel';
 import { LightPanel } from './designer/LightPanel';
 import { PiecesPanel } from './designer/PiecesPanel';
 import { InspectorPanel } from './designer/InspectorPanel';
@@ -49,6 +50,8 @@ import { ImportFlow } from './designer/ImportFlow';
 import { GenerationQueueHost } from './GenerationQueueHost';
 import { MobileDesignerChrome } from './designer/mobile/MobileDesignerChrome';
 import { placeFromCatalog } from './designer/placeCatalogModel';
+import { PosterBankModal } from './designer/PosterBankModal';
+import { isPosterItem } from '../lib/posterItem';
 import { fetchOwnerCatalogGalleryModel } from '../lib/fetchOwnerCatalogModel';
 import { useCatalogThrixelLinked } from '../hooks/useCatalogThrixelLinked';
 import {
@@ -60,6 +63,7 @@ import {
   IconPlus,
   IconReset,
   IconRuler,
+  IconRevise,
   IconRoomLook,
   IconSearch,
   IconUpload,
@@ -139,6 +143,7 @@ export function Designer({
   const [cameraPreset, setCameraPreset] = useState<CameraPresetId>('corner');
   const [detailModel, setDetailModel] = useState<GalleryModel | null>(null);
   const [detailFocusThrixel, setDetailFocusThrixel] = useState(false);
+  const [posterBankItemId, setPosterBankItemId] = useState<string | null>(null);
   const builtinPreviews = useBuiltinPreviews();
 
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
@@ -299,6 +304,17 @@ export function Designer({
     setDetailModel(model);
   }, []);
 
+  const openPosterBank = useCallback((itemId: string) => {
+    setPosterBankItemId(itemId);
+    chrome.closePanels();
+    chrome.setOverlay(null);
+  }, [chrome]);
+
+  const changePosterForSelection = useCallback(() => {
+    const id = useStore.getState().selectedId;
+    if (id && isPosterItem(useStore.getState().items[id])) openPosterBank(id);
+  }, [openPosterBank]);
+
   const openThrixelRevise = useCallback(async (catalogKind: string) => {
     const selected = useStore.getState().items[useStore.getState().selectedId ?? ''];
     if (selected?.catalogKind === catalogKind) {
@@ -330,6 +346,7 @@ export function Designer({
         .map((it) => `${it.id}:${it.emitter?.enabled}:${it.hanging?.lightsEnabled}`)
         .join(',')}`,
   );
+  const shuffleEpoch = useStore((s) => s.order.join(','));
 
   const commands = useMemo(
     () =>
@@ -378,6 +395,7 @@ export function Designer({
       onRequestSaveAuth,
       onRequestImportAuth,
       fixturesEpoch,
+      shuffleEpoch,
       showDimensions,
     ],
   );
@@ -420,6 +438,10 @@ export function Designer({
         }
         if (chrome.importOpen) {
           chrome.closeImport();
+          return;
+        }
+        if (posterBankItemId) {
+          setPosterBankItemId(null);
           return;
         }
         if (chrome.overlay) {
@@ -517,7 +539,16 @@ export function Designer({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [cancelHangingDraft, cancelMeasure, chrome, onEditFloorPlan, resetCamera, canShare, creditsOpen]);
+  }, [
+    cancelHangingDraft,
+    cancelMeasure,
+    chrome,
+    onEditFloorPlan,
+    resetCamera,
+    canShare,
+    posterBankItemId,
+    creditsOpen,
+  ]);
 
   // Clicking the viewport takes focus off the room-name field so shortcuts work.
   useEffect(() => {
@@ -729,10 +760,12 @@ export function Designer({
             orbitCssTargetRef={canvasWrapRef}
             interactionMode={isPhone ? 'mobile' : 'desktop'}
             dimensionsOverlayHidden={chrome.present}
+            onPosterActivate={openPosterBank}
             selectionHud={{
               radialOpen: chrome.radialOpen,
               onToggleRadial: () => chrome.setRadialOpen(!chrome.radialOpen),
               onOpenInspector: chrome.openInspector,
+              onChangePoster: changePosterForSelection,
               // Always pass an object so Scene uses SelectionHud (not ArcMenu).
               // hidden:true in present/draw — SelectionHud / MobileSelectionHud no-ops.
               hidden: chrome.present || chrome.drawing,
@@ -744,6 +777,7 @@ export function Designer({
         {isPhone ? (
           <MobileDesignerChrome
             chrome={chrome}
+            roomId={workspace?.id ?? 'guest'}
             roomName={roomName}
             onRoomNameChange={setRoomName}
             onRoomNameBlur={() => void handleSave()}
@@ -768,6 +802,7 @@ export function Designer({
             }}
             onOpenImport={() => openImportOrAuth(null)}
             onOpenThrixelRevise={(kind) => void openThrixelRevise(kind)}
+            onChangePoster={changePosterForSelection}
             searchTriggerRef={searchTriggerRef}
             creditsOpen={creditsOpen}
             onCreditsOpenChange={(next) => {
@@ -807,6 +842,14 @@ export function Designer({
                   >
                     <IconRoomLook />
                     <span>Room look</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`dg-rail-btn${chrome.panel === 'revise' ? ' is-active' : ''}`}
+                    onClick={() => chrome.setPanel('revise')}
+                  >
+                    <IconRevise />
+                    <span>Revise</span>
                   </button>
                   <button
                     type="button"
@@ -908,6 +951,11 @@ export function Designer({
                     ? () => void openThrixelRevise(chrome.selectedItem!.catalogKind!)
                     : undefined
                 }
+                onChangePoster={
+                  chrome.selectedItem && isPosterItem(chrome.selectedItem)
+                    ? changePosterForSelection
+                    : undefined
+                }
               />
             ) : null}
 
@@ -927,6 +975,14 @@ export function Designer({
             ) : null}
             {chrome.panel === 'look' ? (
               <LookPanel compact={false} onClose={chrome.closePanels} />
+            ) : null}
+            {chrome.panel === 'revise' && workspace?.id ? (
+              <RevisePanel
+                compact={false}
+                roomId={workspace.id}
+                onClose={chrome.closePanels}
+                onPreviewModel={openModel}
+              />
             ) : null}
             {chrome.panel === 'light' ? (
               <LightPanel
@@ -1041,6 +1097,12 @@ export function Designer({
         }}
       />
       <KeysOverlay open={chrome.overlay === 'keys'} onClose={() => chrome.setOverlay(null)} />
+
+      <PosterBankModal
+        open={!!posterBankItemId}
+        itemId={posterBankItemId}
+        onClose={() => setPosterBankItemId(null)}
+      />
 
       {detailModel ? (
         <ModelDetailModal

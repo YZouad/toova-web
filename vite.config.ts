@@ -10,6 +10,7 @@ const rootDir = path.dirname(fileURLToPath(import.meta.url));
 /** Same-origin prefix the app calls; Vite forwards to the Render BFF. */
 const trellisProxyPath = '/api/trellis';
 const thrixelProxyPath = '/api/thrixel';
+const agenticRoomProxyPath = '/api/agentic-room';
 const defaultTrellisBffOrigin = 'https://toova-bff.onrender.com';
 
 /** GitHub Pages SPA fallback: unknown paths serve 404.html (= index.html). */
@@ -77,6 +78,10 @@ function buildThrixelProxy(trellisBffOrigin: string): Record<string, ProxyOption
   return buildBffProxy(trellisBffOrigin, thrixelProxyPath);
 }
 
+function buildAgenticRoomProxy(trellisBffOrigin: string): Record<string, ProxyOptions> {
+  return buildBffProxy(trellisBffOrigin, agenticRoomProxyPath);
+}
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
   const trellisBffOrigin = env.TRELLIS_BFF_ORIGIN?.trim() || defaultTrellisBffOrigin;
@@ -90,8 +95,14 @@ export default defineConfig(({ mode }) => {
   }
 
   const trellisProxy = trellisBffOrigin
-    ? { ...buildTrellisProxy(trellisBffOrigin), ...buildThrixelProxy(trellisBffOrigin) }
-    : undefined;
+    ? {
+        ...buildTrellisProxy(trellisBffOrigin),
+        ...buildThrixelProxy(trellisBffOrigin),
+        ...buildAgenticRoomProxy(trellisBffOrigin),
+      }
+    : {
+        ...buildAgenticRoomProxy(defaultTrellisBffOrigin),
+      };
 
   if (mode === 'embed') {
     return {

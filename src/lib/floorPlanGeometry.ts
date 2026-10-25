@@ -36,6 +36,12 @@ export interface FloorPlanWall {
 export type OpeningKind = 'door' | 'window';
 export type DoorHinge = 'left' | 'right';
 
+export interface WindowCurtains {
+  color: string;
+  /** 0 = closed, 1 = fully open. */
+  openness: number;
+}
+
 export interface FloorPlanOpening {
   id: string;
   wallId: string;
@@ -47,6 +53,8 @@ export interface FloorPlanOpening {
   /** Sill height from floor (windows only). */
   sill?: number;
   hinge?: DoorHinge;
+  /** Optional curtains attached to this window. */
+  curtains?: WindowCurtains;
 }
 
 /** Labeled anchor point inside an enclosed floor area (kitchen, bedroom, …). */
@@ -300,7 +308,7 @@ export function moveVertex(
 export function updateOpening(
   plan: FloorPlan,
   openingId: string,
-  patch: Partial<Pick<FloorPlanOpening, 'offset' | 'width' | 'height' | 'sill' | 'hinge'>>,
+  patch: Partial<Pick<FloorPlanOpening, 'offset' | 'width' | 'height' | 'sill' | 'hinge' | 'curtains'>>,
 ): FloorPlan {
   const openings = plan.openings.map((o) =>
     o.id === openingId ? { ...o, ...patch } : o,
@@ -591,7 +599,13 @@ export function clampPlan(plan: FloorPlan): FloorPlan {
     if (o.kind === 'window') {
       const sill = clamp(o.sill ?? 36, 0, height - 12);
       const h = clamp(o.height, 12, height - sill);
-      return { ...o, width, offset, sill, height: h };
+      const curtains = o.curtains
+        ? {
+            color: /^#[0-9a-f]{6}$/i.test(o.curtains.color) ? o.curtains.color : '#d8c4ad',
+            openness: clamp(o.curtains.openness, 0, 1),
+          }
+        : undefined;
+      return { ...o, width, offset, sill, height: h, curtains };
     }
     const h = clamp(o.height, 12, height);
     return { ...o, width, offset, height: h };
@@ -1649,6 +1663,17 @@ export function parseFloorPlan(raw: unknown): FloorPlan | null {
         height: r.height,
         sill: typeof r.sill === 'number' ? r.sill : undefined,
         hinge: r.hinge === 'left' || r.hinge === 'right' ? r.hinge : undefined,
+        curtains:
+          r.kind === 'window' &&
+          r.curtains &&
+          typeof r.curtains === 'object' &&
+          typeof (r.curtains as Record<string, unknown>).color === 'string' &&
+          typeof (r.curtains as Record<string, unknown>).openness === 'number'
+            ? {
+                color: (r.curtains as Record<string, unknown>).color as string,
+                openness: (r.curtains as Record<string, unknown>).openness as number,
+              }
+            : undefined,
       });
     }
     const zones: FloorPlanZone[] = [];

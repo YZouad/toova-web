@@ -23,6 +23,7 @@ import {
 import { trackRoomAreaTagged } from '../lib/analytics';
 import { ROOM_TAG_DEFS, type RoomTag } from '../lib/roomTags';
 import { FpSpotlightCard } from './FpSpotlightCard';
+import { WindowCurtainEditor } from './designer/WindowCurtainEditor';
 import { NumberStepper } from './kit/NumberStepper';
 
 export type GridSnapSize = 3 | 6 | 12;
@@ -148,10 +149,9 @@ function OpeningFields({
   lengthUnit: LengthUnit;
   onChange: (plan: FloorPlan) => void;
 }) {
-  const patch = (p: Partial<Pick<FloorPlanOpening, 'offset' | 'width' | 'height' | 'sill' | 'hinge'>>) => {
+  const patch = (p: Partial<Pick<FloorPlanOpening, 'offset' | 'width' | 'height' | 'sill' | 'hinge' | 'curtains'>>) => {
     onChange(updateOpening(plan, opening.id, p));
   };
-
   return (
     <>
       <SectionEyebrow>{opening.kind === 'door' ? 'Door' : 'Window'}</SectionEyebrow>
@@ -178,7 +178,15 @@ function OpeningFields({
         onChange={(v) => patch({ offset: v })}
       />
       {opening.kind === 'window' ? (
-        <NumField label="Sill height (in)" value={opening.sill ?? WINDOW.sill} min={0} step={1} onChange={(v) => patch({ sill: v })} />
+        <>
+          <NumField label="Sill height (in)" value={opening.sill ?? WINDOW.sill} min={0} step={1} onChange={(v) => patch({ sill: v })} />
+          <WindowCurtainEditor
+            variant="floor-plan"
+            openingId={opening.id}
+            curtains={opening.curtains}
+            onChange={(curtains) => patch({ curtains })}
+          />
+        </>
       ) : (
         <div className="fp-field">
           <label className="fp-field-label">Hinge</label>

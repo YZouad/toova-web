@@ -74,6 +74,12 @@ import {
   RoomPresetPicker,
   type RoomPresetPickerSelection,
 } from './ui/RoomPresetPicker';
+import {
+  applyAgenticShoppingList,
+  applyAgenticShoppingManifest,
+} from './lib/agenticRoomApplyChecklist';
+import type { AgenticShoppingManifestEntry } from './lib/agenticShoppingManifest';
+import type { ShoppingListEntry } from './lib/dormChecklist';
 import { ChecklistPage } from './ui/ChecklistPage';
 import { AdminConsole, type AdminTab } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
@@ -615,8 +621,11 @@ function AppContent() {
         seedItems?: Item[];
         seedOrder?: string[];
         starterId?: string;
+        agenticShoppingList?: ShoppingListEntry[];
+        agenticShoppingManifest?: AgenticShoppingManifestEntry[];
+        agenticBudgetCents?: number | null;
       },
-    ) => {
+    ): Promise<string> => {
       const environment = {
         ...(options?.environment ?? DEFAULT_ENVIRONMENT),
         appearance: {
@@ -628,14 +637,30 @@ function AppContent() {
 
       // Guest path: design locally until save requires auth.
       if (!user?.id) {
+        const guestId = `guest-${Date.now()}`;
+        if (options?.agenticShoppingList?.length) {
+          await applyAgenticShoppingList(
+            guestId,
+            options.agenticShoppingList,
+            null,
+            options.agenticBudgetCents,
+          );
+        }
+        if (options?.agenticShoppingManifest?.length) {
+          await applyAgenticShoppingManifest(
+            guestId,
+            options.agenticShoppingManifest,
+            null,
+          );
+        }
         resetLayout();
         hydrateLayout(seedItems, seedOrder);
         hydrateRoomSettings(environment, plan);
         setGuestTemplateId(options?.starterId);
-        setWorkspace({ id: `guest-${Date.now()}`, name, isOwner: true });
+        setWorkspace({ id: guestId, name, isOwner: true });
         setFloorPlanDraft(null);
         setScreen('designer');
-        return;
+        return guestId;
       }
 
       setFloorPlanBusy(true);
@@ -644,6 +669,21 @@ function AppContent() {
           templateId: options?.starterId,
           isGuestOrigin: false,
         });
+        if (options?.agenticShoppingList?.length) {
+          await applyAgenticShoppingList(
+            room.id,
+            options.agenticShoppingList,
+            user.id,
+            options.agenticBudgetCents,
+          );
+        }
+        if (options?.agenticShoppingManifest?.length) {
+          await applyAgenticShoppingManifest(
+            room.id,
+            options.agenticShoppingManifest,
+            user.id,
+          );
+        }
         resetLayout();
         hydrateLayout(seedItems, seedOrder);
         hydrateRoomSettings(environment, plan);
@@ -654,6 +694,7 @@ function AppContent() {
         setWorkspace({ id: room.id, name: room.name, isOwner: true });
         setFloorPlanDraft(null);
         setScreen('designer');
+        return room.id;
       } finally {
         setFloorPlanBusy(false);
       }
@@ -705,6 +746,17 @@ function AppContent() {
         await handleCreateWithPlan(name, selection.plan);
         return;
       }
+      if (selection.kind === 'agentic') {
+        await handleCreateWithPlan(name, selection.plan, {
+          environment: selection.environment,
+          seedItems: selection.seedItems,
+          seedOrder: selection.seedOrder,
+          agenticShoppingList: selection.shoppingList,
+          agenticShoppingManifest: selection.agenticShoppingManifest,
+          agenticBudgetCents: selection.budgetCents,
+        });
+        return;
+      }
       if (selection.kind === 'customize') {
         handleCustomizePresetPlan(name, selection.plan, selection.template);
         return;
@@ -716,6 +768,7 @@ function AppContent() {
       handleCreateWithPlan,
       handleCustomizeOwnPlan,
       handleCustomizePresetPlan,
+      user?.id,
     ],
   );
 
@@ -1280,6 +1333,11 @@ function AppContent() {
           navigate('/');
           setScreen('dashboard');
         }}
+        onReturnToChecklist={() => {
+          navigate('/');
+          setScreen('dashboard');
+          setFloorPlanDraft((prev) => prev ?? { name: user ? 'Room 1' : 'My dorm', mode: 'create' });
+        }}
         onNavigate={handleAppNav}
         onLogout={user ? handleLogout : undefined}
         {...siteFooterNav}
@@ -1513,6 +1571,9 @@ function AppContent() {
           preferredTemplateId={floorPlanDraft?.preferredTemplateId}
           onClose={() => setFloorPlanDraft(null)}
           onSelect={handlePresetPickerSelect}
+          onResumeAgenticChecklist={() => {
+            setFloorPlanDraft((prev) => prev ?? { name: 'Room 1', mode: 'create' });
+          }}
         />
       </>
     );
@@ -1557,6 +1618,9 @@ function AppContent() {
               cancelLabel="Back to home"
               onClose={() => setScreen('landing')}
               onSelect={handlePresetPickerSelect}
+              onResumeAgenticChecklist={() => {
+                setFloorPlanDraft((prev) => prev ?? { name: 'My dorm', mode: 'create' });
+              }}
             />
           </main>
           <aside className="room-preset-split__auth">

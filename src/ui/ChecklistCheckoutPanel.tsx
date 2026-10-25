@@ -8,12 +8,17 @@ import {
 } from '../lib/affiliateLinks';
 import { trackAffiliateClicked } from '../lib/analytics';
 import { formatPriceCents } from '../lib/dormChecklist';
+import type {
+  AgenticManifestResolution,
+  AgenticShoppingManifestEntry,
+} from '../lib/agenticShoppingManifest';
 import type { PurchaseCartLine } from '../lib/purchaseCart';
 import { purchaseCartTotalCents } from '../lib/purchaseCart';
 import { Button } from './kit/Button';
 import { Modal } from './kit/Modal';
 import { MonoMeta } from './kit/MonoMeta';
 import { RuledTable } from './kit/RuledTable';
+import { ManifestPlanRows } from './ManifestPlanRows';
 
 function sourceLabel(source: PurchaseCartLine['source']): string {
   if (source === 'owned') return 'Already own';
@@ -24,8 +29,14 @@ function sourceLabel(source: PurchaseCartLine['source']): string {
 
 interface ChecklistCheckoutPanelProps {
   lines: PurchaseCartLine[];
+  manifestLines?: AgenticShoppingManifestEntry[];
   onClose: () => void;
   onRemoveFromList: (productId: string) => void;
+  onDismissManifestEntry?: (entryId: string) => void;
+  onSetManifestResolution?: (
+    entryId: string,
+    resolution: AgenticManifestResolution | null,
+  ) => void;
   /** Designer chrome instead of the marketing ledger modal. */
   variant?: 'page' | 'designer';
 }
@@ -45,8 +56,11 @@ function trackShop(line: PurchaseCartLine) {
 
 export function ChecklistCheckoutPanel({
   lines,
+  manifestLines = [],
   onClose,
   onRemoveFromList,
+  onDismissManifestEntry,
+  onSetManifestResolution,
   variant = 'page',
 }: ChecklistCheckoutPanelProps) {
   const { sum, known } = useMemo(() => purchaseCartTotalCents(lines), [lines]);
@@ -130,7 +144,7 @@ export function ChecklistCheckoutPanel({
         retailers handle checkout.
       </MonoMeta>
 
-      {lines.length === 0 ? (
+      {lines.length === 0 && manifestLines.length === 0 ? (
         <p className="purchase-review-empty">
           Nothing to buy yet. Add picks to your list or place items in your room.
         </p>
@@ -250,6 +264,23 @@ export function ChecklistCheckoutPanel({
               />
             </div>
           ))}
+
+          {manifestLines.length > 0 ? (
+            <div style={{ marginTop: lines.length > 0 ? 24 : 0 }}>
+              <MonoMeta size="xs" tone="dense" upper style={{ display: 'block', marginBottom: 10 }}>
+                From your room plan
+              </MonoMeta>
+              <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 12 }}>
+                These items weren&apos;t in our catalog — search to buy them.
+              </MonoMeta>
+              <ManifestPlanRows
+                entries={manifestLines}
+                source="checklist_checkout"
+                onDismiss={onDismissManifestEntry}
+                onSetResolution={onSetManifestResolution}
+              />
+            </div>
+          ) : null}
         </>
       )}
 

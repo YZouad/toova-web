@@ -9,6 +9,7 @@ export type DesignerPanel =
   | null
   | 'add'
   | 'look'
+  | 'revise'
   | 'light'
   | 'pieces'
   | 'inspect';

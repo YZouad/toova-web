@@ -32,6 +32,8 @@ function dockPanelToSheet(panel: DesignerPanel): Exclude<MobileSheetKind, null> 
       return 'add';
     case 'look':
       return 'look';
+    case 'revise':
+      return 'revise';
     case 'light':
       return 'light';
     case 'pieces':
@@ -56,7 +58,7 @@ export function useMobileDesignerChrome(desktop: DesignerChrome): MobileDesigner
     if (mapped && state.sheet !== mapped) {
       dispatch({ type: 'open_sheet', sheet: mapped });
     }
-    if (!desktop.panel && (state.sheet === 'add' || state.sheet === 'look' || state.sheet === 'light' || state.sheet === 'pieces' || state.sheet === 'inspect' || state.sheet === 'import')) {
+    if (!desktop.panel && (state.sheet === 'add' || state.sheet === 'look' || state.sheet === 'revise' || state.sheet === 'light' || state.sheet === 'pieces' || state.sheet === 'inspect' || state.sheet === 'import')) {
       // Desktop closed the panel (e.g. Escape) — close mobile sheet too.
       if (!desktop.drawing && !desktop.present) {
         // Only clear if desktop intentionally closed; selection can still open inspect.
@@ -89,6 +91,7 @@ export function useMobileDesignerChrome(desktop: DesignerChrome): MobileDesigner
       const panelMap: Partial<Record<Exclude<MobileSheetKind, null>, DesignerPanel>> = {
         add: 'add',
         look: 'look',
+        revise: 'revise',
         light: 'light',
         pieces: 'pieces',
         inspect: 'inspect',

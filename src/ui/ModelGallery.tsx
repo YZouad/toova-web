@@ -21,6 +21,8 @@ interface ModelGalleryProps {
   hideSortAndCategory?: boolean;
   currentUserId?: string | null;
   placeLabel?: string;
+  checklistPickMode?: boolean;
+  onAddToChecklist?: (model: GalleryModel) => void;
   recentRail?: ReactNode;
   headerActions?: ReactNode;
   onSourceChange: (source: GallerySource) => void;
@@ -43,6 +45,8 @@ export function ModelGallery({
   hideSortAndCategory = true,
   currentUserId,
   placeLabel,
+  checklistPickMode = false,
+  onAddToChecklist,
   recentRail,
   headerActions,
   onSourceChange,
@@ -141,6 +145,10 @@ export function ModelGallery({
                 m.isBuiltin ? getBuiltinPreviewUrl(m.kind, builtinPreviews) : null
               }
               onOpen={(model) => {
+                if (checklistPickMode && onAddToChecklist && !model.isBuiltin) {
+                  onAddToChecklist(model);
+                  return;
+                }
                 setEditStart(false);
                 setSelected(model);
               }}

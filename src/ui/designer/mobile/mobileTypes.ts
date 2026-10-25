@@ -5,6 +5,7 @@ export type MobileSheetKind =
   | null
   | 'add'
   | 'look'
+  | 'revise'
   | 'light'
   | 'pieces'
   | 'inspect'
@@ -25,6 +26,7 @@ export const MOBILE_SHEET_TOP: Record<Exclude<MobileSheetKind, null>, string> = 
   inspect: '150px',
   light: 'auto',
   look: 'auto',
+  revise: '120px',
   pieces: '380px',
   credits: 'auto',
 };

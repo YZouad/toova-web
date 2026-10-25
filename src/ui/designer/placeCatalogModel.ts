@@ -51,7 +51,9 @@ export async function placeFromCatalog(
       size: dims,
       catalogSizeIn: dims,
       catalogKind: model.kind,
+      catalogTags: model.tags.length ? [...model.tags] : undefined,
       curatedProductId: localProduct?.id,
+      wallMounted: model.tags.includes('poster') ? true : undefined,
       spawnAt,
     });
     recordCatalogPlaceEngagement(model, opts.userId ?? null);

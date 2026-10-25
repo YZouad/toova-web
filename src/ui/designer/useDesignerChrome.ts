@@ -34,6 +34,8 @@ export function useDesignerChrome() {
   const selectedItem = useStore((s) => (selectedId ? s.items[selectedId] : null));
   const selectedWallId = useStore((s) => s.selectedWallId);
   const wallSelectEpoch = useStore((s) => s.wallSelectEpoch);
+  const selectedOpeningId = useStore((s) => s.selectedOpeningId);
+  const openingSelectEpoch = useStore((s) => s.openingSelectEpoch);
   const designerTool = useStore((s) => s.designerTool);
   const hangingDraft = useStore((s) => s.hangingDraft);
   const measurePending = useStore((s) => s.measurePending);
@@ -101,20 +103,28 @@ export function useDesignerChrome() {
 
   const clearSelection = useCallback(() => {
     useStore.getState().select(null);
+    useStore.getState().selectOpening(null);
     setRadialOpen(false);
     setPanelRaw((p) => (p === 'inspect' ? null : p));
   }, []);
 
   useEffect(() => {
     setRadialOpen(false);
-    if (!selectedId && panel === 'inspect') setPanelRaw(null);
-  }, [selectedId]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (!selectedId && !selectedOpeningId && panel === 'inspect') setPanelRaw(null);
+  }, [selectedId, selectedOpeningId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!selectedWallId || present || drawing || tourOn) return;
     setPanelRaw('look');
     setRadialOpen(false);
   }, [selectedWallId, wallSelectEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!selectedOpeningId || present || drawing || tourOn) return;
+    setPanelRaw('inspect');
+    setRadialOpen(false);
+    setOverlay(null);
+  }, [selectedOpeningId, openingSelectEpoch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (panel !== 'inspect' || !selectedItem) return;

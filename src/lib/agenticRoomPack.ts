@@ -1,0 +1,435 @@
+import { FURNITURE, isWallShelfKind, type FurnitureKind, type GalleryFurnitureKind } from '../furniture/registry';
+import { DEFAULT_BLANKET_COLOR, DEFAULT_EMITTER, newAttachmentKey, type Item } from '../store';
+import { CHECKLIST_RUG_MODEL_PATH, DEFAULT_RUG_COLOR } from './checklistPublicGlbs';
+import type { AgenticReviewRow } from './agenticRoomResolveFromList';
+export { defaultPlaceInRoom, rowCanPlaceInRoom } from './agenticRoomPlacement';
+import { clampAgenticPieceSize, enrichBuildDimensionsForRoom } from './agenticRoomFit';
+import { planBounds, type FloorPlan } from './floorPlanGeometry';
+import { arrangeRoomItems, type LayoutVariant } from './roomLayoutArrange';
+export { WALL_POSTER_CENTER_Y } from './roomLayoutArrange';
+import { bedFrameSpecificity, isBedFrameQuery, resolveBedFootprint } from './agenticBedSize';
+import {
+  applyBuildSizeOverride,
+  resolveFurnitureBuild,
+  type FurnitureBuild,
+} from './furnitureBuild';
+import { parseInchDims } from './importedItemSize';
+import { shouldStandImportedUpright, standUpFlatBounds } from './importedUpright';
+import { resolvePlaceHangingKind } from './dormChecklist';
+import {
+  appendHangingFromSeeds,
+  pickAgenticHangingSeeds,
+} from './hangingDecorPlacement';
+import type { HangingDecorKind } from './hangingDecorGeometry';
+import { supabase } from './supabase';
+import { clampScanFootprintCenter } from './roomScanManifest';
+
+const CHECKLIST_RUG_KIND = 'checklist-rug';
+
+export type AgenticPackRow = AgenticReviewRow;
+
+export interface AgenticPackPiece {
+  query: string;
+  label: string;
+  kind: FurnitureKind;
+  size: [number, number, number];
+  isLamp: boolean;
+  curatedProductId?: string;
+  importedStoragePath?: string;
+  catalogKind?: string;
+  catalogSizeIn?: [number, number, number];
+  beddingEnabled?: boolean;
+  blanketColor?: string;
+  /** Wall-mounted poster from the built-in CC0 bank. */
+  wallPoster?: boolean;
+  build?: FurnitureBuild;
+  /** When set, floor packer pins this piece at the scan pose instead of auto-arranging. */
+  scanPose?: { x: number; z: number; rotationY: number };
+}
+
+export interface AgenticPackResult {
+  items: Item[];
+  order: string[];
+  skipped: string[];
+}
+
+async function catalogRowForKind(catalogKind: string): Promise<{
+  model_url: string;
+  label: string;
+  width_in: number;
+  height_in: number;
+  depth_in: number;
+} | null> {
+  const { data, error } = await supabase
+    .from('furniture_catalog')
+    .select('kind,label,model_url,width_in,height_in,depth_in')
+    .eq('kind', catalogKind)
+    .maybeSingle();
+  if (error || !data?.model_url) return null;
+  return {
+    model_url: String(data.model_url).trim(),
+    label: String(data.label ?? catalogKind),
+    width_in: Number(data.width_in),
+    height_in: Number(data.height_in),
+    depth_in: Number(data.depth_in),
+  };
+}
+
+function bedPieceSize(query: string): [number, number, number] {
+  const def = FURNITURE.bed;
+  const { widthIn, lengthIn } = resolveBedFootprint(query);
+  return [widthIn, def.size[1], lengthIn];
+}
+
+function builtinPiece(
+  query: string,
+  kind: GalleryFurnitureKind,
+  label: string,
+  plan: FloorPlan | undefined,
+  curatedProductId?: string,
+  sizeOverride?: [number, number, number],
+  rawBuild?: FurnitureBuild,
+): AgenticPackPiece {
+  const def = FURNITURE[kind];
+  const resolved = resolveFurnitureBuild(kind, query, rawBuild ?? null);
+  const build =
+    plan && resolved
+      ? enrichBuildDimensionsForRoom(plan, kind, resolved, query)
+      : resolved;
+  let size =
+    sizeOverride ??
+    (kind === 'bed' ? bedPieceSize(query) : ([...def.size] as [number, number, number]));
+  if (build && kind !== 'bed') {
+    size = applyBuildSizeOverride(kind, size, build);
+  }
+  if (plan && kind !== 'bed') {
+    size = clampAgenticPieceSize(plan, kind, size);
+  }
+  return {
+    query,
+    label: kind === 'lamp' && /\bdesk\s*lamp\b/i.test(query) ? 'Desk lamp' : label,
+    kind,
+    size,
+    isLamp: kind === 'lamp',
+    curatedProductId,
+    beddingEnabled: kind === 'bed' ? true : undefined,
+    blanketColor: kind === 'bed' ? DEFAULT_BLANKET_COLOR : undefined,
+    build,
+  };
+}
+
+/** Keep one physical bed; bedding rows stay separate checklist lines. */
+export function collapseBedPackRows(rows: AgenticPackRow[]): AgenticPackRow[] {
+  let bestBed: AgenticPackRow | null = null;
+  const rest: AgenticPackRow[] = [];
+
+  for (const row of rows) {
+    const isBed =
+      row.builtinKind === 'bed' ||
+      row.product?.placeBuiltinKind === 'bed' ||
+      isBedFrameQuery(row.query);
+    if (!isBed) {
+      rest.push(row);
+      continue;
+    }
+    if (!bestBed || bedFrameSpecificity(row.query) > bedFrameSpecificity(bestBed.query)) {
+      bestBed = row;
+    }
+  }
+
+  return bestBed ? [...rest, bestBed] : rest;
+}
+
+function importedPiece(input: {
+  query: string;
+  label: string;
+  storagePath: string;
+  catalogKind?: string;
+  size: [number, number, number];
+  curatedProductId?: string;
+  wallPoster?: boolean;
+}): AgenticPackPiece {
+  let size = input.size;
+  if (shouldStandImportedUpright(input.label)) {
+    size = standUpFlatBounds(size);
+  }
+  return {
+    query: input.query,
+    label: input.label,
+    kind: 'imported',
+    size,
+    isLamp: /\blamp\b/i.test(input.label) || /\blamp\b/i.test(input.query),
+    curatedProductId: input.curatedProductId,
+    importedStoragePath: input.storagePath,
+    catalogKind: input.catalogKind,
+    catalogSizeIn: [...size] as [number, number, number],
+    wallPoster: input.wallPoster,
+  };
+}
+
+export interface BuildAgenticPackPiecesOptions {
+  /** Keep every bed row (room scan may detect multiple). */
+  preserveAllBeds?: boolean;
+}
+
+/** Expand checked rows into placeable pieces (async catalog lookups). */
+export async function buildAgenticPackPieces(
+  rows: AgenticPackRow[],
+  plan?: FloorPlan,
+  options?: BuildAgenticPackPiecesOptions,
+): Promise<AgenticPackPiece[]> {
+  const pieces: AgenticPackPiece[] = [];
+  const collapsed = options?.preserveAllBeds ? rows : collapseBedPackRows(rows);
+  const seenPosterKinds = new Set<string>();
+
+  for (const row of collapsed) {
+    if (!row.placeInRoom) continue;
+
+    const label = row.product?.name ?? row.query;
+    const qty = Math.max(1, row.qty);
+    const scanSize = row.scan?.scanSizeIn;
+    const scanPose = row.scan?.scanPose;
+
+    const bankPoster = row.bankPoster;
+    if (bankPoster?.modelUrl) {
+      if (seenPosterKinds.has(bankPoster.kind)) continue;
+      seenPosterKinds.add(bankPoster.kind);
+      const size: [number, number, number] = [
+        bankPoster.widthIn,
+        bankPoster.heightIn,
+        bankPoster.depthIn,
+      ];
+      for (let i = 0; i < qty; i++) {
+        pieces.push(
+          importedPiece({
+            query: row.query,
+            label: bankPoster.label || label,
+            storagePath: bankPoster.modelUrl,
+            catalogKind: bankPoster.kind,
+            size,
+            curatedProductId: row.product?.id,
+            wallPoster: true,
+          }),
+        );
+      }
+      continue;
+    }
+
+    const communityModelUrl = row.communityModel?.modelUrl?.trim();
+    if (communityModelUrl) {
+      const m = row.communityModel!;
+      const size = parseInchDims(m.widthIn, m.heightIn, m.depthIn) ?? [24, 24, 24];
+      for (let i = 0; i < qty; i++) {
+        pieces.push(
+          importedPiece({
+            query: row.query,
+            label: m.label || label,
+            storagePath: communityModelUrl,
+            catalogKind: m.kind,
+            size,
+            curatedProductId: row.product?.id,
+          }),
+        );
+      }
+      continue;
+    }
+
+    const product = row.product;
+    if (product?.placeBuiltinKind && product.placeBuiltinKind in FURNITURE) {
+      const kind = product.placeBuiltinKind as GalleryFurnitureKind;
+      for (let i = 0; i < qty; i++) {
+        pieces.push({
+          ...builtinPiece(
+            row.query,
+            kind,
+            product.name,
+            plan,
+            product.id,
+            scanSize,
+            row.build,
+          ),
+          ...(scanPose ? { scanPose } : {}),
+        });
+      }
+      continue;
+    }
+
+    if (product?.placeCatalogKind) {
+      const cat = await catalogRowForKind(product.placeCatalogKind);
+      if (cat) {
+        const size =
+          parseInchDims(cat.width_in, cat.height_in, cat.depth_in) ?? ([24, 24, 24] as [number, number, number]);
+        const displayLabel =
+          product.placeCatalogKind === CHECKLIST_RUG_KIND ? row.query : product.name;
+        for (let i = 0; i < qty; i++) {
+          const sized = scanSize ?? size;
+          pieces.push({
+            ...importedPiece({
+              query: row.query,
+              label: displayLabel,
+              storagePath: cat.model_url,
+              catalogKind: product.placeCatalogKind,
+              size: sized,
+              curatedProductId: product.id,
+            }),
+            ...(scanPose ? { scanPose } : {}),
+          });
+        }
+      }
+      continue;
+    }
+
+    if (row.builtinKind) {
+      for (let i = 0; i < qty; i++) {
+        pieces.push({
+          ...builtinPiece(row.query, row.builtinKind, label, plan, product?.id, scanSize, row.build),
+          ...(scanPose ? { scanPose } : {}),
+        });
+      }
+    }
+  }
+
+  return pieces;
+}
+
+function defaultLampEmitter(): Item['emitter'] {
+  return { ...DEFAULT_EMITTER, enabled: true, intensity: 1.8, range: 90 };
+}
+
+function pieceToItem(piece: AgenticPackPiece, id: string, position: [number, number, number], rotationY: number): Item {
+  if (piece.kind === 'imported') {
+    const isRug =
+      piece.importedStoragePath === CHECKLIST_RUG_MODEL_PATH ||
+      piece.importedStoragePath?.endsWith('/rug.glb') ||
+      piece.label.trim().toLowerCase() === 'rug';
+    return {
+      id,
+      kind: 'imported',
+      position,
+      rotationY,
+      size: piece.size,
+      catalogSizeIn: piece.catalogSizeIn,
+      catalogKind: piece.catalogKind,
+      label: piece.label,
+      curatedProductId: piece.curatedProductId,
+      importedStoragePath: piece.importedStoragePath,
+      catalogTags: piece.wallPoster ? ['poster'] : undefined,
+      tintColor: isRug ? DEFAULT_RUG_COLOR : undefined,
+      wallMounted: piece.wallPoster ? true : undefined,
+      attachmentKey: newAttachmentKey(),
+      ...(piece.isLamp ? { emitter: defaultLampEmitter() } : {}),
+    };
+  }
+
+  const def = FURNITURE[piece.kind as GalleryFurnitureKind];
+  const isBed = piece.kind === 'bed';
+  const bedLegHeight = isBed ? 8 : undefined;
+  const bodyH = isBed ? piece.size[1] : 0;
+  const size: [number, number, number] = isBed
+    ? [piece.size[0], (bedLegHeight ?? 8) + bodyH, piece.size[2]]
+    : ([...piece.size] as [number, number, number]);
+
+  return {
+    id,
+    kind: piece.kind,
+    position,
+    rotationY,
+    size,
+    bedLegHeight,
+    label: piece.label || def.label,
+    beddingEnabled: isBed ? (piece.beddingEnabled ?? true) : undefined,
+    blanketColor: isBed ? (piece.blanketColor ?? DEFAULT_BLANKET_COLOR) : undefined,
+    curatedProductId: piece.curatedProductId,
+    wallMounted: isWallShelfKind(piece.kind) ? true : undefined,
+    attachmentKey: newAttachmentKey(),
+    build: piece.build,
+    ...(piece.isLamp || piece.kind === 'lamp' ? { emitter: defaultLampEmitter() } : {}),
+  };
+}
+
+/** Role-aware floor packing; lamps snap onto hosts, posters prefer the bed wall. */
+export function packAgenticFloorItems(
+  plan: FloorPlan,
+  pieces: AgenticPackPiece[],
+  variant: LayoutVariant = 0,
+): AgenticPackResult {
+  const bounds = planBounds(plan);
+  const idToQuery = new Map<string, string>();
+  const pinnedIds: string[] = [];
+  let nextId = 1;
+  const provisional: Item[] = pieces.map((piece) => {
+    const id = `item-${nextId++}`;
+    idToQuery.set(id, piece.query);
+    if (piece.scanPose) {
+      pinnedIds.push(id);
+      const clamped = clampScanFootprintCenter(
+        bounds.width,
+        bounds.depth,
+        piece.size,
+        { x: piece.scanPose.x, z: piece.scanPose.z },
+        piece.scanPose.rotationY,
+      );
+      return pieceToItem(
+        piece,
+        id,
+        [clamped.x, 0, clamped.z],
+        piece.scanPose.rotationY,
+      );
+    }
+    return pieceToItem(piece, id, [0, 0, 0], 0);
+  });
+
+  const { items, skippedIds } = arrangeRoomItems(plan, provisional, variant, {
+    pinnedIds: pinnedIds.length > 0 ? pinnedIds : undefined,
+  });
+  return {
+    items,
+    order: items.map((it) => it.id),
+    skipped: skippedIds.map((id) => idToQuery.get(id) ?? id),
+  };
+}
+
+function hangingKindsFromRows(rows: AgenticPackRow[]): Array<{
+  kind: HangingDecorKind;
+  curatedProductId?: string;
+}> {
+  const out: Array<{ kind: HangingDecorKind; curatedProductId?: string }> = [];
+  const seen = new Set<HangingDecorKind>();
+  for (const row of rows) {
+    if (!row.placeInRoom || !row.product) continue;
+    const kind = resolvePlaceHangingKind(row.product);
+    if (!kind || seen.has(kind)) continue;
+    seen.add(kind);
+    out.push({ kind, curatedProductId: row.product.id });
+  }
+  return out;
+}
+
+/** Pack floor furniture, then auto-span hanging leaves / string lights on walls. */
+export function packAgenticRoomItems(
+  plan: FloorPlan,
+  pieces: AgenticPackPiece[],
+  hangingRows: AgenticPackRow[],
+  variant: LayoutVariant = 0,
+): AgenticPackResult {
+  const floor = packAgenticFloorItems(plan, pieces, variant);
+  const hangingEntries = hangingKindsFromRows(hangingRows);
+  if (hangingEntries.length === 0) return floor;
+
+  const seeds = pickAgenticHangingSeeds(plan, hangingEntries);
+  if (seeds.length === 0) return floor;
+
+  const items = [...floor.items];
+  const nextIndex = {
+    n: items.reduce((max, it) => {
+      const n = Number.parseInt(it.id.replace(/^item-/, ''), 10);
+      return Number.isFinite(n) ? Math.max(max, n + 1) : max;
+    }, 1),
+  };
+  const addedIds = appendHangingFromSeeds(items, plan, seeds, nextIndex);
+  return {
+    items,
+    order: [...floor.order, ...addedIds],
+    skipped: floor.skipped,
+  };
+}

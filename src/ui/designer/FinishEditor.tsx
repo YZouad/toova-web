@@ -5,10 +5,12 @@ import {
   FURNITURE_FINISH_SWATCHES,
   MATTRESS_COLOR_SWATCHES,
   defaultFinishColor,
+  furnitureDrawerColor,
   furnitureTopColor,
   itemUsesTopColor,
   finishColor,
   itemUsesCustomFinish,
+  itemSupportsDrawerColor,
   itemSupportsTopColor,
   mattressColor,
 } from '../../lib/furnitureFinish';
@@ -188,6 +190,7 @@ function BuiltinFinishEditor({ item, compact }: { item: Item; compact: boolean }
   const setTintColor = useStore((s) => s.setTintColor);
   const setMattressColor = useStore((s) => s.setMattressColor);
   const setTopColor = useStore((s) => s.setTopColor);
+  const setDrawerColor = useStore((s) => s.setDrawerColor);
   const setFinishTexture = useStore((s) => s.setFinishTexture);
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -196,10 +199,12 @@ function BuiltinFinishEditor({ item, compact }: { item: Item; compact: boolean }
   const current = finishColor(item);
   const mattress = mattressColor(item.mattressColor);
   const hasTopColor = itemSupportsTopColor(item);
+  const hasDrawerColor = itemSupportsDrawerColor(item.kind);
   const top =
     item.kind === 'dresser' || item.kind === 'desk'
       ? furnitureTopColor(item.kind, item.topColor, current)
       : current;
+  const drawers = furnitureDrawerColor(item.drawerColor, current);
   const hasPhoto = Boolean(item.finishTextureUrl || item.finishTexturePath);
   const isDresser = item.kind === 'dresser';
   const isDesk = item.kind === 'desk';
@@ -289,6 +294,30 @@ function BuiltinFinishEditor({ item, compact }: { item: Item; compact: boolean }
     </div>
   );
 
+  const drawerSwatches = (
+    <div className={compact ? 'dgm-swatch-row' : 'dg-swatch-grid'}>
+      {FURNITURE_FINISH_SWATCHES.map((s) => (
+        <button
+          key={`drawer-${s.color}`}
+          type="button"
+          className={`${compact ? 'dgm-swatch' : 'dg-swatch'}${drawers.toLowerCase() === s.color.toLowerCase() ? ' is-active' : ''}`}
+          style={{ background: s.color }}
+          title={s.label}
+          aria-label={s.label}
+          onClick={() => setDrawerColor(item.id, s.color)}
+        />
+      ))}
+      <input
+        type="color"
+        className={compact ? 'dgm-color-input' : undefined}
+        value={drawers.length === 7 ? drawers : current}
+        onChange={(e) => setDrawerColor(item.id, e.target.value)}
+        aria-label="Drawer color"
+        style={compact ? undefined : { width: 36, height: 36, border: 'none', padding: 0, background: 'transparent' }}
+      />
+    </div>
+  );
+
   const mattressSwatches = (
     <div className={compact ? 'dgm-swatch-row' : 'dg-swatch-grid'}>
       {MATTRESS_COLOR_SWATCHES.map((s) => (
@@ -355,8 +384,10 @@ function BuiltinFinishEditor({ item, compact }: { item: Item; compact: boolean }
           ? item.kind === 'bed'
             ? 'Wrap the bed frame with a photo of real wood or laminate. Sheets and blankets stay on the Bedding tab.'
             : hasTopColor
-              ? 'Photo wrap applies to the base and drawers only — pick a separate top color above.'
-              : 'Wrap this piece with a photo of real wood or laminate. A close-up of the surface looks best.'
+              ? 'Photo wrap applies to the frame/carcass. Pick separate top and drawer colors above when you want.'
+              : hasDrawerColor
+                ? 'Photo wrap applies to the frame/carcass. Pick a separate drawer color above when you want.'
+                : 'Wrap this piece with a photo of real wood or laminate. A close-up of the surface looks best.'
           : 'Sign in to wrap this piece with a photo of real wood or laminate.'}
       </p>
       {error ? (
@@ -380,6 +411,12 @@ function BuiltinFinishEditor({ item, compact }: { item: Item; compact: boolean }
           <section className="dgm-section">
             <h3 className="dgm-section-title">{isDesk ? 'Desktop color' : 'Top color'}</h3>
             {topSwatches}
+          </section>
+        ) : null}
+        {hasDrawerColor ? (
+          <section className="dgm-section">
+            <h3 className="dgm-section-title">Drawer color</h3>
+            {drawerSwatches}
           </section>
         ) : null}
         {item.kind === 'bed' ? (
@@ -408,6 +445,9 @@ function BuiltinFinishEditor({ item, compact }: { item: Item; compact: boolean }
         <PanelSection title={isDesk ? 'Desktop color' : 'Top color'}>
           {topSwatches}
         </PanelSection>
+      ) : null}
+      {hasDrawerColor ? (
+        <PanelSection title="Drawer color">{drawerSwatches}</PanelSection>
       ) : null}
       {item.kind === 'bed' ? (
         <PanelSection title="Mattress color">

@@ -51,4 +51,26 @@ describe('toggleRoomFixtures', () => {
     expect(useStore.getState().environment.appearance.wallColor).toBe('#3a3a3a');
     expect(useStore.getState().environment.appearance.wallColors).toBeUndefined();
   });
+
+  it('selects windows for curtain editing and patches opening curtains', async () => {
+    const { useStore } = await import('./store');
+    useStore.getState().resetLayout();
+    const windowId = useStore.getState().roomGeometry.openings.find((o) => o.kind === 'window')!.id;
+
+    useStore.getState().selectOpening(windowId);
+    expect(useStore.getState().selectedOpeningId).toBe(windowId);
+    expect(useStore.getState().selectedId).toBeNull();
+
+    useStore.getState().patchOpening(windowId, {
+      curtains: { color: '#39475e', openness: 0.2 },
+    });
+    const curtains = useStore
+      .getState()
+      .roomGeometry.openings.find((o) => o.id === windowId)!.curtains;
+    expect(curtains).toEqual({ color: '#39475e', openness: 0.2 });
+
+    const chairId = useStore.getState().addItem('chair');
+    useStore.getState().select(chairId);
+    expect(useStore.getState().selectedOpeningId).toBeNull();
+  });
 });

@@ -1,3 +1,4 @@
+import { isPosterItem } from '../../../lib/posterItem';
 import { proportionalSizesFromMaxSide } from '../../../lib/uniformItemSize';
 import { planBounds } from '../../../lib/roomGeometry';
 import { useStore } from '../../../store';
@@ -9,6 +10,7 @@ export interface MobileSelectionActionsProps {
   detailLabel?: string;
   onReviseWithThrixel?: () => void;
   showReviseWithThrixel?: boolean;
+  onChangePoster?: () => void;
 }
 
 /**
@@ -21,6 +23,7 @@ export function MobileSelectionActions({
   detailLabel = 'Edit details',
   onReviseWithThrixel,
   showReviseWithThrixel = false,
+  onChangePoster,
 }: MobileSelectionActionsProps) {
   const selectedId = useStore((s) => s.selectedId);
   const item = useStore((s) => (selectedId ? s.items[selectedId] : null));
@@ -34,6 +37,7 @@ export function MobileSelectionActions({
   if (!item) return null;
 
   const isHanging = item.kind === 'hanging';
+  const isPoster = isPosterItem(item);
   const canSize = !isHanging && (item.kind !== 'imported' || !!item.importedNaturalSize);
   const maxSide = Math.max(item.size[0], item.size[1], item.size[2]);
   const maxFootprint = Math.max(planBounds(roomGeometry).width, planBounds(roomGeometry).depth, 200);
@@ -128,6 +132,11 @@ export function MobileSelectionActions({
           {showReviseWithThrixel && onReviseWithThrixel ? (
             <button type="button" className="dgm-action-btn" onClick={onReviseWithThrixel}>
               <span>Revise with Thrixel</span>
+            </button>
+          ) : null}
+          {isPoster && onChangePoster ? (
+            <button type="button" className="dgm-action-btn" onClick={onChangePoster}>
+              <span>Change poster</span>
             </button>
           ) : null}
           <button

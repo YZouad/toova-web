@@ -166,6 +166,81 @@ describe('roomLayoutSerialize furniture finish', () => {
     expect(rows[0]!.top_color).toBe('#f2efe8');
   });
 
+  it('round-trips drawer_color', () => {
+    const dresser: Item = {
+      id: 'd-drawer-color',
+      kind: 'dresser',
+      position: [0, 0, 0],
+      rotationY: 0,
+      size: [30, 32, 18],
+      label: 'Dresser',
+      attachmentKey: 'att-drawer-color',
+      tintColor: '#a98662',
+      drawerColor: '#5c6166',
+    };
+    const rows = serializeLayoutForRoom('room-1', { [dresser.id]: dresser }, [dresser.id]);
+    expect(rows[0]!.drawer_color).toBe('#5c6166');
+    const restored = dbRowToItem({
+      id: 'd-drawer-color',
+      room_id: 'room-1',
+      kind: 'dresser',
+      label: 'Dresser',
+      pos_x: 0,
+      pos_y: 0,
+      pos_z: 0,
+      rotation_y: 0,
+      size_w: 30,
+      size_h: 32,
+      size_d: 18,
+      bed_leg_height: null,
+      natural_w: null,
+      natural_h: null,
+      natural_d: null,
+      sort_order: 0,
+      tint_color: '#a98662',
+      drawer_color: '#5c6166',
+      instance_key: 'att-drawer-color',
+    });
+    expect(restored?.drawerColor).toBe('#5c6166');
+  });
+
+  it('round-trips furniture build_config', () => {
+    const dresser: Item = {
+      id: 'd-build',
+      kind: 'dresser',
+      position: [0, 0, 0],
+      rotationY: 0,
+      size: [30, 32, 18],
+      label: 'Dresser',
+      attachmentKey: 'att-build',
+      build: { drawers: 6, columns: 2 },
+    };
+    const rows = serializeLayoutForRoom('room-1', { [dresser.id]: dresser }, [dresser.id]);
+    expect(rows[0]!.build_config).toEqual({ drawers: 6, columns: 2 });
+
+    const restored = dbRowToItem({
+      id: 'd-build',
+      room_id: 'room-1',
+      kind: 'dresser',
+      label: 'Dresser',
+      pos_x: 0,
+      pos_y: 0,
+      pos_z: 0,
+      rotation_y: 0,
+      size_w: 30,
+      size_h: 32,
+      size_d: 18,
+      bed_leg_height: null,
+      natural_w: null,
+      natural_h: null,
+      natural_d: null,
+      sort_order: 0,
+      instance_key: 'att-build',
+      build_config: { drawers: 6, columns: 2 },
+    });
+    expect(restored?.build).toEqual({ drawers: 6, columns: 2 });
+  });
+
   it('round-trips a dresser top color separately from the base', () => {
     const dresser: Item = {
       id: 'd1',

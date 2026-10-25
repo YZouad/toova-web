@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { lampMinHeight } from './furniture/lampGeometry';
 import { DEFAULT_SHELF_COLOR, FURNITURE, FurnitureKind, LIGHT_SOURCE_SIZE, isWallShelfKind } from './furniture/registry';
 import {
+  itemSupportsDrawerColor,
   itemSupportsTopColor,
   itemUsesCustomFinish,
   itemUsesTintColor,
@@ -9,6 +10,12 @@ import {
 import { defaultWallShelfPose, findValidElevation, resolveValidXZ, settleGravity, validatePlacement } from './interaction/collision';
 import { trackDesignItemAdded } from './lib/analytics';
 import { resolveImportedInitialSize } from './lib/importedItemSize';
+import { isPosterItem } from './lib/posterItem';
+import {
+  posterCatalogSize,
+  posterPositionPreservingCenterY,
+  posterSizeForItemAfterNatural,
+} from './lib/posterSize';
 import { shouldStandImportedUpright, standUpFlatBounds } from './lib/importedUpright';
 import { DEFAULT_RUG_COLOR, isChecklistRug } from './lib/checklistPublicGlbs';
 import {
@@ -18,9 +25,12 @@ import {
   normalizeRoomGeometry,
   planBounds,
   planCentroid,
+  updateOpening,
   type RoomGeometry,
 } from './lib/roomGeometry';
+import type { FloorPlanOpening } from './lib/floorPlanGeometry';
 import { clampPositionInRoom } from './interaction/collision';
+import type { LayoutVariant } from './lib/roomLayoutArrange';
 import type { Weather } from './lib/environment';
 import {
   DEFAULT_APPEARANCE,
@@ -57,6 +67,12 @@ import {
   resolveBeddingConfig,
 } from './lib/bedding/config';
 import type { BeddingConfig, BeddingConfigPatch } from './lib/bedding/types';
+import type { FurnitureBuild } from './lib/furnitureBuild';
+import {
+  applyBuildSizeOverride,
+  kindSupportsBuild,
+  resolveFurnitureBuildExplicit,
+} from './lib/furnitureBuild';
 
 export type {
   HangingAnchor,
@@ -124,6 +140,14 @@ export interface HangingDraft {
 const BED_MIN_BODY_H = 4;
 export const DEFAULT_BLANKET_COLOR = '#6b8cae';
 
+function bedBodyHeightIn(): number {
+  return FURNITURE.bed.size[1];
+}
+
+function bedTotalHeightIn(legHeight: number): number {
+  return legHeight + bedBodyHeightIn();
+}
+
 export type { RoomAppearance, VisualSettings, CameraPresetId, CutawayMode, RenderQualityTier };
 /**
  * Legacy beds used frame-bottom coordinates: position.y === leg height on the floor,
@@ -133,7 +157,13 @@ export type { RoomAppearance, VisualSettings, CameraPresetId, CutawayMode, Rende
 export function normalizeBedItem(it: Item): Item {
   if (it.kind !== 'bed') return it;
   const leg = it.bedLegHeight ?? 8;
-  if (it.size[1] > leg + 8) return it;
+  if (it.size[1] > leg + 8) {
+    const expected = bedTotalHeightIn(leg);
+    if (Math.abs(it.size[1] - expected) > 0.5) {
+      return { ...it, size: [it.size[0], expected, it.size[2]] };
+    }
+    return it;
+  }
   if (it.position[1] < leg - 1) return it;
   return {
     ...it,
@@ -207,6 +237,8 @@ export interface Item {
   catalogSizeIn?: [number, number, number];
   /** furniture_catalog.kind for imported GLBs (checklist + gallery placement). */
   catalogKind?: string;
+  /** furniture_catalog.tags for imported GLBs (runtime; backfilled on load). */
+  catalogTags?: string[];
   label: string;
   /** Gravity off on drag only when checked AND touching a wall; height slider ignores this flag. */
   wallMounted?: boolean;
@@ -220,6 +252,8 @@ export interface Item {
   mattressColor?: string;
   /** Hex color for a dresser top that differs from the base. */
   topColor?: string;
+  /** Hex color for drawer fronts (dresser, nightstand, desk). */
+  drawerColor?: string;
   /** Supabase Storage path for blanket pattern image (`model-files` bucket). */
   blanketTexturePath?: string;
   /** Signed URL for blanket texture (runtime only; not persisted). */
@@ -240,6 +274,8 @@ export interface Item {
   attachmentKey: string;
   /** Procedural hanging decoration payload (kind === 'hanging'). */
   hanging?: HangingDecorationConfig;
+  /** Procedural structure for built-in gallery furniture (drawers, shelves, etc.). */
+  build?: FurnitureBuild;
   /** RoomPlan object id while scan placeholders resolve via AI. */
   scanObjectId?: string;
   scanStatus?: 'pending' | 'matching' | 'generating' | 'done' | 'failed';
@@ -254,11 +290,15 @@ interface StoreState {
   selectedIds: string[];
   /** Floor-plan wall selected for independent paint. Cleared with furniture selection. */
   selectedWallId: string | null;
+  /** Window opening selected in the 3D room for curtain editing. */
+  selectedOpeningId: string | null;
   /**
    * Bumped on every wall click (including re-clicking the same wall) so the
    * Look panel can reopen after the user closed it or orbited away.
    */
   wallSelectEpoch: number;
+  /** Bumped on every window click so the inspector can reopen. */
+  openingSelectEpoch: number;
   /**
    * Wall segment ids currently hidden by orbit cutaway (sorted).
    * Mirrored from the frame loop so React can drop pointer handlers — R3F
@@ -303,6 +343,11 @@ interface StoreState {
   /** Paint every wall, or one wall when `wallId` is set. */
   setWallPaint: (color: string, wallId?: string | null) => void;
   selectWall: (wallId: string | null) => void;
+  selectOpening: (openingId: string | null) => void;
+  patchOpening: (
+    openingId: string,
+    patch: Partial<Pick<FloorPlanOpening, 'offset' | 'width' | 'height' | 'sill' | 'hinge' | 'curtains'>>,
+  ) => void;
   setOrbitHiddenWallIds: (ids: string[]) => void;
   setVisualQuality: (q: RenderQualityTier) => void;
   setRelightImports: (on: boolean) => void;
@@ -344,7 +389,17 @@ interface StoreState {
   hydrateRoomSettings: (environment: RoomEnvironment, roomGeometry: RoomGeometry) => void;
   /** Clear scene (switch room / sign out). */
   resetLayout: () => void;
-
+  /** Active layout shuffle variant (0–2). Resets when the layout is replaced. */
+  layoutShuffleVariant: LayoutVariant;
+  /** Patch floor poses without replacing the whole layout. */
+  applyItemPoses: (
+    poses: Array<{
+      id: string;
+      position: [number, number, number];
+      rotationY: number;
+      size?: [number, number, number];
+    }>,
+  ) => void;
   addItem: (
     kind: FurnitureKind,
     opts?: {
@@ -354,8 +409,10 @@ interface StoreState {
       size?: [number, number, number];
       catalogSizeIn?: [number, number, number];
       catalogKind?: string;
+      catalogTags?: string[];
       curatedProductId?: string;
       tintColor?: string;
+      wallMounted?: boolean;
       /** Optional plan-space spawn (x, z inches). Defaults to room centroid. */
       spawnAt?: [number, number];
     },
@@ -368,6 +425,7 @@ interface StoreState {
   updatePositions: (positions: Record<string, [number, number, number]>) => void;
   updateRotation: (id: string, rotationY: number) => void;
   setItemSize: (id: string, size: [number, number, number]) => void;
+  setItemBuild: (id: string, patch: FurnitureBuild | null) => void;
   /** Manual height — resolves vertical overlaps only (no gravity / no floor snap). */
   setItemElevation: (id: string, y: number) => void;
   settleItem: (id: string) => void;
@@ -379,6 +437,7 @@ interface StoreState {
   setTintColor: (id: string, hex: string) => void;
   setMattressColor: (id: string, hex: string) => void;
   setTopColor: (id: string, hex: string) => void;
+  setDrawerColor: (id: string, hex: string) => void;
   setBlanketTexture: (
     id: string,
     tex: { path: string; url: string } | null,
@@ -401,6 +460,18 @@ interface StoreState {
       url: string;
       storagePath: string;
       catalogSizeIn?: [number, number, number];
+    },
+  ) => void;
+  /** Replace one wall poster placement while preserving pose and wall mount. */
+  swapPosterItem: (
+    id: string,
+    replacement: {
+      label: string;
+      catalogKind: string;
+      url: string;
+      storagePath: string;
+      size: [number, number, number];
+      catalogTags?: string[];
     },
   ) => void;
   setImportedSize: (id: string, size: [number, number, number]) => void;
@@ -505,7 +576,9 @@ export const useStore = create<StoreState>((set, get) => ({
   selectedId: null,
   selectedIds: [],
   selectedWallId: null,
+  selectedOpeningId: null,
   wallSelectEpoch: 0,
+  openingSelectEpoch: 0,
   orbitHiddenWallIds: [],
   invalid: false,
 
@@ -521,6 +594,7 @@ export const useStore = create<StoreState>((set, get) => ({
   measureSnap: true,
   measureImportField: null,
   measureImportAccept: false,
+  layoutShuffleVariant: 0,
 
   setTimeOfDay: (h) =>
     set((s) => ({ environment: { ...s.environment, timeOfDay: clamp(h, 0, 24) } })),
@@ -572,18 +646,41 @@ export const useStore = create<StoreState>((set, get) => ({
   selectWall: (wallId) =>
     set((s) => {
       if (wallId && !s.roomGeometry.walls.some((w) => w.id === wallId)) {
-        return { selectedWallId: null, ...selectionOf([]) };
+        return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([]) };
       }
       if (wallId === null) {
-        if (s.selectedWallId === null && s.selectedId === null) return s;
-        return { selectedWallId: null, ...selectionOf([]) };
+        if (s.selectedWallId === null && s.selectedId === null && s.selectedOpeningId === null) return s;
+        return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([]) };
       }
       // Always bump epoch so re-clicking the same wall re-opens Look.
       return {
         selectedWallId: wallId,
+        selectedOpeningId: null,
         wallSelectEpoch: s.wallSelectEpoch + 1,
         ...selectionOf([]),
       };
+    }),
+  selectOpening: (openingId) =>
+    set((s) => {
+      if (openingId && !s.roomGeometry.openings.some((o) => o.id === openingId && o.kind === 'window')) {
+        return { selectedOpeningId: null, selectedWallId: null, ...selectionOf([]) };
+      }
+      if (openingId === null) {
+        if (s.selectedOpeningId === null) return s;
+        return { selectedOpeningId: null };
+      }
+      return {
+        selectedOpeningId: openingId,
+        selectedWallId: null,
+        openingSelectEpoch: s.openingSelectEpoch + 1,
+        ...selectionOf([]),
+      };
+    }),
+  patchOpening: (openingId, patch) =>
+    set((s) => {
+      if (!s.roomGeometry.openings.some((o) => o.id === openingId)) return s;
+      const roomGeometry = updateOpening(s.roomGeometry, openingId, patch);
+      return { roomGeometry };
     }),
   setOrbitHiddenWallIds: (ids) =>
     set((s) => {
@@ -640,9 +737,15 @@ export const useStore = create<StoreState>((set, get) => ({
       const appearance = pruneWallColors(s.environment.appearance, wallIds);
       const selectedWallId =
         s.selectedWallId && wallIds.includes(s.selectedWallId) ? s.selectedWallId : null;
+      const selectedOpeningId =
+        s.selectedOpeningId &&
+        roomGeometry.openings.some((o) => o.id === s.selectedOpeningId && o.kind === 'window')
+          ? s.selectedOpeningId
+          : null;
       return {
         roomGeometry,
         selectedWallId,
+        selectedOpeningId,
         environment:
           appearance === s.environment.appearance
             ? s.environment
@@ -926,10 +1029,28 @@ export const useStore = create<StoreState>((set, get) => ({
         order: [...orderIds],
         ...selectionOf([]),
         selectedWallId: null,
+        selectedOpeningId: null,
         invalid: false,
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
+        layoutShuffleVariant: 0 as LayoutVariant,
       };
+    }),
+
+  applyItemPoses: (poses) =>
+    set((s) => {
+      const items = { ...s.items };
+      for (const pose of poses) {
+        const current = items[pose.id];
+        if (!current) continue;
+        items[pose.id] = {
+          ...current,
+          position: pose.position,
+          rotationY: pose.rotationY,
+          ...(pose.size ? { size: pose.size } : {}),
+        };
+      }
+      return { items, invalid: false };
     }),
 
   patchScanItem: (incoming) =>
@@ -954,6 +1075,7 @@ export const useStore = create<StoreState>((set, get) => ({
       },
       roomGeometry: normalizeRoomGeometry(roomGeometry),
       selectedWallId: null,
+      selectedOpeningId: null,
     })),
 
   resetLayout: () =>
@@ -964,11 +1086,13 @@ export const useStore = create<StoreState>((set, get) => ({
         order: [],
         ...selectionOf([]),
         selectedWallId: null,
+        selectedOpeningId: null,
         invalid: false,
         environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
         roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
+        layoutShuffleVariant: 0 as LayoutVariant,
         visual: { ...s.visual, cameraPreset: DEFAULT_VISUAL_SETTINGS.cameraPreset },
       };
     }),
@@ -985,7 +1109,7 @@ export const useStore = create<StoreState>((set, get) => ({
     const size: [number, number, number] = opts?.size ?? (def ? def.size : [24, 24, 24]);
     const isBed = kind === 'bed';
     const bedLegHeight = isBed ? 8 : undefined;
-    const bodyH = isBed && def ? def.size[1] : 0;
+    const bodyH = isBed ? bedBodyHeightIn() : 0;
     const room = useStore.getState().roomGeometry;
     const [cx, cz] = planCentroid(room);
     const label = opts?.label ?? (def ? def.label : 'Model');
@@ -1020,9 +1144,10 @@ export const useStore = create<StoreState>((set, get) => ({
       importedStoragePath: opts?.storagePath,
       catalogSizeIn,
       catalogKind: opts?.catalogKind,
+      catalogTags: opts?.catalogTags?.length ? [...opts.catalogTags] : undefined,
       label,
       curatedProductId: opts?.curatedProductId,
-      wallMounted: isWallShelfKind(kind) ? true : undefined,
+      wallMounted: opts?.wallMounted ?? (isWallShelfKind(kind) ? true : undefined),
       tintColor:
         opts?.tintColor ??
         (isWallShelfKind(kind)
@@ -1163,13 +1288,50 @@ export const useStore = create<StoreState>((set, get) => ({
       ];
       if (it.kind === 'bed') {
         const leg = it.bedLegHeight ?? 8;
-        size[1] = clamp(sizeInput[1], leg + BED_MIN_BODY_H, heightMax);
+        size[0] = clamp(sizeInput[0], 1, maxFootprint);
+        size[2] = clamp(sizeInput[2], 1, maxFootprint);
+        size[1] = bedTotalHeightIn(leg);
       }
       if (it.kind === 'lamp') {
         size[1] = clamp(sizeInput[1], lampMinHeight(size), heightMax);
       }
       const position = clampFullItemPosition(it.position, it.rotationY, size);
       return { items: { ...s.items, [id]: { ...it, size, position } } };
+    }),
+
+  setItemBuild: (id, patch) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || !kindSupportsBuild(it.kind)) return s;
+      const merged: FurnitureBuild = patch === null ? {} : { ...it.build, ...patch };
+      const resolved = resolveFurnitureBuildExplicit(it.kind, merged);
+      const def = FURNITURE[it.kind];
+      let size: [number, number, number] = [...it.size];
+      if (resolved) {
+        const base: [number, number, number] = [
+          resolved.widthIn ?? it.size[0],
+          resolved.heightIn ?? it.size[1],
+          resolved.depthIn ?? it.size[2],
+        ];
+        size = applyBuildSizeOverride(it.kind, base, resolved);
+        if (!resolved.widthIn) size[0] = it.size[0];
+        if (!resolved.depthIn) size[2] = it.size[2];
+        if (it.kind !== 'shelf' && !resolved.heightIn) size[1] = it.size[1];
+      } else if (patch === null) {
+        size = [...def.size] as [number, number, number];
+      }
+      const position = clampFullItemPosition(it.position, it.rotationY, size, s.roomGeometry);
+      return {
+        items: {
+          ...s.items,
+          [id]: {
+            ...it,
+            build: resolved,
+            size,
+            position,
+          },
+        },
+      };
     }),
 
   setItemElevation: (id, y) =>
@@ -1232,10 +1394,9 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => {
       const it = s.items[id];
       if (!it || it.kind !== 'bed') return s;
-      const prevLeg = it.bedLegHeight ?? 8;
-      const bodyH = Math.max(BED_MIN_BODY_H, it.size[1] - prevLeg);
+      const bodyH = bedBodyHeightIn();
       const clamped = clamp(h, 4, Math.min(36, Math.max(4, s.roomGeometry.height - bodyH)));
-      const nextSize: [number, number, number] = [it.size[0], clamped + bodyH, it.size[2]];
+      const nextSize: [number, number, number] = [it.size[0], bedTotalHeightIn(clamped), it.size[2]];
       const next: Item = {
         ...it,
         bedLegHeight: clamped,
@@ -1311,6 +1472,13 @@ export const useStore = create<StoreState>((set, get) => ({
       const it = s.items[id];
       if (!it || !itemSupportsTopColor(it)) return s;
       return { items: { ...s.items, [id]: { ...it, topColor: hex } } };
+    }),
+
+  setDrawerColor: (id, hex) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || !itemSupportsDrawerColor(it.kind)) return s;
+      return { items: { ...s.items, [id]: { ...it, drawerColor: hex } } };
     }),
 
   setBlanketTexture: (id, tex) =>
@@ -1464,6 +1632,15 @@ export const useStore = create<StoreState>((set, get) => ({
       const it = s.items[id];
       if (!it || it.kind !== 'imported') return s;
       if (!it.importedNaturalSize) {
+        if (isPosterItem(it)) {
+          const size = posterSizeForItemAfterNatural(it, natural);
+          return {
+            items: {
+              ...s.items,
+              [id]: { ...it, importedNaturalSize: natural, size, catalogSizeIn: size },
+            },
+          };
+        }
         const size = resolveImportedInitialSize(it.size, natural, it.catalogSizeIn);
         return {
           items: {
@@ -1508,6 +1685,40 @@ export const useStore = create<StoreState>((set, get) => ({
       return changed ? { items } : s;
     }),
 
+  swapPosterItem: (id, replacement) =>
+    set((s) => {
+      const it = s.items[id];
+      if (!it || it.kind !== 'imported') return s;
+
+      const newSize = posterCatalogSize(
+        replacement.size[0],
+        replacement.size[1],
+        replacement.size[2],
+      );
+      const position = posterPositionPreservingCenterY(it.position, it.size[1], newSize[1]);
+
+      return {
+        items: {
+          ...s.items,
+          [id]: {
+            ...it,
+            label: replacement.label,
+            catalogKind: replacement.catalogKind,
+            catalogTags: replacement.catalogTags?.length
+              ? [...replacement.catalogTags]
+              : it.catalogTags,
+            importedUrl: replacement.url,
+            importedStoragePath: replacement.storagePath,
+            catalogSizeIn: [...newSize] as [number, number, number],
+            size: newSize,
+            position,
+            importedNaturalSize: undefined,
+            wallMounted: it.wallMounted ?? true,
+          },
+        },
+      };
+    }),
+
   setImportedSize: (id, sizeInput) =>
     set((s) => {
       const it = s.items[id];
@@ -1526,15 +1737,19 @@ export const useStore = create<StoreState>((set, get) => ({
 
   select: (id, opts) =>
     set((s) => {
-      if (id === null) return { selectedWallId: null, ...selectionOf([]) };
+      if (id === null) return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([]) };
       if (!s.items[id]) return s;
       if (opts?.additive) {
         if (s.selectedIds.includes(id)) {
-          return { selectedWallId: null, ...selectionOf(s.selectedIds.filter((x) => x !== id)) };
+          return {
+            selectedWallId: null,
+            selectedOpeningId: null,
+            ...selectionOf(s.selectedIds.filter((x) => x !== id)),
+          };
         }
-        return { selectedWallId: null, ...selectionOf([...s.selectedIds, id]) };
+        return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([...s.selectedIds, id]) };
       }
-      return { selectedWallId: null, ...selectionOf([id]) };
+      return { selectedWallId: null, selectedOpeningId: null, ...selectionOf([id]) };
     }),
   setInvalid: (v) => set({ invalid: v }),
 }));

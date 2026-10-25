@@ -11,6 +11,7 @@ import type { Item } from '../store';
 export interface CatalogRowByPath {
   kind: string;
   dims: InchSize;
+  tags: string[];
 }
 
 /** Apply catalog inch dimensions and fix sizes corrupted by mesh-unit copy. */
@@ -46,6 +47,18 @@ export function applyCatalogKinds(
   }
 }
 
+/** Backfill furniture_catalog.tags on imported items from model_url. */
+export function applyCatalogTags(
+  items: Item[],
+  tagsByPath: Map<string, string[]>,
+): void {
+  for (const it of items) {
+    if (it.kind !== 'imported' || !it.importedStoragePath) continue;
+    const tags = tagsByPath.get(it.importedStoragePath);
+    if (tags?.length) it.catalogTags = [...tags];
+  }
+}
+
 export async function fetchCatalogByModelPath(
   paths: string[],
 ): Promise<Map<string, CatalogRowByPath>> {
@@ -55,7 +68,7 @@ export async function fetchCatalogByModelPath(
 
   const { data, error } = await supabase
     .from('furniture_catalog')
-    .select('kind,model_url,width_in,height_in,depth_in')
+    .select('kind,model_url,width_in,height_in,depth_in,tags')
     .in('model_url', unique);
 
   if (error || !data) return byPath;
@@ -64,7 +77,8 @@ export async function fetchCatalogByModelPath(
     const path = String(row.model_url ?? '').trim();
     const kind = String(row.kind ?? '').trim();
     const dims = parseInchDims(row.width_in, row.height_in, row.depth_in);
-    if (path && kind && dims) byPath.set(path, { kind, dims });
+    const tags = Array.isArray(row.tags) ? (row.tags as string[]) : [];
+    if (path && kind && dims) byPath.set(path, { kind, dims, tags });
   }
   return byPath;
 }
@@ -91,12 +105,15 @@ export async function patchImportedItemsFromCatalog(items: Item[]): Promise<void
   const byPath = await fetchCatalogByModelPath(paths);
   const dimsByPath = new Map<string, InchSize>();
   const kindByPath = new Map<string, string>();
+  const tagsByPath = new Map<string, string[]>();
   for (const [path, row] of byPath) {
     dimsByPath.set(path, row.dims);
     kindByPath.set(path, row.kind);
+    if (row.tags.length) tagsByPath.set(path, row.tags);
   }
   applyCatalogSizes(items, dimsByPath);
   applyCatalogKinds(items, kindByPath);
+  applyCatalogTags(items, tagsByPath);
 }
 
 export function catalogDimsFromRpc(
