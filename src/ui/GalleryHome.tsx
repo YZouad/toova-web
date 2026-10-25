@@ -53,6 +53,7 @@ export function GalleryHome({
   placeLabel = 'Use in a room',
   scope = 'all',
   onPlace,
+  onRequestAuth,
   onSeeAllRooms,
   onSeeAllModels,
 }: GalleryHomeProps) {
@@ -86,8 +87,38 @@ export function GalleryHome({
 
   return (
     <div className="gallery-home">
+      {showRooms && data.weeklyTheme ? (
+        <section className="gallery-theme-banner" aria-label="Weekly theme">
+          <p className="gallery-theme-banner__eyebrow">This week</p>
+          <h2 className="gallery-theme-banner__title">{data.weeklyTheme.title}</h2>
+          {data.weeklyTheme.body ? (
+            <p className="gallery-theme-banner__body">{data.weeklyTheme.body}</p>
+          ) : null}
+        </section>
+      ) : null}
+
       {showRooms ? (
         <>
+          {data.roomsFeatured.length > 0 ? (
+            <GalleryShelf
+              title="Featured rooms"
+              note="Curated picks"
+              empty={false}
+            >
+              <div className="gallery-shelf-grid">
+                {data.roomsFeatured.map((room) => (
+                  <RoomGalleryCard
+                    key={room.id}
+                    room={room}
+                    onOpen={openRoom}
+                    currentUserId={currentUserId}
+                    onRequestAuth={onRequestAuth}
+                  />
+                ))}
+              </div>
+            </GalleryShelf>
+          ) : null}
+
           <GalleryShelf
             title="Trending rooms"
             note={`${data.roomsHot.length} rooms · updated hourly`}
@@ -96,7 +127,13 @@ export function GalleryHome({
           >
             <div className="gallery-shelf-grid">
               {data.roomsHot.map((room) => (
-                <RoomGalleryCard key={room.id} room={room} onOpen={openRoom} />
+                <RoomGalleryCard
+                  key={room.id}
+                  room={room}
+                  onOpen={openRoom}
+                  currentUserId={currentUserId}
+                  onRequestAuth={onRequestAuth}
+                />
               ))}
             </div>
           </GalleryShelf>
@@ -109,7 +146,13 @@ export function GalleryHome({
           >
             <div className="gallery-shelf-grid">
               {data.roomsLiked.map((room) => (
-                <RoomGalleryCard key={room.id} room={room} onOpen={openRoom} />
+                <RoomGalleryCard
+                  key={room.id}
+                  room={room}
+                  onOpen={openRoom}
+                  currentUserId={currentUserId}
+                  onRequestAuth={onRequestAuth}
+                />
               ))}
             </div>
           </GalleryShelf>

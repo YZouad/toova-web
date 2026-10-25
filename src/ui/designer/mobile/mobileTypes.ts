@@ -9,7 +9,8 @@ export type MobileSheetKind =
   | 'pieces'
   | 'inspect'
   | 'checklist'
-  | 'import';
+  | 'import'
+  | 'credits';
 
 /**
  * Reference snap offsets from Designer Phone.dc.html —
@@ -25,6 +26,7 @@ export const MOBILE_SHEET_TOP: Record<Exclude<MobileSheetKind, null>, string> = 
   light: 'auto',
   look: 'auto',
   pieces: '380px',
+  credits: 'auto',
 };
 
 export const MOBILE_GESTURE_LEGEND_KEY = 'toova-designer-mobile-gesture-legend-v1';

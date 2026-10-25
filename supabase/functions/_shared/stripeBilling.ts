@@ -22,6 +22,34 @@ export function requireServiceKey(): string {
   return requireEnv("SUPABASE_SERVICE_ROLE_KEY");
 }
 
+type JwtClaims = {
+  sub?: string;
+  role?: string;
+  exp?: number;
+};
+
+/**
+ * Decode Supabase access JWT claims without verifying the signature.
+ * Do not use for authorization — prefer requireUserId / auth.getUser.
+ */
+export function decodeAccessJwtClaims(token: string): JwtClaims | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const payload = parts[1];
+  if (!payload) return null;
+  try {
+    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    return JSON.parse(atob(padded)) as JwtClaims;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Resolve the caller user id by verifying the access JWT with Supabase Auth.
+ * Never trusts base64-decoded claims alone.
+ */
 export async function requireUserId(req: Request): Promise<string> {
   const supabaseUrl = requireEnv("SUPABASE_URL");
   const anonKey = requireEnv("SUPABASE_ANON_KEY");
@@ -33,8 +61,14 @@ export async function requireUserId(req: Request): Promise<string> {
     headers: { apikey: anonKey, authorization: `Bearer ${token}` },
   });
   if (!res.ok) throw new HttpError(401, "Invalid or expired session.");
-  const data = await res.json() as { id?: string };
+  const data = await res.json() as { id?: string; role?: string };
   if (!data.id) throw new HttpError(401, "Invalid or expired session.");
+
+  // Auth API already verified the signature; still require an authenticated user.
+  const claims = decodeAccessJwtClaims(token);
+  if (claims?.role && claims.role !== "authenticated") {
+    throw new HttpError(401, "Invalid or expired session.");
+  }
   return data.id;
 }
 
@@ -185,6 +219,32 @@ export async function fetchPlanPriceId(tier: string, interval: "monthly" | "year
   return typeof price === "string" && price.trim() ? price.trim() : null;
 }
 
+/** Returns subscription.source when the user has an active (or trialing, non-expired) plan. */
+export async function fetchActiveSubscriptionSource(
+  userId: string,
+): Promise<string | null> {
+  const supabaseUrl = requireEnv("SUPABASE_URL");
+  const serviceKey = requireServiceKey();
+  const res = await fetch(
+    `${supabaseUrl}/rest/v1/subscriptions?user_id=eq.${encodeURIComponent(userId)}&select=source,status,current_period_end`,
+    { headers: { Authorization: `Bearer ${serviceKey}`, apikey: serviceKey } },
+  );
+  if (!res.ok) return null;
+  const rows = await res.json() as Array<{
+    source?: string;
+    status?: string;
+    current_period_end?: string | null;
+  }>;
+  const row = rows[0];
+  if (!row?.source) return null;
+  if (row.status !== "active" && row.status !== "trialing") return null;
+  if (row.current_period_end) {
+    const end = Date.parse(row.current_period_end);
+    if (Number.isFinite(end) && end <= Date.now()) return null;
+  }
+  return row.source;
+}
+
 export async function fetchBillingProduct(sku: string): Promise<{
   sku: string;
   kind: string;
@@ -213,24 +273,50 @@ export async function fetchBillingProduct(sku: string): Promise<{
   };
 }
 
-export async function recordStripeEvent(eventId: string, eventType: string): Promise<boolean> {
-  const supabaseUrl = requireEnv("SUPABASE_URL");
-  const serviceKey = requireServiceKey();
-  const res = await fetch(`${supabaseUrl}/rest/v1/stripe_events`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${serviceKey}`,
-      apikey: serviceKey,
-      "Content-Type": "application/json",
-      Prefer: "return=minimal",
-    },
-    body: JSON.stringify({ event_id: eventId, event_type: eventType }),
-  });
-  if (res.status === 409) return false;
-  if (!res.ok) {
-    const text = await res.text();
-    console.error("stripe_events insert", text);
-    return false;
+export type ClaimStripeEventResult = {
+  ok: boolean;
+  claimed?: boolean;
+  duplicate?: boolean;
+  in_flight?: boolean;
+  retried?: boolean;
+  status?: string;
+  attempt_count?: number;
+  error?: string;
+};
+
+/** Atomically claim a Stripe event for processing. Only processed events are skipped. */
+export async function claimStripeEvent(
+  eventId: string,
+  eventType: string,
+  staleAfterSeconds = 300,
+): Promise<ClaimStripeEventResult> {
+  const result = await restRpc("claim_stripe_event", {
+    p_event_id: eventId,
+    p_event_type: eventType,
+    p_stale_after_seconds: staleAfterSeconds,
+  }) as ClaimStripeEventResult;
+  if (!result || result.ok !== true) {
+    throw new Error(`claim_stripe_event failed: ${JSON.stringify(result)}`);
   }
-  return true;
+  return result;
+}
+
+export async function completeStripeEvent(eventId: string): Promise<void> {
+  const result = await restRpc("complete_stripe_event", {
+    p_event_id: eventId,
+  }) as { ok?: boolean; error?: string };
+  if (!result?.ok) {
+    throw new Error(`complete_stripe_event failed: ${result?.error ?? "unknown"}`);
+  }
+}
+
+export async function failStripeEvent(eventId: string, errorMessage: string): Promise<void> {
+  try {
+    await restRpc("fail_stripe_event", {
+      p_event_id: eventId,
+      p_error: errorMessage.slice(0, 2000),
+    });
+  } catch (err) {
+    console.error("fail_stripe_event", err);
+  }
 }

@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { RoomWorkspaceProvider } from './context/RoomWorkspaceContext';
 import { ChecklistRoomProvider, useChecklistRoomScope } from './context/ChecklistRoomContext';
-import { getActiveChecklistRoomId } from './lib/dormChecklist';
+import {
+  NotificationsProvider,
+  useNotificationActivateHandler,
+} from './context/NotificationsContext';
+import { getActiveChecklistRoomId, setActiveChecklistRoomId } from './lib/dormChecklist';
+import { openReadyJobForSave } from './lib/generationQueue';
+import type { NotificationIntent } from './lib/notifications';
 import { useAdminStats } from './hooks/useAdminStats';
 import { useAuth } from './hooks/useAuth';
 import { createRoomWithGeometry, saveRoomLayout, useRoomLoad } from './hooks/useRoomLayout';
@@ -12,6 +18,7 @@ import {
   galleryPath,
   timelinePath,
   profilePath,
+  pricingPath,
   resetPasswordPath,
   useRoute,
 } from './hooks/useRoute';
@@ -44,6 +51,18 @@ import {
   setGuestAuthIntent,
   type GuestDesignSnapshot,
 } from './lib/guestDesignSnapshot';
+import { consumePostAuthRedirect } from './lib/postAuthRedirect';
+import {
+  checkoutReturnPathname,
+  checkoutReturnMatchesLocation,
+  clearCheckoutReturn,
+  consumeCheckoutReturn,
+  isPersistableRoomId,
+  peekCheckoutReturn,
+  pendingDesignerCheckoutReturn,
+  setCheckoutReturnContext,
+  stripCheckoutQuery,
+} from './lib/checkoutReturn';
 import { LandingPage } from './ui/LandingPage';
 import { PitchMadnessPage } from './ui/PitchMadnessPage';
 import { AuthPage, type AuthPageMode } from './ui/AuthPage';
@@ -71,6 +90,7 @@ import { PublicRoomPage } from './ui/PublicRoomPage';
 import { GalleryPage } from './ui/GalleryPage';
 import { CreationsPage } from './ui/CreationsPage';
 import { GenerationQueueHost } from './ui/GenerationQueueHost';
+import { NotificationToastHost } from './ui/NotificationToastHost';
 import { AppRailChrome } from './ui/AppRailChrome';
 import { LegalPage } from './ui/LegalPage';
 import { CookieConsentBanner } from './ui/CookieConsentBanner';
@@ -86,6 +106,7 @@ import {
   setInternalUser,
   trackCheckoutCompleted,
   trackPageView,
+  trackRoomOpened,
   type AuthMethod,
 } from './lib/analytics';
 import { useEntitlements } from './hooks/useEntitlements';
@@ -124,6 +145,8 @@ interface FloorPlanDraft {
   initialPlan?: FloorPlan;
   /** When set, create continues by seeding this starter’s furniture into the edited plan. */
   starterTemplateId?: string;
+  /** Highlight / prefer this starter in the picker (first-room onboarding). */
+  preferredTemplateId?: string;
 }
 
 /** Decorative only — does not encode a real URL. */
@@ -201,9 +224,12 @@ function ARPage() {
 export default function App() {
   return (
     <ChecklistRoomProvider>
-      <GenerationQueueHost />
-      <AppContent />
-      <CookieConsentBanner />
+      <NotificationsProvider>
+        <GenerationQueueHost />
+        <NotificationToastHost />
+        <AppContent />
+        <CookieConsentBanner />
+      </NotificationsProvider>
     </ChecklistRoomProvider>
   );
 }
@@ -213,6 +239,8 @@ function AppContent() {
   const { setRoomId } = useChecklistRoomScope();
   const route = useRoute();
   const [screen, setScreen] = useState<Screen>('landing');
+  const [restoringCheckout, setRestoringCheckout] = useState(pendingDesignerCheckoutReturn);
+  const checkoutRestoreStarted = useRef(false);
   const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
   const [timelineScrollToDemos, setTimelineScrollToDemos] = useState(false);
@@ -235,6 +263,28 @@ function AppContent() {
   const hydrateRoomSettings = useStore((s) => s.hydrateRoomSettings);
   const { load, loading: layoutLoading } = useRoomLoad();
 
+  /** After auth: open the template picker when the user has no rooms yet. */
+  const routeSignedInUser = useCallback(async (userId: string) => {
+    navigate('/', true);
+    try {
+      const { count, error } = await supabase
+        .from('rooms')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', userId);
+      if (error) throw error;
+      if ((count ?? 0) === 0) {
+        setFloorPlanDraft({
+          name: 'My bedroom',
+          mode: 'create',
+          preferredTemplateId: 'bedroom-balanced',
+        });
+      }
+    } catch (err) {
+      console.warn('[toova] could not count rooms for post-auth route', err);
+    }
+    setScreen('dashboard');
+  }, []);
+
   useEffect(() => {
     void loadStarterTemplateOverrides();
   }, []);
@@ -243,6 +293,25 @@ function AppContent() {
     setRoomId(workspace?.id ?? getActiveChecklistRoomId());
     setCurrentRoom(workspace?.id ?? null);
   }, [workspace?.id, setRoomId]);
+
+  useEffect(() => {
+    setCheckoutReturnContext({
+      screen,
+      roomId: screen === 'designer' ? workspace?.id : undefined,
+      roomName: screen === 'designer' ? workspace?.name : undefined,
+      isOwner: workspace?.isOwner,
+    });
+  }, [screen, workspace]);
+
+  // Back-forward cache keeps the designer alive. Drop the return marker so a
+  // later refresh of the homepage does not reopen the room.
+  useEffect(() => {
+    const onShow = (event: PageTransitionEvent) => {
+      if (event.persisted) clearCheckoutReturn();
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
 
   const routeIsPublic =
     route.name === 'shared' ||
@@ -396,9 +465,14 @@ function AppContent() {
         navigate('/');
         setScreen('dashboard');
       } else {
-        setScreen('dashboard');
-        if (routeIsPublic) navigate('/', true);
+        void routeSignedInUser(user.id);
       }
+      return;
+    }
+
+    // OAuth / email-confirm return lands on marketing page with a marker.
+    if (screen === 'landing' && consumePostAuthRedirect()) {
+      void routeSignedInUser(user.id);
     }
   }, [
     user,
@@ -412,6 +486,7 @@ function AppContent() {
     pendingGalleryModel,
     passwordRecovery,
     route.name,
+    routeSignedInUser,
   ]);
 
   useEffect(() => {
@@ -465,7 +540,9 @@ function AppContent() {
       const data = await load(room.id);
       hydrateLayout(data.items, data.order);
       hydrateRoomSettings(data.environment, data.roomGeometry);
-      setWorkspace({ id: room.id, name: room.name, isOwner: room.isOwner !== false });
+      const isOwner = room.isOwner !== false;
+      setWorkspace({ id: room.id, name: room.name, isOwner });
+      trackRoomOpened({ room_id: room.id, is_owner: isOwner });
       setScreen('designer');
       const path = window.location.pathname;
       if (path.startsWith('/r/') || path.startsWith('/u/') || path.startsWith('/gallery')) {
@@ -484,6 +561,51 @@ function AppContent() {
       placePendingGalleryModel,
     ],
   );
+
+  useEffect(() => {
+    const ret = peekCheckoutReturn();
+    if (!ret || !checkoutReturnMatchesLocation(ret, window.location.pathname)) return;
+    const backToRoom =
+      checkoutReturnPathname(ret.path) === '/'
+      && ret.screen === 'designer'
+      && isPersistableRoomId(ret.roomId);
+    if (backToRoom && isPersistableRoomId(ret.roomId)) {
+      if (!user || checkoutRestoreStarted.current) return;
+      checkoutRestoreStarted.current = true;
+      const roomId = ret.roomId;
+      const roomName = ret.roomName?.trim() || 'Room';
+      const isOwner = ret.isOwner !== false;
+      consumeCheckoutReturn();
+      stripCheckoutQuery();
+      setRestoringCheckout(true);
+      void handlePickExisting({ id: roomId, name: roomName, isOwner })
+        .catch(() => setScreen('dashboard'))
+        .finally(() => setRestoringCheckout(false));
+      return;
+    }
+    if (checkoutRestoreStarted.current) return;
+    checkoutRestoreStarted.current = true;
+    consumeCheckoutReturn();
+    stripCheckoutQuery();
+    if (
+      checkoutReturnPathname(ret.path) === '/'
+      && ret.screen
+      && ret.screen !== 'designer'
+      && ret.screen !== 'landing'
+      && ret.screen !== 'auth'
+      && ret.screen !== 'floor-plan'
+    ) {
+      setScreen(ret.screen as Screen);
+    }
+  }, [user, handlePickExisting]);
+
+  useEffect(() => {
+    if (!restoringCheckout || loading || user) return;
+    checkoutRestoreStarted.current = true;
+    consumeCheckoutReturn();
+    stripCheckoutQuery();
+    setRestoringCheckout(false);
+  }, [restoringCheckout, loading, user]);
 
   const handleStartFloorPlan = useCallback((name: string) => {
     setFloorPlanDraft({ name, mode: 'create' });
@@ -802,6 +924,80 @@ function AppContent() {
     setScreen('checklist');
   }, []);
 
+  const handleNotificationActivate = useCallback(
+    async (_notification: { id: string }, intent: NotificationIntent) => {
+      if (intent.type === 'noop') return;
+
+      if (intent.type === 'dashboard') {
+        navigate('/');
+        setScreen('dashboard');
+        return;
+      }
+
+      if (intent.type === 'models') {
+        navigate('/');
+        setScreen('models');
+        return;
+      }
+
+      if (intent.type === 'pricing') {
+        navigate(pricingPath());
+        return;
+      }
+
+      if (intent.type === 'checklist') {
+        if (intent.roomId) {
+          setActiveChecklistRoomId(intent.roomId);
+          setRoomId(intent.roomId);
+        }
+        navigate('/');
+        openChecklistFrom('dashboard');
+        return;
+      }
+
+      if (intent.type === 'designer') {
+        if (!user) {
+          navigate('/');
+          setScreen('dashboard');
+          return;
+        }
+        const { data: room, error } = await supabase
+          .from('rooms')
+          .select('id, name')
+          .eq('id', intent.roomId)
+          .maybeSingle();
+        if (error) throw new Error(error.message);
+        if (!room) {
+          navigate('/');
+          setScreen('dashboard');
+          return;
+        }
+        await handlePickExisting({
+          id: String(room.id),
+          name: String(room.name ?? 'Room'),
+          isOwner: true,
+        });
+        return;
+      }
+
+      if (intent.type === 'modelJob') {
+        if (!user) {
+          navigate('/');
+          setScreen('models');
+          return;
+        }
+        const opened = await openReadyJobForSave(intent.jobId, user.id);
+        if (!opened) {
+          navigate('/');
+          setScreen('models');
+        }
+      }
+    },
+    [user, handlePickExisting, openChecklistFrom, setRoomId],
+  );
+
+  useNotificationActivateHandler(handleNotificationActivate);
+
   const requestGuestAuth = useCallback(
     (mode: 'signin' | 'signup', reason: string) => {
       if (!workspace) return;
@@ -839,14 +1035,26 @@ function AppContent() {
 
   const landingCallbacks = {
     loggedIn: !!user,
-    onGoDashboard: () => setScreen('dashboard'),
+    onGoDashboard: () => {
+      if (user) {
+        void routeSignedInUser(user.id);
+        return;
+      }
+      setScreen('dashboard');
+    },
     onGetStarted: () => {
-      if (user) { setScreen('dashboard'); return; }
+      if (user) {
+        void routeSignedInUser(user.id);
+        return;
+      }
       // Frictionless: design first, authenticate when saving.
       setScreen('dashboard');
     },
     onLogin: () => {
-      if (user) { setScreen('dashboard'); return; }
+      if (user) {
+        void routeSignedInUser(user.id);
+        return;
+      }
       setAuthReason(null);
       setAuthMode('signin');
       setScreen('auth');
@@ -861,6 +1069,10 @@ function AppContent() {
       setScreen('pitch-madness');
     },
   };
+
+  if (restoringCheckout) {
+    return <Splash label="Returning to your room…" />;
+  }
 
   if (route.name === 'resetPassword') {
     return (
@@ -924,10 +1136,17 @@ function AppContent() {
   if (route.name === 'pricing') {
     return (
       <PricingPage
-        onBack={() => {
+        loggedIn={Boolean(user)}
+        onGoHome={() => {
           navigate('/');
           setScreen(user ? 'dashboard' : 'landing');
         }}
+        onGetStarted={landingCallbacks.onGetStarted}
+        onLogin={landingCallbacks.onLogin}
+        onGoDashboard={user ? () => setScreen('dashboard') : undefined}
+        onContact={siteFooterNav.onContact}
+        onPitchMadness={siteFooterNav.onPitchMadness}
+        onAdmin={landingCallbacks.onAdmin}
       />
     );
   }
@@ -1349,6 +1568,7 @@ function AppContent() {
           open={!!showPresetPicker}
           creating={floorPlanBusy}
           defaultName={floorPlanDraft?.name || 'Room 1'}
+          preferredTemplateId={floorPlanDraft?.preferredTemplateId}
           onClose={() => setFloorPlanDraft(null)}
           onSelect={handlePresetPickerSelect}
           onResumeAgenticChecklist={() => {
@@ -1387,7 +1607,7 @@ function AppContent() {
                 Start with a room that fits your space.
               </DisplayHeading>
               <p className="room-preset-page__lede">
-                Choose a rectangle, or draw your floor plan. You can sign in later when you want to save.
+                Pick a furnished starter, a rectangle, or draw your own. You can sign in later when you want to save.
               </p>
             </header>
             <RoomPresetPicker

@@ -186,6 +186,40 @@ events:
         required: false
     expected_frequency: high
 
+  - name: room_area_tagged
+    category: core_value
+    group_level: user
+    description: "A floor-plan enclosed area is tagged with a room type (kitchen, bedroom, …)."
+    properties:
+      - name: room_id
+        type: string
+        required: false
+      - name: tag
+        type: string
+        required: true
+        note: "RoomTag slug, e.g. bedroom, kitchen, living_room."
+    expected_frequency: medium
+
+  - name: room_tag_suggestion_placed
+    category: core_value
+    group_level: user
+    description: "An item suggested for a tagged area is placed into that area."
+    properties:
+      - name: room_id
+        type: string
+        required: false
+      - name: tag
+        type: string
+        required: true
+      - name: kind
+        type: string
+        required: true
+      - name: essential
+        type: boolean
+        required: false
+        note: "True when the placement fills a missing essential for the area."
+    expected_frequency: medium
+
   - name: model_generation_started
     category: core_value
     group_level: user

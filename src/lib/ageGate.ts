@@ -72,3 +72,33 @@ export function isAtLeast13(dob: Date, today?: Date): boolean {
 export function isMinorUnder18(dob: Date, today?: Date): boolean {
   return !isAtLeastAge(dob, 18, today);
 }
+
+/** Shown when the age screen fails; deliberately does not reveal the cutoff. */
+export const AGE_INELIGIBLE_MESSAGE = 'Sorry, we can’t create a Toova account for you.';
+
+const AGE_BLOCK_KEY = 'toova-age-ineligible';
+const AGE_BLOCK_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Remember a failed age screen so the browser can't immediately retry with a different year. */
+export function markDeviceAgeIneligible(now: number = Date.now()): void {
+  try {
+    localStorage.setItem(AGE_BLOCK_KEY, String(now));
+  } catch {
+    /* ignore */
+  }
+}
+
+export function isDeviceAgeIneligible(now: number = Date.now()): boolean {
+  try {
+    const raw = localStorage.getItem(AGE_BLOCK_KEY);
+    if (!raw) return false;
+    const at = Number(raw);
+    if (!Number.isFinite(at) || now - at > AGE_BLOCK_TTL_MS) {
+      localStorage.removeItem(AGE_BLOCK_KEY);
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}

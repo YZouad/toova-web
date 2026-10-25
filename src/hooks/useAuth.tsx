@@ -19,8 +19,9 @@ import {
   type Profile,
 } from '../lib/profiles';
 import {
-  clearPendingLegalAcceptance,
+  closeUnderageAccount,
   flushPendingLegalAcceptance,
+  isUnderageError,
   loadPendingLegalAcceptance,
 } from '../lib/legalAcceptance';
 import {
@@ -122,11 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (loadPendingLegalAcceptance()) {
           void flushPendingLegalAcceptance().catch((err) => {
             console.error('flushPendingLegalAcceptance failed', err);
-            const msg = err instanceof Error ? err.message : '';
-            if (/at least 13/i.test(msg)) {
-              clearPendingLegalAcceptance();
-              void supabase.auth.signOut();
-            }
+            if (isUnderageError(err)) void closeUnderageAccount();
           });
         }
       }
@@ -174,4 +171,9 @@ export function useAuth(): AuthCtxValue {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used within AuthProvider');
   return ctx;
+}
+
+/** Returns null when rendered outside AuthProvider (harnesses/tests). */
+export function useAuthOptional(): AuthCtxValue | null {
+  return useContext(AuthContext);
 }

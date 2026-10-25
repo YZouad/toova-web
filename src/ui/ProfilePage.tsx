@@ -49,6 +49,8 @@ import {
   Splash,
 } from './kit';
 import { FeedbackModal } from './FeedbackModal';
+import { NotificationPreferences } from './NotificationPreferences';
+import { AccountPrivacySettings } from './AccountPrivacySettings';
 
 interface ProfilePageProps {
   handle: string;
@@ -533,6 +535,8 @@ export function ProfilePage({
           </div>
         )}
 
+        {isOwner && viewerUserId ? <NotificationPreferences userId={viewerUserId} /> : null}
+
         {isOwner ? (
           <section className="profile-integrations" style={{ marginTop: 56 }}>
             <SectionOpener level={5} title="Integrations." note="Third-party tools" />
@@ -605,6 +609,8 @@ export function ProfilePage({
             </div>
           </section>
         ) : null}
+
+        {isOwner ? <AccountPrivacySettings /> : null}
 
         <ReportDialog
           open={reportOpen}

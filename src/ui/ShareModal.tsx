@@ -30,9 +30,10 @@ interface ShareModalProps {
   roomId: string;
   userId: string;
   onClose: () => void;
+  onShared?: () => void;
 }
 
-export function ShareModal({ roomId, userId, onClose }: ShareModalProps) {
+export function ShareModal({ roomId, userId, onClose, onShared }: ShareModalProps) {
   const { entitlements } = useEntitlements();
   const [shares, setShares] = useState<RoomShareRow[]>([]);
   const [collaborators, setCollaborators] = useState<CollaboratorProfileRow[]>([]);
@@ -76,6 +77,7 @@ export function ShareModal({ roomId, userId, onClose }: ShareModalProps) {
         allowCopy,
       });
       trackRoomShared({ room_id: roomId, role: newRole });
+      onShared?.();
       await navigator.clipboard.writeText(url);
       setCopiedToken(token);
       await refresh();

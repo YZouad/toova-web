@@ -2,8 +2,10 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   DEFAULT_ANALYTICS_FILTERS,
   fetchAdminAnalytics,
+  fetchAdminRetentionRelational,
   resolveAnalyticsRange,
   type AdminAnalyticsDashboard,
+  type AdminRetentionRelational,
   type AnalyticsFilters,
   type AnalyticsPreset,
 } from '../lib/adminAnalytics';
@@ -14,6 +16,7 @@ export function useAdminAnalytics(enabled: boolean) {
   const [customTo, setCustomTo] = useState('');
   const [filters, setFilters] = useState<AnalyticsFilters>(DEFAULT_ANALYTICS_FILTERS);
   const [data, setData] = useState<AdminAnalyticsDashboard | null>(null);
+  const [retention, setRetention] = useState<AdminRetentionRelational | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -29,8 +32,12 @@ export function useAdminAnalytics(enabled: boolean) {
         customTo,
         data?.events_since,
       );
-      const next = await fetchAdminAnalytics(range.from, range.to, filters);
+      const [next, nextRetention] = await Promise.all([
+        fetchAdminAnalytics(range.from, range.to, filters),
+        fetchAdminRetentionRelational(range.from, range.to),
+      ]);
       setData(next);
+      setRetention(nextRetention);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load analytics');
     } finally {
@@ -55,6 +62,7 @@ export function useAdminAnalytics(enabled: boolean) {
     filters,
     setFilters,
     data,
+    retention,
     loading,
     error,
     refetch: load,

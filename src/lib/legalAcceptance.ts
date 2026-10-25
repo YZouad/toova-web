@@ -1,5 +1,36 @@
 import { PRIVACY_VERSION, TERMS_VERSION } from '../legal';
+import { deleteOwnAccount } from './accountDeletion';
+import { markDeviceAgeIneligible } from './ageGate';
 import { supabase } from './supabase';
+
+/** Server rejected the birth date as under 13; the account must be closed. */
+export class UnderageError extends Error {
+  constructor() {
+    super('underage');
+    this.name = 'UnderageError';
+  }
+}
+
+export function isUnderageError(err: unknown): boolean {
+  if (err instanceof UnderageError) return true;
+  const msg = err instanceof Error ? err.message : '';
+  return /at least 13|account closed/i.test(msg);
+}
+
+/**
+ * Erase an account that failed the age screen, sign out, and remember the
+ * result on this device. The server sweep also deletes it if this call fails.
+ */
+export async function closeUnderageAccount(): Promise<void> {
+  markDeviceAgeIneligible();
+  clearPendingLegalAcceptance();
+  try {
+    await deleteOwnAccount();
+  } catch (err) {
+    console.error('closeUnderageAccount: delete failed (server sweep will retry)', err);
+  }
+  await supabase.auth.signOut();
+}
 
 export type LegalAcceptMethod = 'signup_email' | 'signup_oauth' | 'gate' | 'reaccept';
 
@@ -7,6 +38,8 @@ export interface LegalStatus {
   accepted: boolean;
   needs_acceptance: boolean;
   is_minor: boolean | null;
+  /** Account failed the age screen and is pending erasure. */
+  closed?: boolean;
   terms_version?: string;
   privacy_version?: string;
   current_terms_version: string;
@@ -78,7 +111,7 @@ export async function acceptLegalTerms(opts: {
   termsVersion?: string;
   privacyVersion?: string;
 }): Promise<void> {
-  const { error } = await supabase.rpc('accept_legal_terms', {
+  const { data, error } = await supabase.rpc('accept_legal_terms', {
     p_terms_version: opts.termsVersion ?? TERMS_VERSION,
     p_privacy_version: opts.privacyVersion ?? PRIVACY_VERSION,
     p_dob: opts.dob,
@@ -87,6 +120,8 @@ export async function acceptLegalTerms(opts: {
   });
   if (error) throw new Error(error.message);
   clearPendingLegalAcceptance();
+  const result = data as { ok?: boolean; error?: string } | null;
+  if (result?.ok === false && result.error === 'underage') throw new UnderageError();
 }
 
 /** Submit stashed OAuth acceptance after SIGNED_IN, if present and versions match. */

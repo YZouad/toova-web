@@ -56,6 +56,7 @@ describe('shopping checklist helpers', () => {
             description: '',
             retailer: 'amazon',
             affiliateUrl: 'https://example.com',
+            asin: null,
             priceCents: 1000,
             currency: 'USD',
             imagePath: null,
@@ -94,6 +95,7 @@ describe('shopping checklist helpers', () => {
             description: '',
             retailer: 'amazon',
             affiliateUrl: 'https://example.com',
+            asin: null,
             priceCents: null,
             currency: 'USD',
             imagePath: null,
@@ -147,6 +149,7 @@ describe('shopping checklist helpers', () => {
       description: '',
       retailer: 'amazon',
       affiliateUrl: '',
+      asin: null,
       priceCents: null,
       currency: 'USD',
       imagePath: null,
@@ -232,6 +235,7 @@ describe('shopping checklist helpers', () => {
       description: '',
       retailer: 'amazon',
       affiliateUrl: '',
+      asin: null,
       priceCents: null,
       currency: 'USD',
       imagePath: null,
@@ -343,6 +347,7 @@ describe('shopping checklist helpers', () => {
       description: '',
       retailer: 'amazon',
       affiliateUrl: '',
+      asin: null,
       priceCents: null,
       currency: 'USD',
       imagePath: null,
@@ -389,6 +394,7 @@ describe('shopping checklist helpers', () => {
       description: '',
       retailer: 'amazon',
       affiliateUrl: '',
+      asin: null,
       priceCents: null,
       currency: 'USD',
       imagePath: null,
@@ -442,6 +448,7 @@ describe('shopping checklist helpers', () => {
             description: '',
             retailer: 'amazon',
             affiliateUrl: 'https://example.com',
+            asin: null,
             priceCents: 1299,
             currency: 'USD',
             imagePath: null,
@@ -480,6 +487,7 @@ describe('shopping checklist helpers', () => {
             description: '',
             retailer: 'amazon',
             affiliateUrl: 'https://example.com',
+            asin: null,
             priceCents: 1899,
             currency: 'USD',
             imagePath: null,
@@ -509,6 +517,22 @@ describe('shopping checklist helpers', () => {
     const url = amazonSearchUrl('dorm desk lamp');
     expect(url).toContain('https://www.amazon.com/s?');
     expect(url).toContain('k=dorm');
+    expect(url).toContain('tag=toova-20');
+  });
+
+  it('tags multi-add cart urls with the default associate tag', async () => {
+    const { amazonMultiAddCartUrl, shopUrlForProduct, productAsin } = await import('./affiliateLinks');
+    const cart = amazonMultiAddCartUrl([{ asin: 'B0GGB3QL9D', quantity: 1 }]);
+    expect(cart).toContain('AssociateTag=toova-20');
+    expect(cart).toContain('ASIN.1=B0GGB3QL9D');
+    const searchFallback = shopUrlForProduct({ affiliateUrl: '', name: 'Laptop' });
+    expect(searchFallback.approximate).toBe(true);
+    expect(searchFallback.label).toBe('Find on Amazon');
+    expect(searchFallback.url).toContain('tag=toova-20');
+    expect(productAsin({ asin: 'b0ggb3ql9d', affiliateUrl: '' })).toBe('B0GGB3QL9D');
+    expect(productAsin({ asin: null, affiliateUrl: 'https://www.amazon.com/dp/B000000000' })).toBe(
+      'B000000000',
+    );
   });
 
   it('builds google shopping search urls', () => {
@@ -545,6 +569,7 @@ describe('shopping checklist helpers', () => {
         description: 'Nice lamp',
         retailer: 'Amazon',
         affiliateUrl: 'https://amzn.to/example',
+        asin: null,
         priceCents: 2499,
         currency: 'USD',
         imagePath: null,
@@ -603,6 +628,7 @@ describe('shopping checklist helpers', () => {
         description: '',
         retailer: 'Amazon',
         affiliateUrl: 'https://www.amazon.com/dp/B000',
+        asin: null,
         priceCents: 2499,
         currency: 'USD',
         imagePath: null,
@@ -637,6 +663,7 @@ describe('shopping checklist helpers', () => {
       description: '',
       retailer: 'amazon',
       affiliateUrl: '',
+      asin: null,
       priceCents: 2999,
       currency: 'USD',
       imagePath: null,
@@ -685,6 +712,7 @@ describe('shopping checklist helpers', () => {
       description: '',
       retailer: 'amazon',
       affiliateUrl: '',
+      asin: null,
       priceCents: 3999,
       currency: 'USD',
       imagePath: null,
@@ -736,6 +764,7 @@ describe('shopping checklist helpers', () => {
       description: '',
       retailer: 'amazon',
       affiliateUrl: '',
+      asin: null,
       priceCents: null,
       currency: 'USD',
       imagePath: null,
@@ -787,6 +816,7 @@ describe('shopping checklist helpers', () => {
       description: '',
       retailer: 'amazon',
       affiliateUrl: '',
+      asin: null,
       priceCents: null,
       currency: 'USD',
       imagePath: null,

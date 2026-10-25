@@ -1,0 +1,15 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "TEAMID.net.toova.app",
+        "paths": [
+          "/r/*",
+          "/u/*",
+          "/u/*/r/*"
+        ]
+      }
+    ]
+  }
+}

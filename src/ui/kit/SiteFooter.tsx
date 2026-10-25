@@ -1,5 +1,6 @@
 import { Footer, type FooterLink } from './Footer';
 import { privacyPath, safetyPath, termsPath } from '../../hooks/useRoute';
+import { openCookieSettings } from '../../lib/cookieConsent';
 
 export interface SiteFooterProps {
   onContact?: () => void;
@@ -26,6 +27,7 @@ export function SiteFooter({
     { label: 'Privacy', href: privacyPath() },
     { label: 'Terms', href: termsPath() },
     { label: 'Child Safety', href: safetyPath() },
+    { label: 'Cookie settings', onClick: openCookieSettings },
     ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
   ];
 

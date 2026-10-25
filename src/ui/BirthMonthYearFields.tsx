@@ -38,7 +38,7 @@ export function BirthMonthYearFields({
   idPrefix?: string;
 }) {
   return (
-    <Field label="Birth month and year" hint="You must be at least 13.">
+    <Field label="Birth month and year">
       <div className="birth-month-year">
         <Select
           id={`${idPrefix}-month`}

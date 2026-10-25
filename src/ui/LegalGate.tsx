@@ -1,10 +1,12 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
 import { PRIVACY_VERSION, TERMS_VERSION } from '../legal';
-import { dobIsoFromMonthYear, isAtLeast13, parseBirthMonthYear } from '../lib/ageGate';
+import { AGE_INELIGIBLE_MESSAGE, dobIsoFromMonthYear, isDeviceAgeIneligible } from '../lib/ageGate';
 import { BirthMonthYearFields } from './BirthMonthYearFields';
 import {
   acceptLegalTerms,
+  closeUnderageAccount,
   fetchLegalStatus,
+  isUnderageError,
   type LegalStatus,
 } from '../lib/legalAcceptance';
 import { useAuth } from '../hooks/useAuth';
@@ -13,7 +15,8 @@ import { Banner, Button } from './kit';
 
 /**
  * Blocking gate for signed-in users missing current Terms/Privacy acceptance.
- * Under-13 submissions sign the user out.
+ * Fails closed: if status can't be loaded, the app stays hidden behind a retry.
+ * A birth date under 13 closes and erases the account.
  */
 export function LegalGate({ children }: { children: ReactNode }) {
   const { user, logout, passwordRecovery } = useAuth();
@@ -21,25 +24,43 @@ export function LegalGate({ children }: { children: ReactNode }) {
   const skipGate = route.name === 'resetPassword' || passwordRecovery;
   const [status, setStatus] = useState<LegalStatus | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [birthMonth, setBirthMonth] = useState('');
   const [birthYear, setBirthYear] = useState('');
   const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [ineligible, setIneligible] = useState(false);
+
+  const closeAccount = useCallback(async () => {
+    setBusy(true);
+    setIneligible(true);
+    try {
+      await closeUnderageAccount();
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
   useEffect(() => {
     if (!user) {
       setStatus(null);
+      setLoadError(null);
       return;
     }
     let cancelled = false;
     setLoading(true);
+    setLoadError(null);
     void fetchLegalStatus()
       .then((s) => {
-        if (!cancelled) setStatus(s);
+        if (cancelled) return;
+        setStatus(s);
+        // A brand-new account on a browser that already failed the age screen is closed too.
+        if (s.closed || (isDeviceAgeIneligible() && !s.terms_version)) void closeAccount();
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : 'Could not load legal status');
+        if (!cancelled) setLoadError(e instanceof Error ? e.message : 'Could not load account requirements');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -47,26 +68,44 @@ export function LegalGate({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id]);
+  }, [user?.id, reloadKey, closeAccount]);
 
   if (!user || skipGate) return <>{children}</>;
-  if (loading && !status) {
+  if (ineligible) {
     return (
       <div className="legal-gate">
-        <div className="legal-gate__card">
-          <p>Checking account requirements…</p>
+        <div className="legal-gate__card" role="dialog" aria-modal="true">
+          <p>{AGE_INELIGIBLE_MESSAGE}</p>
         </div>
       </div>
     );
   }
-  if (status && !status.needs_acceptance && status.accepted) {
+  if (status && status.accepted && !status.needs_acceptance && !status.closed) {
     return <>{children}</>;
   }
-  if (!status?.needs_acceptance && status?.accepted !== false) {
-    // Unknown / error — don't block forever on transient failures once we have a row.
-    if (!status && error) {
-      return <>{children}</>;
-    }
+
+  if (!status) {
+    return (
+      <div className="legal-gate">
+        <div className="legal-gate__card" role="dialog" aria-modal="true">
+          {loadError && !loading ? (
+            <>
+              <Banner tone="error" style={{ marginBottom: 16 }}>
+                We couldn’t check your account. Check your connection and try again.
+              </Banner>
+              <Button size="md" full onClick={() => setReloadKey((k) => k + 1)}>
+                Try again
+              </Button>
+              <button type="button" className="legal-gate__signout" onClick={() => void logout()}>
+                Sign out
+              </button>
+            </>
+          ) : (
+            <p>Checking account requirements…</p>
+          )}
+        </div>
+      </div>
+    );
   }
 
   async function handleAccept() {
@@ -75,20 +114,9 @@ export function LegalGate({ children }: { children: ReactNode }) {
       setError('Check the box to agree to the Terms and Privacy Policy.');
       return;
     }
-    const parsed = parseBirthMonthYear(birthMonth, birthYear);
     const iso = dobIsoFromMonthYear(birthMonth, birthYear);
-    if (!parsed || !iso) {
+    if (!iso) {
       setError('Enter your birth month and year.');
-      return;
-    }
-    if (!isAtLeast13(parsed)) {
-      setError('You must be at least 13 years old to use Toova.');
-      setBusy(true);
-      try {
-        await logout();
-      } finally {
-        setBusy(false);
-      }
       return;
     }
     setBusy(true);
@@ -97,13 +125,11 @@ export function LegalGate({ children }: { children: ReactNode }) {
       const next = await fetchLegalStatus();
       setStatus(next);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Could not save acceptance';
-      if (/at least 13/i.test(msg)) {
-        setError('You must be at least 13 years old to use Toova.');
-        await logout();
-      } else {
-        setError(msg);
+      if (isUnderageError(e)) {
+        await closeAccount();
+        return;
       }
+      setError(e instanceof Error ? e.message : 'Could not save acceptance');
     } finally {
       setBusy(false);
     }
@@ -116,7 +142,7 @@ export function LegalGate({ children }: { children: ReactNode }) {
           Review our Terms
         </h1>
         <p className="legal-gate__copy">
-          To continue, confirm you are at least 13 and agree to our{' '}
+          To continue, enter your birth month and year and agree to our{' '}
           <a href="/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a>
           {' '}(v{TERMS_VERSION}) and{' '}
           <a href="/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>

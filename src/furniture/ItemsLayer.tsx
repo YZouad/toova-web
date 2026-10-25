@@ -14,6 +14,7 @@ import { ImportedModel } from './ImportedModel';
 import { HangingDecoration } from './HangingDecoration';
 import { ItemEmitter } from './ItemEmitter';
 import { EmitterGlow } from './EmitterGlow';
+import { isBlockedScanVolume, ScanPlaceholder } from './ScanPlaceholder';
 
 interface ItemsLayerProps {
   onPosterActivate?: (id: string) => void;
@@ -89,6 +90,9 @@ function ItemVisual({ item, selected, invalid }: { item: Item; selected: boolean
 }
 
 function FurnitureBody({ item, selected, invalid }: { item: Item; selected: boolean; invalid: boolean }) {
+  if (isBlockedScanVolume(item)) {
+    return <ScanPlaceholder item={item} />;
+  }
   switch (item.kind) {
     case 'bed': return <Bed item={item} selected={selected} invalid={invalid} />;
     case 'dresser': return <Dresser item={item} selected={selected} invalid={invalid} />;

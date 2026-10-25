@@ -296,15 +296,21 @@ export function Dashboard({
   }, [fetchRooms, fetchSharedWithMe]);
 
   const totalPlacements = rooms.reduce((s, r) => s + r.item_count, 0);
-  const unlimitedRooms = entitlements?.unlimited_rooms ?? Boolean(showAdmin);
-  const maxRooms = entitlements?.max_rooms ?? FREE_PLAN_MAX_ROOMS;
+  // `unlimited_rooms: false` on the free fallback must not hide an admin.
+  // `max_rooms: null` means unlimited; `??` would turn that into the free cap.
+  const unlimitedRooms =
+    Boolean(showAdmin) ||
+    Boolean(entitlements?.unlimited_rooms) ||
+    (billing != null && entitlements?.max_rooms == null);
+  const maxRooms = unlimitedRooms
+    ? null
+    : (entitlements?.max_rooms ?? FREE_PLAN_MAX_ROOMS);
   const atLimit = isAtRoomLimit(rooms.length, { unlimited: unlimitedRooms, maxRooms });
   const remainingRooms = roomsRemaining(rooms.length, { unlimited: unlimitedRooms, maxRooms });
+  const planName = billing?.display_name ?? (unlimitedRooms ? 'Pro' : 'Free');
   const roomCapLabel = unlimitedRooms
-    ? 'Studio'
-    : maxRooms != null
-      ? `${billing?.display_name ?? 'Free'} plan · ${rooms.length} of ${maxRooms} rooms`
-      : `${billing?.display_name ?? 'Free'} plan · ${rooms.length} rooms`;
+    ? `${planName} plan · unlimited rooms`
+    : `${planName} plan · ${rooms.length} of ${maxRooms} rooms`;
   const forkRooms = rooms.filter((r) => r.forked_from);
   const hasSharedTab = sharedWithMe.length > 0;
   const hasForksTab = forkRooms.length > 0;

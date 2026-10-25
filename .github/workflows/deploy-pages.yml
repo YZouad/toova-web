@@ -34,8 +34,11 @@ jobs:
           # Optional: override with secret VITE_TRELLIS_GENERATE_URL instead.
           VITE_TRELLIS_GENERATE_URL: ${{ vars.VITE_TRELLIS_GENERATE_URL || secrets.VITE_TRELLIS_GENERATE_URL }}
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || 'G-WS2JEV7YRE' }}
+          VITE_AMAZON_AFFILIATE_TAG: ${{ vars.VITE_AMAZON_AFFILIATE_TAG || 'toova-20' }}
       # SPA deep links (/r/:token) need a 404 fallback on GitHub Pages.
       - run: cp dist/index.html dist/404.html
+      # Static routes must return 200 (App Store review fetches the privacy policy URL).
+      - run: for r in privacy terms safety pricing gallery; do mkdir -p "dist/$r" && cp dist/index.html "dist/$r/index.html"; done
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

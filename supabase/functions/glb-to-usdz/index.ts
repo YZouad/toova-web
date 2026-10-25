@@ -186,7 +186,8 @@ async function authorizeCaller(
     throw new Error("Missing bearer token.");
   }
 
-  if (token === serviceKey || decodeJWTRole(token) === "service_role") {
+  // Exact service-role key only — never trust an unverified JWT "role" claim.
+  if (timingSafeEqualString(token, serviceKey)) {
     return { kind: "service" };
   }
 
@@ -247,20 +248,14 @@ function defaultPublishableKey(): string | null {
   return parsed.default ?? Object.values(parsed)[0] ?? null;
 }
 
-function decodeJWTRole(token: string): string | null {
-  const [, payload] = token.split(".");
-  if (!payload) {
-    return null;
-  }
-
-  try {
-    const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
-    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
-    const decoded = JSON.parse(atob(padded)) as { role?: string };
-    return decoded.role ?? null;
-  } catch {
-    return null;
-  }
+function timingSafeEqualString(a: string, b: string): boolean {
+  const enc = new TextEncoder();
+  const aa = enc.encode(a);
+  const bb = enc.encode(b);
+  if (aa.length !== bb.length) return false;
+  let out = 0;
+  for (let i = 0; i < aa.length; i++) out |= aa[i]! ^ bb[i]!;
+  return out === 0;
 }
 
 async function loadCatalogRow(

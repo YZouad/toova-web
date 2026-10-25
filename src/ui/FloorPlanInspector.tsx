@@ -5,17 +5,23 @@ import {
   type FloorPlan,
   type FloorPlanOpening,
   type LengthUnit,
+  clearZoneAt,
   formatLength,
   lShapePlan,
   planBounds,
   rectanglePlan,
+  resolveZones,
   setWallLength,
+  setZoneName,
+  setZoneTag,
   updateOpening,
   clampPlanHeight,
   validateFloorPlan,
   wallById,
   wallLength,
 } from '../lib/floorPlanGeometry';
+import { trackRoomAreaTagged } from '../lib/analytics';
+import { ROOM_TAG_DEFS, type RoomTag } from '../lib/roomTags';
 import { FpSpotlightCard } from './FpSpotlightCard';
 import { WindowCurtainEditor } from './designer/WindowCurtainEditor';
 import { NumberStepper } from './kit/NumberStepper';
@@ -26,6 +32,7 @@ interface FloorPlanInspectorProps {
   plan: FloorPlan;
   selectedWallId: string | null;
   selectedOpeningId: string | null;
+  selectedFaceKey: string | null;
   lengthUnit: LengthUnit;
   gridSnap: GridSnapSize;
   presetWidthFt: number;
@@ -41,6 +48,7 @@ interface FloorPlanInspectorProps {
   onPlanChange: (plan: FloorPlan) => void;
   onSelectWall: (id: string | null) => void;
   onSelectOpening: (id: string | null) => void;
+  onSelectFace: (faceKey: string | null) => void;
 }
 
 interface ChecklistItem {
@@ -58,6 +66,8 @@ const ITEM = {
 function buildChecklist(plan: FloorPlan, issues: ReturnType<typeof validateFloorPlan>): ChecklistItem[] {
   const codes = new Set(issues.map((i) => i.code));
   const doors = plan.openings.filter((o) => o.kind === 'door').length;
+  const areas = resolveZones(plan);
+  const tagged = areas.filter((a) => a.zone).length;
   return [
     {
       id: 'boundary',
@@ -83,6 +93,16 @@ function buildChecklist(plan: FloorPlan, issues: ReturnType<typeof validateFloor
       id: 'openings',
       label: 'Openings fit on walls',
       done: !codes.has('opening_bounds') && !codes.has('opening_overlap') && !codes.has('orphan_opening'),
+    },
+    {
+      id: 'tags',
+      label:
+        areas.length === 0
+          ? 'Tag each area (optional)'
+          : tagged >= areas.length
+            ? 'All areas tagged'
+            : `Tag each area (optional) · ${tagged}/${areas.length}`,
+      done: areas.length === 0 || tagged >= areas.length,
     },
   ];
 }
@@ -233,6 +253,7 @@ export function FloorPlanInspector({
   plan,
   selectedWallId,
   selectedOpeningId,
+  selectedFaceKey,
   lengthUnit,
   gridSnap,
   presetWidthFt,
@@ -248,10 +269,15 @@ export function FloorPlanInspector({
   onPlanChange,
   onSelectWall,
   onSelectOpening,
+  onSelectFace,
 }: FloorPlanInspectorProps) {
   const issues = useMemo(() => validateFloorPlan(plan), [plan]);
   const checklist = useMemo(() => buildChecklist(plan, issues), [plan, issues]);
   const bounds = useMemo(() => planBounds(plan), [plan]);
+  const areas = useMemo(() => resolveZones(plan), [plan]);
+  const selectedArea = selectedFaceKey
+    ? areas.find((a) => a.faceKey === selectedFaceKey) ?? null
+    : null;
 
   const selectedOpening = selectedOpeningId
     ? plan.openings.find((o) => o.id === selectedOpeningId) ?? null
@@ -264,6 +290,7 @@ export function FloorPlanInspector({
   const applyRectangle = () => {
     onSelectWall(null);
     onSelectOpening(null);
+    onSelectFace(null);
     onPlanChange(rectanglePlan(presetWidth, presetDepth, plan.height));
   };
 
@@ -271,18 +298,41 @@ export function FloorPlanInspector({
     const side = Math.max(presetWidth, presetDepth);
     onSelectWall(null);
     onSelectOpening(null);
+    onSelectFace(null);
     onPlanChange(rectanglePlan(side, side, plan.height));
   };
 
   const applyLShape = () => {
     onSelectWall(null);
     onSelectOpening(null);
+    onSelectFace(null);
     onPlanChange(lShapePlan(presetWidth, presetDepth, presetWidth / 3, presetDepth / 3, plan.height));
+  };
+
+  const applyAreaTag = (tag: RoomTag) => {
+    if (!selectedArea) return;
+    const [ax, az] = selectedArea.labelAnchor;
+    onPlanChange(setZoneTag(plan, ax, az, tag, selectedArea.zone?.name));
+    trackRoomAreaTagged({ tag });
+  };
+
+  const clearAreaTag = () => {
+    if (!selectedArea) return;
+    const [ax, az] = selectedArea.labelAnchor;
+    onPlanChange(clearZoneAt(plan, ax, az));
+  };
+
+  const renameArea = (name: string) => {
+    if (!selectedArea?.zone) return;
+    const [ax, az] = selectedArea.labelAnchor;
+    onPlanChange(setZoneName(plan, ax, az, name));
   };
 
   const tips = [
     'Click twice with Wall tool to draw a segment.',
     'Windows: click start, then end along a wall.',
+    'Select an area to tag it (kitchen, bedroom…).',
+    'Press T to cycle the selected area’s tag.',
     'Select a wall or opening and press Delete to remove.',
     'Scroll to zoom · Pan tool or middle-drag to move.',
     `1 square = ${gridSnap}″ · bold lines = 1 ft`,
@@ -305,6 +355,59 @@ export function FloorPlanInspector({
               onChange={(v) => onPlanChange(setWallLength(plan, selectedWall.id, v))}
             />
             <p className="fp-inspector-hint">Drag corners on canvas to reshape</p>
+          </>
+        ) : selectedArea ? (
+          <>
+            <SectionEyebrow>Area</SectionEyebrow>
+            <p className="fp-inspector-serif">
+              {selectedArea.zone?.name?.trim() ||
+                (selectedArea.zone
+                  ? ROOM_TAG_DEFS.find((d) => d.id === selectedArea.zone!.tag)?.label
+                  : 'Untagged')}
+            </p>
+            <p className="fp-inspector-hint">
+              {Math.round(selectedArea.areaSqIn / 144)} sq ft · press T to cycle tags
+            </p>
+            <div className="fp-field">
+              <label className="fp-field-label">Tag</label>
+              <div className="fp-tag-grid">
+                {ROOM_TAG_DEFS.map((def) => (
+                  <button
+                    key={def.id}
+                    type="button"
+                    className={`fp-chip fp-chip-tag${selectedArea.zone?.tag === def.id ? ' active' : ''}`}
+                    onClick={() => applyAreaTag(def.id)}
+                  >
+                    <span className="fp-chip-tag-glyph" aria-hidden>
+                      {def.glyph}
+                    </span>
+                    {def.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {selectedArea.zone ? (
+              <>
+                <div className="fp-field">
+                  <label className="fp-field-label" htmlFor="fp-area-name">
+                    Name
+                  </label>
+                  <input
+                    id="fp-area-name"
+                    type="text"
+                    className="fp-field-input fp-area-name-input"
+                    placeholder="e.g. Primary bedroom"
+                    value={selectedArea.zone.name ?? ''}
+                    onChange={(e) => renameArea(e.target.value)}
+                  />
+                </div>
+                <button type="button" className="fp-chip" onClick={clearAreaTag}>
+                  Clear tag
+                </button>
+              </>
+            ) : (
+              <p className="fp-inspector-hint">Pick a tag to label this space</p>
+            )}
           </>
         ) : (
           <>
@@ -334,6 +437,11 @@ export function FloorPlanInspector({
                 L-shape
               </button>
             </div>
+            {areas.length > 0 ? (
+              <p className="fp-inspector-hint">
+                Click inside an area to tag it · {areas.filter((a) => a.zone).length}/{areas.length} tagged
+              </p>
+            ) : null}
           </>
         )}
       </FpSpotlightCard>
@@ -397,7 +505,7 @@ export function FloorPlanInspector({
         </p>
       </FpSpotlightCard>
 
-      {!selectedOpening && !selectedWall ? (
+      {!selectedOpening && !selectedWall && !selectedArea ? (
         <FpSpotlightCard>
           <SectionEyebrow>Tips</SectionEyebrow>
           <motion.ul className="fp-tips" variants={STAGGER} initial="hidden" animate="show">

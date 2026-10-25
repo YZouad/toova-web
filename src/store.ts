@@ -262,6 +262,9 @@ export interface Item {
   hanging?: HangingDecorationConfig;
   /** Procedural structure for built-in gallery furniture (drawers, shelves, etc.). */
   build?: FurnitureBuild;
+  /** RoomPlan object id while scan placeholders resolve via AI. */
+  scanObjectId?: string;
+  scanStatus?: 'pending' | 'matching' | 'generating' | 'done' | 'failed';
 }
 
 interface StoreState {
@@ -367,6 +370,8 @@ interface StoreState {
 
   /** Replace layout from persisted data for the active room. */
   hydrateLayout: (payload: Item[], orderIds: string[]) => void;
+  /** Merge a scan-identified item update without changing selection order. */
+  patchScanItem: (item: Item) => void;
   hydrateRoomSettings: (environment: RoomEnvironment, roomGeometry: RoomGeometry) => void;
   /** Clear scene (switch room / sign out). */
   resetLayout: () => void;
@@ -394,6 +399,8 @@ interface StoreState {
       curatedProductId?: string;
       tintColor?: string;
       wallMounted?: boolean;
+      /** Optional plan-space spawn (x, z inches). Defaults to room centroid. */
+      spawnAt?: [number, number];
     },
   ) => string;
   /** Clone an item with a new id, slight position offset; appends and selects it. */
@@ -1032,6 +1039,20 @@ export const useStore = create<StoreState>((set, get) => ({
       return { items, invalid: false };
     }),
 
+  patchScanItem: (incoming) =>
+    set((s) => {
+      const normalized = ensureAttachmentKey(normalizeShelfItem(normalizeBedItem(incoming)));
+      const targetId =
+        Object.keys(s.items).find(
+          (id) => s.items[id]?.scanObjectId === normalized.scanObjectId,
+        ) ?? normalized.id;
+      if (!s.items[targetId] && !s.order.includes(normalized.id)) return s;
+      const id = s.items[targetId] ? targetId : normalized.id;
+      return {
+        items: { ...s.items, [id]: { ...s.items[id], ...normalized, id } },
+      };
+    }),
+
   hydrateRoomSettings: (environment, roomGeometry) =>
     set(() => ({
       environment: {
@@ -1091,7 +1112,11 @@ export const useStore = create<StoreState>((set, get) => ({
     }
 
     const shelfPose = isWallShelfKind(kind) ? defaultWallShelfPose(room, itemSize) : null;
-    const position: [number, number, number] = shelfPose ? shelfPose.position : [cx, 0, cz];
+    const spawnX = opts?.spawnAt?.[0] ?? cx;
+    const spawnZ = opts?.spawnAt?.[1] ?? cz;
+    const position: [number, number, number] = shelfPose
+      ? shelfPose.position
+      : [spawnX, 0, spawnZ];
     const rotationY = shelfPose ? shelfPose.rotationY : 0;
 
     const item: Item = {

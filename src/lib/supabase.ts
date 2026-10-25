@@ -14,15 +14,44 @@ type ToovaGlobal = typeof globalThis & { __toovaSupabase?: SupabaseClient };
  * timeout 0 while initialize (or another tab / a Vite HMR zombie) still
  * holds it, and the thrown LockAcquireTimeoutError is uncaught in Firefox.
  */
+let authLockTail: Promise<unknown> = Promise.resolve();
+
+/** Serialize auth storage reads/writes without Navigator LockManager (Firefox timeout issues). */
 async function inProcessAuthLock<T>(
   _name: string,
   _acquireTimeout: number,
   fn: () => Promise<T>,
 ): Promise<T> {
-  return await fn();
+  const run = authLockTail.then(fn, fn);
+  authLockTail = run.then(
+    () => undefined,
+    () => undefined,
+  );
+  return await run;
+}
+
+/** The iOS app hosts `embed.html` and owns the session (refresh tokens are single-use). */
+export function isNativeDesignerEmbed(): boolean {
+  return (
+    typeof window !== 'undefined' &&
+    typeof window.location?.pathname === 'string' &&
+    /\/embed\.html$/.test(window.location.pathname)
+  );
 }
 
 function createToovaClient(): SupabaseClient {
+  if (isNativeDesignerEmbed()) {
+    return createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
+      auth: {
+        lock: inProcessAuthLock,
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      // Late-bound so the embed's fetch hooks (token refresh via the app) apply.
+      global: { fetch: (input, init) => window.fetch(input, init) },
+    });
+  }
   return createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: { lock: inProcessAuthLock },
   });

@@ -59,6 +59,8 @@ interface RoomPresetPickerProps {
   creating?: boolean;
   /** Suggested name shown as the field value / placeholder when the modal opens. */
   defaultName?: string;
+  /** Prefer this starter template (e.g. first-room onboarding). */
+  preferredTemplateId?: string;
   cancelLabel?: string;
   onClose: () => void;
   onSelect: (selection: RoomPresetPickerSelection, name: string) => void | Promise<void>;
@@ -82,6 +84,7 @@ export function RoomPresetPicker({
   guestSimple = false,
   creating = false,
   defaultName = 'Room 1',
+  preferredTemplateId,
   cancelLabel = 'Cancel',
   onClose,
   onSelect,
@@ -125,12 +128,19 @@ export function RoomPresetPicker({
     [isUChicago, liveForGoal, dormId],
   );
   const starterPreviews = useMemo<StarterPreview[]>(
-    () =>
-      (isUChicago ? uchicagoTemplates : liveForGoal).map((template) => ({
+    () => {
+      const list = (isUChicago ? uchicagoTemplates : liveForGoal).map((template) => ({
         template,
         plan: template.buildPlan(),
-      })),
-    [isUChicago, liveForGoal, uchicagoTemplates],
+      }));
+      if (!preferredTemplateId) return list;
+      return [...list].sort((a, b) => {
+        if (a.template.id === preferredTemplateId) return -1;
+        if (b.template.id === preferredTemplateId) return 1;
+        return 0;
+      });
+    },
+    [isUChicago, liveForGoal, uchicagoTemplates, preferredTemplateId],
   );
 
   const blankPreviews = useMemo<BlankPreview[]>(() => {
@@ -215,6 +225,7 @@ export function RoomPresetPicker({
   const renderStarterCard = ({ template, plan }: StarterPreview) => {
     const pieces = starterPieceCount(template);
     const isBlankDorm = Boolean(template.dormMeta);
+    const isPreferred = preferredTemplateId === template.id;
     return (
       <div
         key={template.id}
@@ -222,6 +233,7 @@ export function RoomPresetPicker({
           'kit-plate-card',
           'kit-plate-card--interactive',
           'room-preset-card',
+          isPreferred ? 'room-preset-card--preferred' : '',
           disabled ? 'room-preset-card--disabled' : '',
         ]
           .filter(Boolean)
@@ -244,6 +256,9 @@ export function RoomPresetPicker({
             <div className="room-preset-card-copy">
               <div className="kit-plate-card__name">
                 {isBlankDorm ? uChicagoLayoutLabel(template.dormMeta!.layout) : template.label}
+                {isPreferred ? (
+                  <span className="room-preset-card-badge"> Recommended</span>
+                ) : null}
               </div>
               <div className="kit-plate-card__author">{template.description}</div>
             </div>
@@ -370,7 +385,6 @@ export function RoomPresetPicker({
             )}
           </>
         ) : null}
-
         {mode === 'presets' ? (
         <div className={guestSimple ? 'room-preset-section' : 'room-preset-section room-preset-section--blank'}>
           <div className="room-preset-section-label">

@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import type { ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
-import { copyFileSync, existsSync } from 'node:fs';
+import { copyFileSync, cpSync, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,6 +23,21 @@ function spa404Fallback(): Plugin {
       const notFoundHtml = path.resolve(rootDir, 'dist/404.html');
       if (existsSync(indexHtml)) {
         copyFileSync(indexHtml, notFoundHtml);
+      }
+    },
+  };
+}
+
+/** The iOS bundle ships only the public/ folders the 3D scene loads; the rest stays on toova.net. */
+function copyPublicDirs(dirs: string[], outDir: string): Plugin {
+  return {
+    name: 'copy-public-dirs',
+    closeBundle() {
+      for (const dir of dirs) {
+        const from = path.resolve(rootDir, 'public', dir);
+        if (existsSync(from)) {
+          cpSync(from, path.resolve(rootDir, outDir, dir), { recursive: true });
+        }
       }
     },
   };
@@ -98,6 +113,21 @@ export default defineConfig(({ mode }) => {
       }
     : buildAgenticRoomProxy(agenticRoomProxyOrigin);
 
+  if (mode === 'embed') {
+    return {
+      base: './',
+      publicDir: false,
+      plugins: [react(), copyPublicDirs(['materials', 'textures'], '../toova-ios/DesignerWeb')],
+      build: {
+        outDir: path.resolve(rootDir, '../toova-ios/DesignerWeb'),
+        emptyOutDir: true,
+        rollupOptions: {
+          input: { embed: path.resolve(rootDir, 'embed.html') },
+        },
+      },
+    };
+  }
+
   return {
     base,
     plugins: [react(), spa404Fallback()],
@@ -107,6 +137,7 @@ export default defineConfig(({ mode }) => {
           main: path.resolve(rootDir, 'index.html'),
           visual: path.resolve(rootDir, 'visual.html'),
           hangingVisual: path.resolve(rootDir, 'hanging-visual.html'),
+          notificationsVisual: path.resolve(rootDir, 'notifications-visual.html'),
         },
       },
     },

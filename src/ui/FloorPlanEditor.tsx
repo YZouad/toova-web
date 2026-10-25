@@ -20,15 +20,20 @@ import {
   removeOpening,
   removeWall,
   resolveWallAnchor,
+  resolveZones,
   sanitizeWallGraph,
+  setZoneTag,
   snapAngle,
   snapPoint,
   snapToGrid,
   validateFloorPlan,
   wallById,
   wallLength,
+  zoneAtPoint,
   type WallAnchorResolution,
 } from '../lib/floorPlanGeometry';
+import { trackRoomAreaTagged } from '../lib/analytics';
+import { nextRoomTag, roomTagDef, roomTagLabel } from '../lib/roomTags';
 import type { Item } from '../store';
 import { itemRect } from '../interaction/collision';
 import { FloorPlanInspector, type GridSnapSize } from './FloorPlanInspector';
@@ -190,6 +195,7 @@ export function FloorPlanEditor({
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>('ft-in');
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
+  const [selectedFaceKey, setSelectedFaceKey] = useState<string | null>(null);
   const [wallDraft, setWallDraft] = useState<WallDraft | null>(null);
   const [windowDraft, setWindowDraft] = useState<{ wallId: string; offset: number } | null>(null);
   const [cursor, setCursor] = useState<[number, number] | null>(null);
@@ -222,6 +228,7 @@ export function FloorPlanEditor({
   const viewBox = viewBoxFromView(view, aspect, baseW, baseH);
   const openEndpoints = useMemo(() => new Set(openEndpointVertexIds(plan)), [plan]);
   const displayPlan = dragDraft ?? plan;
+  const resolvedAreas = useMemo(() => resolveZones(displayPlan), [displayPlan]);
   const pad = EDITOR_CANVAS_PAD;
 
   useEffect(() => {
@@ -428,11 +435,20 @@ export function FloorPlanEditor({
       if (opening) {
         setSelectedOpeningId(opening.id);
         setSelectedWallId(opening.wallId);
+        setSelectedFaceKey(null);
         return;
       }
       const wall = hitWallAtPoint(plan, x, z);
-      setSelectedWallId(wall?.id ?? null);
+      if (wall) {
+        setSelectedWallId(wall.id);
+        setSelectedOpeningId(null);
+        setSelectedFaceKey(null);
+        return;
+      }
+      const area = zoneAtPoint(plan, x, z);
+      setSelectedWallId(null);
       setSelectedOpeningId(null);
+      setSelectedFaceKey(area?.faceKey ?? null);
     }
   };
 
@@ -507,12 +523,23 @@ export function FloorPlanEditor({
       if (key === 'd') setTool('door');
       if (key === 'n') setTool('window');
       if (key === 'h') setTool('pan');
+      if (key === 't' && selectedFaceKey) {
+        e.preventDefault();
+        const area = resolvedAreas.find((a) => a.faceKey === selectedFaceKey);
+        if (area) {
+          const next = nextRoomTag(area.zone?.tag);
+          const [ax, az] = area.labelAnchor;
+          commit(setZoneTag(plan, ax, az, next, area.zone?.name));
+          trackRoomAreaTagged({ tag: next });
+        }
+      }
     }
     if (e.key === 'Escape') {
       setWallDraft(null);
       setWindowDraft(null);
       setSelectedOpeningId(null);
       setSelectedWallId(null);
+      setSelectedFaceKey(null);
       setDragVertexId(null);
       setPanDrag(null);
     }
@@ -542,11 +569,12 @@ export function FloorPlanEditor({
   };
 
   const clearPlan = () => {
-    commit({ ...plan, vertices: [], walls: [], openings: [] });
+    commit({ ...plan, vertices: [], walls: [], openings: [], zones: [] });
     setWallDraft(null);
     setWindowDraft(null);
     setSelectedWallId(null);
     setSelectedOpeningId(null);
+    setSelectedFaceKey(null);
   };
 
   const setToolSafe = (t: FloorPlanTool) => {
@@ -641,6 +669,40 @@ export function FloorPlanEditor({
             fill="url(#fp-board-vignette)"
           />
           {gridLines}
+
+          {resolvedAreas.map((area) => {
+            const def = area.zone ? roomTagDef(area.zone.tag) : null;
+            const selected = selectedFaceKey === area.faceKey;
+            const points = area.face.map((v) => `${v.x},${v.z}`).join(' ');
+            const [lx, lz] = area.labelAnchor;
+            const sqFt = Math.round(area.areaSqIn / 144);
+            const label = area.zone?.name?.trim() || (area.zone ? roomTagLabel(area.zone.tag) : 'Untagged');
+            return (
+              <g key={area.faceKey} className={`fp-area${selected ? ' selected' : ''}${area.zone ? ' tagged' : ''}`}>
+                <polygon
+                  points={points}
+                  className="fp-area-fill"
+                  style={
+                    def
+                      ? { fill: def.color, stroke: selected ? 'rgba(246, 222, 180, 0.85)' : def.stroke }
+                      : undefined
+                  }
+                />
+                <text
+                  x={lx}
+                  y={lz}
+                  className="fp-area-label"
+                  dominantBaseline="middle"
+                  textAnchor="middle"
+                >
+                  <tspan x={lx} dy="-0.35em">{label}</tspan>
+                  <tspan x={lx} dy="1.2em" className="fp-area-sqft">
+                    {sqFt} sq ft
+                  </tspan>
+                </text>
+              </g>
+            );
+          })}
 
           {furnitureOverlay?.map((item) => {
             const r = itemRect(item);
@@ -757,6 +819,7 @@ export function FloorPlanEditor({
         plan={displayPlan}
         selectedWallId={selectedWallId}
         selectedOpeningId={selectedOpeningId}
+        selectedFaceKey={selectedFaceKey}
         lengthUnit={lengthUnit}
         gridSnap={gridSnap}
         presetWidthFt={presetWidthFt}
@@ -770,8 +833,15 @@ export function FloorPlanEditor({
         onPresetDepthFtChange={setPresetDepthFt}
         onPresetDepthInChange={setPresetDepthIn}
         onPlanChange={commit}
-        onSelectWall={setSelectedWallId}
-        onSelectOpening={setSelectedOpeningId}
+        onSelectWall={(id) => {
+          setSelectedWallId(id);
+          if (id) setSelectedFaceKey(null);
+        }}
+        onSelectOpening={(id) => {
+          setSelectedOpeningId(id);
+          if (id) setSelectedFaceKey(null);
+        }}
+        onSelectFace={setSelectedFaceKey}
       />
     </div>
   );

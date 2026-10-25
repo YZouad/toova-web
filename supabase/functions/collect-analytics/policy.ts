@@ -25,6 +25,7 @@ export const ALLOWED_EVENTS = new Set([
   'limit_reached',
   'page_view',
   'session_started',
+  'room_opened',
 ]);
 
 export const ALLOWED_PROPERTIES = new Set([
@@ -61,6 +62,7 @@ export const ALLOWED_PROPERTIES = new Set([
   'page_title',
   'page_referrer',
   'page_location',
+  'is_owner',
 ]);
 
 export const BLOCKED_PROPERTIES = new Set([
@@ -202,6 +204,18 @@ export function prepareCollectEvent(
     device: contextString(raw, 'device', 16),
     auth_method: contextString(raw, 'auth_method', 16),
   };
+}
+
+/**
+ * Server-side consent backstop: the client must state that analytics consent
+ * was granted on this device, and a Global Privacy Control signal always wins.
+ */
+export function hasAnalyticsConsent(body: unknown, gpcHeader: string | null): boolean {
+  if (gpcHeader?.trim() === '1') return false;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return false;
+  const consent = (body as { consent?: unknown }).consent;
+  if (!consent || typeof consent !== 'object') return false;
+  return (consent as { analytics?: unknown }).analytics === 'granted';
 }
 
 export function prepareCollectBatch(

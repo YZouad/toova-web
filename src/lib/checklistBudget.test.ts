@@ -20,6 +20,7 @@ const lampProduct: CuratedProduct = {
   description: '',
   retailer: 'Amazon',
   affiliateUrl: 'https://example.com',
+  asin: null,
   priceCents: 2499,
   currency: 'USD',
   imagePath: null,
@@ -59,6 +60,7 @@ const categories: ChecklistCategoryWithProducts[] = [
     parentId: null,
     imagePath: null,
     imageUrl: null,
+    roomTags: [],
     products: [lampProduct],
   },
   {

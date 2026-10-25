@@ -39,6 +39,7 @@ export function AdminAnalyticsPanel({
     filters,
     setFilters,
     data,
+    retention,
     loading,
     error,
     refetch,
@@ -249,6 +250,45 @@ export function AdminAnalyticsPanel({
             />
             <CohortGrid rows={data.cohorts} />
           </div>
+
+          {retention ? (
+            <>
+              <SectionOpener
+                level={5}
+                title="Relational retention."
+                note="Measured from rooms, items, conversion jobs, and last_active — not cookie events."
+              />
+              <div className="admin-analytics__grid">
+                <FunnelChart
+                  title="Activation (database)"
+                  description="Share of new accounts who place 5+ items and finish one AI generation within 24 hours of signup."
+                  steps={retention.activation.funnel}
+                />
+                <CohortGrid
+                  rows={retention.cohorts}
+                  title="Week-1 and week-4 return"
+                  description="Return means any room update, AI job, or last_active stamp on a later calendar day than signup."
+                  columns={{
+                    size: 'New accounts',
+                    d1: 'Activated in 24h',
+                    d7: 'Returned in week 1',
+                    d30: 'Returned in week 4',
+                  }}
+                />
+                <BreakdownTable
+                  title="Return by first AI outcome"
+                  description="Whether people whose first AI job succeeded or failed came back on a later day."
+                  emptyHint="No AI jobs in this range."
+                  dimensionLabel="First job"
+                  rows={retention.by_first_ai.map((row) => ({
+                    key: row.key,
+                    label: `${row.label} (${row.returned}/${row.users} returned)`,
+                    value: row.users === 0 ? 0 : Math.round((row.returned / row.users) * 100),
+                  }))}
+                />
+              </div>
+            </>
+          ) : null}
 
           <SectionOpener level={5} title="Product adoption." />
           <div className="admin-analytics__grid">
