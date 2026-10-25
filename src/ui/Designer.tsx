@@ -34,6 +34,7 @@ import { VIEW_PRESETS } from './designer/chromeTypes';
 import type { CatalogModel, ImportRoute } from './designer/chromeTypes';
 import { LibraryPanel } from './designer/LibraryPanel';
 import { LookPanel } from './designer/LookPanel';
+import { RevisePanel } from './designer/RevisePanel';
 import { LightPanel } from './designer/LightPanel';
 import { PiecesPanel } from './designer/PiecesPanel';
 import { InspectorPanel } from './designer/InspectorPanel';
@@ -62,6 +63,7 @@ import {
   IconPlus,
   IconReset,
   IconRuler,
+  IconRevise,
   IconRoomLook,
   IconSearch,
   IconUpload,
@@ -775,6 +777,7 @@ export function Designer({
         {isPhone ? (
           <MobileDesignerChrome
             chrome={chrome}
+            roomId={workspace?.id ?? 'guest'}
             roomName={roomName}
             onRoomNameChange={setRoomName}
             onRoomNameBlur={() => void handleSave()}
@@ -839,6 +842,14 @@ export function Designer({
                   >
                     <IconRoomLook />
                     <span>Room look</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={`dg-rail-btn${chrome.panel === 'revise' ? ' is-active' : ''}`}
+                    onClick={() => chrome.setPanel('revise')}
+                  >
+                    <IconRevise />
+                    <span>Revise</span>
                   </button>
                   <button
                     type="button"
@@ -964,6 +975,14 @@ export function Designer({
             ) : null}
             {chrome.panel === 'look' ? (
               <LookPanel compact={false} onClose={chrome.closePanels} />
+            ) : null}
+            {chrome.panel === 'revise' && workspace?.id ? (
+              <RevisePanel
+                compact={false}
+                roomId={workspace.id}
+                onClose={chrome.closePanels}
+                onPreviewModel={openModel}
+              />
             ) : null}
             {chrome.panel === 'light' ? (
               <LightPanel

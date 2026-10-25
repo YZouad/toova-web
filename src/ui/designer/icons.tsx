@@ -9,6 +9,15 @@ export function IconPlus({ stroke = 'currentColor' }: { stroke?: string }) {
   );
 }
 
+export function IconRevise() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+      <path d="M7 8h10M7 12h6" />
+      <path d="M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H9l-4 2v-4H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z" />
+    </svg>
+  );
+}
+
 export function IconRoomLook() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

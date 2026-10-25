@@ -11,6 +11,8 @@ interface PanelShellProps {
   footer?: ReactNode;
   children: ReactNode;
   bodyClassName?: string;
+  /** Phone sheet only: omit the full-viewport scrim so the canvas stays draggable. */
+  allowViewportPassthrough?: boolean;
 }
 
 const FOCUSABLE =
@@ -59,6 +61,7 @@ export function PanelShell({
   footer,
   children,
   bodyClassName,
+  allowViewportPassthrough = false,
 }: PanelShellProps) {
   const rootRef = useRef<HTMLElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -90,7 +93,9 @@ export function PanelShell({
   if (compact) {
     return (
       <>
-        <button type="button" className="dg-scrim" aria-label="Close panel" onClick={onClose} />
+        {allowViewportPassthrough ? null : (
+          <button type="button" className="dg-scrim" aria-label="Close panel" onClick={onClose} />
+        )}
         <aside
           ref={rootRef}
           className={`dg-mobile-sheet dg-mobile-sheet--${mobileHeight}`}

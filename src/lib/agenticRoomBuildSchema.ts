@@ -1,4 +1,4 @@
-/** Agent JSON "build" docs — keep scripts/cursor-agentic-dev-server.mjs in sync. */
+/** Agent JSON "build" docs — keep toova-bff agenticRoom/buildSchemaDocs.ts in sync. */
 export const AGENTIC_BUILD_SCHEMA_DOCS = `Optional "build" on an item (only when the user named structure — keep query generic for shopping):
 
 dresser / nightstand (prefer rows×columns; product = drawerRows × drawerColumns):

@@ -1,4 +1,9 @@
 import { isPosterItem } from '../../lib/posterItem';
+import {
+  bedLegHeightIn,
+  maxBedFootprintSide,
+  proportionalBedFootprintFromMaxSide,
+} from '../../lib/bedItemSize';
 import { proportionalSizesFromMaxSide } from '../../lib/uniformItemSize';
 import { planBounds } from '../../lib/roomGeometry';
 import { useStore } from '../../store';
@@ -36,8 +41,11 @@ export function ContextBar({
 
   const isHanging = item.kind === 'hanging';
   const isPoster = isPosterItem(item);
+  const isBed = item.kind === 'bed';
   const canSize = !isHanging && (item.kind !== 'imported' || !!item.importedNaturalSize);
-  const maxSide = Math.max(item.size[0], item.size[1], item.size[2]);
+  const maxSide = isBed
+    ? maxBedFootprintSide(item.size)
+    : Math.max(item.size[0], item.size[1], item.size[2]);
   const maxFootprint = Math.max(planBounds(roomGeometry).width, planBounds(roomGeometry).depth, 200);
   const maxElevation = Math.max(0, roomGeometry.height - item.size[1]);
   const elev = Math.round(item.position[1]);
@@ -73,7 +81,16 @@ export function ContextBar({
               step={0.5}
               value={maxSide}
               onChange={(e) =>
-                setItemSize(item.id, proportionalSizesFromMaxSide(item.size, Number(e.target.value)))
+                setItemSize(
+                  item.id,
+                  isBed
+                    ? proportionalBedFootprintFromMaxSide(
+                        item.size,
+                        Number(e.target.value),
+                        bedLegHeightIn(item),
+                      )
+                    : proportionalSizesFromMaxSide(item.size, Number(e.target.value)),
+                )
               }
               aria-label="Uniform size"
             />

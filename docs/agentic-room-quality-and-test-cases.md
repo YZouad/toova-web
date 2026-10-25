@@ -36,21 +36,16 @@ There is **one AI agent**. It writes a shopping checklist. It does not place fur
 
 | | |
 |---|---|
-| Runtime | Cursor Cloud Agents API, `POST https://api.cursor.com/v1/agents` |
-| Model | `composer-2.5` (hardcoded) |
-| Kind | No-repo agent. The prompt is the whole job. The agent is not attached to this codebase. |
-| Role in the prompt | "Furniture and decor shopping assistant" |
-| Created | One new agent and one run per request. Nothing is reused across prompts. |
-| Wait | The local proxy polls the run every 2 seconds, up to 90 seconds |
-| Auth | `CURSOR_API_KEY` in `.env.local` |
+| Runtime | **toova-bff** `POST /api/agentic-room/parse` (and `/revise`, `/analyze` for designer revise and room scan) |
+| Model | Amazon Bedrock Converse (`BEDROCK_MODEL_ID`, default Claude Sonnet on Bedrock) |
+| Auth | AWS credentials on the BFF (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`) |
 
 Dev wiring:
 
-- `npm run dev:agentic` starts `scripts/cursor-agentic-dev-server.mjs` (listens on `127.0.0.1:8790`) and Vite.
-- The app calls `POST /api/agentic-room/parse`. Vite proxies that to the local server (`AGENTIC_ROOM_PROXY_ORIGIN`, default `http://127.0.0.1:8790`).
-- There is no production BFF route for this yet. The earlier spec's `POST /agentic-room-parse` on `toova-bff` was never built.
+- `npm run dev` starts Vite. The app calls same-origin `/api/agentic-room/*`; Vite proxies to `TRELLIS_BFF_ORIGIN` (Render BFF by default).
+- Production builds call `https://toova-bff.onrender.com/api/agentic-room` unless `VITE_AGENTIC_ROOM_API_URL` overrides it.
 
-The system prompt lives in `buildCursorFurniturePrompt` (`src/lib/agenticRoomParseJson.ts`) and is copied into the proxy. Optional furniture structure (`build` on desks, dressers, shelves, chairs) is documented in `AGENTIC_BUILD_SCHEMA_DOCS` (`src/lib/agenticRoomBuildSchema.ts`). Those two must stay in sync with the proxy.
+Prompts and JSON parsing live in **toova-bff** (`src/lib/agenticRoom/`). Client-side `agenticRoomParseJson.ts` mirrors parse/enrichment helpers and must stay aligned with the BFF where shared.
 
 `parseAgenticRoomPrompt` (`src/lib/agenticRoomPrompt.ts`) is a leftover regex parser. It is covered by tests and is **not** on the live path.
 
@@ -73,9 +68,9 @@ The agent must not invent brand names or product URLs. Search phrases stay gener
 
 Entry: new-room picker → **Describe your room** → `AgenticRoomFlow`.
 
-1. **Suggest with AI.** The user types a free-text prompt (max 2,000 characters). `fetchFurnitureListFromCursor` posts it to `/api/agentic-room/parse`. The UI says "Sending to Cursor…" then "Building your shopping list… (usually 30–90 seconds)."
-2. **Agent run.** The proxy wraps the prompt, creates the `composer-2.5` agent, and polls until the run finishes, fails, or hits 90 seconds.
-3. **JSON recovery.** The proxy pulls a JSON object out of the agent text (including a fenced block) and validates it. Empty or invalid JSON is an error, not a room.
+1. **Suggest with AI.** The user types a free-text prompt (max 2,000 characters). `fetchAgenticFurnitureList` posts it to `/api/agentic-room/parse`. The UI shows progress while Bedrock runs (usually 30–90 seconds).
+2. **Bedrock run.** The BFF sends the furniture-list system prompt via Converse and waits for completion (client abort ~95s).
+3. **JSON recovery.** The BFF pulls a JSON object out of the model text (including a fenced block) and validates it. Empty or invalid JSON is an error, not a room.
 4. **Client enrichment.** `enrichFurnitureListWithTheme` fills theme from the prompt when the agent omitted it, and can add room essentials, desk pairings, and catalog-bank extras.
 5. **Review.** The user sees a checklist. They can change quantity, swap a catalog match, mark a line "already have" or "not needed", pick a community-gallery model, edit the color scheme, or remove a line.
 6. **Resolve (no second model).** `resolveAgenticList` turns each line into a review row:
@@ -123,7 +118,7 @@ Saved checklists live in local storage (`agenticRoomSavedChecklists`). Guests fo
 
 List size guidance in the prompt: about 6–10 items for a typical dorm or bedroom, more for a larger room. Every dorm or bedroom list should include a bed frame, desk, chair, and desk lamp as separate generic lines, plus theme-specific decor (at least three) when a theme was named.
 
-`source` on the parsed result is `cursor` when the agent returned a usable list, `manual` for a hand-built checklist, or `rules-fallback` when the proxy call failed. That last label does **not** run the regex parser. The UI gets an empty list and a plain-language warning (missing key, timeout, bad JSON, proxy down).
+`source` on the parsed result is `bedrock` when the agent returned a usable list, `manual` for a hand-built checklist, or `rules-fallback` when the BFF call failed. That last label does **not** run the regex parser. The UI gets an empty list and a plain-language warning (missing AWS config, timeout, bad JSON, BFF down). Legacy saved checklists may still show `cursor` as an alias for AI-generated lists.
 
 ### 2.5 Failure behavior (current)
 
@@ -131,8 +126,8 @@ List size guidance in the prompt: about 6–10 items for a typical dorm or bedro
 |---|---|
 | Empty prompt | "Enter a room description." No agent call. |
 | Prompt over 2,000 characters | Proxy rejects it. No agent call. |
-| Missing `CURSOR_API_KEY` | 503. Client warning tells them to start `npm run dev:agentic`. |
-| Agent timeout (90s) or run failed | Empty list, warning, no room created. |
+| Missing AWS credentials on BFF | 503. Client warning mentions Bedrock / toova-bff. |
+| Bedrock timeout or run failed | Empty list, warning, no room created. |
 | Agent text is not valid checklist JSON | "Could not parse furniture list…" No partial room. |
 | Client wait | Abort after 95 seconds. |
 
@@ -143,8 +138,8 @@ A failed generate does not replace an open design. Confirm is the only step that
 | Piece | Where |
 |---|---|
 | Describe-your-room UI | `src/ui/AgenticRoomFlow.tsx`, opened from `src/ui/RoomPresetPicker.tsx` |
-| Browser → proxy | `src/lib/agenticRoomCursorApi.ts` |
-| Dev proxy and agent call | `scripts/cursor-agentic-dev-server.mjs` |
+| Browser → BFF | `src/lib/agenticRoomParseApi.ts`, `src/lib/agenticRoomApi.ts` |
+| Bedrock routes | toova-bff `src/routes/agenticRoom.ts` |
 | Prompt, JSON parse, theme fill-in | `src/lib/agenticRoomParseJson.ts` |
 | Furniture `build` schema | `src/lib/agenticRoomBuildSchema.ts` |
 | Catalog match and budget swap | `src/lib/agenticRoomResolve.ts`, `src/lib/agenticRoomResolveFromList.ts` |
@@ -342,7 +337,7 @@ For every generated room above, check:
 | H2 **[auto]** | Gibberish ("asdf qwer") | Friendly "I didn't understand" with example prompts |
 | H3 **[auto]** | Very long prompt (2,000+ characters) | Truncated or summarized, no crash |
 | H4 **[auto]** | Agent returns invalid JSON | Fenced JSON is recovered. Otherwise a clean error and no room (see section 2.5) |
-| H5 | Proxy or network is down | Retry message, no partial room. Missing `CURSOR_API_KEY` names `npm run dev:agentic` |
+| H5 | BFF or network is down | Retry message, no partial room. Warnings mention toova-bff / Bedrock config |
 | H6 | User cancels mid-generation | State is clean, original room untouched |
 | H7 | Non-English prompt | Best effort, or a polite "English only for now" |
 | H8 | Prompt contains unsafe or inappropriate content | Refused politely, per the child safety policy |

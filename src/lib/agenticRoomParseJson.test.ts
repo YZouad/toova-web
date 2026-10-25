@@ -65,7 +65,7 @@ describe('validateFurnitureListJson', () => {
     expect(result?.roomType).toBe('dorm bedroom');
     expect(result?.theme).toBe('gothic');
     expect(result?.estimatedTotalCents).toBeGreaterThanOrEqual(75000 + 1500 + 1800 + 4500);
-    expect(result?.source).toBe('cursor');
+    expect(result?.source).toBe('bedrock');
   });
 
   it('leaves generic vibes alone and does not double-apply a theme', () => {

@@ -14,6 +14,7 @@ import {
   IconPieces,
   IconPlus,
   IconRuler,
+  IconRevise,
   IconRoomLook,
   IconSearch,
   IconUpload,
@@ -27,6 +28,7 @@ import { MobileInspectorSheet } from './MobileInspectorSheet';
 import { MobileLibrarySheet } from './MobileLibrarySheet';
 import { MobileLightSheet } from './MobileLightSheet';
 import { MobileLookSheet } from './MobileLookSheet';
+import { MobileReviseSheet } from './MobileReviseSheet';
 import { MobilePiecesSheet } from './MobilePiecesSheet';
 import { MobilePresentBar } from './MobilePresentBar';
 import { MobileSelectionActions } from './MobileSelectionActions';
@@ -46,6 +48,7 @@ function detailLabelFor(kind: string | undefined): string {
 
 export interface MobileDesignerChromeProps {
   chrome: DesignerChrome;
+  roomId: string;
   roomName: string;
   onRoomNameChange: (name: string) => void;
   onRoomNameBlur: () => void;
@@ -82,6 +85,7 @@ export interface MobileDesignerChromeProps {
  */
 export function MobileDesignerChrome({
   chrome,
+  roomId,
   roomName,
   onRoomNameChange,
   onRoomNameBlur,
@@ -422,6 +426,14 @@ export function MobileDesignerChrome({
           <button
             type="button"
             className="dgm-dock-btn"
+            onClick={() => mobile.openSheet('revise')}
+          >
+            <IconRevise />
+            <span>Revise</span>
+          </button>
+          <button
+            type="button"
+            className="dgm-dock-btn"
             onClick={() => mobile.openSheet('light')}
           >
             <IconLight />
@@ -452,6 +464,13 @@ export function MobileDesignerChrome({
         />
       ) : null}
       {mobile.sheet === 'look' ? <MobileLookSheet onClose={mobile.closeSheet} /> : null}
+      {mobile.sheet === 'revise' ? (
+        <MobileReviseSheet
+          roomId={roomId}
+          onClose={mobile.closeSheet}
+          onPreviewModel={onOpenModel}
+        />
+      ) : null}
       {mobile.sheet === 'light' ? (
         <MobileLightSheet
           onClose={mobile.closeSheet}

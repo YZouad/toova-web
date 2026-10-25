@@ -12,6 +12,14 @@ import {
   resolveBeddingConfig,
 } from '../../../lib/bedding/config';
 import type { BeddingConfigPatch } from '../../../lib/bedding/types';
+import {
+  bedFitDimensionLabel,
+  bedFitDimensionLimits,
+  bedFitDimensionValue,
+  bedLegHeightIn,
+  maxBedFootprintSide,
+  proportionalBedFootprintFromMaxSide,
+} from '../../../lib/bedItemSize';
 import { proportionalSizesFromMaxSide } from '../../../lib/uniformItemSize';
 import { FurnitureBuildEditor } from '../FurnitureBuildEditor';
 import { planBounds } from '../../../lib/roomGeometry';
@@ -98,10 +106,14 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
   const isBed = item.kind === 'bed';
   const isFurniture = !isHanging && !isLight;
   const rotDeg = Math.round((((item.rotationY * 180) / Math.PI) % 360 + 360) % 360);
-  const dims = `${Math.round(item.size[0])}×${Math.round(item.size[2])}×${Math.round(item.size[1])}″`;
+  const dims = isBed
+    ? `${Math.round(item.size[0])}×${Math.round(item.size[2])}×${bedLegHeightIn(item)}″`
+    : `${Math.round(item.size[0])}×${Math.round(item.size[2])}×${Math.round(item.size[1])}″`;
   const maxElevation = Math.max(0, roomGeometry.height - item.size[1]);
   const maxFootprint = Math.max(planBounds(roomGeometry).width, planBounds(roomGeometry).depth, 200);
-  const maxSide = Math.max(item.size[0], item.size[1], item.size[2]);
+  const maxSide = isBed
+    ? maxBedFootprintSide(item.size)
+    : Math.max(item.size[0], item.size[1], item.size[2]);
   const canEditSize = item.kind !== 'imported' || !!item.importedNaturalSize;
   const emitter = item.emitter ?? DEFAULT_EMITTER;
   const hang = item.hanging;
@@ -175,7 +187,7 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
               <>
                 <section className="dgm-section">
                   <div className="dgm-section-head">
-                    <h3 className="dgm-section-title">Scale</h3>
+                    <h3 className="dgm-section-title">{isBed ? 'Scale footprint' : 'Scale'}</h3>
                     <span className="dgm-section-meta">{Math.round(maxSide)}″</span>
                   </div>
                   <input
@@ -188,10 +200,16 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
                     onChange={(e) =>
                       setItemSize(
                         item.id,
-                        proportionalSizesFromMaxSide(item.size, Number(e.target.value)),
+                        isBed
+                          ? proportionalBedFootprintFromMaxSide(
+                                item.size,
+                                Number(e.target.value),
+                                bedLegHeightIn(item),
+                              )
+                          : proportionalSizesFromMaxSide(item.size, Number(e.target.value)),
                       )
                     }
-                    aria-label="Scale all dimensions"
+                    aria-label={isBed ? 'Scale footprint' : 'Scale all dimensions'}
                   />
                 </section>
                 <section className="dgm-section">
@@ -206,20 +224,32 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
                         { label: 'Height', axis: 1 as const },
                         { label: 'Depth', axis: 2 as const },
                       ] as const
-                    ).map((dim) => (
+                    ).map((dim) => {
+                      const label = bedFitDimensionLabel(dim.axis, isBed);
+                      const limits = bedFitDimensionLimits(
+                        item,
+                        dim.axis,
+                        roomGeometry.height,
+                        maxFootprint,
+                      );
+                      return (
                       <label key={dim.label} className="dgm-dim-field">
-                        <span className="dgm-dim-field__label">{dim.label}</span>
+                        <span className="dgm-dim-field__label">{label}</span>
                         <input
                           className="dgm-dim-field__input"
                           type="number"
-                          min={1}
-                          max={dim.axis === 1 ? roomGeometry.height : maxFootprint}
-                          step={0.5}
-                          value={Math.round(item.size[dim.axis] * 10) / 10}
-                          aria-label={`${dim.label} in inches`}
+                          min={limits.min}
+                          max={limits.max}
+                          step={limits.step}
+                          value={Math.round(bedFitDimensionValue(item, dim.axis) * 10) / 10}
+                          aria-label={`${label} in inches`}
                           onChange={(e) => {
                             const n = Number(e.target.value);
                             if (!Number.isFinite(n) || n <= 0) return;
+                            if (isBed && dim.axis === 1) {
+                              setBedHeight(item.id, n);
+                              return;
+                            }
                             const next: [number, number, number] = [
                               item.size[0],
                               item.size[1],
@@ -230,7 +260,8 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
                           }}
                         />
                       </label>
-                    ))}
+                      );
+                    })}
                   </div>
                 </section>
                 <FurnitureBuildEditor item={item} />
@@ -256,24 +287,7 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
               />
             </section>
 
-            {isBed ? (
-              <section className="dgm-section">
-                <div className="dgm-section-head">
-                  <h3 className="dgm-section-title">Leg height</h3>
-                  <span className="dgm-section-meta">{item.bedLegHeight ?? 8}″</span>
-                </div>
-                <input
-                  type="range"
-                  className="dgm-range"
-                  min={4}
-                  max={36}
-                  step={1}
-                  value={item.bedLegHeight ?? 8}
-                  onChange={(e) => setBedHeight(item.id, Number(e.target.value))}
-                  aria-label="Leg height"
-                />
-              </section>
-            ) : (
+            {!isBed ? (
               <section className="dgm-section">
                 <div className="dgm-section-head">
                   <h3 className="dgm-section-title">Height off floor</h3>
@@ -290,7 +304,7 @@ export function MobileInspectorSheet({ onClose, tab, onTab }: MobileInspectorShe
                   aria-label="Height off floor"
                 />
               </section>
-            )}
+            ) : null}
 
             <div className="dgm-toggle-card">
               <span className="dgm-toggle-card__copy">

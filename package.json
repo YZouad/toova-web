@@ -7,9 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "node scripts/cursor-agentic-dev-server.mjs & vite",
-    "dev:cursor-proxy": "node scripts/cursor-agentic-dev-server.mjs",
-    "dev:agentic": "node scripts/cursor-agentic-dev-server.mjs & vite",
+    "dev": "vite",
     "build": "tsc -b && vite build",
     "build:ios": "tsc -b && vite build --mode embed",
     "preview": "vite preview",

@@ -12,6 +12,7 @@ dist/
 *.tsbuildinfo
 
 graphify-out/
+.tmp-thrixel-inspect/
 
 # Playwright
 test-results/

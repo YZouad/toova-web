@@ -21,7 +21,7 @@ export interface AgenticFurnitureListResult {
   /** Wall height in inches when known (e.g. room scan). */
   heightIn?: number;
   warnings: string[];
-  source: 'cursor' | 'rules-fallback' | 'manual' | 'room-scan';
+  source: 'bedrock' | 'cursor' | 'rules-fallback' | 'manual' | 'room-scan';
   /** Colors and floor preset inferred from scan (vision + optional client sampling). */
   scanAppearance?: RoomScanAppearance;
 }

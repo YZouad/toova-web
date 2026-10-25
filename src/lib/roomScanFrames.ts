@@ -10,7 +10,7 @@ export const ROOM_SCAN_MAX_DURATION_SEC = 60;
 /** Long edge cap for JPEG keyframes (keeps API payloads smaller). */
 export const ROOM_SCAN_FRAME_MAX_PX = 768;
 
-/** Max still-image upload (bytes); aligns with Cursor per-image limit. */
+/** Max still-image upload (bytes); aligns with Bedrock vision sampling on BFF. */
 export const ROOM_SCAN_MAX_IMAGE_BYTES = 15 * 1024 * 1024;
 
 const ROOM_SCAN_IMAGE_TYPES = new Set([

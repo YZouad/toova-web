@@ -264,7 +264,7 @@ export function applyNamedThemeToList(
 
 const VIBE_IDS = new Set<AgenticVibeId>(['warm', 'neutral', 'studio', 'moody', 'sage']);
 
-/** Shared with scripts/cursor-agentic-dev-server.mjs — keep in sync. */
+/** Shared with toova-bff agenticRoom/parseJson.ts — keep in sync. */
 export function buildCursorFurniturePrompt(userPrompt: string): string {
   return `You are a furniture and decor shopping assistant. Given a room description, produce a buyable shopping checklist with rough price estimates.
 
@@ -436,7 +436,7 @@ export function validateFurnitureListJson(raw: unknown): AgenticFurnitureListRes
     windowCurtains: windowCurtainsRaw,
     colorScheme,
     warnings: [],
-    source: 'cursor',
+    source: 'bedrock',
   };
   return ensureDeskPairings(ensureRoomEssentials(applyNamedThemeToList(base), ''), '');
 }
@@ -446,7 +446,7 @@ export function parseAgentTextToFurnitureList(text: string): AgenticFurnitureLis
   return validateFurnitureListJson(raw);
 }
 
-/** Cursor Cloud Agents API returns terminal run text in `result` (string). */
+/** Bedrock agent responses are plain text JSON (may include markdown fences). */
 export function extractRunTextFromCursorResponse(run: unknown): string {
   if (!run || typeof run !== 'object') return '';
   const o = run as Record<string, unknown>;

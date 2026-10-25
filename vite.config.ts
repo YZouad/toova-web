@@ -12,7 +12,6 @@ const trellisProxyPath = '/api/trellis';
 const thrixelProxyPath = '/api/thrixel';
 const agenticRoomProxyPath = '/api/agentic-room';
 const defaultTrellisBffOrigin = 'https://toova-bff.onrender.com';
-const defaultAgenticRoomProxyOrigin = 'http://127.0.0.1:8790';
 
 /** GitHub Pages SPA fallback: unknown paths serve 404.html (= index.html). */
 function spa404Fallback(): Plugin {
@@ -79,16 +78,8 @@ function buildThrixelProxy(trellisBffOrigin: string): Record<string, ProxyOption
   return buildBffProxy(trellisBffOrigin, thrixelProxyPath);
 }
 
-function buildAgenticRoomProxy(origin: string): Record<string, ProxyOptions> {
-  return {
-    [agenticRoomProxyPath]: {
-      target: origin,
-      changeOrigin: true,
-      timeout: 120_000,
-      proxyTimeout: 120_000,
-      rewrite: (path) => path.replace(/^\/api\/agentic-room/, ''),
-    },
-  };
+function buildAgenticRoomProxy(trellisBffOrigin: string): Record<string, ProxyOptions> {
+  return buildBffProxy(trellisBffOrigin, agenticRoomProxyPath);
 }
 
 export default defineConfig(({ mode }) => {
@@ -103,15 +94,15 @@ export default defineConfig(({ mode }) => {
     );
   }
 
-  const agenticRoomProxyOrigin =
-    env.AGENTIC_ROOM_PROXY_ORIGIN?.trim() || defaultAgenticRoomProxyOrigin;
   const trellisProxy = trellisBffOrigin
     ? {
         ...buildTrellisProxy(trellisBffOrigin),
         ...buildThrixelProxy(trellisBffOrigin),
-        ...buildAgenticRoomProxy(agenticRoomProxyOrigin),
+        ...buildAgenticRoomProxy(trellisBffOrigin),
       }
-    : buildAgenticRoomProxy(agenticRoomProxyOrigin);
+    : {
+        ...buildAgenticRoomProxy(defaultTrellisBffOrigin),
+      };
 
   if (mode === 'embed') {
     return {

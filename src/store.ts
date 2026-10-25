@@ -140,6 +140,14 @@ export interface HangingDraft {
 const BED_MIN_BODY_H = 4;
 export const DEFAULT_BLANKET_COLOR = '#6b8cae';
 
+function bedBodyHeightIn(): number {
+  return FURNITURE.bed.size[1];
+}
+
+function bedTotalHeightIn(legHeight: number): number {
+  return legHeight + bedBodyHeightIn();
+}
+
 export type { RoomAppearance, VisualSettings, CameraPresetId, CutawayMode, RenderQualityTier };
 /**
  * Legacy beds used frame-bottom coordinates: position.y === leg height on the floor,
@@ -149,7 +157,13 @@ export type { RoomAppearance, VisualSettings, CameraPresetId, CutawayMode, Rende
 export function normalizeBedItem(it: Item): Item {
   if (it.kind !== 'bed') return it;
   const leg = it.bedLegHeight ?? 8;
-  if (it.size[1] > leg + 8) return it;
+  if (it.size[1] > leg + 8) {
+    const expected = bedTotalHeightIn(leg);
+    if (Math.abs(it.size[1] - expected) > 0.5) {
+      return { ...it, size: [it.size[0], expected, it.size[2]] };
+    }
+    return it;
+  }
   if (it.position[1] < leg - 1) return it;
   return {
     ...it,
@@ -1095,7 +1109,7 @@ export const useStore = create<StoreState>((set, get) => ({
     const size: [number, number, number] = opts?.size ?? (def ? def.size : [24, 24, 24]);
     const isBed = kind === 'bed';
     const bedLegHeight = isBed ? 8 : undefined;
-    const bodyH = isBed && def ? def.size[1] : 0;
+    const bodyH = isBed ? bedBodyHeightIn() : 0;
     const room = useStore.getState().roomGeometry;
     const [cx, cz] = planCentroid(room);
     const label = opts?.label ?? (def ? def.label : 'Model');
@@ -1274,7 +1288,9 @@ export const useStore = create<StoreState>((set, get) => ({
       ];
       if (it.kind === 'bed') {
         const leg = it.bedLegHeight ?? 8;
-        size[1] = clamp(sizeInput[1], leg + BED_MIN_BODY_H, heightMax);
+        size[0] = clamp(sizeInput[0], 1, maxFootprint);
+        size[2] = clamp(sizeInput[2], 1, maxFootprint);
+        size[1] = bedTotalHeightIn(leg);
       }
       if (it.kind === 'lamp') {
         size[1] = clamp(sizeInput[1], lampMinHeight(size), heightMax);
@@ -1378,10 +1394,9 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => {
       const it = s.items[id];
       if (!it || it.kind !== 'bed') return s;
-      const prevLeg = it.bedLegHeight ?? 8;
-      const bodyH = Math.max(BED_MIN_BODY_H, it.size[1] - prevLeg);
+      const bodyH = bedBodyHeightIn();
       const clamped = clamp(h, 4, Math.min(36, Math.max(4, s.roomGeometry.height - bodyH)));
-      const nextSize: [number, number, number] = [it.size[0], clamped + bodyH, it.size[2]];
+      const nextSize: [number, number, number] = [it.size[0], bedTotalHeightIn(clamped), it.size[2]];
       const next: Item = {
         ...it,
         bedLegHeight: clamped,

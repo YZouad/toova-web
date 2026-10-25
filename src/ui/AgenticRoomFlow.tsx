@@ -23,7 +23,7 @@ import {
   manifestFromResolved,
   type AgenticShoppingManifestEntry,
 } from '../lib/agenticShoppingManifest';
-import { fetchFurnitureListFromCursor } from '../lib/agenticRoomCursorApi';
+import { fetchAgenticFurnitureList } from '../lib/agenticRoomParseApi';
 import {
   flattenCatalogProducts,
   formatAgenticPrice,
@@ -667,7 +667,7 @@ export function AgenticRoomFlow({
     setSaveTitle(session.saveTitle ?? defaultChecklistTitle(session.prompt, session.result));
     setItemResolutions(new Map(session.itemResolutions ?? []));
     setParseError(null);
-    setShowAiPrompt(session.result?.source === 'cursor');
+    setShowAiPrompt(session.result?.source === 'bedrock' || session.result?.source === 'cursor');
   }, []);
 
   const buildSessionSnapshot = useCallback((): AgenticChecklistSession => {
@@ -858,7 +858,7 @@ export function AgenticRoomFlow({
     setEnhancing(true);
     setParseError(null);
     try {
-      const suggested = await fetchFurnitureListFromCursor(hint);
+      const suggested = await fetchAgenticFurnitureList(hint);
       if (suggested.items.length === 0) {
         setParseError(suggested.warnings[0] ?? 'No new items suggested.');
         return;
@@ -882,7 +882,7 @@ export function AgenticRoomFlow({
     setGeneratePhase('sending');
     try {
       setGeneratePhase('waiting');
-      const next = await fetchFurnitureListFromCursor(prompt);
+      const next = await fetchAgenticFurnitureList(prompt);
       if (next.items.length === 0) {
         setParseError(next.warnings[0] ?? 'No furniture items returned.');
         setResult(null);
@@ -1090,7 +1090,7 @@ export function AgenticRoomFlow({
 
   const statusMessage =
     generatePhase === 'sending'
-      ? 'Sending to Cursor…'
+      ? 'Sending to AI…'
       : generatePhase === 'waiting'
         ? 'Building your shopping list… (usually 30–90 seconds)'
         : null;
@@ -1222,7 +1222,7 @@ export function AgenticRoomFlow({
       draft.listResult ?? {
         items: draft.items,
         warnings: [],
-        source: 'cursor',
+        source: 'bedrock',
       },
     );
     setSavedPicks(draft.resolved);
@@ -1416,8 +1416,8 @@ export function AgenticRoomFlow({
 
       {result ? (
         <div className="agentic-room-flow__review">
-          {result.source === 'cursor' ? (
-            <p className="agentic-room-flow__source-badge">Shopping list by Cursor</p>
+          {result.source === 'bedrock' || result.source === 'cursor' ? (
+            <p className="agentic-room-flow__source-badge">Shopping list by AI</p>
           ) : null}
           {result.source === 'manual' ? (
             <p className="agentic-room-flow__source-badge">Your checklist</p>
@@ -1685,7 +1685,7 @@ export function AgenticRoomFlow({
                     : ''
                 }`}
               >
-                Cursor estimate: {formatAgenticPrice(liveEstimateTotal)}
+                AI estimate: {formatAgenticPrice(liveEstimateTotal)}
               </p>
             ) : null}
             {showProductRows && request?.budgetCents != null ? (

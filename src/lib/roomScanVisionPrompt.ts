@@ -1,4 +1,4 @@
-/** System prompt for room-scan (Cursor Cloud Agents with JPEG frames). */
+/** System prompt for room-scan (Bedrock vision on toova-bff /analyze). Keep in sync with toova-bff roomScanVisionPrompt.ts */
 export const ROOM_SCAN_VISION_PROMPT = `You analyze room images and estimate a rectangular floor plan plus visible furniture. Input may be one wide still photo or several frames from a walkthrough video.
 
 Return ONLY valid JSON (no markdown). Use this schema:
