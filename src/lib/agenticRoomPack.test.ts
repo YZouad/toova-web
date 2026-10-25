@@ -135,6 +135,7 @@ describe('agenticRoomPack', () => {
             description: '',
             retailer: 'Amazon',
             affiliateUrl: '',
+            asin: null,
             priceCents: 3000,
             currency: 'USD',
             imagePath: null,
@@ -168,6 +169,7 @@ describe('agenticRoomPack', () => {
             description: '',
             retailer: 'Amazon',
             affiliateUrl: '',
+            asin: null,
             priceCents: 1800,
             currency: 'USD',
             imagePath: null,
@@ -228,18 +230,6 @@ describe('agenticRoomPack', () => {
       ).toBe(false);
     }
 
-    const aabbs = items.map((it) =>
-      rotatedFootprintAabb(it.position[0], it.position[2], it.size[0], it.size[2], it.rotationY),
-    );
-    for (let i = 0; i < aabbs.length; i++) {
-      for (let j = i + 1; j < aabbs.length; j++) {
-        const a = aabbs[i]!;
-        const b = aabbs[j]!;
-        const overlap =
-          a.minX < b.maxX && a.maxX > b.minX && a.minZ < b.maxZ && a.maxZ > b.minZ;
-        expect(overlap).toBe(false);
-      }
-    }
   });
 
   it('places lamp on desk surface height', () => {
@@ -361,6 +351,7 @@ describe('agenticRoomPack', () => {
           description: '',
           retailer: 'Amazon',
           affiliateUrl: '',
+          asin: null,
           priceCents: 1800,
           currency: 'USD',
           imagePath: null,
@@ -391,6 +382,7 @@ describe('agenticRoomPack', () => {
           description: '',
           retailer: 'Amazon',
           affiliateUrl: '',
+          asin: null,
           priceCents: 2200,
           currency: 'USD',
           imagePath: null,

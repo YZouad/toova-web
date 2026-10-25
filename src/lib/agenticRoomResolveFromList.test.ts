@@ -11,6 +11,7 @@ function mockProduct(partial: Partial<CuratedProduct> & Pick<CuratedProduct, 'id
     description: partial.description ?? '',
     retailer: 'Amazon',
     affiliateUrl: partial.affiliateUrl ?? 'https://www.amazon.com/dp/example',
+    asin: null,
     priceCents: partial.priceCents ?? 5000,
     currency: 'USD',
     imagePath: null,

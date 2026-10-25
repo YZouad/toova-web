@@ -1106,7 +1106,7 @@ export function AgenticRoomFlow({
       const schemeColors = isScan
         ? effectiveScanColorScheme(result, scanAppearance)
         : result?.colorScheme;
-      if (windowCurtains?.enabled && schemeColors?.length) {
+      if (windowCurtains && schemeColors?.length) {
         const curtainColor = curtainColorFromScheme(schemeColors);
         if (curtainColor) {
           windowCurtains = { ...windowCurtains, color: curtainColor };

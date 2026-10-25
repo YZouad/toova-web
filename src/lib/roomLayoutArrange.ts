@@ -1667,8 +1667,9 @@ export function arrangeRoomItems(
     }
   }
 
+  const bedWallId = bedWall?.wall.id;
   const sofaWalls = uniqueWalls([
-    ...(bedWall ? walls.filter((w) => w.wall.id !== bedWall.wall.id) : []),
+    ...(bedWallId != null ? walls.filter((w) => w.wall.id !== bedWallId) : []),
     ...walls,
   ]);
   let sofaPlacement: PlacedItem | null = null;

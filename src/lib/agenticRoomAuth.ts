@@ -64,13 +64,13 @@ export async function agenticRoomAuthHeaders(route: string): Promise<{
   if (!token) {
     warnAgenticRoom(
       `No Supabase access token for ${route} — BFF will respond with "Missing Authorization header"`,
-      diagnostics,
+      { ...diagnostics },
     );
     return { headers: {}, diagnostics };
   }
 
   if (expiresInSec != null && expiresInSec <= 0) {
-    warnAgenticRoom(`Supabase session token appears expired for ${route}`, diagnostics);
+    warnAgenticRoom(`Supabase session token appears expired for ${route}`, { ...diagnostics });
   }
 
   diagnostics.sentAuthorization = true;

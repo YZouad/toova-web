@@ -1,6 +1,7 @@
 export type {
   ChairBack,
   ChairStyle,
+  DeskBase,
   DeskPedestal,
   DeskPedestalSide,
   DeskPullOut,
