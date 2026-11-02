@@ -135,9 +135,7 @@ function htmlLetter(letter: Letter, unsubscribeUrl: string): string {
   const cta = escapeHtml(letter.cta);
   const href = escapeHtml(letter.href);
   const unsub = unsubscribeUrl
-    ? `<p style="margin:14px 0 0;font-family:${SANS};font-size:13px;line-height:1.5;color:${MUTED};">
-         <a href="${escapeHtml(unsubscribeUrl)}" style="color:${MUTED};text-decoration:underline;">Unsubscribe</a>
-       </p>`
+    ? `<a href="${escapeHtml(unsubscribeUrl)}" style="font-family:${SANS};font-size:13px;line-height:1.5;color:${MUTED};text-decoration:underline;">Unsubscribe</a>`
     : "";
 
   return `<!DOCTYPE html>
@@ -190,11 +188,10 @@ function htmlLetter(letter: Letter, unsubscribeUrl: string): string {
             </td>
           </tr>
           <tr>
-            <td style="padding:28px 36px 32px;">
-              <div style="border-top:1px solid ${RULE};padding-top:16px;font-family:${SANS};font-size:13px;line-height:1.5;color:${MUTED};">
-                Toova
-                ${unsub}
-              </div>
+            <td style="padding:${unsubscribeUrl ? "28px" : "8px"} 36px 32px;">
+              ${unsubscribeUrl
+                ? `<div style="border-top:1px solid ${RULE};padding-top:16px;">${unsub}</div>`
+                : ""}
             </td>
           </tr>
         </table>
