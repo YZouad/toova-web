@@ -3,6 +3,7 @@ import {
   clearPasswordRecoveryFlag,
   markPasswordRecovery,
   readPasswordRecoveryFlag,
+  shouldOpenResetPasswordRoute,
 } from './passwordRecovery';
 
 function installMemoryLocalStorage() {
@@ -47,5 +48,32 @@ describe('passwordRecovery flag', () => {
     expect(readPasswordRecoveryFlag()).toBe(true);
     clearPasswordRecoveryFlag();
     expect(readPasswordRecoveryFlag()).toBe(false);
+  });
+});
+
+describe('shouldOpenResetPasswordRoute', () => {
+  it('opens the reset screen once when recovery starts off that route', () => {
+    expect(shouldOpenResetPasswordRoute(true, false, false)).toEqual({
+      open: true,
+      alreadyOpened: true,
+    });
+  });
+
+  it('does not send the user back after they leave the reset screen', () => {
+    expect(shouldOpenResetPasswordRoute(true, false, true)).toEqual({
+      open: false,
+      alreadyOpened: true,
+    });
+    expect(shouldOpenResetPasswordRoute(true, true, false)).toEqual({
+      open: false,
+      alreadyOpened: true,
+    });
+  });
+
+  it('clears the latch when recovery ends', () => {
+    expect(shouldOpenResetPasswordRoute(false, false, true)).toEqual({
+      open: false,
+      alreadyOpened: false,
+    });
   });
 });

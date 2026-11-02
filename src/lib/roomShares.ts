@@ -54,17 +54,23 @@ export interface SharedRoomRpcPayload {
 
 function shareErrorMessage(err: unknown): string {
   if (err && typeof err === 'object' && 'message' in err) {
-    const msg = String((err as { message: string }).message);
-    if (msg.toLowerCase().includes('invalid share link')) {
-      return 'This share link is invalid or has been revoked.';
+    const msg = String((err as { message: string }).message).toLowerCase();
+    if (msg.includes('share link expired')) {
+      return 'This share link has expired.';
     }
-    if (msg.toLowerCase().includes('copying is disabled')) {
+    if (msg.includes('share link revoked')) {
+      return 'This share link has been revoked.';
+    }
+    if (msg.includes('invalid share link')) {
+      return 'This share link is invalid or no longer works.';
+    }
+    if (msg.includes('copying is disabled')) {
       return 'The owner disabled copies for this link.';
     }
-    if (msg.toLowerCase().includes('room limit')) {
-      return msg;
+    if (msg.includes('room limit')) {
+      return String((err as { message: string }).message);
     }
-    return msg;
+    return String((err as { message: string }).message);
   }
   return 'Something went wrong with this share link.';
 }

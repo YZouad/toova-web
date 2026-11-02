@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from 'react';
@@ -51,6 +52,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profileLoading, setProfileLoading] = useState(false);
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
   const [passwordRecovery, setPasswordRecovery] = useState(readPasswordRecoveryFlag);
+  const recoveryClosed = useRef(false);
 
   const loadProfile = useCallback(async (uid: string | undefined) => {
     if (!uid) {
@@ -87,7 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const { data: listener } = supabase.auth.onAuthStateChange((event, session) => {
       const next = session?.user ?? null;
-      if (event === 'PASSWORD_RECOVERY') {
+      if (event === 'PASSWORD_RECOVERY' && !recoveryClosed.current) {
         markPasswordRecovery();
         setPasswordRecovery(true);
       }
@@ -96,6 +98,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setPasswordRecovery(false);
       }
       if (event === 'SIGNED_OUT') {
+        recoveryClosed.current = false;
         clearSignedUrlCache();
       }
       setUser(next);
@@ -139,6 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [loadProfile, user]);
 
   const endPasswordRecovery = useCallback(() => {
+    recoveryClosed.current = true;
     clearPasswordRecoveryFlag();
     setPasswordRecovery(false);
   }, []);

@@ -22,6 +22,7 @@ import {
   resetPasswordPath,
   useRoute,
 } from './hooks/useRoute';
+import { shouldOpenResetPasswordRoute } from './lib/passwordRecovery';
 import { supabase } from './lib/supabase';
 import { useStore, DEFAULT_ENVIRONMENT, type Item, type RoomEnvironment } from './store';
 import type { FloorPlan } from './lib/floorPlanGeometry';
@@ -113,7 +114,15 @@ import { useEntitlements } from './hooks/useEntitlements';
 import { PricingPage } from './ui/billing/PricingPage';
 import { buildGallerySearchParams } from './lib/galleryCatalog';
 import type { FurnitureKind } from './furniture/registry';
-import { galleryModelImportedSize, galleryModelPlacesAsImport, isProceduralBuiltinKind } from './lib/placeGalleryModel';
+import {
+  consumeOpenRoomParam,
+  consumePlaceCatalogParam,
+  fetchGalleryModelByKind,
+  fetchOpenableRoom,
+  galleryModelImportedSize,
+  galleryModelPlacesAsImport,
+  isProceduralBuiltinKind,
+} from './lib/placeGalleryModel';
 import { profileInitials } from './lib/userDisplay';
 import {
   AppShell,
@@ -253,6 +262,11 @@ function AppContent() {
   const [pendingGalleryModel, setPendingGalleryModel] = useState<GalleryModel | null>(null);
   const [authReason, setAuthReason] = useState<string | null>(null);
   const [authFromGuestStart, setAuthFromGuestStart] = useState(false);
+  const [landingNotice, setLandingNotice] = useState<string | null>(null);
+  const resetRouteOpened = useRef(false);
+  const placeCatalogHandled = useRef(false);
+  const openRoomHandled = useRef(false);
+  const pendingOpenRoomId = useRef<string | null>(null);
   const [guestTemplateId, setGuestTemplateId] = useState<string | undefined>(undefined);
   const [adminInitialTab, setAdminInitialTab] = useState<AdminTab>('overview');
   const [adminStarterId, setAdminStarterId] = useState<string | undefined>(undefined);
@@ -490,10 +504,18 @@ function AppContent() {
   ]);
 
   useEffect(() => {
-    if (!passwordRecovery) return;
-    if (route.name === 'resetPassword') return;
-    navigate(resetPasswordPath(), true);
+    const next = shouldOpenResetPasswordRoute(
+      passwordRecovery,
+      route.name === 'resetPassword',
+      resetRouteOpened.current,
+    );
+    resetRouteOpened.current = next.alreadyOpened;
+    if (next.open) navigate(resetPasswordPath(), true);
   }, [passwordRecovery, route.name]);
+
+  useEffect(() => {
+    if (screen !== 'landing' && landingNotice) setLandingNotice(null);
+  }, [screen, landingNotice]);
 
   useEffect(() => {
     if (screen === 'admin' && !adminStatsLoading && !isAdmin) {
@@ -534,6 +556,33 @@ function AppContent() {
     [addItem, user?.id],
   );
 
+  /** Extension / deep-link: ?placeCatalog=<kind> queues the model for the room picker. */
+  useEffect(() => {
+    if (placeCatalogHandled.current || loading) return;
+    const kind = consumePlaceCatalogParam();
+    if (!kind) {
+      placeCatalogHandled.current = true;
+      return;
+    }
+    placeCatalogHandled.current = true;
+    void (async () => {
+      const model = await fetchGalleryModelByKind(kind);
+      if (!model) {
+        setLandingNotice('Could not find that catalog model.');
+        return;
+      }
+      setPendingGalleryModel(model);
+      if (!user) {
+        setAuthReason('Sign in to place this model in a room.');
+        setAuthMode('signin');
+        setScreen('auth');
+        return;
+      }
+      navigate('/');
+      setScreen('dashboard');
+    })();
+  }, [loading, user]);
+
   const handlePickExisting = useCallback(
     async (room: { id: string; name: string; isOwner?: boolean }) => {
       resetLayout();
@@ -561,6 +610,39 @@ function AppContent() {
       placePendingGalleryModel,
     ],
   );
+
+  /** Extension deep-link: ?openRoom=<id> opens that room in the designer. */
+  useEffect(() => {
+    if (loading) return;
+    if (!openRoomHandled.current) {
+      pendingOpenRoomId.current = consumeOpenRoomParam();
+      openRoomHandled.current = true;
+    }
+    const roomId = pendingOpenRoomId.current;
+    if (!roomId) return;
+    if (!user) {
+      setAuthReason('Sign in to open this room.');
+      setAuthMode('signin');
+      setScreen('auth');
+      return;
+    }
+    pendingOpenRoomId.current = null;
+    void (async () => {
+      const room = await fetchOpenableRoom(roomId);
+      if (!room) {
+        setLandingNotice('Could not open that room.');
+        navigate('/');
+        setScreen('dashboard');
+        return;
+      }
+      try {
+        await handlePickExisting(room);
+      } catch {
+        setLandingNotice('Could not open that room.');
+        setScreen('dashboard');
+      }
+    })();
+  }, [loading, user, handlePickExisting]);
 
   useEffect(() => {
     const ret = peekCheckoutReturn();
@@ -1070,6 +1152,35 @@ function AppContent() {
     },
   };
 
+  const leaveAuth = () => {
+    setAuthReason(null);
+    if (pendingShareToken) {
+      navigate(sharePath(pendingShareToken), true);
+      setScreen('landing');
+      return;
+    }
+    if (pendingPublicRoom) {
+      navigate(publicRoomPath(pendingPublicRoom.handle, pendingPublicRoom.roomId), true);
+      setScreen('landing');
+      return;
+    }
+    if (workspace && isGuestWorkspaceId(workspace.id)) {
+      setScreen('designer');
+      return;
+    }
+    if (authFromGuestStart) {
+      setAuthFromGuestStart(false);
+      setScreen('dashboard');
+      return;
+    }
+    if (route.name === 'gallery') {
+      setScreen('gallery');
+      return;
+    }
+    setScreen('landing');
+    if (routeIsPublic) navigate('/', true);
+  };
+
   if (restoringCheckout) {
     return <Splash label="Returning to your room…" />;
   }
@@ -1101,33 +1212,10 @@ function AppContent() {
         authReason={authReason}
         onContact={siteFooterNav.onContact}
         onPitchMadness={siteFooterNav.onPitchMadness}
-        onBack={() => {
-          setAuthReason(null);
-          if (pendingShareToken) {
-            navigate(sharePath(pendingShareToken), true);
-            setScreen('landing');
-            return;
-          }
-          if (pendingPublicRoom) {
-            navigate(publicRoomPath(pendingPublicRoom.handle, pendingPublicRoom.roomId), true);
-            setScreen('landing');
-            return;
-          }
-          if (workspace && isGuestWorkspaceId(workspace.id)) {
-            setScreen('designer');
-            return;
-          }
-          if (authFromGuestStart) {
-            setAuthFromGuestStart(false);
-            setScreen('dashboard');
-            return;
-          }
-          if (route.name === 'gallery') {
-            setScreen('gallery');
-            return;
-          }
-          setScreen('landing');
-          if (routeIsPublic) navigate('/', true);
+        onBack={leaveAuth}
+        onPasswordResetSent={(message) => {
+          setLandingNotice(message);
+          leaveAuth();
         }}
       />
     );
@@ -1421,6 +1509,8 @@ function AppContent() {
         <div className={showMarketingRail ? 'kit-app-rail-pad' : undefined}>
           <LandingPage
             {...landingCallbacks}
+            notice={landingNotice}
+            onDismissNotice={() => setLandingNotice(null)}
             onOpenChecklist={() => openChecklistFrom('landing')}
             onContact={() => setScreen('contact')}
             onBrowseGallery={() => {

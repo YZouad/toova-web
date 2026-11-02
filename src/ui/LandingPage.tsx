@@ -9,6 +9,7 @@ import { HeroTurntable } from './HeroTurntable';
 import { MarketingObjectTurntable, STEP_CHAIR_URL } from './MarketingObjectTurntable';
 import { RoomGalleryCard } from './RoomGalleryCard';
 import {
+  Banner,
   Button,
   DisplayEm,
   DisplayHeading,
@@ -37,6 +38,8 @@ interface LandingPageProps {
   onAdmin?: () => void;
   loggedIn?: boolean;
   onGoDashboard?: () => void;
+  notice?: string | null;
+  onDismissNotice?: () => void;
 }
 
 const STEPS = [
@@ -123,6 +126,8 @@ export function LandingPage({
   onAdmin,
   loggedIn,
   onGoDashboard,
+  notice,
+  onDismissNotice,
 }: LandingPageProps) {
   const phone = usePhoneNav();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -194,6 +199,17 @@ export function LandingPage({
           />
         }
       />
+
+      {notice ? (
+        <div className="toova-frame" style={{ paddingTop: 20, display: 'grid', gap: 12, justifyItems: 'start' }}>
+          <Banner tone="info">{notice}</Banner>
+          {onDismissNotice ? (
+            <Button size="sm" variant="mono" type="button" onClick={onDismissNotice}>
+              Dismiss
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       {/* Hero */}
       <div className="toova-frame landing-hero-pad">

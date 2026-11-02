@@ -7,6 +7,7 @@
  */
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.49.1";
+import { isOneClickUnsubscribe, renderLifecycleEmail } from "./templates.ts";
 
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
@@ -21,14 +22,24 @@ Deno.serve(async (req: Request) => {
   }
 
   const url = new URL(req.url);
+  const unsubscribeToken = url.searchParams.get("unsubscribe")?.trim() ?? "";
 
-  // One-click unsubscribe
-  if (req.method === "GET" && url.searchParams.get("unsubscribe")) {
-    const token = url.searchParams.get("unsubscribe")!.trim();
+  // Human click (GET) or mail-client one-click (POST + RFC 8058 body).
+  if (unsubscribeToken && (req.method === "GET" || req.method === "POST")) {
+    if (req.method === "POST") {
+      const body = await req.text();
+      if (!isOneClickUnsubscribe(body, req.headers.get("List-Unsubscribe"))) {
+        return json({ error: "Method not allowed." }, 405);
+      }
+    }
     const admin = serviceClient();
     const { data, error } = await admin.rpc("unsubscribe_lifecycle_email", {
-      p_token: token,
+      p_token: unsubscribeToken,
     });
+    if (req.method === "POST") {
+      if (error) return json({ error: "Could not unsubscribe." }, 400);
+      return json({ ok: Boolean(data) });
+    }
     if (error) return html("Could not unsubscribe.", 400);
     return html(
       data
@@ -80,12 +91,18 @@ Deno.serve(async (req: Request) => {
           continue;
         }
 
-        const content = renderTemplate(row.template, row.payload ?? {}, unsubToken);
+        const content = renderLifecycleEmail({
+          template: row.template,
+          payload: (row.payload ?? {}) as Record<string, unknown>,
+          siteUrl: siteUrl(),
+          unsubscribeUrl: unsubscribeUrl(unsubToken),
+        });
         await sendResend({
           to: email,
           subject: content.subject,
           text: content.text,
           html: content.html,
+          headers: content.headers,
         });
         await markOutbox(admin, row.id, "sent");
         sent++;
@@ -184,76 +201,11 @@ function siteUrl(): string {
   return (Deno.env.get("PUBLIC_SITE_URL")?.trim() || "https://toova.net").replace(/\/$/, "");
 }
 
-function renderTemplate(
-  template: string,
-  payload: Record<string, unknown>,
-  unsubToken: string,
-): { subject: string; text: string; html: string } {
-  const unsub = unsubToken
-    ? `${siteUrl().replace("https://toova.net", Deno.env.get("SUPABASE_URL")?.replace(/\/$/, "") || "")}/functions/v1/send-lifecycle-email?unsubscribe=${encodeURIComponent(unsubToken)}`
-    : "";
-  // Prefer functions URL for unsubscribe
-  const functionsBase = `${requireEnv("SUPABASE_URL").replace(/\/$/, "")}/functions/v1/send-lifecycle-email`;
-  const unsubUrl = unsubToken
-    ? `${functionsBase}?unsubscribe=${encodeURIComponent(unsubToken)}`
-    : "";
-
-  const roomName = escapeHtml(
-    typeof payload.room_name === "string" ? payload.room_name : "your room",
-  );
-  const label = escapeHtml(
-    typeof payload.label === "string" ? payload.label : "your model",
-  );
-
-  let subject = "Toova";
-  let body = "";
-  switch (template) {
-    case "finish_room":
-      subject = "Finish your room on Toova";
-      body =
-        "You started designing a room — come back and place a few more pieces so it feels like home.\n\n" +
-        `${siteUrl()}/`;
-      break;
-    case "model_ready":
-      subject = "Your 3D model is ready";
-      body = `${label} finished generating. Open Toova to save it into your catalog.\n\n${siteUrl()}/`;
-      break;
-    case "room_liked":
-      subject = "People liked your rooms today";
-      body = `Someone liked ${roomName} (and maybe more). Check your gallery notifications.\n\n${siteUrl()}/gallery`;
-      break;
-    case "room_copied":
-      subject = "Someone copied your room";
-      body = `${roomName} was remixed today. See what’s trending.\n\n${siteUrl()}/gallery`;
-      break;
-    case "credits_refreshed":
-      subject = "Your monthly Toova credits refreshed";
-      body =
-        "Your monthly AI credits are topped up. Import a photo and place something new.\n\n" +
-        `${siteUrl()}/`;
-      break;
-    case "move_in_countdown":
-      subject = "Your move-in checklist is waiting";
-      body =
-        "You still have checklist items to buy or mark as have. Open your shopping list before move-in.\n\n" +
-        `${siteUrl()}/`;
-      break;
-    default:
-      subject = "Toova update";
-      body = `Open Toova: ${siteUrl()}/`;
-  }
-
-  const footer = unsubUrl
-    ? `\n\n—\nUnsubscribe: ${unsubUrl}`
-    : "\n\n—\nToova";
-
-  const text = body + footer;
-  const html = `<p>${body.replace(/\n\n/g, "</p><p>").replace(/\n/g, "<br/>")}</p>` +
-    (unsubUrl
-      ? `<p style="color:#888;font-size:12px"><a href="${unsubUrl}">Unsubscribe</a></p>`
-      : "");
-
-  return { subject, text, html };
+function unsubscribeUrl(token: string): string {
+  const trimmed = token.trim();
+  if (!trimmed) return "";
+  const base = `${requireEnv("SUPABASE_URL").replace(/\/$/, "")}/functions/v1/send-lifecycle-email`;
+  return `${base}?unsubscribe=${encodeURIComponent(trimmed)}`;
 }
 
 async function sendResend(opts: {
@@ -261,6 +213,7 @@ async function sendResend(opts: {
   subject: string;
   text: string;
   html: string;
+  headers: Record<string, string>;
 }): Promise<void> {
   const apiKey = Deno.env.get("RESEND_API_KEY")?.trim();
   if (!apiKey) throw new Error("RESEND_API_KEY not set");
@@ -280,21 +233,13 @@ async function sendResend(opts: {
       subject: opts.subject,
       text: opts.text,
       html: opts.html,
+      ...(Object.keys(opts.headers).length ? { headers: opts.headers } : {}),
     }),
   });
   if (!res.ok) {
     const detail = await res.text().catch(() => "");
     throw new Error(`Resend ${res.status}: ${detail.slice(0, 200)}`);
   }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
 }
 
 function requireEnv(name: string): string {
