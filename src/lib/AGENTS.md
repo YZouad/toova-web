@@ -14,6 +14,7 @@ Largest concentration of non-UI logic. Prefer editing here over stuffing `store.
 | Trellis / Thrixel / generation | `trellisApi.ts`, `thrixelApi.ts`, `preparePhotoForTrellis.ts`, `generationQueue.ts` |
 | Storage | `modelStorage.ts`, `roomThumbnailStorage.ts`, `profileStorage.ts`, `beddingStorage.ts` |
 | Analytics / admin | `analytics.ts`, `adminAnalytics.ts`, `adminUserOverview.ts` |
+| SEO / head / JSON-LD | `seo/` (`routes.ts`, `facts.ts`, `jsonLd.ts`, `documentHead.ts`) — content in `src/content/` |
 | Hanging decor | `hangingDecorGeometry.ts` |
 | Bedding | `bedding/` |
 

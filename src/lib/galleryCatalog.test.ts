@@ -162,7 +162,7 @@ describe('parsePathname gallery', () => {
   it('recognizes /gallery', () => {
     expect(parsePathname('/gallery')).toEqual({ name: 'gallery' });
     expect(parsePathname('/gallery/')).toEqual({ name: 'gallery' });
-    expect(galleryPath('?source=toova')).toBe('/gallery?source=toova');
+    expect(galleryPath('?source=toova')).toBe('/gallery/?source=toova');
   });
 });
 

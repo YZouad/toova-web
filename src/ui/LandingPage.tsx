@@ -1,8 +1,9 @@
-import { useRef, useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import { useGalleryRooms, type GalleryRoom } from '../hooks/useGalleryRooms';
-import { galleryPath, navigate, publicRoomPath } from '../hooks/useRoute';
+import { galleryPath, navigate, pricingPath, publicRoomPath } from '../hooks/useRoute';
 import { buildGallerySearchParams } from '../lib/galleryCatalog';
 import { publicModelAssetUrl } from '../lib/modelStorage';
+import { SEO_FAQ } from '../lib/seo/facts';
 import { PlanColumns } from './billing/PlanColumns';
 import { FeedbackModal } from './FeedbackModal';
 import { HeroTurntable } from './HeroTurntable';
@@ -95,26 +96,6 @@ const VALUES: [string, string][] = [
   ['Innovation', 'Spatial tools belong to shoppers, not only to architects and studios.'],
 ];
 
-const FAQ: { question: string; answer: string }[] = [
-  {
-    question: 'What is Toova?',
-    answer:
-      'A 3D room planner: turn a product photo into a model and place it in your room at real scale.',
-  },
-  {
-    question: 'How does the room planner work?',
-    answer: 'Photo → 3D (~30s) → arrange against your walls → buy from the room.',
-  },
-  {
-    question: 'Can I plan a dorm before I move in?',
-    answer: 'Yes; measured dorm plans are available today.',
-  },
-  {
-    question: 'Is Toova free?',
-    answer: 'Free for five rooms. Lite is $2.99 a month or $29.99 a year. Pro is $7.99 a month or $59 a year.',
-  },
-];
-
 export function LandingPage({
   onGetStarted,
   onLogin,
@@ -142,6 +123,13 @@ export function LandingPage({
   const roomsRef = useRef<HTMLDivElement>(null);
   const whyRef = useRef<HTMLDivElement>(null);
   const pricingRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    document.documentElement.dataset.seoReady = '1';
+    return () => {
+      delete document.documentElement.dataset.seoReady;
+    };
+  }, []);
 
   const primaryAction = loggedIn && onGoDashboard ? onGoDashboard : onGetStarted;
   const secondaryAction = loggedIn && onGoDashboard ? onGoDashboard : onLogin;
@@ -175,7 +163,7 @@ export function LandingPage({
   };
 
   return (
-    <div className="toova-page">
+    <div className="toova-page" data-seo-ready="1">
       <div className="toova-paper" aria-hidden />
       <FeedbackModal open={feedbackOpen} onClose={() => setFeedbackOpen(false)} pageSource="landing" />
 
@@ -185,9 +173,18 @@ export function LandingPage({
             ? undefined
             : [
                 ...(!loggedIn ? [{ label: 'Log in', onClick: secondaryAction }] : []),
-                { label: 'How it works', onClick: () => scrollTo(howRef) },
-                { label: 'Gallery', onClick: openGallery },
-                { label: 'Pricing', onClick: () => scrollTo(pricingRef) },
+                { label: 'How it works', href: '/#how', onClick: () => scrollTo(howRef) },
+                { label: 'Gallery', href: galleryPath(), onClick: openGallery },
+                {
+                  label: 'Room designer',
+                  href: '/room-designer/',
+                  onClick: () => navigate('/room-designer/'),
+                },
+                {
+                  label: 'Pricing',
+                  href: pricingPath(),
+                  onClick: () => scrollTo(pricingRef),
+                },
                 { label: 'Contact', onClick: onContact },
               ]
         }
@@ -219,6 +216,7 @@ export function LandingPage({
               Toova — a room planner for people about to spend money
             </Eyebrow>
             <DisplayHeading level={1}>
+              <span className="landing-hero-seo-prefix">Toova — the 3D room designer</span>
               Own it
               <br />
               <span className="landing-hero-nowrap">before you</span>
@@ -232,7 +230,7 @@ export function LandingPage({
         </div>
         <div className="landing-hero-lead">
           <p style={{ font: 'var(--type-lead)', color: 'var(--ink-2)', margin: 0, maxWidth: 'var(--measure-lead)' }}>
-            Create a room today using Toova.
+            Free 3D room designer. Plan your room at real scale and see what fits before you buy.
           </p>
           <div className="landing-hero-actions">
             <Button variant="primary" size="lg" onClick={primaryAction}>
@@ -427,7 +425,7 @@ export function LandingPage({
       <div className="toova-frame landing-section-pad">
         <SectionOpener id="faq" title="Questions." note="Room planner · dorms · pricing" />
         <div className="landing-faq" style={{ paddingTop: 32 }}>
-          {FAQ.map((item) => (
+          {SEO_FAQ.map((item) => (
             <div key={item.question} className="landing-faq__item">
               <h3 className="landing-faq__question">{item.question}</h3>
               <p className="landing-faq__answer">{item.answer}</p>
@@ -467,9 +465,19 @@ export function LandingPage({
           { label: 'Contact', onClick: onContact },
           { label: 'Pitch Madness', onClick: onPitchMadness },
           { label: 'Feedback', onClick: () => setFeedbackOpen(true) },
-          { label: 'Privacy', href: '/privacy' },
-          { label: 'Terms', href: '/terms' },
-          { label: 'Child Safety', href: '/safety' },
+          {
+            label: 'Room designer',
+            href: '/room-designer/',
+            onClick: () => navigate('/room-designer/'),
+          },
+          {
+            label: 'Dorm plans',
+            href: '/dorms/uchicago/',
+            onClick: () => navigate('/dorms/uchicago/'),
+          },
+          { label: 'Privacy', href: '/privacy/' },
+          { label: 'Terms', href: '/terms/' },
+          { label: 'Child Safety', href: '/safety/' },
           { label: 'Cookie settings', onClick: openCookieSettings },
           ...(onAdmin ? [{ label: 'Admin', onClick: onAdmin }] : []),
         ]}

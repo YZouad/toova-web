@@ -7,7 +7,7 @@ All primary React UI outside the R3F canvas. Design-system primitives live in `k
 | Area | Examples |
 |------|----------|
 | Designer shell | `Designer.tsx`, `designer/`, `Dock.tsx`, `InspectorPanel.tsx`, `Sidebar.tsx`, `FloorPlan*` |
-| Marketing / auth | `LandingPage.tsx`, `IntroPage.tsx`, `AuthPage.tsx`, `LoginPage.tsx`, `WelcomePage.tsx` |
+| Marketing / auth | `LandingPage.tsx`, `SeoArticlePage.tsx`, `IntroPage.tsx`, `AuthPage.tsx`, `LoginPage.tsx`, `WelcomePage.tsx` |
 | Gallery / rooms / profiles | `Gallery*.tsx`, `RoomGallery*.tsx`, `PublicRoomPage.tsx`, `SharedRoomPage.tsx`, `ProfilePage.tsx` |
 | Catalog / import | `ModelGallery.tsx`, `ImportModelModal.tsx`, `ProductDrawer.tsx` |
 | Admin | `AdminConsole.tsx`, `AdminPortal.tsx`, `AdminShoppingPanel.tsx` |

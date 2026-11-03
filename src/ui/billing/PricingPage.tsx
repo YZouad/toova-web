@@ -75,7 +75,7 @@ export function PricingPage({
   }
 
   return (
-    <div className="toova-page pricing-page">
+    <div className="toova-page pricing-page" data-seo-ready="1">
       <div className="toova-paper" aria-hidden />
 
       <MarketingNav

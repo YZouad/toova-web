@@ -1,5 +1,37 @@
+# Toova robots.txt
+# Cloudflare may prepend managed AI Crawl Control rules. Prefer:
+#   Content-Signal: search=yes, ai-input=yes, ai-train=no
+# Keep training bots blocked; allow AI *search/answer* bots below.
+# Enable Cloudflare Crawler Hints (IndexNow) in the dashboard for faster Bing/Copilot pickup.
+
 User-agent: *
 Allow: /
 Disallow: /r/
+Disallow: /reset-password
+
+# AI search / answer crawlers (grounding & citations — not model training)
+User-agent: OAI-SearchBot
+Allow: /
+
+User-agent: ChatGPT-User
+Allow: /
+
+User-agent: PerplexityBot
+Allow: /
+
+User-agent: Claude-SearchBot
+Allow: /
+
+User-agent: Claude-User
+Allow: /
+
+User-agent: Applebot
+Allow: /
+
+User-agent: Bingbot
+Allow: /
+
+User-agent: Googlebot
+Allow: /
 
 Sitemap: https://toova.net/sitemap.xml

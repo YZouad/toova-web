@@ -111,7 +111,7 @@ export function TimelinePage({
   const secondaryAction = loggedIn && onGoDashboard ? onGoDashboard : onLogin;
 
   return (
-    <div className="toova-page">
+    <div className="toova-page" data-seo-ready="1">
       <div className="toova-paper" aria-hidden />
 
       <MarketingNav

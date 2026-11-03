@@ -96,6 +96,11 @@ export function consumeOpenRoomParam(): string | null {
   return consumeSearchParam('openRoom');
 }
 
+/** Read and strip ?template=<starterId> (dorm / room starter deep link). */
+export function consumeTemplateParam(): string | null {
+  return consumeSearchParam('template');
+}
+
 /** Load a room the current user can open (owner or editor). */
 export async function fetchOpenableRoom(
   roomId: string,
