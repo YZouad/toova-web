@@ -12,7 +12,7 @@ vi.mock('./supabase', () => ({
 
 import { setCookieConsent } from './cookieConsent';
 import {
-  initAnalytics,
+  installGtagCommandQueue,
   resetAnalyticsRuntimeForTests,
   setAnalyticsIdentityReady,
   setInternalUser,
@@ -79,31 +79,22 @@ describe('analytics consent and internal-user policy', () => {
   });
 
   it('queues GA4 commands as Arguments objects so gtag.js will send them', () => {
-    setCookieConsent('accepted');
     const dataLayer: unknown[] = [];
-    vi.stubGlobal('document', {
-      referrer: '',
-      title: 'Toova',
-      head: { appendChild: vi.fn() },
-      createElement: () => ({ async: false, src: '' }),
-    });
-    vi.stubGlobal('navigator', { userAgent: 'vitest' });
-    const win: Record<string, unknown> = {
-      dataLayer,
-      location: { search: '', pathname: '/', href: 'https://toova.net/' },
-    };
+    const win = { dataLayer } as unknown as Window;
     vi.stubGlobal('window', win);
 
-    initAnalytics();
+    installGtagCommandQueue();
+    win.gtag('js', new Date());
+    win.gtag('config', 'G-TESTMEASURE', { send_page_view: false });
 
-    expect(dataLayer.length).toBeGreaterThanOrEqual(2);
+    expect(dataLayer).toHaveLength(2);
     for (const item of dataLayer) {
       expect(Array.isArray(item)).toBe(false);
       expect(Object.prototype.toString.call(item)).toBe('[object Arguments]');
     }
     const config = dataLayer[1] as IArguments;
     expect(config[0]).toBe('config');
-    expect(String(config[1])).toMatch(/^G-/);
+    expect(config[1]).toBe('G-TESTMEASURE');
   });
 
   it('holds events until admin status is known and drops them for internal users', async () => {

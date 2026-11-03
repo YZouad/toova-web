@@ -209,6 +209,18 @@ export function disableAnalytics(): void {
   clearAnalyticsCookies();
 }
 
+/**
+ * Queue gtag commands as an Arguments object. gtag.js ignores a real Array,
+ * so `dataLayer.push(args)` never produces a /g/collect hit.
+ */
+export function installGtagCommandQueue(): void {
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function gtag() {
+    // eslint-disable-next-line prefer-rest-params
+    window.dataLayer.push(arguments);
+  };
+}
+
 export function initAnalytics(): void {
   if (!hasAcceptedAnalytics()) return;
   if (GA_ID && typeof window !== 'undefined') {
@@ -218,13 +230,7 @@ export function initAnalytics(): void {
     analyticsInitialized = true;
     if (GA_ID && typeof window !== 'undefined') {
       try {
-        window.dataLayer = window.dataLayer || [];
-        // gtag.js only runs commands queued as an Arguments object. A real
-        // Array is ignored, so config and event calls never reach /g/collect.
-        window.gtag = function gtag() {
-          // eslint-disable-next-line prefer-rest-params
-          window.dataLayer.push(arguments);
-        };
+        installGtagCommandQueue();
         window.gtag('js', new Date());
         window.gtag('config', GA_ID, {
           send_page_view: false,
