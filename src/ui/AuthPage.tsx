@@ -43,6 +43,8 @@ interface AuthPageProps {
   onPitchMadness?: () => void;
   /** Optional copy when auth is required to persist a guest design. */
   authReason?: string | null;
+  /** Called after a reset email is sent so the caller can leave this screen. */
+  onPasswordResetSent?: (message: string) => void;
 }
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -91,12 +93,15 @@ function oauthRedirectTo(): string {
   return `${window.location.origin}/`;
 }
 
+const RESET_LINK_SENT = 'If an account exists for that email, we sent a reset link.';
+
 export function AuthPage({
   onBack,
   initialMode = 'signin',
   onContact,
   onPitchMadness,
   authReason = null,
+  onPasswordResetSent,
 }: AuthPageProps) {
   const [mode, setMode] = useState<Mode>(initialMode);
   const [name, setName] = useState('');
@@ -170,12 +175,20 @@ export function AuthPage({
       const code = typeof (err as AuthErrLike).code === 'string' ? err.code : '';
       const msg = (err.message ?? '').toLowerCase();
       if (code === 'user_not_found' || msg.includes('user not found')) {
-        setInfo('If an account exists for that email, we sent a reset link.');
+        noteResetSent();
         return;
       }
       throw err;
     }
-    setInfo('If an account exists for that email, we sent a reset link.');
+    noteResetSent();
+  }
+
+  function noteResetSent() {
+    if (onPasswordResetSent) {
+      onPasswordResetSent(RESET_LINK_SENT);
+      return;
+    }
+    setInfo(RESET_LINK_SENT);
   }
 
   async function handleSubmit(e: FormEvent) {

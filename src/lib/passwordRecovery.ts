@@ -23,3 +23,17 @@ export function clearPasswordRecoveryFlag(): void {
     // ignore
   }
 }
+
+/**
+ * Recovery should open /reset-password once. After the user leaves that
+ * screen (password saved, or they navigate away), do not pull them back.
+ */
+export function shouldOpenResetPasswordRoute(
+  passwordRecovery: boolean,
+  onResetRoute: boolean,
+  alreadyOpened: boolean,
+): { open: boolean; alreadyOpened: boolean } {
+  if (!passwordRecovery) return { open: false, alreadyOpened: false };
+  if (onResetRoute || alreadyOpened) return { open: false, alreadyOpened: true };
+  return { open: true, alreadyOpened: true };
+}
