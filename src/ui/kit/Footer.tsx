@@ -32,7 +32,14 @@ export function Footer({
                 key={link.label}
                 className="kit-footer__link"
                 href={link.href}
-                onClick={link.onClick}
+                onClick={
+                  link.onClick
+                    ? (e) => {
+                        e.preventDefault();
+                        link.onClick?.();
+                      }
+                    : undefined
+                }
               >
                 {link.label}
               </a>

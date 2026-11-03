@@ -61,6 +61,7 @@ See `[.env.example](.env.example)`. Copy it to `.env.local` for local dev (gitig
 ## Deployment
 
 The site deploys to GitHub Pages on every push to `main` via `[.github/workflows/deploy-pages.yml](.github/workflows/deploy-pages.yml)`.
+`npm run build` runs Vite then Playwright prerender (`scripts/prerender.mjs`) so marketing/SEO routes ship as real HTML (own title, canonical, JSON-LD). Use `npm run build:web` to skip prerender locally. Off-site SEO checklist: [`docs/seo-offsite-checklist.md`](docs/seo-offsite-checklist.md).
 
 1. In the repo, go to **Settings → Pages** and set the source to **GitHub Actions**.
 2. Optionally set `VITE_TRELLIS_GENERATE_URL` under **Settings → Secrets and variables → Actions → Variables** so model import works in production.

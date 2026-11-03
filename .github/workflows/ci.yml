@@ -26,11 +26,13 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run test:billing
+      - run: npx playwright install chromium --with-deps
       - run: npm run build
         env:
           VITE_BASE_PATH: /
           VITE_TRELLIS_GENERATE_URL: ${{ vars.VITE_TRELLIS_GENERATE_URL || secrets.VITE_TRELLIS_GENERATE_URL }}
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || 'G-WS2JEV7YRE' }}
+          SITE_ORIGIN: https://toova.net
 
   db-tests:
     runs-on: ubuntu-latest

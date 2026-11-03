@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
+import { getSeoArticle } from '../content';
+import { withTrailingSlash } from '../lib/seo/site';
 
 export type AppRoute =
   | { name: 'home' }
@@ -11,7 +13,9 @@ export type AppRoute =
   | { name: 'pricing' }
   | { name: 'shared'; token: string }
   | { name: 'profile'; handle: string }
-  | { name: 'publicRoom'; handle: string; roomId: string };
+  | { name: 'publicRoom'; handle: string; roomId: string }
+  /** Marketing / SEO article page; path includes trailing slash. */
+  | { name: 'seoPage'; path: string };
 
 const SHARE_PATH_RE = /^\/r\/([A-Za-z0-9_-]{16,32})\/?$/;
 const PROFILE_PATH_RE = /^\/u\/([a-z0-9_]{3,30})\/?$/i;
@@ -59,6 +63,11 @@ export function parsePathname(pathname: string): AppRoute {
   const share = path.match(SHARE_PATH_RE);
   if (share?.[1]) return { name: 'shared', token: share[1] };
 
+  const seoPath = withTrailingSlash(path === '/' ? '/' : path);
+  if (seoPath !== '/' && getSeoArticle(seoPath)) {
+    return { name: 'seoPage', path: seoPath };
+  }
+
   return { name: 'home' };
 }
 
@@ -75,31 +84,36 @@ export function publicRoomPath(handle: string, roomId: string): string {
 }
 
 export function galleryPath(search = ''): string {
-  return `/gallery${search.startsWith('?') || search === '' ? search : `?${search}`}`;
+  const q = search.startsWith('?') || search === '' ? search : `?${search}`;
+  return `/gallery/${q}`;
 }
 
 export function timelinePath(): string {
-  return '/timeline';
+  return '/timeline/';
 }
 
 export function termsPath(): string {
-  return '/terms';
+  return '/terms/';
 }
 
 export function privacyPath(): string {
-  return '/privacy';
+  return '/privacy/';
 }
 
 export function safetyPath(): string {
-  return '/safety';
+  return '/safety/';
 }
 
 export function resetPasswordPath(): string {
-  return '/reset-password';
+  return '/reset-password/';
 }
 
 export function pricingPath(): string {
-  return '/pricing';
+  return '/pricing/';
+}
+
+export function seoArticlePath(path: string): string {
+  return withTrailingSlash(path);
 }
 
 export function resetPasswordRedirectTo(): string {

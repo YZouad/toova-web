@@ -25,6 +25,7 @@ jobs:
           cache: npm
           cache-dependency-path: package-lock.json
       - run: npm ci
+      - run: npx playwright install chromium --with-deps
       - run: npm run build
         env:
           VITE_BASE_PATH: /
@@ -35,10 +36,8 @@ jobs:
           VITE_TRELLIS_GENERATE_URL: ${{ vars.VITE_TRELLIS_GENERATE_URL || secrets.VITE_TRELLIS_GENERATE_URL }}
           VITE_GA_MEASUREMENT_ID: ${{ vars.VITE_GA_MEASUREMENT_ID || 'G-WS2JEV7YRE' }}
           VITE_AMAZON_AFFILIATE_TAG: ${{ vars.VITE_AMAZON_AFFILIATE_TAG || 'toova-20' }}
-      # SPA deep links (/r/:token) need a 404 fallback on GitHub Pages.
-      - run: cp dist/index.html dist/404.html
-      # Static routes must return 200 (App Store review fetches the privacy policy URL).
-      - run: for r in privacy terms safety pricing gallery; do mkdir -p "dist/$r" && cp dist/index.html "dist/$r/index.html"; done
+          SITE_ORIGIN: https://toova.net
+      # npm run build runs scripts/prerender.mjs (per-route HTML + sitemap.xml + 404.html SPA fallback).
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist

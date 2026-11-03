@@ -28,6 +28,7 @@ Hot dirs with their own guides: [`src/scene/AGENTS.md`](src/scene/AGENTS.md), [`
 ## Gotchas
 
 - **Routing** is a tiny custom pathname router (`hooks/useRoute.ts`), not react-router.
+- **SEO:** marketing copy/meta live in `src/lib/seo/` + `src/content/`. `npm run build` runs Playwright prerender (`scripts/prerender.mjs`) so each SEO path gets real HTML in `dist/`. Do not revive the old `cp index.html` deploy loop. Off-site checklist: `docs/seo-offsite-checklist.md`.
 - **Trellis:** wake → poll → generate through BFF only. Client helpers in `src/lib/trellisApi.ts` / related; never call EC2 from the browser.
 - **Env:** copy `.env.example` → `.env.local`. `TRELLIS_BFF_ORIGIN` is Vite-proxy only (not `VITE_*`). Production bake uses `VITE_TRELLIS_GENERATE_URL`.
 - **Schema changes:** prefer `supabase/migrations/`; one-off SQL samples also under `supabase/sql/`.
@@ -44,11 +45,13 @@ npm run dev                  # http://localhost:5173
 npm run typecheck
 npm test
 npm run test:e2e
-npm run build
+npm run build                # vite + prerender (needs Playwright chromium)
+npm run build:web            # vite only (skip prerender)
 ```
 
 ## Specs worth opening on demand
 
 - `docs/agentic-room-generation-spec.md`
 - `docs/oauth-setup.md`
+- `docs/seo-offsite-checklist.md`
 - `../toova-bff/docs/trellis-frontend-contract.md`

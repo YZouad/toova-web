@@ -901,6 +901,49 @@ button.landing-nav-brand { cursor: pointer; }
   margin: 0;
   max-width: 540px;
 }
+.seo-article-page__crumbs {
+  font: var(--type-meta);
+  color: var(--ink-4);
+}
+.seo-article-page__crumbs a {
+  color: var(--ink-2);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.seo-article-page__list {
+  list-style: none;
+  margin: 24px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--rule-heavy);
+}
+.seo-article-page__list li {
+  display: grid;
+  gap: 6px;
+  padding: 20px 0;
+  border-bottom: 1px solid var(--rule-hair);
+}
+.seo-article-page__list a {
+  font: var(--type-strong);
+  color: var(--text-heading);
+  text-decoration: none;
+}
+.seo-article-page__list a:hover {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.seo-article-page__list-meta {
+  font: var(--type-body-sm);
+  color: var(--ink-4);
+  max-width: 640px;
+}
+.landing-hero-seo-prefix {
+  display: block;
+  font: var(--type-meta);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-bottom: 12px;
+}
 @media (max-width: 900px) {
   .landing-hero-slogan {
     grid-template-columns: 1fr;

@@ -22,6 +22,9 @@ import {
   resetPasswordPath,
   useRoute,
 } from './hooks/useRoute';
+import { useDocumentHead } from './hooks/useDocumentHead';
+import { getSeoArticle } from './content';
+import { SeoArticlePage } from './ui/SeoArticlePage';
 import { shouldOpenResetPasswordRoute } from './lib/passwordRecovery';
 import { supabase } from './lib/supabase';
 import { useStore, DEFAULT_ENVIRONMENT, type Item, type RoomEnvironment } from './store';
@@ -117,6 +120,7 @@ import type { FurnitureKind } from './furniture/registry';
 import {
   consumeOpenRoomParam,
   consumePlaceCatalogParam,
+  consumeTemplateParam,
   fetchGalleryModelByKind,
   fetchOpenableRoom,
   galleryModelImportedSize,
@@ -327,6 +331,8 @@ function AppContent() {
     return () => window.removeEventListener('pageshow', onShow);
   }, []);
 
+  useDocumentHead(route);
+
   const routeIsPublic =
     route.name === 'shared' ||
     route.name === 'profile' ||
@@ -337,7 +343,8 @@ function AppContent() {
     route.name === 'privacy' ||
     route.name === 'safety' ||
     route.name === 'resetPassword' ||
-    route.name === 'pricing';
+    route.name === 'pricing' ||
+    route.name === 'seoPage';
 
   const { billing: userBilling } = useEntitlements();
 
@@ -800,6 +807,29 @@ function AppContent() {
     [handleCreateWithPlan],
   );
 
+  /** SEO / dorm deep-link: ?template=<starterId> opens that starter (guest-friendly). */
+  const templateHandled = useRef(false);
+  useEffect(() => {
+    if (templateHandled.current || loading) return;
+    const templateId = consumeTemplateParam();
+    if (!templateId) {
+      templateHandled.current = true;
+      return;
+    }
+    templateHandled.current = true;
+    const template = getLiveStarterTemplate(templateId);
+    if (!template) {
+      setLandingNotice('Could not find that room template.');
+      navigate('/', true);
+      setScreen('landing');
+      return;
+    }
+    void handleCreateFromStarter(template.label, template).catch(() => {
+      setLandingNotice('Could not open that room template.');
+      setScreen('landing');
+    });
+  }, [loading, handleCreateFromStarter]);
+
   const handleCustomizeOwnPlan = useCallback((name: string) => {
     setFloorPlanDraft({ name, mode: 'create', initialPlan: emptyPlan() });
     setScreen('floor-plan');
@@ -1177,6 +1207,17 @@ function AppContent() {
       setScreen('gallery');
       return;
     }
+    if (
+      route.name === 'seoPage' ||
+      route.name === 'pricing' ||
+      route.name === 'timeline' ||
+      route.name === 'terms' ||
+      route.name === 'privacy' ||
+      route.name === 'safety'
+    ) {
+      setScreen('landing');
+      return;
+    }
     setScreen('landing');
     if (routeIsPublic) navigate('/', true);
   };
@@ -1219,6 +1260,28 @@ function AppContent() {
         }}
       />
     );
+  }
+
+  if (route.name === 'seoPage') {
+    const article = getSeoArticle(route.path);
+    if (article) {
+      return (
+        <SeoArticlePage
+          article={article}
+          loggedIn={Boolean(user)}
+          onGoHome={() => {
+            navigate('/');
+            setScreen(user ? 'dashboard' : 'landing');
+          }}
+          onGetStarted={landingCallbacks.onGetStarted}
+          onLogin={landingCallbacks.onLogin}
+          onGoDashboard={user ? () => setScreen('dashboard') : undefined}
+          onContact={siteFooterNav.onContact}
+          onPitchMadness={siteFooterNav.onPitchMadness}
+          onAdmin={landingCallbacks.onAdmin}
+        />
+      );
+    }
   }
 
   if (route.name === 'pricing') {

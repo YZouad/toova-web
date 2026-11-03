@@ -1,18 +1,45 @@
 # Toova
 
-> A 3D room planner that turns product photos into real-scale models so you can design a room before you buy.
+> A free 3D room designer that turns product photos into real-scale models so you can plan your room and see what fits before you buy.
 
-Toova helps people place furniture and decor inside their own space at real scale. Start with a photo, get a 3D model in about thirty seconds, arrange it against your walls, then buy with confidence. Free for five rooms; Studio unlocks unlimited rooms.
+Toova helps people place furniture and decor inside their own space at real scale. Start with a photo, get a 3D model in about thirty seconds, arrange it against your walls, then buy with confidence. Free for five rooms; Lite is $2.99/month ($29.99/year); Pro is $7.99/month ($59/year).
 
 ## Key pages
 
 - Homepage: https://toova.net/
-- Gallery: https://toova.net/gallery
-- Timeline: https://toova.net/timeline
+- Free 3D room designer: https://toova.net/room-designer/
+- Online room planner: https://toova.net/room-planner/
+- Dorm room planner: https://toova.net/dorm-room-planner/
+- Furniture fit checker: https://toova.net/furniture-fit-checker/
+- Photo to 3D furniture: https://toova.net/photo-to-3d-furniture/
+- UChicago dorm plans hub: https://toova.net/dorms/uchicago/
+- Pricing: https://toova.net/pricing/
+- Gallery: https://toova.net/gallery/
+- Timeline / demos: https://toova.net/timeline/
+
+## Comparisons
+
+- Toova vs Planner 5D: https://toova.net/compare/planner-5d/
+- Toova vs RoomSketcher: https://toova.net/compare/roomsketcher/
+- Toova vs Homestyler: https://toova.net/compare/homestyler/
+- Toova vs IKEA Kreativ: https://toova.net/compare/ikea-kreativ/
+
+## Guides
+
+- How to design a dorm room: https://toova.net/guides/how-to-design-a-dorm-room/
+- How to measure your room for furniture: https://toova.net/guides/how-to-measure-your-room-for-furniture/
+- Small bedroom layout ideas: https://toova.net/guides/small-bedroom-layout-ideas/
 
 ## Product
 
 - Photo → 3D conversion at real-world scale
-- Measured dorm plans (student housing first)
+- Measured University of Chicago dorm plans (Woodlawn, North, Max P, Burton-Judson, I-House, RGG, Snell-Hitchcock)
 - Free tier: up to 5 rooms
-- Studio: $18/month for unlimited rooms and priority processing
+- Lite / Pro paid plans for more rooms, credits, and exports
+- iOS app available
+
+## Optional
+
+- Privacy: https://toova.net/privacy/
+- Terms: https://toova.net/terms/
+- Child safety: https://toova.net/safety/
