@@ -12,7 +12,8 @@ import { ToneMappingMode, BlendFunction } from 'postprocessing';
 import { colorGradingParams, grazingSunIndoor } from '../lib/environment';
 import { planBounds } from '../lib/roomGeometry';
 import { useStore } from '../store';
-import { resolveRenderQuality } from '../lib/renderQuality';
+import { isApartmentPlan } from '../lib/apartmentRooms';
+import { resolveApartmentOverviewQuality, resolveRenderQuality } from '../lib/renderQuality';
 
 /**
  * Always keep EffectComposer mounted for gradient sky (unmounting blanked Low).
@@ -25,9 +26,13 @@ export function ScenePostProcessing() {
   const weather = useStore((s) => s.environment.weather);
   const exposure = useStore((s) => s.environment.exposure);
   const geom = useStore((s) => s.roomGeometry);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
   const quality = useStore((s) => s.visual.quality);
   const cutaway = useStore((s) => s.visual.cutaway);
-  const q = resolveRenderQuality(quality);
+  const overview = focusedRoomId == null && isApartmentPlan(geom);
+  const q = overview
+    ? resolveApartmentOverviewQuality(quality)
+    : resolveRenderQuality(quality);
 
   const grading = useMemo(
     () => colorGradingParams(timeOfDay, orientationDeg, weather, exposure, planBounds(geom)),

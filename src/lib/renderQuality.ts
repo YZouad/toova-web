@@ -132,6 +132,22 @@ export function resolveRenderQuality(tier: RenderQualityTier): RenderQualityConf
   return { tier, ...TIERS[tier] };
 }
 
+/**
+ * Overview / transition throttles: drop SSAO and slow shadow updates so the
+ * dollhouse stays smooth with a full apartment of furniture.
+ */
+export function resolveApartmentOverviewQuality(tier: RenderQualityTier): RenderQualityConfig {
+  const base = resolveRenderQuality(tier);
+  if (tier === 'presentation') return base;
+  return {
+    ...base,
+    ao: false,
+    richPost: false,
+    shadowUpdateEveryN: Math.max(base.shadowUpdateEveryN, 4),
+    dprCap: Math.min(base.dprCap, tier === 'low' ? 1 : 1.5),
+  };
+}
+
 export function isRenderQualityTier(v: unknown): v is RenderQualityTier {
   return typeof v === 'string' && v in TIERS;
 }

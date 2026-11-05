@@ -1,5 +1,6 @@
-import { useState, type MouseEvent } from 'react';
+import { useMemo, useState, type MouseEvent } from 'react';
 import type { GalleryRoom } from '../hooks/useGalleryRooms';
+import { isApartmentPlan, resolveApartmentRooms } from '../lib/apartmentRooms';
 import { forkPublicRoom } from '../lib/profiles';
 import { Button, Plate } from './kit';
 import { RoomPreview } from './RoomPreview';
@@ -36,7 +37,17 @@ export function RoomGalleryCard({
     ? `@${room.creatorHandle}`
     : room.creatorDisplayName ?? 'Creator';
   const pieces = room.previewItems?.length ?? 0;
-  const meta = `${pieces} piece${pieces === 1 ? '' : 's'} · ${formatCount(room.likesCount)} likes`;
+  const roomCount = useMemo(() => {
+    if (!room.roomGeometry || !isApartmentPlan(room.roomGeometry)) return 0;
+    return resolveApartmentRooms(room.roomGeometry).filter((r) => r.tagged).length;
+  }, [room.roomGeometry]);
+  const meta = [
+    roomCount > 1 ? `${roomCount} rooms` : null,
+    `${pieces} piece${pieces === 1 ? '' : 's'}`,
+    `${formatCount(room.likesCount)} likes`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
   const filename = `${room.name.split(' ')[0]?.toLowerCase() ?? 'room'}.jpg`;
   const canCopy = Boolean(room.creatorHandle) && room.userId !== currentUserId;
 

@@ -27,6 +27,13 @@ import {
   outerFaceVertices,
   sanitizeWallGraph,
   updateOpening,
+  reconcileZoneAnchors,
+  faceEdges,
+  faceWallIds,
+  addOpeningAt,
+  resolveZones,
+  zoneAtPoint,
+  pointInFace,
 } from './floorPlanGeometry';
 
 export type RoomGeometry = FloorPlan;
@@ -59,6 +66,13 @@ export {
   outerFaceVertices,
   sanitizeWallGraph,
   updateOpening,
+  reconcileZoneAnchors,
+  faceEdges,
+  faceWallIds,
+  addOpeningAt,
+  resolveZones,
+  zoneAtPoint,
+  pointInFace,
 };
 
 export const DEFAULT_ROOM_GEOMETRY: RoomGeometry = defaultRectanglePlan();

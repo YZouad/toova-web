@@ -216,7 +216,7 @@ export function LandingPage({
               Toova — a room planner for people about to spend money
             </Eyebrow>
             <DisplayHeading level={1}>
-              <span className="landing-hero-seo-prefix">Toova — the 3D room designer</span>
+              <span className="sr-only">Toova — the 3D room designer</span>
               Own it
               <br />
               <span className="landing-hero-nowrap">before you</span>

@@ -7,6 +7,7 @@ import {
   type WallDimGeometry,
 } from '../lib/dimensionOverlay';
 import { allWallSegments } from '../lib/floorPlanGeometry';
+import { activeGeometryFor } from '../lib/apartmentRooms';
 import { useStore } from '../store';
 
 const DIM_COLOR = '#6b8cae';
@@ -45,7 +46,12 @@ function WallDimRun({ geom }: { geom: WallDimGeometry }) {
 
 export function DimensionsOverlay() {
   const showDimensions = useStore((s) => s.visual.showDimensions);
-  const roomGeometry = useStore((s) => s.roomGeometry);
+  const fullGeom = useStore((s) => s.roomGeometry);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
+  const roomGeometry = useMemo(
+    () => activeGeometryFor(fullGeom, focusedRoomId),
+    [fullGeom, focusedRoomId],
+  );
   const order = useStore((s) => s.order);
   const items = useStore((s) => s.items);
 

@@ -30,6 +30,16 @@ import {
 } from './lib/roomGeometry';
 import type { FloorPlanOpening } from './lib/floorPlanGeometry';
 import { clampPositionInRoom } from './interaction/collision';
+import {
+  activeGeometryFor,
+  apartmentModeFor,
+  apartmentRoomById,
+  isApartmentPlan,
+  reconcileFocusedRoomId,
+  roomSpawnPoint,
+  type ApartmentMode,
+  type ApartmentRoomId,
+} from './lib/apartmentRooms';
 import type { LayoutVariant } from './lib/roomLayoutArrange';
 import type { Weather } from './lib/environment';
 import {
@@ -309,6 +319,11 @@ interface StoreState {
 
   environment: RoomEnvironment;
   roomGeometry: RoomGeometry;
+  /**
+   * Focused apartment room (zone id). Null = overview (multi-zone) or single-room mode.
+   * Not persisted — restored from `?room=` on load when present.
+   */
+  focusedRoomId: ApartmentRoomId | null;
   /** Client-only render prefs (not persisted to Supabase). */
   visual: VisualSettings;
   /** Transient: hide editor chrome while capturing a frame. */
@@ -358,6 +373,10 @@ interface StoreState {
   setCaptureMode: (on: boolean) => void;
   setRoomGeometry: (geom: RoomGeometry) => void;
   setRoomHeight: (height: number) => void;
+  /** Enter focus on a tagged apartment room (no-op when id unknown). */
+  focusRoom: (roomId: ApartmentRoomId | null) => void;
+  /** Leave focus and return to the apartment overview (or stay single). */
+  exitToOverview: () => void;
 
   setDesignerTool: (tool: DesignerTool) => void;
   beginMeasure: (acceptField?: MeasureAcceptField | null, importAccept?: boolean) => void;
@@ -510,11 +529,24 @@ export function ensureAttachmentKey(item: Item): Item {
   return { ...item, attachmentKey: newAttachmentKey() };
 }
 
+/** Full plan when idle; focused face plan while editing one apartment room. */
+export function getActiveGeometry(
+  state: Pick<{ roomGeometry: RoomGeometry; focusedRoomId: ApartmentRoomId | null }, 'roomGeometry' | 'focusedRoomId'> = useStore.getState(),
+): RoomGeometry {
+  return activeGeometryFor(state.roomGeometry, state.focusedRoomId);
+}
+
+export function getApartmentMode(
+  state: Pick<{ roomGeometry: RoomGeometry; focusedRoomId: ApartmentRoomId | null }, 'roomGeometry' | 'focusedRoomId'> = useStore.getState(),
+): ApartmentMode {
+  return apartmentModeFor(state.roomGeometry, state.focusedRoomId);
+}
+
 export function clampFullItemPosition(
   position: [number, number, number],
   rotationY: number,
   size: [number, number, number],
-  room = useStore.getState().roomGeometry,
+  room = getActiveGeometry(),
 ): [number, number, number] {
   const [x, y, z] = clampPositionInRoom(position, rotationY, size, room);
   return [x, clamp(y, 0, Math.max(0, room.height - size[1])), z];
@@ -584,6 +616,7 @@ export const useStore = create<StoreState>((set, get) => ({
 
   environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
   roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
+  focusedRoomId: null,
   visual: loadVisualSettings(),
   captureMode: false,
   designerTool: 'select',
@@ -744,6 +777,7 @@ export const useStore = create<StoreState>((set, get) => ({
           : null;
       return {
         roomGeometry,
+        focusedRoomId: reconcileFocusedRoomId(roomGeometry, s.focusedRoomId),
         selectedWallId,
         selectedOpeningId,
         environment:
@@ -757,6 +791,39 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => ({
       roomGeometry: clampPlan({ ...s.roomGeometry, height: clampPlanHeight(height) }),
     })),
+
+  focusRoom: (roomId) =>
+    set((s) => {
+      if (!roomId) {
+        return { focusedRoomId: null, ...selectionOf([]), selectedWallId: null, selectedOpeningId: null };
+      }
+      if (!isApartmentPlan(s.roomGeometry)) return s;
+      const room = apartmentRoomById(s.roomGeometry, roomId);
+      if (!room?.tagged) return s;
+      return {
+        focusedRoomId: room.id,
+        ...selectionOf([]),
+        selectedWallId: null,
+        selectedOpeningId: null,
+        designerTool: 'select' as DesignerTool,
+        hangingDraft: null,
+      };
+    }),
+
+  exitToOverview: () =>
+    set((s) => {
+      if (!s.focusedRoomId) return s;
+      return {
+        focusedRoomId: null,
+        ...selectionOf([]),
+        selectedWallId: null,
+        selectedOpeningId: null,
+        designerTool: 'select' as DesignerTool,
+        hangingDraft: null,
+        measurePending: null,
+        measureHover: null,
+      };
+    }),
 
   setDesignerTool: (tool) =>
     set(() => {
@@ -989,9 +1056,13 @@ export const useStore = create<StoreState>((set, get) => ({
 
   addLightSource: () => {
     const id = `item-${nextId++}`;
-    const room = get().roomGeometry;
+    const state = get();
+    const room = getActiveGeometry(state);
     const size = [...LIGHT_SOURCE_SIZE] as [number, number, number];
-    const [cx, cz] = planCentroid(room);
+    const focused = state.focusedRoomId
+      ? apartmentRoomById(state.roomGeometry, state.focusedRoomId)
+      : null;
+    const [cx, cz] = focused ? roomSpawnPoint(focused) : planCentroid(room);
     const centerY = clamp(Math.round(Math.min(60, Math.max(28, room.height * 0.45))), size[1], room.height);
     const y = clamp(centerY - size[1] / 2, 0, Math.max(0, room.height - size[1]));
     const position = clampFullItemPosition([cx, y, cz], 0, size, room);
@@ -1034,6 +1105,7 @@ export const useStore = create<StoreState>((set, get) => ({
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
         layoutShuffleVariant: 0 as LayoutVariant,
+        // Keep focusedRoomId — hydrateRoomSettings / URL sync own reset timing.
       };
     }),
 
@@ -1068,15 +1140,19 @@ export const useStore = create<StoreState>((set, get) => ({
     }),
 
   hydrateRoomSettings: (environment, roomGeometry) =>
-    set(() => ({
-      environment: {
-        ...environment,
-        appearance: parseAppearance(environment.appearance ?? DEFAULT_APPEARANCE),
-      },
-      roomGeometry: normalizeRoomGeometry(roomGeometry),
-      selectedWallId: null,
-      selectedOpeningId: null,
-    })),
+    set((s) => {
+      const normalized = normalizeRoomGeometry(roomGeometry);
+      return {
+        environment: {
+          ...environment,
+          appearance: parseAppearance(environment.appearance ?? DEFAULT_APPEARANCE),
+        },
+        roomGeometry: normalized,
+        focusedRoomId: reconcileFocusedRoomId(normalized, s.focusedRoomId),
+        selectedWallId: null,
+        selectedOpeningId: null,
+      };
+    }),
 
   resetLayout: () =>
     set((s) => {
@@ -1090,6 +1166,7 @@ export const useStore = create<StoreState>((set, get) => ({
         invalid: false,
         environment: { ...DEFAULT_ENVIRONMENT, appearance: { ...DEFAULT_APPEARANCE } },
         roomGeometry: structuredClone(DEFAULT_ROOM_GEOMETRY),
+        focusedRoomId: null,
         designerTool: 'select' as DesignerTool,
         hangingDraft: null,
         layoutShuffleVariant: 0 as LayoutVariant,
@@ -1110,8 +1187,12 @@ export const useStore = create<StoreState>((set, get) => ({
     const isBed = kind === 'bed';
     const bedLegHeight = isBed ? 8 : undefined;
     const bodyH = isBed ? bedBodyHeightIn() : 0;
-    const room = useStore.getState().roomGeometry;
-    const [cx, cz] = planCentroid(room);
+    const state = useStore.getState();
+    const room = getActiveGeometry(state);
+    const focused = state.focusedRoomId
+      ? apartmentRoomById(state.roomGeometry, state.focusedRoomId)
+      : null;
+    const [cx, cz] = focused ? roomSpawnPoint(focused) : planCentroid(room);
     const label = opts?.label ?? (def ? def.label : 'Model');
     let itemSize: [number, number, number] = isBed && def
       ? [def.size[0], bedLegHeight! + bodyH, def.size[2]]
@@ -1269,7 +1350,7 @@ export const useStore = create<StoreState>((set, get) => ({
         return { items: { ...s.items, [id]: next }, invalid: false };
       }
       // Boxed in: still rotate in place (room-clamped). Red outline until there's space.
-      next.position = clampFullItemPosition(it.position, rotationY, it.size, s.roomGeometry);
+      next.position = clampFullItemPosition(it.position, rotationY, it.size, getActiveGeometry(s));
       return { items: { ...s.items, [id]: next }, invalid: true };
     }),
 
@@ -1277,7 +1358,7 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => {
       const it = s.items[id];
       if (!it || it.kind === 'hanging') return s;
-      const room = s.roomGeometry;
+      const room = getActiveGeometry(s);
       const b = planBounds(room);
       const maxFootprint = Math.max(b.width, b.depth, 200);
       let heightMax = room.height;
@@ -1320,7 +1401,7 @@ export const useStore = create<StoreState>((set, get) => ({
       } else if (patch === null) {
         size = [...def.size] as [number, number, number];
       }
-      const position = clampFullItemPosition(it.position, it.rotationY, size, s.roomGeometry);
+      const position = clampFullItemPosition(it.position, it.rotationY, size, getActiveGeometry(s));
       return {
         items: {
           ...s.items,
@@ -1338,7 +1419,7 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => {
       const it = s.items[id];
       if (!it || it.kind === 'hanging') return s;
-      const maxY = Math.max(0, s.roomGeometry.height - it.size[1]);
+      const maxY = Math.max(0, getActiveGeometry(s).height - it.size[1]);
       const targetY = clamp(y, 0, maxY);
       if (it.kind === 'light' || it.kind === 'shelf') {
         return {
@@ -1723,7 +1804,7 @@ export const useStore = create<StoreState>((set, get) => ({
     set((s) => {
       const it = s.items[id];
       if (!it || it.kind !== 'imported' || !it.importedNaturalSize) return s;
-      const room = s.roomGeometry;
+      const room = getActiveGeometry(s);
       const b = planBounds(room);
       const maxFootprint = Math.max(b.width, b.depth, 200);
       const size: [number, number, number] = [

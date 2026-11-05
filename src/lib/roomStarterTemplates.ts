@@ -27,9 +27,17 @@ import type { HangingDecorKind } from './hangingDecorGeometry';
 import { appendHangingFromSeeds, type HangingPlacementSeed } from './hangingDecorPlacement';
 import { DEFAULT_APPEARANCE, type RoomAppearance } from './roomAppearance';
 import { buildUChicagoDormStarters, type UChicagoDormMeta } from './uchicagoDormTemplates';
+import {
+  APARTMENT_CANVAS_DEPTH,
+  APARTMENT_CANVAS_WIDTH,
+  emptyApartmentCanvasPlan,
+  oneBedroomApartmentPlan,
+  studioApartmentPlan,
+  twoBedroomApartmentPlan,
+} from './apartmentTemplates';
 import { ROOM } from '../units';
 
-export type RoomStarterGoal = 'bedroom' | 'office' | 'living' | 'studio' | 'uchicago';
+export type RoomStarterGoal = 'bedroom' | 'office' | 'living' | 'studio' | 'uchicago' | 'apartment';
 export type { UChicagoDormMeta };
 export type RoomStarterTier = 'simple' | 'balanced' | 'decorated';
 
@@ -112,6 +120,11 @@ export const ROOM_STARTER_GOALS: readonly RoomStarterGoalDef[] = [
     id: 'uchicago',
     label: 'UChicago dorms',
     description: 'Residence hall layouts',
+  },
+  {
+    id: 'apartment',
+    label: 'Apartment',
+    description: 'Multi-room layouts',
   },
 ];
 
@@ -459,11 +472,54 @@ export const ROOM_STARTER_TEMPLATES: readonly RoomStarterTemplate[] = [
     ],
   }),
 
+  withMeta({
+    id: 'apartment-studio',
+    goal: 'apartment',
+    tier: 'simple',
+    label: 'Studio apartment',
+    description: 'Living area plus a bath — tagged for the apartment overview.',
+    buildPlan: studioApartmentPlan,
+    buildEnvironment: () =>
+      env({
+        timeOfDay: 13,
+        appearance: appearance({ wallColor: '#d8d0c2', floorPreset: 'lightOak' }),
+      }),
+    floorItems: [],
+  }),
+  withMeta({
+    id: 'apartment-1br',
+    goal: 'apartment',
+    tier: 'balanced',
+    label: '1-bedroom apartment',
+    description: 'Living, bedroom, and bath with interior doors.',
+    buildPlan: oneBedroomApartmentPlan,
+    buildEnvironment: () =>
+      env({
+        timeOfDay: 14,
+        appearance: appearance({ wallColor: '#cfc7b8', floorPreset: 'lightOak' }),
+      }),
+    floorItems: [],
+  }),
+  withMeta({
+    id: 'apartment-2br',
+    goal: 'apartment',
+    tier: 'decorated',
+    label: '2-bedroom apartment',
+    description: 'Living, two bedrooms, and a bath.',
+    buildPlan: twoBedroomApartmentPlan,
+    buildEnvironment: () =>
+      env({
+        timeOfDay: 15,
+        appearance: appearance({ wallColor: '#d8d0c2', floorPreset: 'lightOak' }),
+      }),
+    floorItems: [],
+  }),
+
   ...buildUChicagoDormStarters(),
 ];
 
 /** Blank shape presets kept for the “Blank room” path. */
-export type BlankPlanPresetId = 'rectangle' | 'square' | 'l-shape';
+export type BlankPlanPresetId = 'rectangle' | 'square' | 'l-shape' | 'apartment';
 
 export interface BlankPlanPreset {
   id: BlankPlanPresetId;
@@ -500,6 +556,12 @@ export const BLANK_PLAN_PRESETS: readonly BlankPlanPreset[] = [
     label: 'L-shape',
     description: 'An L-shaped layout with a door on the long wall.',
     build: () => lShapePlan(120, 120, 48, 48, ROOM.height),
+  }),
+  blankWithDimensions({
+    id: 'apartment',
+    label: 'Apartment',
+    description: `A ${APARTMENT_CANVAS_WIDTH / 12}′ × ${APARTMENT_CANVAS_DEPTH / 12}′ canvas for drawing multi-room layouts.`,
+    build: () => emptyApartmentCanvasPlan(),
   }),
 ];
 

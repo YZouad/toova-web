@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { useStore } from '../store';
 import {
   clampToRoom,
+  collisionPeers,
   itemPinsElevation,
   resolveGroupDragDelta,
   settleGravity,
@@ -174,7 +175,7 @@ export function MobileObjectGestureController({
           if (!item || !startPos) continue;
 
           const others = [
-            ...Object.values(state.items).filter((it) => !moving.has(it.id)),
+            ...collisionPeers(moving),
             ...Object.entries(settled).map(([sid, position]) => ({
               ...state.items[sid]!,
               position,
@@ -535,7 +536,7 @@ export function MobileObjectGestureController({
         const fromDz = primary.position[2] - primaryStart[2];
 
         const moving = new Set(drag.ids);
-        const others = Object.values(state.items).filter((it) => !moving.has(it.id));
+        const others = collisionPeers(moving);
         const movers: DragMover[] = [];
         for (const id of drag.ids) {
           const it = state.items[id];

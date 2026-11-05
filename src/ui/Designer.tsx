@@ -69,6 +69,18 @@ import {
   IconUpload,
 } from './designer/icons';
 import { planBounds } from '../lib/roomGeometry';
+import {
+  apartmentRoomById,
+  isApartmentPlan,
+  resolveApartmentRooms,
+  type ApartmentRoom,
+} from '../lib/apartmentRooms';
+import { getApartmentMode } from '../store';
+import { framingForArea, dollhouseFraming } from '../lib/presentationCameras';
+import { ApartmentBar, ApartmentRoomList } from './designer/ApartmentBar';
+import { NameRoomDialog } from './designer/NameRoomDialog';
+import { MobileApartmentChrome } from './designer/mobile/MobileApartmentChrome';
+import { UnplacedBadge } from './designer/UnplacedBadge';
 
 function roomDirtyFingerprint(name: string): string {
   const { items, order, environment, roomGeometry } = useStore.getState();
@@ -126,6 +138,13 @@ export function Designer({
   const pageRef = useRef<HTMLDivElement>(null);
   const chrome = useDesignerChrome();
   const roomGeometry = useStore((s) => s.roomGeometry);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
+  const focusRoom = useStore((s) => s.focusRoom);
+  const exitToOverview = useStore((s) => s.exitToOverview);
+  const apartmentMode = getApartmentMode({ roomGeometry, focusedRoomId });
+  const isApartmentOverview = apartmentMode === 'overview';
+  const [namingRoom, setNamingRoom] = useState<ApartmentRoom | null>(null);
+  const [highlightedRoomId, setHighlightedRoomId] = useState<string | null>(null);
 
   const { refresh: refreshBilling, creditsTotal } = useEntitlements();
   const [shareOpen, setShareOpen] = useState(false);
@@ -258,12 +277,89 @@ export function Designer({
   ]);
 
   const requestLeave = useCallback(() => {
+    if (focusedRoomId) {
+      exitToOverview();
+      return;
+    }
     if (!dirty) {
       onBack();
       return;
     }
     setLeaveConfirmOpen(true);
-  }, [dirty, onBack]);
+  }, [dirty, onBack, focusedRoomId, exitToOverview]);
+
+  const handleFocusRoom = useCallback(
+    (roomId: string) => {
+      focusRoom(roomId);
+      const room = apartmentRoomById(useStore.getState().roomGeometry, roomId);
+      if (!room || !sceneRef.current) return;
+      // Scene goToPreset only knows CameraPresetId — push framing via store + reset.
+      useStore.getState().setCameraPreset('corner');
+      // Prefer immediate corner framing of the face via a custom animation request.
+      const framing = framingForArea(useStore.getState().roomGeometry, room, 'corner');
+      const handle = sceneRef.current as SceneHandle & {
+        goToFraming?: (f: ReturnType<typeof framingForArea>) => void;
+      };
+      if (typeof handle.goToFraming === 'function') {
+        handle.goToFraming(framing);
+      } else {
+        handle.goToPreset('corner');
+      }
+    },
+    [focusRoom],
+  );
+
+  const handleBackToOverview = useCallback(() => {
+    exitToOverview();
+    const framing = dollhouseFraming(useStore.getState().roomGeometry);
+    const handle = sceneRef.current as SceneHandle & {
+      goToFraming?: (f: ReturnType<typeof dollhouseFraming>) => void;
+    };
+    if (typeof handle.goToFraming === 'function') {
+      handle.goToFraming(framing);
+    } else {
+      handle?.goToPreset('catalog');
+    }
+  }, [exitToOverview]);
+
+  // Sync ?room= with focused zone (replaceState only — no history spam).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const current = url.searchParams.get('room');
+    if (focusedRoomId) {
+      if (current === focusedRoomId) return;
+      url.searchParams.set('room', focusedRoomId);
+    } else if (current) {
+      url.searchParams.delete('room');
+    } else {
+      return;
+    }
+    window.history.replaceState(window.history.state, '', `${url.pathname}${url.search}${url.hash}`);
+  }, [focusedRoomId]);
+
+  // Restore focus from ?room= once geometry is available.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (focusedRoomId) return;
+    if (!isApartmentPlan(roomGeometry)) return;
+    const param = new URLSearchParams(window.location.search).get('room');
+    if (!param) return;
+    if (apartmentRoomById(roomGeometry, param)?.tagged) {
+      focusRoom(param);
+    }
+  }, [roomGeometry, focusedRoomId, focusRoom]);
+
+  // When entering overview on an apartment, frame the whole plan.
+  useEffect(() => {
+    if (apartmentMode !== 'overview') return;
+    const handle = sceneRef.current as SceneHandle & {
+      goToFraming?: (f: ReturnType<typeof dollhouseFraming>) => void;
+    };
+    if (!handle) return;
+    const framing = dollhouseFraming(roomGeometry);
+    if (typeof handle.goToFraming === 'function') handle.goToFraming(framing);
+  }, [apartmentMode, workspace?.id]);
 
   const confirmLeaveWithoutSaving = useCallback(() => {
     setLeaveConfirmOpen(false);
@@ -466,6 +562,15 @@ export function Designer({
         }
         if (chrome.hangingDraft) {
           cancelHangingDraft();
+          return;
+        }
+        if (namingRoom) {
+          setNamingRoom(null);
+          return;
+        }
+        if (focusedRoomId) {
+          handleBackToOverview();
+          return;
         }
         return;
       }
@@ -535,8 +640,52 @@ export function Designer({
       if (key === '0') {
         e.preventDefault();
         resetCamera();
+        return;
+      }
+
+      // Apartment overview: 1–9 jump to tagged rooms; arrows cycle.
+      if (isApartmentOverview) {
+        const rooms = resolveApartmentRooms(roomGeometry).filter((r) => r.tagged);
+        if (rooms.length > 0) {
+          if (/^[1-9]$/.test(key)) {
+            const idx = Number(key) - 1;
+            const room = rooms[idx];
+            if (room) {
+              e.preventDefault();
+              handleFocusRoom(room.id);
+            }
+            return;
+          }
+          if (key === 'ArrowDown' || key === 'ArrowRight') {
+            e.preventDefault();
+            const cur = highlightedRoomId
+              ? rooms.findIndex((r) => r.id === highlightedRoomId)
+              : -1;
+            const next = rooms[(cur + 1 + rooms.length) % rooms.length]!;
+            setHighlightedRoomId(next.id);
+            return;
+          }
+          if (key === 'Enter' && highlightedRoomId) {
+            e.preventDefault();
+            handleFocusRoom(highlightedRoomId);
+            return;
+          }
+        }
+      }
+
+      // Focused apartment: [ ] cycle rooms.
+      if (apartmentMode === 'focused' && (key === '[' || key === ']')) {
+        const rooms = resolveApartmentRooms(roomGeometry).filter((r) => r.tagged);
+        if (rooms.length > 1 && focusedRoomId) {
+          e.preventDefault();
+          const cur = rooms.findIndex((r) => r.id === focusedRoomId);
+          const delta = key === ']' ? 1 : -1;
+          const next = rooms[(cur + delta + rooms.length) % rooms.length]!;
+          handleFocusRoom(next.id);
+        }
       }
     };
+
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [
@@ -548,6 +697,14 @@ export function Designer({
     canShare,
     posterBankItemId,
     creditsOpen,
+    namingRoom,
+    focusedRoomId,
+    handleBackToOverview,
+    handleFocusRoom,
+    isApartmentOverview,
+    apartmentMode,
+    roomGeometry,
+    highlightedRoomId,
   ]);
 
   // Clicking the viewport takes focus off the room-name field so shortcuts work.
@@ -579,17 +736,35 @@ export function Designer({
       {!chrome.present && !isPhone ? (
         <header className="dg-topbar">
           <div className="dg-topbar-left">
-            <button type="button" className="dg-topbar-icon" onClick={requestLeave} aria-label={starterEdit ? 'Back to starters' : 'Back to rooms'}>
+            <button
+              type="button"
+              className="dg-topbar-icon"
+              onClick={requestLeave}
+              aria-label={
+                focusedRoomId
+                  ? 'Back to apartment'
+                  : starterEdit
+                    ? 'Back to starters'
+                    : 'Back to rooms'
+              }
+            >
               <IconBack />
             </button>
             <div className="dg-rule--v" aria-hidden />
             <div className="dg-topbar-title">
+              {apartmentMode !== 'single' ? (
+                <ApartmentBar
+                  apartmentName={roomName || 'Apartment'}
+                  onFocusRoom={handleFocusRoom}
+                  onBackToOverview={handleBackToOverview}
+                />
+              ) : null}
               <input
                 className="dg-topbar-title__name"
                 value={roomName}
                 onChange={(e) => setRoomName(e.target.value)}
                 onBlur={() => void handleSave()}
-                aria-label="Room name"
+                aria-label={apartmentMode === 'single' ? 'Room name' : 'Apartment name'}
               />
               {forkMeta?.attribution?.visible ? (
                 <div className="dg-topbar-title__meta">
@@ -759,8 +934,18 @@ export function Designer({
             ref={sceneRef}
             orbitCssTargetRef={canvasWrapRef}
             interactionMode={isPhone ? 'mobile' : 'desktop'}
-            dimensionsOverlayHidden={chrome.present}
+            dimensionsOverlayHidden={chrome.present || isApartmentOverview}
             onPosterActivate={openPosterBank}
+            apartmentOverview={
+              isApartmentOverview
+                ? {
+                    highlightedId: highlightedRoomId,
+                    onHighlight: setHighlightedRoomId,
+                    onFocusRoom: handleFocusRoom,
+                    onNameRoom: setNamingRoom,
+                  }
+                : null
+            }
             selectionHud={{
               radialOpen: chrome.radialOpen,
               onToggleRadial: () => chrome.setRadialOpen(!chrome.radialOpen),
@@ -768,11 +953,31 @@ export function Designer({
               onChangePoster: changePosterForSelection,
               // Always pass an object so Scene uses SelectionHud (not ArcMenu).
               // hidden:true in present/draw — SelectionHud / MobileSelectionHud no-ops.
-              hidden: chrome.present || chrome.drawing,
+              hidden: chrome.present || chrome.drawing || isApartmentOverview,
             }}
           />
         </div>
         <div className="dg-viewport-veil" aria-hidden />
+
+        {isApartmentOverview && !isPhone && !chrome.present ? (
+          <ApartmentRoomList
+            onFocusRoom={handleFocusRoom}
+            onNameRoom={setNamingRoom}
+            highlightedId={highlightedRoomId}
+            onHighlight={setHighlightedRoomId}
+          />
+        ) : null}
+
+        {apartmentMode !== 'single' && !chrome.present ? <UnplacedBadge /> : null}
+
+        {isPhone && apartmentMode !== 'single' ? (
+          <MobileApartmentChrome
+            apartmentName={roomName || 'Apartment'}
+            onFocusRoom={handleFocusRoom}
+            onNameRoom={setNamingRoom}
+            onBackToOverview={handleBackToOverview}
+          />
+        ) : null}
 
         {isPhone ? (
           <MobileDesignerChrome
@@ -1097,6 +1302,28 @@ export function Designer({
         }}
       />
       <KeysOverlay open={chrome.overlay === 'keys'} onClose={() => chrome.setOverlay(null)} />
+
+      {namingRoom ? (
+        <NameRoomDialog
+          room={namingRoom}
+          onCancel={() => setNamingRoom(null)}
+          onNamed={(zoneId) => {
+            setNamingRoom(null);
+            handleFocusRoom(zoneId);
+          }}
+        />
+      ) : null}
+
+      {namingRoom ? (
+        <NameRoomDialog
+          room={namingRoom}
+          onCancel={() => setNamingRoom(null)}
+          onNamed={(zoneId) => {
+            setNamingRoom(null);
+            handleFocusRoom(zoneId);
+          }}
+        />
+      ) : null}
 
       <PosterBankModal
         open={!!posterBankItemId}

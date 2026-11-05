@@ -15,6 +15,7 @@ import type { OrbitControls as OrbitControlsType } from 'three-stdlib';
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { Room } from './Room';
+import { ApartmentOverview } from './ApartmentOverview';
 import { ItemsLayer } from '../furniture/ItemsLayer';
 import { DragController } from '../interaction/DragController';
 import { OrbitPointerGuard } from '../interaction/OrbitPointerGuard';
@@ -39,11 +40,21 @@ import { WeatherSystem } from './WeatherSystem';
 import { ProceduralSky } from './ProceduralSky';
 import { ScenePostProcessing } from './ScenePostProcessing';
 import { resolveRenderQuality } from '../lib/renderQuality';
-import { framingForPreset } from '../lib/presentationCameras';
+import { framingForPreset, type CameraFraming } from '../lib/presentationCameras';
+import { activeGeometryFor, type ApartmentRoom } from '../lib/apartmentRooms';
 import { CameraOrbitSync } from './CameraOrbitSync';
 import { SHADOW_ONLY_LAYER } from './shadowLayers';
 
 const SCENE_BG = '#E4DAC8';
+
+function useActiveGeometry() {
+  const fullGeom = useStore((s) => s.roomGeometry);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
+  return useMemo(
+    () => activeGeometryFor(fullGeom, focusedRoomId),
+    [fullGeom, focusedRoomId],
+  );
+}
 
 /** Fraction of ambient that IBL carries vs hemisphere. */
 const IBL_AMBIENT_FRACTION = 0.4;
@@ -63,6 +74,8 @@ export interface CaptureOptions {
 export interface SceneHandle {
   resetCamera: () => void;
   goToPreset: (preset: CameraPresetId) => void;
+  /** Animate orbit controls toward an arbitrary framing (apartment focus / overview). */
+  goToFraming: (framing: CameraFraming) => void;
   captureFrame: (opts?: CaptureOptions) => Promise<Blob>;
 }
 
@@ -71,7 +84,7 @@ function EnvironmentRig() {
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const exposure = useStore((s) => s.environment.exposure);
   const weather = useStore((s) => s.environment.weather);
-  const geom = useStore((s) => s.roomGeometry);
+  const geom = useActiveGeometry();
   const quality = useStore((s) => s.visual.quality);
   const q = resolveRenderQuality(quality);
   const lightRef = useRef<THREE.DirectionalLight>(null!);
@@ -222,7 +235,7 @@ function ImageBasedLighting() {
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const exposure = useStore((s) => s.environment.exposure);
-  const geom = useStore((s) => s.roomGeometry);
+  const geom = useActiveGeometry();
   const quality = useStore((s) => s.visual.quality);
   const q = resolveRenderQuality(quality);
 
@@ -274,7 +287,7 @@ function AtmosphericFog() {
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const weather = useStore((s) => s.environment.weather);
-  const geom = useStore((s) => s.roomGeometry);
+  const geom = useActiveGeometry();
   const quality = useStore((s) => s.visual.quality);
   const proceduralSky = resolveRenderQuality(quality).proceduralSky;
 
@@ -350,7 +363,7 @@ function GrazingIndoorFill() {
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const exposure = useStore((s) => s.environment.exposure);
-  const geom = useStore((s) => s.roomGeometry);
+  const geom = useActiveGeometry();
   const on = grazingSunIndoor(timeOfDay, orientationDeg);
   const [cx, cz] = planCentroid(geom);
   const b = planBounds(geom);
@@ -459,7 +472,7 @@ function CaptureBridge({
   controlsRef: RefObject<OrbitControlsType | null>;
 }) {
   const { gl, scene, camera, size, invalidate } = useThree();
-  const geom = useStore((s) => s.roomGeometry);
+  const geom = useActiveGeometry();
 
   const applyPreset = useCallback(
     (preset: CameraPresetId) => {
@@ -556,6 +569,7 @@ function SceneInner({
   onMobileLiftInchesChange,
   onPosterActivate,
   dimensionsOverlayHidden,
+  apartmentOverview,
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
   apiRef: MutableRefObject<CaptureApi | null>;
@@ -571,13 +585,14 @@ function SceneInner({
   onMobileLiftInchesChange?: (inches: number | null) => void;
   onPosterActivate?: (id: string) => void;
   dimensionsOverlayHidden?: boolean;
+  apartmentOverview?: SceneProps['apartmentOverview'];
 }) {
   const deselect = useStore((s) => s.select);
   const skyMode = useStore((s) => s.environment.skyMode);
   const timeOfDay = useStore((s) => s.environment.timeOfDay);
   const orientationDeg = useStore((s) => s.environment.orientationDeg);
   const weather = useStore((s) => s.environment.weather);
-  const geom = useStore((s) => s.roomGeometry);
+  const geom = useActiveGeometry();
   const quality = useStore((s) => s.visual.quality);
   const cameraPreset = useStore((s) => s.visual.cameraPreset);
   const capturing = useStore((s) => s.captureMode);
@@ -649,8 +664,16 @@ function SceneInner({
       <ProceduralSky />
       {showWeatherFx ? <WeatherSystem /> : null}
 
-      <Room interactive={showChrome && !hangingTool} />
+      <Room interactive={showChrome && !hangingTool && !apartmentOverview} />
       <ItemsLayer onPosterActivate={onPosterActivate} />
+      {apartmentOverview ? (
+        <ApartmentOverview
+          highlightedId={apartmentOverview.highlightedId}
+          onHighlight={apartmentOverview.onHighlight}
+          onFocusRoom={apartmentOverview.onFocusRoom}
+          onNameRoom={apartmentOverview.onNameRoom}
+        />
+      ) : null}
       {showDimensionsOverlay ? <DimensionsOverlay /> : null}
       {!readOnly && !capturing ? <MeasurementsLayer /> : null}
       {hangingTool ? (
@@ -749,6 +772,13 @@ export interface SceneProps {
   onPosterActivate?: (id: string) => void;
   /** Hide dimension overlay (present mode, etc.) without toggling the user preference. */
   dimensionsOverlayHidden?: boolean;
+  /** Apartment overview interactions (hover / focus / name). */
+  apartmentOverview?: {
+    highlightedId: string | null;
+    onHighlight: (roomId: string | null) => void;
+    onFocusRoom: (roomId: string) => void;
+    onNameRoom: (room: ApartmentRoom) => void;
+  } | null;
 }
 
 export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
@@ -761,6 +791,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
     onMobileLiftInchesChange,
     onPosterActivate,
     dimensionsOverlayHidden = false,
+    apartmentOverview = null,
   },
   ref,
 ) {
@@ -770,7 +801,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
     framing: ReturnType<typeof framingForPreset> | null;
     t: number;
   }>({ framing: null, t: 0 });
-  const geom = useStore((s) => s.roomGeometry);
+  const geom = useActiveGeometry();
   const cameraPreset = useStore((s) => s.visual.cameraPreset);
 
   useImperativeHandle(
@@ -796,6 +827,9 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
         };
         useStore.getState().setCameraPreset(preset);
       },
+      goToFraming(framing: CameraFraming) {
+        animRequestRef.current = { framing, t: 0 };
+      },
       async captureFrame(opts?: CaptureOptions) {
         const api = apiRef.current;
         if (!api) throw new Error('Scene not ready');
@@ -818,6 +852,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
       onMobileLiftInchesChange={onMobileLiftInchesChange}
       onPosterActivate={onPosterActivate}
       dimensionsOverlayHidden={dimensionsOverlayHidden}
+      apartmentOverview={apartmentOverview}
     />
   );
 });

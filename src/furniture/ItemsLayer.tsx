@@ -1,4 +1,5 @@
 import { isHangingDesignerTool, isMeasureDesignerTool, useStore, Item } from '../store';
+import { itemVisibleInFocus } from '../lib/apartmentRooms';
 import { Selectable } from './Selectable';
 import { Bed } from './Bed';
 import { Dresser } from './Dresser';
@@ -26,6 +27,8 @@ export function ItemsLayer({ onPosterActivate }: ItemsLayerProps) {
   const selectedIds = useStore((s) => s.selectedIds);
   const invalid = useStore((s) => s.invalid);
   const designerTool = useStore((s) => s.designerTool);
+  const roomGeometry = useStore((s) => s.roomGeometry);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
   const placing = isHangingDesignerTool(designerTool) || isMeasureDesignerTool(designerTool);
 
   return (
@@ -33,6 +36,15 @@ export function ItemsLayer({ onPosterActivate }: ItemsLayerProps) {
       {order.map((id) => {
         const item = items[id];
         if (!item) return null;
+        if (
+          !itemVisibleInFocus(roomGeometry, focusedRoomId, {
+            id: item.id,
+            x: item.position[0],
+            z: item.position[2],
+          })
+        ) {
+          return null;
+        }
         const isSelected = selectedIds.includes(id);
         // Hanging visuals are authored in world-relative local space around item.position.
         return (

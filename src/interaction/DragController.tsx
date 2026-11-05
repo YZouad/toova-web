@@ -2,7 +2,16 @@ import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../store';
-import { validatePlacement, clampToRoom, settleGravity, itemPinsElevation, resolveGroupDragDelta, type DragMover } from './collision';
+import {
+  validatePlacement,
+  clampToRoom,
+  settleGravity,
+  itemPinsElevation,
+  resolveGroupDragDelta,
+  collisionPeers,
+  type DragMover,
+} from './collision';
+import { isApartmentInteractionLocked } from '../scene/ApartmentTransition';
 
 /** Movement before a press becomes an XZ drag (lets long-press lift fire). */
 const DRAG_START_PX = 8;
@@ -88,6 +97,7 @@ export function DragController() {
       if (e.button !== 0) return;
       // Shift is reserved for multi-select toggles in Selectable.
       if (e.shiftKey) return;
+      if (isApartmentInteractionLocked()) return;
 
       const canvasRect = canvas.getBoundingClientRect();
       ndc.x = ((e.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
@@ -175,7 +185,7 @@ export function DragController() {
       const fromDz = primary.position[2] - primaryStart[2];
 
       const moving = new Set(drag.ids);
-      const others = Object.values(state.items).filter((it) => !moving.has(it.id));
+      const others = collisionPeers(moving);
       const movers: DragMover[] = [];
       for (const id of drag.ids) {
         const it = state.items[id];
@@ -226,7 +236,7 @@ export function DragController() {
         if (!item || !startPos) continue;
 
         const others = [
-          ...Object.values(state.items).filter((it) => !moving.has(it.id)),
+          ...collisionPeers(moving),
           ...Object.entries(settled).map(([sid, position]) => ({
             ...state.items[sid]!,
             position,

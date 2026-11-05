@@ -7,7 +7,7 @@ import {
   MEASURE_SNAP_PX_TOUCH,
   applyMeasureSnap,
 } from '../lib/measureSnap';
-import { useStore } from '../store';
+import { getActiveGeometry, useStore } from '../store';
 
 const CLICK_MAX_PX = 5;
 const CLICK_MAX_PX_TOUCH = 10;
@@ -55,7 +55,7 @@ export function MeasureController() {
       const isTouch = window.matchMedia('(pointer: coarse)').matches;
       return applyMeasureSnap(
         raw,
-        state.roomGeometry,
+        getActiveGeometry(state),
         state.items,
         camera,
         rect,

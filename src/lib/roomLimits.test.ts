@@ -12,6 +12,13 @@ describe('isAtRoomLimit', () => {
     expect(isAtRoomLimit(6)).toBe(true);
   });
 
+  it('counts designs (rooms rows), not apartment zones — one apartment = one slot', () => {
+    // Product: multi-zone apartments stay a single rooms row, so FREE_PLAN_MAX_ROOMS
+    // still applies per saved design, not per tagged face.
+    expect(isAtRoomLimit(1)).toBe(false);
+    expect(FREE_PLAN_MAX_ROOMS).toBe(5);
+  });
+
   it('does not cap unlimited (Studio / admin) accounts', () => {
     expect(isAtRoomLimit(0, { unlimited: true })).toBe(false);
     expect(isAtRoomLimit(FREE_PLAN_MAX_ROOMS, { unlimited: true })).toBe(false);

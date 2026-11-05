@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 import { sampleSun, indoorHorizonFill } from '../lib/environment';
 import {
@@ -7,6 +7,12 @@ import {
   planBounds,
   type RoomGeometry,
 } from '../lib/roomGeometry';
+import {
+  activeGeometryFor,
+  apartmentModeFor,
+  apartmentRoomById,
+  planForFace,
+} from '../lib/apartmentRooms';
 import { ROOM } from '../units';
 import { useStore } from '../store';
 import { Wall } from './Wall';
@@ -16,6 +22,7 @@ import { DoorAssemblies, WindowAssemblies } from './Openings';
 import { resolveRenderQuality } from '../lib/renderQuality';
 import { wallPaintColor } from '../lib/roomAppearance';
 import { OrbitCutawaySync } from './useOrbitFade';
+import { ApartmentTransition } from './ApartmentTransition';
 
 /** Pick wall ids to hide for open-front / top-down cutaways. */
 function cutAwayWallIds(geom: RoomGeometry, mode: string): Set<string> {
@@ -23,7 +30,6 @@ function cutAwayWallIds(geom: RoomGeometry, mode: string): Set<string> {
   const segments = allWallSegments(geom);
   if (segments.length === 0) return new Set();
 
-  // openFront: hide the wall whose outward faces the default camera (+X/+Z quadrant).
   const camDir = new THREE.Vector2(0.9, 1.1).normalize();
   let bestId = segments[0]!.wall.id;
   let bestDot = -Infinity;
@@ -38,21 +44,31 @@ function cutAwayWallIds(geom: RoomGeometry, mode: string): Set<string> {
   return new Set([bestId]);
 }
 
-export function Room({ interactive = true }: { interactive?: boolean }) {
-  const geom = useStore((s) => s.roomGeometry);
-  const appearance = useStore((s) => s.environment.appearance);
-  const cutaway = useStore((s) => s.visual.cutaway);
-  const selectedWallId = useStore((s) => s.selectedWallId);
-  const selectWall = useStore((s) => s.selectWall);
-  const designerTool = useStore((s) => s.designerTool);
-
+function RoomShell({
+  geom,
+  interactive,
+  appearance,
+  cutaway,
+  selectedWallId,
+  selectWall,
+  designerTool,
+  showCeiling,
+  showRoof,
+}: {
+  geom: RoomGeometry;
+  interactive: boolean;
+  appearance: ReturnType<typeof useStore.getState>['environment']['appearance'];
+  cutaway: string;
+  selectedWallId: string | null;
+  selectWall: (id: string | null) => void;
+  designerTool: string;
+  showCeiling: boolean;
+  showRoof: boolean;
+}) {
   const H = geom.height;
   const segments = useMemo(() => allWallSegments(geom), [geom]);
   const hidden = useMemo(() => cutAwayWallIds(geom, cutaway), [geom, cutaway]);
   const canSelectWall = interactive && designerTool === 'select';
-
-  // Ceiling + roof slab are always on (except top-down cutaway for the finish plane).
-  const showCeiling = cutaway !== 'topDown';
 
   return (
     <group>
@@ -69,7 +85,7 @@ export function Room({ interactive = true }: { interactive?: boolean }) {
       />
       <ShadowRoof
         geom={geom}
-        enabled={cutaway !== 'topDown'}
+        enabled={showRoof}
         preset={appearance.ceilingPreset}
       />
 
@@ -102,6 +118,116 @@ export function Room({ interactive = true }: { interactive?: boolean }) {
       <DoorAssemblies geom={geom} trimPreset={appearance.trimPreset} />
       <WindowLightAndGlass geom={geom} trimPreset={appearance.trimPreset} interactive={interactive} />
       <RecessedLights geom={geom} enabled={appearance.recessedLights} />
+    </group>
+  );
+}
+
+export function Room({ interactive = true }: { interactive?: boolean }) {
+  const fullGeom = useStore((s) => s.roomGeometry);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
+  const appearance = useStore((s) => s.environment.appearance);
+  const cutaway = useStore((s) => s.visual.cutaway);
+  const selectedWallId = useStore((s) => s.selectedWallId);
+  const selectWall = useStore((s) => s.selectWall);
+  const designerTool = useStore((s) => s.designerTool);
+  const mode = apartmentModeFor(fullGeom, focusedRoomId);
+
+  const focusGroupRef = useRef<THREE.Group>(null);
+  const restGroupRef = useRef<THREE.Group>(null);
+
+  const focusedRoom = focusedRoomId
+    ? apartmentRoomById(fullGeom, focusedRoomId)
+    : null;
+
+  const focusGeom = useMemo(() => {
+    if (!focusedRoom) return null;
+    return planForFace(fullGeom, focusedRoom);
+  }, [fullGeom, focusedRoom]);
+
+  const restGeom = useMemo(() => {
+    if (!focusedRoom || mode === 'single') return null;
+    // Rest = full plan walls/floors minus the focused room's exclusive parts.
+    // Simplest: render the full plan in rest and the focused face in focus —
+    // shared walls appear in both (acceptable for the drop-away effect).
+    return fullGeom;
+  }, [fullGeom, focusedRoom, mode]);
+
+  // Single-room / non-apartment: render as today via active geometry.
+  if (mode === 'single') {
+    const geom = activeGeometryFor(fullGeom, focusedRoomId);
+    const showCeiling = cutaway !== 'topDown';
+    return (
+      <RoomShell
+        geom={geom}
+        interactive={interactive}
+        appearance={appearance}
+        cutaway={cutaway}
+        selectedWallId={selectedWallId}
+        selectWall={selectWall}
+        designerTool={designerTool}
+        showCeiling={showCeiling}
+        showRoof={cutaway !== 'topDown'}
+      />
+    );
+  }
+
+  // Overview: full apartment, no ceiling (dollhouse).
+  if (mode === 'overview') {
+    return (
+      <group>
+        <ApartmentTransition restGroupRef={restGroupRef} focusGroupRef={focusGroupRef} />
+        <group ref={focusGroupRef} />
+        <group ref={restGroupRef}>
+          <RoomShell
+            geom={fullGeom}
+            interactive={false}
+            appearance={appearance}
+            cutaway="orbit"
+            selectedWallId={null}
+            selectWall={() => {}}
+            designerTool="select"
+            showCeiling={false}
+            showRoof={false}
+          />
+        </group>
+      </group>
+    );
+  }
+
+  // Focused: focused room stays; rest drops away.
+  return (
+    <group>
+      <ApartmentTransition restGroupRef={restGroupRef} focusGroupRef={focusGroupRef} />
+      <group ref={focusGroupRef}>
+        {focusGeom ? (
+          <RoomShell
+            geom={focusGeom}
+            interactive={interactive}
+            appearance={appearance}
+            cutaway={cutaway}
+            selectedWallId={selectedWallId}
+            selectWall={selectWall}
+            designerTool={designerTool}
+            showCeiling={cutaway !== 'topDown'}
+            showRoof={cutaway !== 'topDown'}
+          />
+        ) : null}
+      </group>
+      <group ref={restGroupRef}>
+        {restGeom ? (
+          <RoomShell
+            geom={restGeom}
+            interactive={false}
+            appearance={appearance}
+            cutaway="orbit"
+            selectedWallId={null}
+            selectWall={() => {}}
+            designerTool="select"
+            showCeiling={false}
+            showRoof={false}
+          />
+        ) : null}
+      </group>
     </group>
   );
 }

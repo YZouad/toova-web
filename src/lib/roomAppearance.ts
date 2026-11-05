@@ -14,6 +14,12 @@ export interface RoomAppearance {
   wallColor: string;
   /** Optional per-wall paint overrides keyed by floor-plan wall id. */
   wallColors?: Record<string, string>;
+  /**
+   * Optional per-side paint for shared partition walls.
+   * Key format: `${wallId}:a` / `${wallId}:b` (side facing lower/higher face centroid).
+   * Falls back to wallColors[wallId] then wallColor.
+   */
+  wallSideColors?: Record<string, string>;
   floorPreset: MaterialPresetId;
   ceilingPreset: MaterialPresetId;
   trimPreset: MaterialPresetId;
@@ -113,7 +119,14 @@ export function parseWallColors(raw: unknown): Record<string, string> | undefine
 }
 
 /** Resolved paint for one wall — per-wall override, else the room default. */
-export function wallPaintColor(appearance: RoomAppearance, wallId: string): string {
+export function wallPaintColor(
+  appearance: RoomAppearance,
+  wallId: string,
+  side?: 'a' | 'b',
+): string {
+  if (side && appearance.wallSideColors?.[`${wallId}:${side}`]) {
+    return appearance.wallSideColors[`${wallId}:${side}`]!;
+  }
   return appearance.wallColors?.[wallId] ?? appearance.wallColor;
 }
 
@@ -128,7 +141,7 @@ export function applyWallPaint(
 ): RoomAppearance {
   const hex = isHexColor(color) ? normalizeHex(color) : appearance.wallColor;
   if (!wallId) {
-    return { ...appearance, wallColor: hex, wallColors: undefined };
+    return { ...appearance, wallColor: hex, wallColors: undefined, wallSideColors: undefined };
   }
   const next = { ...(appearance.wallColors ?? {}) };
   if (hex === appearance.wallColor) delete next[wallId];
@@ -213,6 +226,7 @@ export function parseAppearance(raw: unknown): RoomAppearance {
     ? normalizeHex(o.wallColor)
     : normalizeHex(MATERIAL_PRESETS[wallPreset]?.color ?? DEFAULT_WALL_COLOR);
   const wallColors = parseWallColors(o.wallColors);
+  const wallSideColors = parseWallColors(o.wallSideColors);
   const floorTexturePath =
     typeof o.floorTexturePath === 'string' && o.floorTexturePath.trim()
       ? o.floorTexturePath.trim()
@@ -221,6 +235,7 @@ export function parseAppearance(raw: unknown): RoomAppearance {
     wallPreset,
     wallColor,
     ...(wallColors ? { wallColors } : {}),
+    ...(wallSideColors ? { wallSideColors } : {}),
     floorPreset: pickPreset(o.floorPreset, DEFAULT_APPEARANCE.floorPreset),
     ceilingPreset: pickPreset(o.ceilingPreset, DEFAULT_APPEARANCE.ceilingPreset),
     trimPreset: pickPreset(o.trimPreset, DEFAULT_APPEARANCE.trimPreset),

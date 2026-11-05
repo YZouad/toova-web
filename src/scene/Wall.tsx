@@ -5,9 +5,11 @@ import { ROOM } from '../units';
 import { applyWallSlabUVs } from '../lib/shapeUVs';
 import { getTintableWallMaps } from '../lib/proceduralTextures';
 import { getOrbitHiddenWallIds } from '../lib/orbitCutaway';
+import { isApartmentPlan } from '../lib/apartmentRooms';
 import { useStore } from '../store';
 import { useOrbitFade } from './useOrbitFade';
 import { createShadowOnlyMaterials } from './shadowLayers';
+import { attachDollhouseClip } from './dollhouseClip';
 
 /** Max pointer travel (px) for a press to count as a wall paint click, not an orbit drag. */
 const WALL_CLICK_PX = 6;
@@ -200,15 +202,20 @@ export function Wall({
     [],
   );
 
+  const dollhouse = useStore(
+    (s) => s.focusedRoomId == null && isApartmentPlan(s.roomGeometry),
+  );
+
   useEffect(() => {
     matRef.current = material;
     material.color.set(color);
     material.emissive.set(selected ? '#c4a574' : '#000000');
     material.emissiveIntensity = selected ? 0.22 : 0;
+    attachDollhouseClip(material, dollhouse);
     return () => {
       material.dispose();
     };
-  }, [material, color, selected]);
+  }, [material, color, selected, dollhouse]);
 
   useEffect(
     () => () => {
