@@ -18,13 +18,11 @@ export function setDollhouseCutHeight(cutY: number) {
   plane.constant = cutY;
 }
 
-export function attachDollhouseClip(material: THREE.Material, enabled: boolean) {
-  if (enabled) {
-    material.clippingPlanes = [getDollhouseClipPlane()];
-    material.clipShadows = true;
-    material.needsUpdate = true;
-  } else if (material.clippingPlanes?.length) {
-    material.clippingPlanes = [];
-    material.needsUpdate = true;
-  }
+/**
+ * Create materials with this plane already attached so enabling
+ * `gl.localClippingEnabled` never forces a shader recompile on focus.
+ * Harmless while clipping is disabled (single-room mode).
+ */
+export function dollhouseClipPlanes(): THREE.Plane[] {
+  return [getDollhouseClipPlane()];
 }

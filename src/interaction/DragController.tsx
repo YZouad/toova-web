@@ -11,6 +11,7 @@ import {
   collisionPeers,
   type DragMover,
 } from './collision';
+import { pickItemUnderRay } from '../lib/pickItemUnderPointer';
 import { isApartmentInteractionLocked } from '../scene/ApartmentTransition';
 
 /** Movement before a press becomes an XZ drag (lets long-press lift fire). */
@@ -29,7 +30,7 @@ const DRAG_START_PX = 8;
  * can raise elevation without being undone by settle-on-release.
  */
 export function DragController() {
-  const { camera, gl, scene } = useThree();
+  const { camera, gl } = useThree();
   const controls = useThree((s) => s.controls) as any;
 
   const pendingRef = useRef<{
@@ -53,6 +54,7 @@ export function DragController() {
     const canvas = gl.domElement;
     const raycaster = new THREE.Raycaster();
     const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const ndc = new THREE.Vector2();
     const hit = new THREE.Vector3();
 
@@ -103,20 +105,15 @@ export function DragController() {
       ndc.x = ((e.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
       ndc.y = -((e.clientY - canvasRect.top) / canvasRect.height) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
-      const intersections = raycaster.intersectObjects(scene.children, true);
 
-      let hitItemId: string | null = null;
-      for (const ix of intersections) {
-        let obj: THREE.Object3D | null = ix.object;
-        while (obj) {
-          if (obj.userData?.itemId) { hitItemId = obj.userData.itemId as string; break; }
-          obj = obj.parent;
-        }
-        if (hitItemId) break;
-      }
-      if (!hitItemId) return;
-
+      // Analytic AABB pick — scene.intersectObjects freezes on a full apartment.
+      const floorHit = raycaster.ray.intersectPlane(floorPlane, hit);
+      const floorDist = floorHit ? raycaster.ray.origin.distanceTo(floorHit) : Infinity;
       const { selectedIds, items } = useStore.getState();
+      const picked = pickItemUnderRay(raycaster.ray, Object.values(items), floorDist + 1);
+      if (!picked) return;
+      const hitItemId = picked.id;
+
       const primary = items[hitItemId];
       if (!primary || primary.kind === 'hanging') return;
 
@@ -286,7 +283,7 @@ export function DragController() {
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerUp);
     };
-  }, [camera, gl, scene, controls]);
+  }, [camera, gl, controls]);
 
   return null;
 }

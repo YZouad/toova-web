@@ -45,19 +45,28 @@ export interface ItemPlanPoint {
 export function isApartmentPlan(plan: FloorPlan): boolean {
   const tagged = (plan.zones ?? []).length;
   if (tagged >= 2) return true;
-  // Also accept resolveZones in case zones were pruned but faces still tagged.
-  return resolveZones(plan).filter((a) => a.zone != null).length >= 2;
+  // Also accept resolved faces in case zones were pruned but faces still tagged.
+  return resolveApartmentRooms(plan).filter((r) => r.tagged).length >= 2;
 }
 
 export function untitledRoomLabel(index: number): string {
   return index <= 0 ? 'Untitled area' : `Untitled area ${index + 1}`;
 }
 
-/** Resolve every enclosed face into an ApartmentRoom (tagged + untagged). */
+// Plans are immutable store snapshots, so face resolution is cached by identity.
+// Per-item membership checks run on every items-layer render and collision pass.
+const roomsCache = new WeakMap<FloorPlan, ApartmentRoom[]>();
+const roomPlanCache = new WeakMap<FloorPlan, Map<ApartmentRoomId, FloorPlan | null>>();
+
+/** Resolve every enclosed face into an ApartmentRoom (tagged + untagged). Do not mutate the result. */
 export function resolveApartmentRooms(plan: FloorPlan): ApartmentRoom[] {
+  const cached = roomsCache.get(plan);
+  if (cached) return cached;
   const areas = resolveZones(plan);
   let untitledIndex = 0;
-  return areas.map((area) => areaToRoom(plan, area, untitledIndex++));
+  const rooms = areas.map((area) => areaToRoom(plan, area, untitledIndex++));
+  roomsCache.set(plan, rooms);
+  return rooms;
 }
 
 function areaToRoom(plan: FloorPlan, area: ResolvedArea, untitledIndex: number): ApartmentRoom {
@@ -120,9 +129,16 @@ export function planForFace(plan: FloorPlan, room: ApartmentRoom): FloorPlan {
 
 /** Convenience: plan for a room id, or null when the id is unknown. */
 export function planForRoomId(plan: FloorPlan, roomId: ApartmentRoomId): FloorPlan | null {
+  let byId = roomPlanCache.get(plan);
+  if (!byId) {
+    byId = new Map();
+    roomPlanCache.set(plan, byId);
+  }
+  if (byId.has(roomId)) return byId.get(roomId)!;
   const room = apartmentRoomById(plan, roomId);
-  if (!room) return null;
-  return planForFace(plan, room);
+  const roomPlan = room ? planForFace(plan, room) : null;
+  byId.set(roomId, roomPlan);
+  return roomPlan;
 }
 
 /** Room key for an item center, or null when outside every face ("unplaced"). */

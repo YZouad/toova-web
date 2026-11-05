@@ -11,6 +11,7 @@ import { getProceduralMaterialMaps } from '../lib/proceduralTextures';
 import type { MaterialPresetId } from '../lib/roomMaterials';
 import { useOrbitFade } from './useOrbitFade';
 import { SHADOW_ONLY_LAYER } from './shadowLayers';
+import { dollhouseClipPlanes } from './dollhouseClip';
 import { useStore } from '../store';
 
 const WINDOW_CLICK_PX = 6;
@@ -69,6 +70,8 @@ function DoorUnit({
       roughness: maps.roughness,
       metalness: maps.metalness,
       transparent: true,
+      clippingPlanes: dollhouseClipPlanes(),
+      clipShadows: true,
     });
     const scale = 1 / maps.repeatInches;
     for (const t of [maps.map, maps.normalMap, maps.roughnessMap]) {
@@ -84,6 +87,8 @@ function DoorUnit({
         roughness: 0.55,
         metalness: 0,
         transparent: true,
+        clippingPlanes: dollhouseClipPlanes(),
+        clipShadows: true,
       }),
     [],
   );
@@ -94,6 +99,8 @@ function DoorUnit({
         roughness: 0.35,
         metalness: 0.85,
         transparent: true,
+        clippingPlanes: dollhouseClipPlanes(),
+        clipShadows: true,
       }),
     [],
   );
@@ -257,6 +264,8 @@ function WindowUnit({
       roughness: maps.roughness,
       metalness: maps.metalness,
       transparent: true,
+      clippingPlanes: dollhouseClipPlanes(),
+      clipShadows: true,
     });
     const scale = 1 / maps.repeatInches;
     for (const t of [maps.map, maps.normalMap, maps.roughnessMap]) {
@@ -275,6 +284,8 @@ function WindowUnit({
         transparent: true,
         opacity: 0.35,
         metalness: 0,
+        clippingPlanes: dollhouseClipPlanes(),
+        clipShadows: true,
       }),
     [glassTint],
   );
@@ -285,6 +296,8 @@ function WindowUnit({
         roughness: 0.92,
         metalness: 0,
         transparent: true,
+        clippingPlanes: dollhouseClipPlanes(),
+        clipShadows: true,
       }),
     [curtains?.color],
   );
@@ -295,6 +308,8 @@ function WindowUnit({
         roughness: 0.42,
         metalness: 0.7,
         transparent: true,
+        clippingPlanes: dollhouseClipPlanes(),
+        clipShadows: true,
       }),
     [],
   );

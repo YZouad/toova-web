@@ -1,11 +1,12 @@
 import { Html, Line } from '@react-three/drei';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import {
   resolveApartmentRooms,
   type ApartmentRoom,
 } from '../lib/apartmentRooms';
+import { pickItemUnderRay } from '../lib/pickItemUnderPointer';
 import { roomTagDef } from '../lib/roomTags';
 import { getApartmentMode, useStore } from '../store';
 import { DOLLHOUSE_CUT_HEIGHT } from './dollhouseClip';
@@ -19,7 +20,7 @@ function facePoints(room: ApartmentRoom, y: number): [number, number, number][] 
   return pts;
 }
 
-function FloorHighlight({ room, active }: { room: ApartmentRoom; active: boolean }) {
+function FloorHighlight({ room }: { room: ApartmentRoom }) {
   const shape = useMemo(() => {
     const s = new THREE.Shape();
     if (room.face.length === 0) return s;
@@ -34,24 +35,35 @@ function FloorHighlight({ room, active }: { room: ApartmentRoom; active: boolean
   const geo = useMemo(() => new THREE.ShapeGeometry(shape), [shape]);
   useEffect(() => () => geo.dispose(), [geo]);
 
-  const color = room.tag ? roomTagDef(room.tag).color : 'rgba(180,170,150,0.35)';
-  const fill = active ? color : 'rgba(251,247,240,0.35)';
+  const color = room.tag ? roomTagDef(room.tag).color : 'rgb(180,170,150)';
+  const fill = opaqueColor(color);
 
+  // Same +X rotation as FloorMesh: shape Y maps to world +Z (−PI/2 mirrors across z=0).
   return (
     <mesh
       geometry={geo}
-      rotation={[-Math.PI / 2, 0, 0]}
+      rotation={[Math.PI / 2, 0, 0]}
       position={[0, FLOOR_Y, 0]}
       renderOrder={2}
+      raycast={noRaycast}
     >
       <meshBasicMaterial
         color={fill}
         transparent
-        opacity={active ? 0.55 : 0.22}
+        opacity={0.4}
         depthWrite={false}
+        side={THREE.DoubleSide}
       />
     </mesh>
   );
+}
+
+function noRaycast() {}
+
+/** THREE.Color ignores alpha (and warns); keep the hue, drive alpha via opacity. */
+function opaqueColor(css: string): string {
+  const m = css.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)/i);
+  return m ? `rgb(${m[1]}, ${m[2]}, ${m[3]})` : css;
 }
 
 function RoomLabel({
@@ -98,6 +110,9 @@ export interface ApartmentOverviewProps {
 /**
  * Dollhouse overlay: analytic floor picking, tinted faces, cut-height outlines,
  * and room labels. Mounted only in apartment overview mode.
+ *
+ * Furniture clicks select the item and stay in overview (drag still works).
+ * Empty-floor clicks focus / name the room.
  */
 export function ApartmentOverview({
   onFocusRoom,
@@ -116,6 +131,8 @@ export function ApartmentOverview({
   const hitPoint = useMemo(() => new THREE.Vector3(), []);
   const pendingTapRef = useRef<{ roomId: string; at: number } | null>(null);
   const [isCoarse, setIsCoarse] = useState(false);
+  const callbacksRef = useRef({ onFocusRoom, onNameRoom, onHighlight });
+  callbacksRef.current = { onFocusRoom, onNameRoom, onHighlight };
 
   useEffect(() => {
     const mq = window.matchMedia('(pointer: coarse)');
@@ -125,16 +142,19 @@ export function ApartmentOverview({
     return () => mq.removeEventListener('change', sync);
   }, []);
 
-  const pickRoom = (clientX: number, clientY: number): ApartmentRoom | null => {
+  const setRayFromClient = (clientX: number, clientY: number) => {
     const rect = gl.domElement.getBoundingClientRect();
     ndc.x = ((clientX - rect.left) / rect.width) * 2 - 1;
     ndc.y = -((clientY - rect.top) / rect.height) * 2 + 1;
     raycaster.setFromCamera(ndc, camera);
+  };
+
+  const pickRoom = (clientX: number, clientY: number): ApartmentRoom | null => {
+    setRayFromClient(clientX, clientY);
     const hit = raycaster.ray.intersectPlane(floorPlane, hitPoint);
     if (!hit) return null;
     return (
       rooms.find((r) => {
-        // Inline point-in-face to avoid importing geometry helpers into the hot path.
         const face = r.face;
         let inside = false;
         for (let i = 0, j = face.length - 1; i < face.length; j = i++) {
@@ -159,12 +179,32 @@ export function ApartmentOverview({
 
     const onDown = (e: PointerEvent) => {
       down = { x: e.clientX, y: e.clientY, pointerId: e.pointerId };
+      // Warm the focus shell during the press so pointerup does not compile shaders.
+      if (!isCoarse) {
+        const room = pickRoom(e.clientX, e.clientY);
+        if (room) callbacksRef.current.onHighlight(room.id);
+      }
     };
     const onUp = (e: PointerEvent) => {
       if (!down || down.pointerId !== e.pointerId) return;
       const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y);
       down = null;
       if (moved > 8) return;
+
+      const { onFocusRoom, onNameRoom, onHighlight } = callbacksRef.current;
+      setRayFromClient(e.clientX, e.clientY);
+
+      // Furniture wins over the floor — select and stay in overview.
+      const floorHit = raycaster.ray.intersectPlane(floorPlane, hitPoint);
+      const floorDist = floorHit ? raycaster.ray.origin.distanceTo(floorHit) : Infinity;
+      const items = Object.values(useStore.getState().items);
+      const itemHit = pickItemUnderRay(raycaster.ray, items, floorDist + 1);
+      if (itemHit) {
+        pendingTapRef.current = null;
+        useStore.getState().select(itemHit.id);
+        return;
+      }
+
       const room = pickRoom(e.clientX, e.clientY);
       if (!room) {
         onHighlight(null);
@@ -188,11 +228,13 @@ export function ApartmentOverview({
     };
     const onMove = (e: PointerEvent) => {
       if (isCoarse) return;
+      // Skip hover work while a drag may be in progress.
+      if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 8) return;
       const room = pickRoom(e.clientX, e.clientY);
-      onHighlight(room?.id ?? null);
+      callbacksRef.current.onHighlight(room?.id ?? null);
     };
     const onLeave = () => {
-      if (!isCoarse) onHighlight(null);
+      if (!isCoarse) callbacksRef.current.onHighlight(null);
     };
 
     el.addEventListener('pointerdown', onDown);
@@ -205,25 +247,7 @@ export function ApartmentOverview({
       el.removeEventListener('pointermove', onMove);
       el.removeEventListener('pointerleave', onLeave);
     };
-  }, [
-    mode,
-    gl,
-    camera,
-    rooms,
-    isCoarse,
-    onFocusRoom,
-    onNameRoom,
-    onHighlight,
-    ndc,
-    raycaster,
-    floorPlane,
-    hitPoint,
-  ]);
-
-  // Keep clipping enabled while overview is mounted.
-  useFrame(() => {
-    gl.localClippingEnabled = mode === 'overview';
-  });
+  }, [mode, gl, camera, rooms, isCoarse, ndc, raycaster, floorPlane, hitPoint]);
 
   if (mode !== 'overview') return null;
 
@@ -235,13 +259,14 @@ export function ApartmentOverview({
         const color = room.tag ? roomTagDef(room.tag).stroke : '#8a8074';
         return (
           <group key={room.id}>
-            <FloorHighlight room={room} active={active} />
+            {active ? <FloorHighlight room={room} /> : null}
             <Line
               points={outline}
               color={active ? '#2c241c' : color}
               lineWidth={active ? 2.5 : 1.25}
               transparent
               opacity={active ? 0.95 : 0.65}
+              raycast={noRaycast}
             />
             <RoomLabel room={room} emphasized={active} />
           </group>

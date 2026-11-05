@@ -3599,21 +3599,22 @@
 
 .dg-apt-list {
   position: absolute;
-  top: 16px;
-  left: 16px;
-  z-index: 8;
-  width: min(260px, 42vw);
-  max-height: min(70vh, 520px);
+  top: var(--dg-gutter);
+  /* Sit beside the tool rail (button + stack padding/border + gap). */
+  left: calc(max(var(--dg-gutter), var(--safe-left)) + var(--dg-rail-w) + 30px);
+  z-index: var(--dg-z-chrome);
+  width: min(168px, 34vw);
+  max-height: min(42vh, 280px);
   display: flex;
   flex-direction: column;
   background: rgba(248, 243, 234, 0.94);
   border: 1px solid var(--ink-0);
-  border-radius: 6px;
+  border-radius: 5px;
   backdrop-filter: blur(8px);
   overflow: hidden;
 }
 .dg-apt-list__head {
-  padding: 12px 14px 8px;
+  padding: 7px 10px 5px;
   font: var(--type-mono-xs);
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -3622,19 +3623,19 @@
 .dg-apt-list__items {
   list-style: none;
   margin: 0;
-  padding: 0 8px 8px;
+  padding: 0 5px 5px;
   overflow: auto;
 }
 .dg-apt-list__item {
   display: flex;
-  gap: 10px;
+  gap: 7px;
   align-items: center;
   width: 100%;
   text-align: left;
   border: 1px solid transparent;
   background: transparent;
-  border-radius: 4px;
-  padding: 10px;
+  border-radius: 3px;
+  padding: 5px 6px;
   cursor: pointer;
   color: var(--ink-2);
 }
@@ -3644,29 +3645,29 @@
   border-color: var(--ink-0);
 }
 .dg-apt-list__index {
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   display: grid;
   place-items: center;
-  border-radius: 3px;
+  border-radius: 2px;
   background: var(--accent-bg);
   color: var(--accent-text);
-  font: 600 11px/1 var(--font-sans);
+  font: 600 9px/1 var(--font-sans);
   flex-shrink: 0;
 }
-.dg-apt-list__body { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.dg-apt-list__body { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
 .dg-apt-list__label {
-  font: 600 14px/1.2 var(--font-sans);
+  font: 600 12px/1.15 var(--font-sans);
   color: var(--ink-1);
 }
 .dg-apt-list__meta {
-  font: 400 12px/1.2 var(--font-sans);
+  font: 400 10px/1.15 var(--font-sans);
   color: var(--ink-5);
 }
 .dg-apt-list__hint {
   margin: 0;
-  padding: 8px 14px 12px;
-  font: 400 12px/1.35 var(--font-sans);
+  padding: 5px 10px 7px;
+  font: 400 10px/1.3 var(--font-sans);
   color: var(--ink-5);
   border-top: 1px solid var(--ink-0);
 }

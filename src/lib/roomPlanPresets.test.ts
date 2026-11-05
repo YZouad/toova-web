@@ -3,13 +3,20 @@ import { isValidFloorPlan, serializeFloorPlan } from './floorPlanGeometry';
 import { getRoomPlanPreset, ROOM_PLAN_PRESETS } from './roomPlanPresets';
 
 describe('roomPlanPresets (blank shapes)', () => {
-  it('exposes three distinct presets', () => {
-    expect(ROOM_PLAN_PRESETS).toHaveLength(3);
-    expect(ROOM_PLAN_PRESETS.map((p) => p.id)).toEqual(['rectangle', 'square', 'l-shape']);
+  const enclosedPresets = ROOM_PLAN_PRESETS.filter((p) => p.id !== 'apartment');
+
+  it('exposes three room shapes plus the apartment drawing canvas', () => {
+    expect(ROOM_PLAN_PRESETS.map((p) => p.id)).toEqual(['rectangle', 'square', 'l-shape', 'apartment']);
   });
 
-  it('each preset builds a valid serializable floor plan', () => {
-    for (const preset of ROOM_PLAN_PRESETS) {
+  it('apartment preset is an empty canvas for drawing rooms', () => {
+    const plan = getRoomPlanPreset('apartment')!.build();
+    expect(plan.walls).toHaveLength(0);
+    expect(getRoomPlanPreset('apartment')!.dimensionsLabel.length).toBeGreaterThan(0);
+  });
+
+  it('each room shape builds a valid serializable floor plan', () => {
+    for (const preset of enclosedPresets) {
       const plan = serializeFloorPlan(preset.build());
       expect(isValidFloorPlan(plan), preset.id).toBe(true);
       expect(plan.vertices.length).toBeGreaterThanOrEqual(4);
@@ -20,7 +27,7 @@ describe('roomPlanPresets (blank shapes)', () => {
   });
 
   it('build() returns a fresh plan each call', () => {
-    for (const preset of ROOM_PLAN_PRESETS) {
+    for (const preset of enclosedPresets) {
       const a = preset.build();
       const b = preset.build();
       expect(a).not.toBe(b);

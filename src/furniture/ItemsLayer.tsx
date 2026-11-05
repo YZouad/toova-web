@@ -1,5 +1,13 @@
+import { useRef, type ReactNode } from 'react';
+import { useFrame } from '@react-three/fiber';
+import type * as THREE from 'three';
 import { isHangingDesignerTool, isMeasureDesignerTool, useStore, Item } from '../store';
 import { itemVisibleInFocus } from '../lib/apartmentRooms';
+import {
+  APARTMENT_DROP_DISTANCE,
+  getApartmentTransitionProgress,
+  useApartmentTransitionPhase,
+} from '../scene/ApartmentTransition';
 import { Selectable } from './Selectable';
 import { Bed } from './Bed';
 import { Dresser } from './Dresser';
@@ -30,43 +38,62 @@ export function ItemsLayer({ onPosterActivate }: ItemsLayerProps) {
   const roomGeometry = useStore((s) => s.roomGeometry);
   const focusedRoomId = useStore((s) => s.focusedRoomId);
   const placing = isHangingDesignerTool(designerTool) || isMeasureDesignerTool(designerTool);
+  const phase = useApartmentTransitionPhase();
+
+  // While a room is focused (or the exit animation is still running), items
+  // outside it ride the dropping rest-of-apartment group; unmount once settled.
+  const lastFocusedRef = useRef<string | null>(null);
+  if (focusedRoomId) lastFocusedRef.current = focusedRoomId;
+  else if (phase === 'overview') lastFocusedRef.current = null;
+  const anchorRoomId = focusedRoomId ?? lastFocusedRef.current;
+  const settledFocused = focusedRoomId != null && phase === 'focused';
 
   return (
     <>
       {order.map((id) => {
         const item = items[id];
         if (!item) return null;
-        if (
-          !itemVisibleInFocus(roomGeometry, focusedRoomId, {
-            id: item.id,
-            x: item.position[0],
-            z: item.position[2],
-          })
-        ) {
-          return null;
-        }
+        const outside = !itemVisibleInFocus(roomGeometry, anchorRoomId, {
+          id: item.id,
+          x: item.position[0],
+          z: item.position[2],
+        });
+        if (outside && settledFocused) return null;
         const isSelected = selectedIds.includes(id);
         // Hanging visuals are authored in world-relative local space around item.position.
         return (
-          <group
-            key={id}
-            position={item.position}
-            rotation={[0, item.kind === 'hanging' ? 0 : item.rotationY, 0]}
-            userData={{ itemId: id, hanging: item.kind === 'hanging' }}
-          >
-            {placing ? (
-              // Still raycastable for furniture anchors, but selection is suppressed upstream.
-              <ItemVisual item={item} selected={false} invalid={false} />
-            ) : (
-              <Selectable id={id} onPosterActivate={onPosterActivate}>
-                <ItemVisual item={item} selected={isSelected} invalid={isSelected && invalid} />
-              </Selectable>
-            )}
-          </group>
+          <DropWithRest key={id} drops={outside}>
+            <group
+              position={item.position}
+              rotation={[0, item.kind === 'hanging' ? 0 : item.rotationY, 0]}
+              userData={{ itemId: id, hanging: item.kind === 'hanging' }}
+            >
+              {placing ? (
+                // Still raycastable for furniture anchors, but selection is suppressed upstream.
+                <ItemVisual item={item} selected={false} invalid={false} />
+              ) : (
+                <Selectable id={id} onPosterActivate={onPosterActivate}>
+                  <ItemVisual item={item} selected={isSelected} invalid={isSelected && invalid} />
+                </Selectable>
+              )}
+            </group>
+          </DropWithRest>
         );
       })}
     </>
   );
+}
+
+/** Follows the apartment rest group's drop so other-room furniture falls with its room. */
+function DropWithRest({ drops, children }: { drops: boolean; children: ReactNode }) {
+  const ref = useRef<THREE.Group>(null);
+  useFrame(() => {
+    const g = ref.current;
+    if (!g) return;
+    const y = drops ? -APARTMENT_DROP_DISTANCE * getApartmentTransitionProgress() : 0;
+    if (g.position.y !== y) g.position.y = y;
+  });
+  return <group ref={ref}>{children}</group>;
 }
 
 function ItemVisual({ item, selected, invalid }: { item: Item; selected: boolean; invalid: boolean }) {

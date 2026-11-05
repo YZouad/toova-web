@@ -42,6 +42,7 @@ import { ScenePostProcessing } from './ScenePostProcessing';
 import { resolveRenderQuality } from '../lib/renderQuality';
 import { framingForPreset, type CameraFraming } from '../lib/presentationCameras';
 import { activeGeometryFor, type ApartmentRoom } from '../lib/apartmentRooms';
+import { useApartmentTransitionPhase } from './ApartmentTransition';
 import { CameraOrbitSync } from './CameraOrbitSync';
 import { SHADOW_ONLY_LAYER } from './shadowLayers';
 
@@ -50,9 +51,13 @@ const SCENE_BG = '#E4DAC8';
 function useActiveGeometry() {
   const fullGeom = useStore((s) => s.roomGeometry);
   const focusedRoomId = useStore((s) => s.focusedRoomId);
+  const phase = useApartmentTransitionPhase();
+  // Keep lights/shadows on the full plan until the focus transition settles —
+  // swapping bounds on click rebuilds the shadow camera and freezes the frame.
+  const roomId = phase === 'focused' ? focusedRoomId : null;
   return useMemo(
-    () => activeGeometryFor(fullGeom, focusedRoomId),
-    [fullGeom, focusedRoomId],
+    () => activeGeometryFor(fullGeom, roomId),
+    [fullGeom, roomId],
   );
 }
 
@@ -664,7 +669,10 @@ function SceneInner({
       <ProceduralSky />
       {showWeatherFx ? <WeatherSystem /> : null}
 
-      <Room interactive={showChrome && !hangingTool && !apartmentOverview} />
+      <Room
+        interactive={showChrome && !hangingTool && !apartmentOverview}
+        warmRoomId={apartmentOverview?.highlightedId ?? null}
+      />
       <ItemsLayer onPosterActivate={onPosterActivate} />
       {apartmentOverview ? (
         <ApartmentOverview

@@ -26,11 +26,11 @@ export function ScenePostProcessing() {
   const weather = useStore((s) => s.environment.weather);
   const exposure = useStore((s) => s.environment.exposure);
   const geom = useStore((s) => s.roomGeometry);
-  const focusedRoomId = useStore((s) => s.focusedRoomId);
   const quality = useStore((s) => s.visual.quality);
   const cutaway = useStore((s) => s.visual.cutaway);
-  const overview = focusedRoomId == null && isApartmentPlan(geom);
-  const q = overview
+  // Keep the pass list stable for the whole apartment session — swapping
+  // EffectComposer children recompiles its shader and freezes the click/settle.
+  const q = isApartmentPlan(geom)
     ? resolveApartmentOverviewQuality(quality)
     : resolveRenderQuality(quality);
 
