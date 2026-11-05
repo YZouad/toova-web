@@ -2,12 +2,14 @@ import { StrictMode, useEffect, useRef, useState } from 'react';
 import ReactDOM from 'react-dom/client';
 import { Scene, type SceneHandle } from '../scene/Scene';
 import {
+  getApartmentMode,
   isHangingDesignerTool,
   isMeasureDesignerTool,
   useStore,
   type CameraPresetId,
   type RoomEnvironment,
 } from '../store';
+import type { ApartmentRoom } from '../lib/apartmentRooms';
 import type { FurnitureKind } from '../furniture/registry';
 import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import type { RoomAppearance } from '../lib/roomAppearance';
@@ -23,7 +25,13 @@ import { installNativeAssetProxy } from './assetProxy';
 import { applyExportWatermark, clampExportDimensions } from '../lib/exportWatermark';
 import { generateBuiltinThumbnail, generateRugThumbnail } from '../lib/generateBuiltinThumbnail';
 import type { HangingDecorKind } from '../lib/hangingDecorGeometry';
-import { designerSnapshot, postToNative, setEmbedPresent } from './bridge';
+import { isRoomTag, type RoomTag } from '../lib/roomTags';
+import { setZoneTag } from '../lib/floorPlanGeometry';
+import {
+  apartmentRoomById,
+  resolveApartmentRooms,
+} from '../lib/apartmentRooms';
+import { designerSnapshot, postRoomFocus, postToNative, setEmbedPresent } from './bridge';
 import type { CaptureOptions } from '../scene/Scene';
 import { installNativeTokenRefresh } from './nativeAuth';
 import '../app.css';
@@ -338,6 +346,51 @@ const api = {
     return true;
   },
 
+  focusRoom(id: string | null) {
+    useStore.getState().focusRoom(id);
+    postRoomFocus(id);
+    publishState(true);
+    return useStore.getState().focusedRoomId;
+  },
+
+  listRooms() {
+    const s = useStore.getState();
+    return designerSnapshot().apartment?.rooms ?? resolveApartmentRooms(s.roomGeometry).map((r) => ({
+      id: r.id,
+      label: r.label,
+      tag: r.tag,
+      tagged: r.tagged,
+      itemCount: 0,
+      anchor: { x: r.labelAnchor[0], z: r.labelAnchor[1] },
+    }));
+  },
+
+  tagRoom(payload: { roomId?: string; x?: number; z?: number; tag: string; name?: string }) {
+    const s = useStore.getState();
+    const tag = payload.tag;
+    if (!isRoomTag(tag)) return null;
+    let x = payload.x;
+    let z = payload.z;
+    if ((x == null || z == null) && payload.roomId) {
+      const room = apartmentRoomById(s.roomGeometry, payload.roomId);
+      if (!room) return null;
+      x = room.labelAnchor[0];
+      z = room.labelAnchor[1];
+    }
+    if (x == null || z == null) return null;
+    const next = setZoneTag(s.roomGeometry, x, z, tag as RoomTag, payload.name);
+    s.setRoomGeometry(next);
+    const zone =
+      (next.zones ?? []).find((z0) => Math.hypot(z0.x - x!, z0.z - z!) < 1) ??
+      (next.zones ?? [])[(next.zones ?? []).length - 1];
+    if (zone) {
+      s.focusRoom(zone.id);
+      postRoomFocus(zone.id);
+    }
+    publishState(true);
+    return zone?.id ?? null;
+  },
+
   async captureRender(payload: { maxPx?: number; watermark?: boolean; format?: string }) {
     const scene = sceneHandle;
     if (!scene) throw new Error('Scene not ready');
@@ -402,8 +455,14 @@ function publishState(immediate = false): void {
 }
 
 let lastFingerprint = '';
+let lastFocusedRoomId: string | null | undefined = undefined;
 useStore.subscribe(() => {
   publishState();
+  const focused = useStore.getState().focusedRoomId;
+  if (lastFocusedRoomId !== focused) {
+    lastFocusedRoomId = focused;
+    postRoomFocus(focused);
+  }
   if (savedFingerprint === null) return;
   const fingerprint = layoutFingerprint();
   if (fingerprint === lastFingerprint) return;
@@ -439,6 +498,13 @@ function ScanRealtimeSync() {
 function EmbeddedDesigner() {
   const ref = useRef<SceneHandle>(null);
   const [present, setPresent] = useState(false);
+  const [highlightedRoomId, setHighlightedRoomId] = useState<string | null>(null);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
+  const roomGeometry = useStore((s) => s.roomGeometry);
+  const focusRoom = useStore((s) => s.focusRoom);
+  const apartmentMode = getApartmentMode({ roomGeometry, focusedRoomId });
+  const isApartmentOverview = apartmentMode === 'overview';
+
   useEffect(() => {
     sceneHandle = ref.current;
     presentUi = setPresent;
@@ -450,6 +516,15 @@ function EmbeddedDesigner() {
     };
   }, []);
 
+  const handleFocusRoom = (id: string) => {
+    focusRoom(id);
+    postRoomFocus(id);
+  };
+
+  const handleNameRoom = (room: ApartmentRoom) => {
+    postToNative({ type: 'nameRoom', roomId: room.id });
+  };
+
   return (
     <div className={`dg-page is-compact is-phone${present ? ' is-present' : ''}`}>
       <ScanRealtimeSync />
@@ -458,11 +533,22 @@ function EmbeddedDesigner() {
           <Scene
             ref={ref}
             interactionMode="mobile"
+            dimensionsOverlayHidden={present || isApartmentOverview}
+            apartmentOverview={
+              isApartmentOverview
+                ? {
+                    highlightedId: highlightedRoomId,
+                    onHighlight: setHighlightedRoomId,
+                    onFocusRoom: handleFocusRoom,
+                    onNameRoom: handleNameRoom,
+                  }
+                : null
+            }
             selectionHud={{
               radialOpen: false,
               onToggleRadial: () => {},
               onOpenInspector: () => postToNative({ type: 'inspect' }),
-              hidden: present,
+              hidden: present || isApartmentOverview,
             }}
           />
         </div>

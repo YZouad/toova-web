@@ -2,7 +2,17 @@ import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useStore } from '../store';
-import { validatePlacement, clampToRoom, settleGravity, itemPinsElevation, resolveGroupDragDelta, type DragMover } from './collision';
+import {
+  validatePlacement,
+  clampToRoom,
+  settleGravity,
+  itemPinsElevation,
+  resolveGroupDragDelta,
+  collisionPeers,
+  type DragMover,
+} from './collision';
+import { pickItemUnderRay } from '../lib/pickItemUnderPointer';
+import { isApartmentInteractionLocked } from '../scene/ApartmentTransition';
 
 /** Movement before a press becomes an XZ drag (lets long-press lift fire). */
 const DRAG_START_PX = 8;
@@ -20,7 +30,7 @@ const DRAG_START_PX = 8;
  * can raise elevation without being undone by settle-on-release.
  */
 export function DragController() {
-  const { camera, gl, scene } = useThree();
+  const { camera, gl } = useThree();
   const controls = useThree((s) => s.controls) as any;
 
   const pendingRef = useRef<{
@@ -44,6 +54,7 @@ export function DragController() {
     const canvas = gl.domElement;
     const raycaster = new THREE.Raycaster();
     const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+    const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
     const ndc = new THREE.Vector2();
     const hit = new THREE.Vector3();
 
@@ -88,25 +99,21 @@ export function DragController() {
       if (e.button !== 0) return;
       // Shift is reserved for multi-select toggles in Selectable.
       if (e.shiftKey) return;
+      if (isApartmentInteractionLocked()) return;
 
       const canvasRect = canvas.getBoundingClientRect();
       ndc.x = ((e.clientX - canvasRect.left) / canvasRect.width) * 2 - 1;
       ndc.y = -((e.clientY - canvasRect.top) / canvasRect.height) * 2 + 1;
       raycaster.setFromCamera(ndc, camera);
-      const intersections = raycaster.intersectObjects(scene.children, true);
 
-      let hitItemId: string | null = null;
-      for (const ix of intersections) {
-        let obj: THREE.Object3D | null = ix.object;
-        while (obj) {
-          if (obj.userData?.itemId) { hitItemId = obj.userData.itemId as string; break; }
-          obj = obj.parent;
-        }
-        if (hitItemId) break;
-      }
-      if (!hitItemId) return;
-
+      // Analytic AABB pick — scene.intersectObjects freezes on a full apartment.
+      const floorHit = raycaster.ray.intersectPlane(floorPlane, hit);
+      const floorDist = floorHit ? raycaster.ray.origin.distanceTo(floorHit) : Infinity;
       const { selectedIds, items } = useStore.getState();
+      const picked = pickItemUnderRay(raycaster.ray, Object.values(items), floorDist + 1);
+      if (!picked) return;
+      const hitItemId = picked.id;
+
       const primary = items[hitItemId];
       if (!primary || primary.kind === 'hanging') return;
 
@@ -175,7 +182,7 @@ export function DragController() {
       const fromDz = primary.position[2] - primaryStart[2];
 
       const moving = new Set(drag.ids);
-      const others = Object.values(state.items).filter((it) => !moving.has(it.id));
+      const others = collisionPeers(moving);
       const movers: DragMover[] = [];
       for (const id of drag.ids) {
         const it = state.items[id];
@@ -226,7 +233,7 @@ export function DragController() {
         if (!item || !startPos) continue;
 
         const others = [
-          ...Object.values(state.items).filter((it) => !moving.has(it.id)),
+          ...collisionPeers(moving),
           ...Object.entries(settled).map(([sid, position]) => ({
             ...state.items[sid]!,
             position,
@@ -276,7 +283,7 @@ export function DragController() {
       window.removeEventListener('pointerup', handlePointerUp);
       window.removeEventListener('pointercancel', handlePointerUp);
     };
-  }, [camera, gl, scene, controls]);
+  }, [camera, gl, controls]);
 
   return null;
 }

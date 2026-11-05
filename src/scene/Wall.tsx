@@ -8,6 +8,7 @@ import { getOrbitHiddenWallIds } from '../lib/orbitCutaway';
 import { useStore } from '../store';
 import { useOrbitFade } from './useOrbitFade';
 import { createShadowOnlyMaterials } from './shadowLayers';
+import { dollhouseClipPlanes } from './dollhouseClip';
 
 /** Max pointer travel (px) for a press to count as a wall paint click, not an orbit drag. */
 const WALL_CLICK_PX = 6;
@@ -181,6 +182,9 @@ export function Wall({
       side: THREE.FrontSide,
       transparent: false,
       opacity: 1,
+      // Pre-attach so apartment focus never recompiles wall shaders.
+      clippingPlanes: dollhouseClipPlanes(),
+      clipShadows: true,
     });
     // DoubleSide in the shadow pass — FrontSide alone flips to BackSide and
     // fails to occlude for extruded wall slabs.

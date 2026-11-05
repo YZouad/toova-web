@@ -2,6 +2,7 @@ import type { CameraPresetId } from '../../lib/renderQuality';
 import { WALL_COLOR_SWATCHES } from '../../lib/roomAppearance';
 import { roomHasShuffleableFloorItems } from '../../lib/roomLayoutArrange';
 import { shuffleRoomLayout } from '../../lib/shuffleRoomLayout';
+import { isApartmentPlan, resolveApartmentRooms } from '../../lib/apartmentRooms';
 import type { HangingDecorKind } from '../../store';
 import { useStore } from '../../store';
 import { pushRecentCommand } from '../../lib/recentCatalogKinds';
@@ -173,6 +174,27 @@ export function buildDesignerCommands(input: BuildCommandsInput): CommandPalette
       hint: 'Enter',
       run: wrap('inspect', () => input.openInspector()),
     });
+  }
+
+  {
+    const state = useStore.getState();
+    if (isApartmentPlan(state.roomGeometry)) {
+      if (state.focusedRoomId) {
+        cmds.push({
+          id: 'apt-back',
+          label: 'Back to apartment',
+          hint: 'Esc',
+          run: wrap('apt-back', () => state.exitToOverview()),
+        });
+      }
+      for (const room of resolveApartmentRooms(state.roomGeometry).filter((r) => r.tagged)) {
+        cmds.push({
+          id: `apt-room-${room.id}`,
+          label: `Go to ${room.label}`,
+          run: wrap(`apt-room-${room.id}`, () => state.focusRoom(room.id)),
+        });
+      }
+    }
   }
 
   const floorItems = useStore

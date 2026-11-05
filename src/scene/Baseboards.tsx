@@ -9,6 +9,7 @@ import {
 import { getProceduralMaterialMaps } from '../lib/proceduralTextures';
 import type { MaterialPresetId } from '../lib/roomMaterials';
 import { useOrbitFade } from './useOrbitFade';
+import { dollhouseClipPlanes } from './dollhouseClip';
 
 const BASEBOARD_H = 4.5;
 const BASEBOARD_T = 0.75;
@@ -101,6 +102,8 @@ function BaseboardSegment({
       roughness: maps.roughness,
       metalness: maps.metalness,
       transparent: true,
+      clippingPlanes: dollhouseClipPlanes(),
+      clipShadows: true,
     });
     const scale = 1 / maps.repeatInches;
     for (const t of [maps.map, maps.normalMap, maps.roughnessMap]) {

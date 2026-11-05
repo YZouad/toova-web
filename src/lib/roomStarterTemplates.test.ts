@@ -16,16 +16,17 @@ import {
 import { FURNITURE } from '../furniture/registry';
 
 describe('roomStarterTemplates', () => {
-  it('exposes the 3×3 goal × tier catalog plus studio and uchicago starters', () => {
+  it('exposes the 3×3 goal × tier catalog plus studio, uchicago, and apartment starters', () => {
     expect(ROOM_STARTER_GOALS.map((g) => g.id)).toEqual([
       'bedroom',
       'office',
       'living',
       'studio',
       'uchicago',
+      'apartment',
     ]);
     expect(ROOM_STARTER_TIERS).toHaveLength(3);
-    expect(ROOM_STARTER_TEMPLATES).toHaveLength(25);
+    expect(ROOM_STARTER_TEMPLATES).toHaveLength(28);
 
     const ids = ROOM_STARTER_TEMPLATES.map((t) => t.id);
     expect(new Set(ids).size).toBe(ids.length);
@@ -40,6 +41,9 @@ describe('roomStarterTemplates', () => {
     expect(templatesForGoal('studio')).toHaveLength(1);
     expect(templatesForGoal('uchicago')).toHaveLength(15);
     expect(getRoomStarterTemplate('studio-simple')?.buildPlan().walls.length).toBeGreaterThan(4);
+    for (const template of templatesForGoal('apartment')) {
+      expect((template.buildPlan().zones ?? []).length, template.id).toBeGreaterThanOrEqual(2);
+    }
   });
 
   it('covers every bedroom/office/living × tier pair exactly once', () => {
@@ -67,12 +71,13 @@ describe('roomStarterTemplates', () => {
     }
   });
 
-  it('furnished starters include pieces; uchicago dorm starters start blank', () => {
-    for (const template of ROOM_STARTER_TEMPLATES.filter((t) => t.goal !== 'uchicago')) {
+  it('furnished starters include pieces; uchicago dorm and apartment starters start blank', () => {
+    const blankGoals = new Set<RoomStarterGoal>(['uchicago', 'apartment']);
+    for (const template of ROOM_STARTER_TEMPLATES.filter((t) => !blankGoals.has(t.goal))) {
       expect(template.floorItems.length, template.id).toBeGreaterThan(0);
       expect(starterPieceCount(template), template.id).toBeGreaterThan(0);
     }
-    for (const template of ROOM_STARTER_TEMPLATES.filter((t) => t.goal === 'uchicago')) {
+    for (const template of ROOM_STARTER_TEMPLATES.filter((t) => blankGoals.has(t.goal))) {
       expect(template.floorItems, template.id).toHaveLength(0);
       expect(starterPieceCount(template), template.id).toBe(0);
     }
@@ -80,7 +85,7 @@ describe('roomStarterTemplates', () => {
 
   it('piece count increases with tier within a fully populated goal', () => {
     for (const goal of ROOM_STARTER_GOALS.filter(
-      (g) => g.id !== 'studio' && g.id !== 'uchicago',
+      (g) => g.id !== 'studio' && g.id !== 'uchicago' && g.id !== 'apartment',
     )) {
       const [simple, balanced, decorated] = ['simple', 'balanced', 'decorated'].map(
         (tier) => ROOM_STARTER_TEMPLATES.find((t) => t.goal === goal.id && t.tier === tier)!,

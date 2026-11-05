@@ -7,6 +7,7 @@ import {
   type RoomGeometry,
 } from './roomGeometry';
 import type { CameraPresetId } from './renderQuality';
+import type { ApartmentRoom } from './apartmentRooms';
 
 export interface CameraFraming {
   position: [number, number, number];
@@ -16,6 +17,35 @@ export interface CameraFraming {
   orthographic?: boolean;
   /** Orthographic half-extent (inches) when orthographic. */
   orthoHalfExtent?: number;
+}
+
+/** Bounds helper for a face polygon (plan inches). */
+function faceBounds(face: { x: number; z: number }[]): {
+  minX: number;
+  maxX: number;
+  minZ: number;
+  maxZ: number;
+  width: number;
+  depth: number;
+  cx: number;
+  cz: number;
+} {
+  const xs = face.map((v) => v.x);
+  const zs = face.map((v) => v.z);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minZ = Math.min(...zs);
+  const maxZ = Math.max(...zs);
+  return {
+    minX,
+    maxX,
+    minZ,
+    maxZ,
+    width: maxX - minX,
+    depth: maxZ - minZ,
+    cx: (minX + maxX) / 2,
+    cz: (minZ + maxZ) / 2,
+  };
 }
 
 /** Eye-height (~60″) corner view — IKEA cutaway feel. */
@@ -90,4 +120,65 @@ export function framingForPreset(
 /** Default orbit framing used by Scene on load (matches prior behavior, slightly higher target). */
 export function defaultOrbitFraming(geom: RoomGeometry): CameraFraming {
   return framingForPreset(geom, 'corner');
+}
+
+/** Corner framing fitted to one apartment room's face (used after focus). */
+export function framingForArea(
+  geom: RoomGeometry,
+  room: ApartmentRoom,
+  preset: CameraPresetId = 'corner',
+): CameraFraming {
+  const b = faceBounds(room.face);
+  const [ax, az] = room.labelAnchor;
+  const cx = pointInApprox(ax, az, b) ? ax : b.cx;
+  const cz = pointInApprox(ax, az, b) ? az : b.cz;
+  const span = Math.max(b.width, b.depth);
+  const eyeY = Math.min(geom.height * 0.72, 62);
+
+  switch (preset) {
+    case 'catalog':
+      return {
+        position: [cx + span * 0.95, span * 0.62, cz + span * 1.05],
+        target: [cx, geom.height * 0.35, cz],
+        fov: 38,
+      };
+    case 'topDown': {
+      const half = Math.max(b.width, b.depth) * 0.55 + 20;
+      return {
+        position: [cx, Math.max(span * 1.4, geom.height * 2.2), cz],
+        target: [cx, 0, cz],
+        fov: 35,
+        orthographic: true,
+        orthoHalfExtent: half,
+      };
+    }
+    case 'window':
+    case 'corner':
+    default:
+      return {
+        position: [cx + span * 0.85, eyeY + span * 0.12, cz + span * 1.05],
+        target: [cx, 36, cz],
+        fov: 35,
+      };
+  }
+}
+
+function pointInApprox(
+  x: number,
+  z: number,
+  b: { minX: number; maxX: number; minZ: number; maxZ: number },
+): boolean {
+  return x >= b.minX && x <= b.maxX && z >= b.minZ && z <= b.maxZ;
+}
+
+/** Elevated angled overview of the whole apartment (dollhouse). */
+export function dollhouseFraming(geom: RoomGeometry): CameraFraming {
+  const b = planBounds(geom);
+  const [cx, cz] = planCentroid(geom);
+  const span = Math.max(b.width, b.depth);
+  return {
+    position: [cx + span * 0.55, Math.max(span * 1.15, geom.height * 2.4), cz + span * 0.7],
+    target: [cx, geom.height * 0.15, cz],
+    fov: 42,
+  };
 }

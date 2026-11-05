@@ -1289,6 +1289,201 @@ export function setZoneName(plan: FloorPlan, x: number, z: number, name: string)
   return { ...plan, zones };
 }
 
+/** One edge of a floor face, mapped back to its wall id. */
+export interface FaceEdge {
+  wallId: string;
+  startId: string;
+  endId: string;
+}
+
+/** Map consecutive face vertices to the walls that form those edges. */
+export function faceEdges(plan: FloorPlan, face: FloorPlanVertex[]): FaceEdge[] {
+  const edges: FaceEdge[] = [];
+  for (let i = 0; i < face.length; i++) {
+    const a = face[i]!;
+    const b = face[(i + 1) % face.length]!;
+    const wall = plan.walls.find(
+      (w) =>
+        (w.startId === a.id && w.endId === b.id) ||
+        (w.startId === b.id && w.endId === a.id),
+    );
+    if (wall) {
+      edges.push({ wallId: wall.id, startId: a.id, endId: b.id });
+    }
+  }
+  return edges;
+}
+
+/** Wall ids that bound a face (including shared partition walls). */
+export function faceWallIds(plan: FloorPlan, face: FloorPlanVertex[]): string[] {
+  return faceEdges(plan, face).map((e) => e.wallId);
+}
+
+/**
+ * Sample-based overlap of two faces (0..1). Used to remap zones after wall edits
+ * when the old anchor no longer lands inside a face.
+ */
+export function faceOverlapScore(a: FloorPlanVertex[], b: FloorPlanVertex[]): number {
+  if (a.length < 3 || b.length < 3) return 0;
+  let hits = 0;
+  let total = 0;
+  const samples: [number, number][] = [];
+  for (const v of a) samples.push([v.x, v.z]);
+  samples.push(zoneAnchorFor(a));
+  for (let i = 0; i < a.length; i++) {
+    const p = a[i]!;
+    const q = a[(i + 1) % a.length]!;
+    samples.push([(p.x + q.x) / 2, (p.z + q.z) / 2]);
+  }
+  for (const [x, z] of samples) {
+    total += 1;
+    if (pointInFace(x, z, b)) hits += 1;
+  }
+  return total === 0 ? 0 : hits / total;
+}
+
+export interface ReconcileZoneResult {
+  plan: FloorPlan;
+  /** Zones that landed in the same face after a merge; first wins. */
+  merged: Array<{ kept: FloorPlanZone; dropped: FloorPlanZone }>;
+  /** Zones that could not be remapped to any face. */
+  dropped: FloorPlanZone[];
+}
+
+/**
+ * Remap zone anchors after a wall edit so tags survive splits/moves/merges.
+ * Call on every floor-plan editor commit with the previous and next plans.
+ * A split keeps the zone on the larger overlapping half; a merge keeps the
+ * first zone and reports the dropped one.
+ *
+ * Zone *identity and tags* come from `next` (so setZoneTag / clearZone stick).
+ * `prev` is only used to find the prior face for overlap remapping when an
+ * anchor no longer lands inside a face after a wall move.
+ */
+export function reconcileZoneAnchors(prev: FloorPlan, next: FloorPlan): ReconcileZoneResult {
+  const prevAreas = resolveZones(prev);
+  const nextFaces = floorFaceLoops(next);
+  const sourceZones = next.zones ?? [];
+  if (nextFaces.length === 0) {
+    return {
+      plan: { ...next, zones: [] },
+      merged: [],
+      dropped: [...sourceZones],
+    };
+  }
+
+  const claimed = new Set<string>();
+  const zones: FloorPlanZone[] = [];
+  const merged: Array<{ kept: FloorPlanZone; dropped: FloorPlanZone }> = [];
+  const dropped: FloorPlanZone[] = [];
+
+  for (const zone of sourceZones) {
+    if (!isRoomTag(zone.tag)) continue;
+    const prevArea = prevAreas.find((a) => a.zone?.id === zone.id);
+
+    let bestFace: FloorPlanVertex[] | null = null;
+    let bestScore = -1;
+
+    for (const face of nextFaces) {
+      const key = faceLoopKey(face);
+      if (claimed.has(key)) continue;
+      if (pointInFace(zone.x, zone.z, face)) {
+        bestFace = face;
+        bestScore = 2;
+        break;
+      }
+      if (!prevArea) continue;
+      const score = faceOverlapScore(prevArea.face, face);
+      if (score > bestScore) {
+        bestScore = score;
+        bestFace = face;
+      }
+    }
+
+    if (bestFace && bestScore > 0) {
+      const key = faceLoopKey(bestFace);
+      claimed.add(key);
+      const [ax, az] = pointInFace(zone.x, zone.z, bestFace)
+        ? [zone.x, zone.z]
+        : zoneAnchorFor(bestFace);
+      zones.push({
+        id: zone.id,
+        tag: zone.tag,
+        x: ax,
+        z: az,
+        ...(zone.name?.trim() ? { name: zone.name.trim() } : {}),
+      });
+      continue;
+    }
+
+    // Merge: anchor still lands in a face already claimed by an earlier zone.
+    const containing = nextFaces.find((f) => pointInFace(zone.x, zone.z, f));
+    if (containing) {
+      const existing = zones.find((z) => pointInFace(z.x, z.z, containing));
+      if (existing) {
+        merged.push({ kept: existing, dropped: zone });
+        continue;
+      }
+    }
+
+    // Overlap-based merge: previous face mostly overlaps a claimed next face.
+    if (prevArea) {
+      let mergeTarget: FloorPlanZone | null = null;
+      let mergeScore = 0;
+      for (const kept of zones) {
+        const keptFace = nextFaces.find((f) => pointInFace(kept.x, kept.z, f));
+        if (!keptFace) continue;
+        const score = faceOverlapScore(prevArea.face, keptFace);
+        if (score > mergeScore) {
+          mergeScore = score;
+          mergeTarget = kept;
+        }
+      }
+      if (mergeTarget && mergeScore > 0.25) {
+        merged.push({ kept: mergeTarget, dropped: zone });
+        continue;
+      }
+    }
+
+    dropped.push(zone);
+  }
+
+  return { plan: { ...next, zones }, merged, dropped };
+}
+
+/**
+ * Place a door/window on the wall nearest to (x, z). Returns the plan unchanged
+ * when no wall is close enough.
+ */
+export function addOpeningAt(
+  plan: FloorPlan,
+  x: number,
+  z: number,
+  kind: OpeningKind,
+  width: number,
+  height?: number,
+): FloorPlan {
+  const wall = findWallContainingPoint(plan, x, z) ?? hitWallAtPoint(plan, x, z, 12);
+  if (!wall) return plan;
+  const seg = getWallSegment(plan, wall);
+  if (!seg) return plan;
+  const along = (x - seg.start.x) * seg.tangent[0] + (z - seg.start.z) * seg.tangent[1];
+  const maxW = Math.max(MIN_WINDOW_WIDTH, seg.length - 2 * OPENING_END_CLEARANCE);
+  const w = clamp(width, kind === 'window' ? MIN_WINDOW_WIDTH : 12, maxW);
+  const maxOffset = Math.max(0, seg.length - w - OPENING_END_CLEARANCE);
+  const offset = clamp(along - w / 2, OPENING_END_CLEARANCE, maxOffset);
+  const opening: FloorPlanOpening = {
+    id: genId('o'),
+    wallId: wall.id,
+    kind,
+    offset,
+    width: w,
+    height: height ?? (kind === 'door' ? DOOR.height : WINDOW.height),
+    ...(kind === 'window' ? { sill: WINDOW.sill } : { hinge: 'left' as const }),
+  };
+  return clampPlan({ ...plan, openings: [...plan.openings, opening] });
+}
+
 function walkSingleLoopVertices(plan: FloorPlan): FloorPlanVertex[] {
   if (plan.walls.length === 0) return [...plan.vertices];
   const out: FloorPlanVertex[] = [];

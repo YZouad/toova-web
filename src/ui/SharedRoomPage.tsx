@@ -3,7 +3,7 @@ import { loadSharedRoomLayout } from '../hooks/useRoomLayout';
 import { navigate, profilePath } from '../hooks/useRoute';
 import { forkSharedRoom, redeemShareToken, type ShareRole } from '../lib/roomShares';
 import { useStore } from '../store';
-import { Scene } from '../scene/Scene';
+import { ReadOnlyApartmentScene } from './ReadOnlyApartmentScene';
 import { ReportDialog } from './ReportDialog';
 import { Button, DisplayHeading, Logo, MonoMeta, Splash } from './kit';
 
@@ -233,7 +233,7 @@ export function SharedRoomPage({
       ) : null}
 
       <div className="shared-canvas" style={{ position: 'relative', flex: 1, minHeight: 420, background: 'var(--board)', zIndex: 2 }}>
-        <Scene readOnly />
+        <ReadOnlyApartmentScene />
         <div
           style={{
             position: 'absolute',

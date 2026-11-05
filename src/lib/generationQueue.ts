@@ -38,20 +38,48 @@ function classifyFailure(message: string): 'wake_timeout' | 'generation_error' |
   return 'unknown';
 }
 
-function readDismissedReady(): Set<string> {
+function storageBuckets(): Storage[] {
+  const buckets: Storage[] = [];
+  if (typeof localStorage !== 'undefined') buckets.push(localStorage);
+  if (typeof sessionStorage !== 'undefined') buckets.push(sessionStorage);
+  return buckets;
+}
+
+function readIdList(raw: string | null): string[] {
+  if (!raw) return [];
   try {
-    const raw = sessionStorage.getItem(DISMISSED_READY_KEY);
-    if (!raw) return new Set();
     const arr = JSON.parse(raw) as unknown;
-    return Array.isArray(arr) ? new Set(arr.map(String)) : new Set();
+    return Array.isArray(arr) ? arr.map(String) : [];
   } catch {
-    return new Set();
+    return [];
   }
 }
 
+/** Dismissals survive reload and a new tab. sessionStorage is read so older dismissals still count. */
+function readDismissedReady(): Set<string> {
+  const ids = new Set<string>();
+  for (const storage of storageBuckets()) {
+    try {
+      for (const id of readIdList(storage.getItem(DISMISSED_READY_KEY))) ids.add(id);
+    } catch {
+      /* ignore */
+    }
+  }
+  return ids;
+}
+
 function writeDismissedReady(set: Set<string>): void {
+  const payload = JSON.stringify([...set].slice(-50));
+  let wroteLocal = false;
   try {
-    sessionStorage.setItem(DISMISSED_READY_KEY, JSON.stringify([...set].slice(-50)));
+    localStorage.setItem(DISMISSED_READY_KEY, payload);
+    wroteLocal = true;
+  } catch {
+    /* private mode / blocked storage */
+  }
+  try {
+    if (wroteLocal) sessionStorage.removeItem(DISMISSED_READY_KEY);
+    else sessionStorage.setItem(DISMISSED_READY_KEY, payload);
   } catch {
     /* ignore */
   }
@@ -174,8 +202,15 @@ export async function dismissGenerationQueueItem(jobId: string): Promise<void> {
   const dismissed = readDismissedReady();
   dismissed.add(jobId);
   writeDismissedReady(dismissed);
-  await deleteGenerationAsset(jobId);
   removeItem(jobId);
+  await Promise.all([
+    deleteGenerationAsset(jobId).catch((err) => {
+      console.warn('[generationQueue] delete asset failed', jobId, err);
+    }),
+    // Completed server jobs stay claimable for 48h. Drop that flag so reload
+    // does not list them as "ready to save" again.
+    updateConversionJob(jobId, { server_owned: false }),
+  ]);
 }
 
 async function uploadJobSource(userId: string, jobId: string, file: File): Promise<string> {
@@ -501,6 +536,7 @@ export async function openReadyJobForSave(
   const dismissed = readDismissedReady();
   dismissed.delete(jobId);
   writeDismissedReady(dismissed);
+  await updateConversionJob(jobId, { server_owned: true });
 
   const glbFile = await downloadJobResult(job.result_path);
   upsertItem({
@@ -576,6 +612,10 @@ async function recoverGenerationQueueOnce(userId: string): Promise<void> {
 
       const asset = assetsByJob.get(job.id);
       if (asset?.kind === 'result') {
+        if (dismissed.has(job.id)) {
+          void deleteGenerationAsset(job.id);
+          continue;
+        }
         upsertItem({
           jobId: job.id,
           userId,
@@ -608,6 +648,10 @@ async function recoverGenerationQueueOnce(userId: string): Promise<void> {
     }
 
     for (const asset of assets) {
+      if (dismissed.has(asset.jobId)) {
+        void deleteGenerationAsset(asset.jobId);
+        continue;
+      }
       if (items.some((item) => item.jobId === asset.jobId)) continue;
       if (asset.kind === 'result') {
         upsertItem({
@@ -636,7 +680,8 @@ async function watchServerJob(jobId: string, userId: string, label: string): Pro
     const glbFile = await pollDurableJob(jobId, controller.signal, (message) => {
       patchItem(jobId, { statusMessage: message, status: 'processing' });
     });
-    upsertItem({
+    if (readDismissedReady().has(jobId)) return;
+    const ready: GenerationQueueItem = {
       jobId,
       userId,
       label,
@@ -646,20 +691,13 @@ async function watchServerJob(jobId: string, userId: string, label: string): Pro
       glbFile,
       serverOwned: true,
       statusMessage: 'Your model is ready',
-    });
-    await persistAsset(
-      {
-        jobId,
-        userId,
-        label,
-        status: 'ready',
-        error: null,
-        sourceFile: null,
-        glbFile,
-        serverOwned: true,
-      },
-      'result',
-    );
+    };
+    upsertItem(ready);
+    await persistAsset(ready, 'result');
+    if (readDismissedReady().has(jobId)) {
+      removeItem(jobId);
+      await deleteGenerationAsset(jobId);
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Generation failed';
     if (message === 'Aborted') return;

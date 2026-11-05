@@ -21,6 +21,12 @@ const PIECE_ROWS: { label: string; kbd: string }[] = [
   { label: 'Keyboard shortcuts', kbd: '?' },
 ];
 
+const APARTMENT_ROWS: { label: string; kbd: string }[] = [
+  { label: 'Back to apartment', kbd: 'esc' },
+  { label: 'Open room 1–9', kbd: '1-9' },
+  { label: 'Previous / next room', kbd: '[ / ]' },
+];
+
 export function KeysOverlay({ open, onClose }: KeysOverlayProps) {
   if (!open) return null;
 
@@ -70,6 +76,24 @@ export function KeysOverlay({ open, onClose }: KeysOverlayProps) {
               Working with pieces
             </span>
             {PIECE_ROWS.map((row) => (
+              <div key={row.label} className="dg-keys-row">
+                <span className="dg-keys-row__label">{row.label}</span>
+                <span className="dg-keys-row__kbd">{row.kbd}</span>
+              </div>
+            ))}
+          </div>
+          <div className="dg-keys-col">
+            <span
+              style={{
+                font: 'var(--type-mono-xs)',
+                letterSpacing: '0.12em',
+                textTransform: 'uppercase',
+                color: 'var(--ink-6)',
+              }}
+            >
+              Apartment
+            </span>
+            {APARTMENT_ROWS.map((row) => (
               <div key={row.label} className="dg-keys-row">
                 <span className="dg-keys-row__label">{row.label}</span>
                 <span className="dg-keys-row__kbd">{row.kbd}</span>

@@ -4,7 +4,7 @@ import { navigate, profilePath } from '../hooks/useRoute';
 import { forkPublicRoom, signAvatarPath, type PublicAttribution } from '../lib/profiles';
 import { recordRoomView, toggleRoomLike } from '../lib/roomEngagement';
 import { useStore } from '../store';
-import { Scene } from '../scene/Scene';
+import { ReadOnlyApartmentScene } from './ReadOnlyApartmentScene';
 import { UserAvatar } from './UserAvatar';
 import { ReportDialog } from './ReportDialog';
 import { Button, DisplayHeading, Logo, MonoMeta, Splash } from './kit';
@@ -276,7 +276,7 @@ export function PublicRoomPage({
       ) : null}
 
       <div className="shared-canvas" style={{ position: 'relative', flex: 1, minHeight: 420, background: 'var(--board)', zIndex: 2 }}>
-        <Scene readOnly />
+        <ReadOnlyApartmentScene />
         <div
           style={{
             position: 'absolute',

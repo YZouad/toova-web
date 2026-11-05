@@ -101,8 +101,14 @@ function buildChecklist(plan: FloorPlan, issues: ReturnType<typeof validateFloor
           ? 'Tag each area (optional)'
           : tagged >= areas.length
             ? 'All areas tagged'
-            : `Tag each area (optional) · ${tagged}/${areas.length}`,
-      done: areas.length === 0 || tagged >= areas.length,
+            : areas.length >= 2
+              ? `Tag 2+ rooms to enable apartment view · ${tagged}/${areas.length}`
+              : `Tag each area (optional) · ${tagged}/${areas.length}`,
+      // Soft requirement: done when all tagged, or when apartment threshold (2+) is met.
+      done:
+        areas.length === 0 ||
+        tagged >= areas.length ||
+        (areas.length >= 2 && tagged >= 2),
     },
   ];
 }

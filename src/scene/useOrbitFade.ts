@@ -1,4 +1,4 @@
-import { useMemo, useRef } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
 import {
@@ -9,6 +9,13 @@ import {
 } from '../lib/orbitCutaway';
 import { allWallSegments, planCentroid, type RoomGeometry } from '../lib/roomGeometry';
 import { useStore } from '../store';
+
+/** RoomShell sets false for apartment overview / resting shells. */
+export const OrbitCutawayEnabledContext = createContext(true);
+
+export function useOrbitCutawayEnabled(): boolean {
+  return useContext(OrbitCutawayEnabledContext);
+}
 
 /** Stops Raycaster recursion into children (scene-rooted picks). */
 function blockGroupRaycast(): false {
@@ -37,7 +44,8 @@ export function useOrbitFade(
   },
 ): void {
   const cutaway = useStore((s) => s.visual.cutaway);
-  const allowFade = cutaway === 'orbit';
+  const shellAllows = useOrbitCutawayEnabled();
+  const allowFade = cutaway === 'orbit' && shellAllows;
   const temps = useRef({
     worldNormal: new THREE.Vector3(),
     toCamera: new THREE.Vector3(),
@@ -125,6 +133,16 @@ export function OrbitCutawaySync({ geom }: { geom: RoomGeometry }) {
     const [x, z] = planCentroid(geom);
     return { x, z };
   }, [geom]);
+
+  useEffect(
+    () => () => {
+      setOrbitHiddenWallIds(new Set());
+      if (useStore.getState().orbitHiddenWallIds.length > 0) {
+        setStoreHidden([]);
+      }
+    },
+    [setStoreHidden],
+  );
 
   useFrame(({ camera }) => {
     if (cutaway !== 'orbit') {

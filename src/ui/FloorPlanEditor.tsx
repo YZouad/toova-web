@@ -19,6 +19,7 @@ import {
   planBounds,
   removeOpening,
   removeWall,
+  reconcileZoneAnchors,
   resolveWallAnchor,
   resolveZones,
   sanitizeWallGraph,
@@ -217,10 +218,12 @@ export function FloorPlanEditor({
   const commit = useCallback(
     (next: FloorPlan) => {
       const cleaned = sanitizeWallGraph(next);
-      dispatch({ type: 'set', plan: cleaned });
-      onChange(cleaned);
+      // Remap zone anchors so room tags survive wall edits (splits/merges/moves).
+      const { plan: reconciled } = reconcileZoneAnchors(plan, cleaned);
+      dispatch({ type: 'set', plan: reconciled });
+      onChange(reconciled);
     },
-    [onChange],
+    [onChange, plan],
   );
 
   const baseW = Math.max(bounds.width + EDITOR_CANVAS_PAD * 2, 120);

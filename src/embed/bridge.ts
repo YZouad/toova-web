@@ -1,3 +1,9 @@
+import {
+  apartmentModeFor,
+  isApartmentPlan,
+  itemRoomKey,
+  resolveApartmentRooms,
+} from '../lib/apartmentRooms';
 import { formatLength } from '../lib/floorPlanGeometry';
 import { measureDistances } from '../lib/measureDistance';
 import { planBounds } from '../lib/roomGeometry';
@@ -142,6 +148,38 @@ export function designerSnapshot() {
     fixturesLit: s.roomFixturesLit(),
     cameraPreset: s.visual.cameraPreset,
     showDimensions: s.visual.showDimensions,
+    apartment: apartmentSnapshot(s),
     ...toolSnapshot(),
   };
+}
+
+function apartmentSnapshot(s: ReturnType<typeof useStore.getState>) {
+  const plan = s.roomGeometry;
+  const mode = apartmentModeFor(plan, s.focusedRoomId);
+  const rooms = isApartmentPlan(plan) ? resolveApartmentRooms(plan) : [];
+  const counts = new Map<string, number>();
+  for (const id of s.order) {
+    const item = s.items[id];
+    if (!item) continue;
+    const key = itemRoomKey(plan, item.position[0], item.position[2]);
+    if (!key) continue;
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return {
+    mode,
+    focusedRoomId: s.focusedRoomId,
+    rooms: rooms.map((room) => ({
+      id: room.id,
+      label: room.label,
+      tag: room.tag,
+      tagged: room.tagged,
+      itemCount: counts.get(room.id) ?? 0,
+      anchor: { x: room.labelAnchor[0], z: room.labelAnchor[1] },
+    })),
+  };
+}
+
+/** Notify native chrome when focus changes from taps inside the web view. */
+export function postRoomFocus(roomId: string | null): void {
+  postToNative({ type: 'roomFocus', roomId });
 }

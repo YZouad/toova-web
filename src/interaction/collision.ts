@@ -8,12 +8,34 @@ import {
   pointInPolygon,
   signedArea,
 } from '../lib/floorPlanGeometry';
+import { itemVisibleInFocus } from '../lib/apartmentRooms';
 import type { Item } from '../store';
-import { useStore } from '../store';
+import { getActiveGeometry, useStore } from '../store';
 import { ROOM } from '../units';
 
 function room() {
-  return useStore.getState().roomGeometry;
+  return getActiveGeometry();
+}
+
+/** Other items that collide while a room is focused (same room only). */
+export function collisionPeers(excludeIds: Set<string> | string[]): Item[] {
+  const exclude = excludeIds instanceof Set ? excludeIds : new Set(excludeIds);
+  const state = useStore.getState();
+  const peers: Item[] = [];
+  for (const it of Object.values(state.items)) {
+    if (exclude.has(it.id)) continue;
+    if (
+      !itemVisibleInFocus(state.roomGeometry, state.focusedRoomId, {
+        id: it.id,
+        x: it.position[0],
+        z: it.position[2],
+      })
+    ) {
+      continue;
+    }
+    peers.push(it);
+  }
+  return peers;
 }
 
 // ---------------------------------------------------------------------------

@@ -7,6 +7,7 @@ import {
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react';
+import { usePrefersReducedMotion } from '../../../hooks/usePrefersReducedMotion';
 import { MOBILE_SHEET_TOP, type MobileSheetKind } from './mobileTypes';
 
 interface MobileSheetProps {
@@ -165,14 +166,3 @@ export function MobileSheet({
   );
 }
 
-function usePrefersReducedMotion() {
-  const [reduced, setReduced] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-    setReduced(mq.matches);
-    const onChange = () => setReduced(mq.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return reduced;
-}

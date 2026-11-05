@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   type FloorPlan,
   allWallSegments,
+  addOpeningAt,
   clearZoneAt,
   defaultRectanglePlan,
+  faceEdges,
+  faceWallIds,
   floorFaceLoops,
   formatLength,
   getWallSegment,
@@ -18,6 +21,7 @@ import {
   parseFloorPlan,
   pointInPolygon,
   pruneZones,
+  reconcileZoneAnchors,
   rectanglePlan,
   resolveWallAnchor,
   resolveZones,
@@ -492,5 +496,144 @@ describe('floorPlanGeometry', () => {
     const tagged = setZoneTag(l, ax, az, 'dining');
     const cleared = clearZoneAt(tagged, ax, az);
     expect(cleared.zones ?? []).toHaveLength(0);
+  });
+
+  it('maps face edges to wall ids', () => {
+    const plan = partitionedPlan();
+    const faces = floorFaceLoops(plan);
+    expect(faces).toHaveLength(2);
+    for (const face of faces) {
+      const edges = faceEdges(plan, face);
+      expect(edges).toHaveLength(4);
+      expect(faceWallIds(plan, face)).toHaveLength(4);
+      expect(faceWallIds(plan, face)).toContain('w6');
+    }
+  });
+
+  it('reconcileZoneAnchors keeps a newly applied tag (editor commit)', () => {
+    const prev = partitionedPlan();
+    const tagged = setZoneTag(prev, 30, 60, 'bedroom', 'Primary');
+    expect(tagged.zones).toHaveLength(1);
+    // FloorPlanEditor.commit always runs reconcile(prev, sanitize(next)).
+    const { plan: reconciled } = reconcileZoneAnchors(prev, sanitizeWallGraph(tagged));
+    expect(reconciled.zones).toHaveLength(1);
+    expect(reconciled.zones![0]!.tag).toBe('bedroom');
+    expect(reconciled.zones![0]!.name).toBe('Primary');
+  });
+
+  it('reconcileZoneAnchors keeps a retag on an existing zone', () => {
+    const prev = setZoneTag(partitionedPlan(), 30, 60, 'bedroom');
+    const retagged = setZoneTag(prev, 30, 60, 'office', 'Study');
+    const { plan: reconciled } = reconcileZoneAnchors(prev, retagged);
+    expect(reconciled.zones).toHaveLength(1);
+    expect(reconciled.zones![0]!.tag).toBe('office');
+    expect(reconciled.zones![0]!.name).toBe('Study');
+  });
+
+  it('reconcileZoneAnchors keeps tags after moving a wall', () => {
+    let plan = setZoneTag(setZoneTag(partitionedPlan(), 30, 60, 'bedroom'), 90, 60, 'kitchen');
+    const bedroomId = plan.zones!.find((z) => z.tag === 'bedroom')!.id;
+    const kitchenId = plan.zones!.find((z) => z.tag === 'kitchen')!.id;
+    // Move the partition to x=48 (still splits both rooms).
+    const next: FloorPlan = {
+      ...plan,
+      vertices: plan.vertices.map((v) =>
+        v.id === 'v1' || v.id === 'v4' ? { ...v, x: 48 } : v,
+      ),
+    };
+    const { plan: reconciled, dropped, merged } = reconcileZoneAnchors(plan, next);
+    expect(dropped).toHaveLength(0);
+    expect(merged).toHaveLength(0);
+    expect(reconciled.zones).toHaveLength(2);
+    expect(reconciled.zones!.map((z) => z.id).sort()).toEqual([bedroomId, kitchenId].sort());
+    expect(zoneAtPoint(reconciled, 24, 60)?.zone?.tag).toBe('bedroom');
+    expect(zoneAtPoint(reconciled, 84, 60)?.zone?.tag).toBe('kitchen');
+  });
+
+  it('reconcileZoneAnchors keeps the first zone on a merge', () => {
+    const plan = setZoneTag(setZoneTag(partitionedPlan(), 30, 60, 'bedroom'), 90, 60, 'kitchen');
+    const next: FloorPlan = {
+      ...plan,
+      walls: plan.walls.filter((w) => w.id !== 'w6'),
+    };
+    const { plan: reconciled, merged } = reconcileZoneAnchors(plan, next);
+    expect(reconciled.zones).toHaveLength(1);
+    expect(reconciled.zones![0]!.tag).toBe('bedroom');
+    expect(merged).toHaveLength(1);
+    expect(merged[0]!.dropped.tag).toBe('kitchen');
+  });
+
+  it('reconcileZoneAnchors keeps the zone on the larger half after a split', () => {
+    // Start with one big tagged room, then add a partition that shrinks the left side.
+    let plan = setZoneTag(partitionedPlan(), 30, 60, 'bedroom', 'Primary');
+    // Move partition far right so left face is large — zone should stay left.
+    // Actually partitionedPlan already has a partition. Remove it first for a single face,
+    // tag, then re-add a partition that cuts a small closet on the right.
+    plan = {
+      ...setZoneTag(
+        {
+          version: 2,
+          height: 96,
+          vertices: [
+            { id: 'v0', x: 0, z: 0 },
+            { id: 'v1', x: 120, z: 0 },
+            { id: 'v2', x: 120, z: 120 },
+            { id: 'v3', x: 0, z: 120 },
+          ],
+          walls: [
+            { id: 'w0', startId: 'v0', endId: 'v1' },
+            { id: 'w1', startId: 'v1', endId: 'v2' },
+            { id: 'w2', startId: 'v2', endId: 'v3' },
+            { id: 'w3', startId: 'v3', endId: 'v0' },
+          ],
+          openings: [
+            { id: 'd0', wallId: 'w1', kind: 'door', offset: 44, width: 32, height: 80, hinge: 'left' },
+          ],
+          zones: [],
+        },
+        60,
+        60,
+        'living_room',
+        'Lounge',
+      ),
+    };
+    const zoneId = plan.zones![0]!.id;
+    // Split off a small closet on the right (x=96..120).
+    const next: FloorPlan = {
+      ...plan,
+      vertices: [
+        ...plan.vertices,
+        { id: 'v4', x: 96, z: 0 },
+        { id: 'v5', x: 96, z: 120 },
+      ],
+      walls: [
+        { id: 'w0a', startId: 'v0', endId: 'v4' },
+        { id: 'w0b', startId: 'v4', endId: 'v1' },
+        { id: 'w1', startId: 'v1', endId: 'v2' },
+        { id: 'w2a', startId: 'v2', endId: 'v5' },
+        { id: 'w2b', startId: 'v5', endId: 'v3' },
+        { id: 'w3', startId: 'v3', endId: 'v0' },
+        { id: 'part', startId: 'v4', endId: 'v5' },
+      ],
+    };
+    const { plan: reconciled, dropped } = reconcileZoneAnchors(plan, next);
+    expect(dropped).toHaveLength(0);
+    expect(reconciled.zones).toHaveLength(1);
+    expect(reconciled.zones![0]!.id).toBe(zoneId);
+    // Zone should land in the larger (left) face.
+    expect(zoneAtPoint(reconciled, reconciled.zones![0]!.x, reconciled.zones![0]!.z)?.areaSqIn).toBeGreaterThan(
+      96 * 24,
+    );
+  });
+
+  it('addOpeningAt places a door on the nearest wall', () => {
+    const plan = defaultRectanglePlan();
+    const south = plan.walls[0]!;
+    const midX = plan.vertices.find((v) => v.id === south.endId)!.x / 2;
+    const next = addOpeningAt(plan, midX, 0, 'door', 32);
+    expect(next.openings.length).toBeGreaterThan(plan.openings.length);
+    const added = next.openings.find((o) => !plan.openings.some((p) => p.id === o.id));
+    expect(added?.kind).toBe('door');
+    expect(added?.wallId).toBe(south.id);
   });
 });
