@@ -1,5 +1,5 @@
 import { COMPARE_ARTICLES } from './compare';
-import { UCHICAGO_DORM_ARTICLES, UCHICAGO_HUB_ARTICLE } from './dorms';
+import { UCHICAGO_DESIGN_ARTICLE, UCHICAGO_DORM_ARTICLES, UCHICAGO_HUB_ARTICLE } from './dorms';
 import { GUIDE_ARTICLES } from './guides';
 import { PILLAR_ARTICLES } from './pillars';
 import type { SeoArticle } from './types';
@@ -11,6 +11,7 @@ export type { SeoArticle, SeoArticleSection, SeoArticleCta } from './types';
 export const SEO_ARTICLES: SeoArticle[] = [
   ...PILLAR_ARTICLES,
   UCHICAGO_HUB_ARTICLE,
+  UCHICAGO_DESIGN_ARTICLE,
   ...UCHICAGO_DORM_ARTICLES,
   ...COMPARE_ARTICLES,
   ...GUIDE_ARTICLES,

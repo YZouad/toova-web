@@ -24,6 +24,10 @@ export interface ChecklistCategory {
    * Empty / missing means the category shows for every area.
    */
   roomTags?: RoomTag[];
+  /** Why this item matters (optional DB override). */
+  guideWhy?: string | null;
+  /** Shopping tips (optional DB override). */
+  guideTips?: string[];
 }
 
 export interface CuratedProduct {
@@ -82,6 +86,38 @@ export const SHOPPING_LIST_KEY = 'toova-shopping-list';
 export const CHECKLIST_PROGRESS_MERGED_KEY = 'toova-checklist-progress-merged';
 export const ACTIVE_CHECKLIST_ROOM_KEY = 'toova-active-checklist-room';
 export const CHECKLIST_LEGACY_MIGRATED_KEY = 'toova-checklist-legacy-migrated';
+export const CHECKLIST_AREA_TAG_KEY = 'toova-checklist-area-tag';
+
+const CHECKLIST_V1_AREA_TAGS: RoomTag[] = ['dorm', 'bedroom', 'kitchen'];
+
+export function isChecklistV1AreaTag(tag: unknown): tag is RoomTag {
+  return isRoomTag(tag) && CHECKLIST_V1_AREA_TAGS.includes(tag);
+}
+
+export function loadLocalChecklistAreaTag(roomId: string | null | undefined): RoomTag | null {
+  const key = requireRoomScopedKey(CHECKLIST_AREA_TAG_KEY, roomId);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return isChecklistV1AreaTag(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocalChecklistAreaTag(
+  roomId: string | null | undefined,
+  tag: RoomTag | null,
+): void {
+  const key = requireRoomScopedKey(CHECKLIST_AREA_TAG_KEY, roomId);
+  if (!key) return;
+  try {
+    if (tag && isChecklistV1AreaTag(tag)) localStorage.setItem(key, tag);
+    else localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function checklistScopedKey(baseKey: string, roomId: string): string {
   return `${baseKey}:${roomId}`;

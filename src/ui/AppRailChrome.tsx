@@ -6,6 +6,7 @@ import { NotificationsBell } from './NotificationsBell';
 const BASE = [
   { id: 'home' as const, label: 'Home', glyph: '⌂' },
   { id: 'rooms' as const, label: 'Rooms', glyph: '▦' },
+  { id: 'lists' as const, label: 'Checklist', glyph: '≡' },
   { id: 'models' as const, label: 'Models', glyph: '◇' },
   { id: 'gallery' as const, label: 'Gallery', glyph: '◫' },
   { id: 'ar' as const, label: 'AR', glyph: '◈' },

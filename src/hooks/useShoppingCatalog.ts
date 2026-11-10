@@ -16,6 +16,8 @@ import {
   saveLocalMoveInBudgetCents,
   saveLocalResolutions,
   saveLocalShoppingList,
+  loadLocalChecklistAreaTag,
+  saveLocalChecklistAreaTag,
   setActiveChecklistRoomId,
   type CategoryResolution,
   type ChecklistCategoryWithProducts,
@@ -57,8 +59,10 @@ import {
   fetchUserChecklistProgress,
   fetchUserChecklistResolutions,
   fetchUserMoveInBudgetCents,
+  fetchUserChecklistRoomAreaTag,
   fetchUserShoppingList,
   mergeLocalShoppingStateToAccount,
+  upsertUserChecklistRoomAreaTag,
   removeShoppingListEntry,
   updateAgenticShoppingManifestDismissed,
   upsertChecklistProgress,
@@ -67,6 +71,7 @@ import {
   upsertUserMoveInBudgetCents,
 } from '../lib/shoppingCatalog';
 import { useStore } from '../store';
+import type { RoomTag } from '../lib/roomTags';
 
 export function useShoppingCatalog(roomId: string | null) {
   const { user } = useAuth();
@@ -93,6 +98,7 @@ export function useShoppingCatalog(roomId: string | null) {
   const [moveInBudgetCents, setMoveInBudgetCents] = useState<number | null>(null);
   const [list, setList] = useState<ShoppingListEntry[]>([]);
   const [agenticManifest, setAgenticManifest] = useState<AgenticShoppingManifestEntry[]>([]);
+  const [checklistAreaTag, setChecklistAreaTagState] = useState<RoomTag | null>(null);
   const [ready, setReady] = useState(false);
   /** Previous curated product IDs present in the room; used to drop To Buy on delete. */
   const prevRoomProductIdsRef = useRef<Set<string> | null>(null);
@@ -252,6 +258,7 @@ export function useShoppingCatalog(roomId: string | null) {
       setAgenticManifest([]);
       setLocalProducts([]);
       setOwnedProducts([]);
+      setChecklistAreaTagState(null);
       setReady(true);
       return () => {
         cancelled = true;
@@ -268,6 +275,7 @@ export function useShoppingCatalog(roomId: string | null) {
           setAgenticManifest(loadLocalAgenticShoppingManifest(persistRoomId));
           setLocalProducts(loadLocalChecklistProducts(persistRoomId));
           setOwnedProducts(loadOwnedChecklistProducts(persistRoomId));
+          setChecklistAreaTagState(loadLocalChecklistAreaTag(persistRoomId));
           setReady(true);
         }
         return;
@@ -279,13 +287,14 @@ export function useShoppingCatalog(roomId: string | null) {
           await mergeLocalShoppingStateToAccount(user!.id, persistRoomId);
           sessionStorage.setItem(mergedKey, '1');
         }
-        const [remoteChecked, remoteList, remoteResolutions, remoteBudget, remoteManifest] =
+        const [remoteChecked, remoteList, remoteResolutions, remoteBudget, remoteManifest, remoteAreaTag] =
           await Promise.all([
           fetchUserChecklistProgress(user!.id, persistRoomId),
           fetchUserShoppingList(user!.id, persistRoomId),
           fetchUserChecklistResolutions(user!.id, persistRoomId),
           fetchUserMoveInBudgetCents(user!.id, persistRoomId),
           fetchUserAgenticShoppingManifest(user!.id, persistRoomId),
+          fetchUserChecklistRoomAreaTag(user!.id, persistRoomId),
         ]);
         if (cancelled) return;
         const localProductsForRoom = loadLocalChecklistProducts(persistRoomId);
@@ -308,6 +317,13 @@ export function useShoppingCatalog(roomId: string | null) {
         saveLocalAgenticShoppingManifest(persistRoomId, mergedManifest);
         setLocalProducts(localProductsForRoom);
         setOwnedProducts(ownedProductsForRoom);
+        const localAreaTag = loadLocalChecklistAreaTag(persistRoomId);
+        const mergedAreaTag = remoteAreaTag ?? localAreaTag;
+        setChecklistAreaTagState(mergedAreaTag);
+        saveLocalChecklistAreaTag(persistRoomId, mergedAreaTag);
+        if (remoteAreaTag == null && localAreaTag) {
+          void upsertUserChecklistRoomAreaTag(user!.id, persistRoomId, localAreaTag).catch(() => {});
+        }
       } catch {
         if (!cancelled) {
           setChecked(loadCheckedIds(persistRoomId));
@@ -317,6 +333,7 @@ export function useShoppingCatalog(roomId: string | null) {
           setAgenticManifest(loadLocalAgenticShoppingManifest(persistRoomId));
           setLocalProducts(loadLocalChecklistProducts(persistRoomId));
           setOwnedProducts(loadOwnedChecklistProducts(persistRoomId));
+          setChecklistAreaTagState(loadLocalChecklistAreaTag(persistRoomId));
         }
       } finally {
         if (!cancelled) setReady(true);
@@ -646,6 +663,21 @@ export function useShoppingCatalog(roomId: string | null) {
     [canSyncRemote, persistRoomId, user],
   );
 
+  const setChecklistAreaTag = useCallback(
+    (tag: RoomTag | null) => {
+      if (!persistRoomId) {
+        setChecklistAreaTagState(tag);
+        return;
+      }
+      setChecklistAreaTagState(tag);
+      saveLocalChecklistAreaTag(persistRoomId, tag);
+      if (canSyncRemote) {
+        void upsertUserChecklistRoomAreaTag(user!.id, persistRoomId, tag).catch(() => {});
+      }
+    },
+    [canSyncRemote, persistRoomId, user],
+  );
+
   const markCategoryAsOwned = useCallback(
     async (input: {
       categoryId: string;
@@ -699,6 +731,8 @@ export function useShoppingCatalog(roomId: string | null) {
     removeFromList,
     markReviewDone,
     refreshCatalog,
+    checklistAreaTag,
+    setChecklistAreaTag,
   };
 }
 

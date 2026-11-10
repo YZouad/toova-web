@@ -20,13 +20,13 @@ describe('uchicagoDormTemplates', () => {
     ]);
   });
 
-  it('builds one blank starter per dorm × layout pair', () => {
+  it('builds one furnished starter per dorm × layout pair', () => {
     const starters = buildUChicagoDormStarters();
     expect(starters).toHaveLength(15);
     expect(new Set(starters.map((s) => s.id)).size).toBe(15);
     for (const starter of starters) {
       expect(starter.goal).toBe('uchicago');
-      expect(starter.floorItems).toHaveLength(0);
+      expect(starter.floorItems.length).toBeGreaterThan(0);
       expect(isValidFloorPlan(serializeFloorPlan(starter.buildPlan())), starter.id).toBe(true);
     }
   });

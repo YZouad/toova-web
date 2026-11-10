@@ -85,6 +85,7 @@ import {
 import type { AgenticShoppingManifestEntry } from './lib/agenticShoppingManifest';
 import type { ShoppingListEntry } from './lib/dormChecklist';
 import { ChecklistPage } from './ui/ChecklistPage';
+import { ShoppingListsPage } from './ui/ShoppingListsPage';
 import { AdminConsole, type AdminTab } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
 import { TimelinePage } from './ui/TimelinePage';
@@ -150,6 +151,7 @@ type Screen =
   | 'admin'
   | 'ar'
   | 'checklist'
+  | 'lists'
   | 'gallery';
 
 interface FloorPlanDraft {
@@ -964,6 +966,7 @@ function AppContent() {
 
   const railActive: AppShellNavId | null =
     screen === 'dashboard' ? 'rooms'
+    : screen === 'lists' ? 'lists'
     : screen === 'models' ? 'models'
     : screen === 'admin' ? 'admin'
     : screen === 'ar' ? 'ar'
@@ -981,7 +984,7 @@ function AppContent() {
       setScreen('landing');
       return;
     }
-    if (!user && (nav === 'rooms' || nav === 'models' || nav === 'ar' || nav === 'admin')) {
+    if (!user && (nav === 'rooms' || nav === 'lists' || nav === 'models' || nav === 'ar' || nav === 'admin')) {
       setAuthMode('signin');
       setScreen('auth');
       return;
@@ -989,6 +992,11 @@ function AppContent() {
     if (nav === 'rooms') {
       navigate('/');
       setScreen('dashboard');
+      return;
+    }
+    if (nav === 'lists') {
+      navigate('/');
+      setScreen('lists');
       return;
     }
     if (nav === 'models') {
@@ -1544,6 +1552,36 @@ function AppContent() {
           // Guest: continue into design without forcing auth first.
           setScreen('dashboard');
         }}
+        onRequestSignIn={() => {
+          setAuthMode('signin');
+          setScreen('auth');
+        }}
+        onOpenLists={
+          user
+            ? () => {
+                navigate('/');
+                setScreen('lists');
+              }
+            : undefined
+        }
+      />
+    );
+  }
+
+  if (screen === 'lists' && user) {
+    return (
+      <ShoppingListsPage
+        user={user}
+        profile={profile}
+        showAdmin={isAdmin}
+        onNavigate={handleAppNav}
+        onLogout={handleLogout}
+        onOpenRoom={(roomId) => void handlePickExisting({ id: roomId, name: 'Room' })}
+        onOpenChecklist={(roomId) => {
+          setActiveChecklistRoomId(roomId);
+          setRoomId(roomId);
+          openChecklistFrom('dashboard');
+        }}
       />
     );
   }
@@ -1760,7 +1798,8 @@ function AppContent() {
                 Start with a room that fits your space.
               </DisplayHeading>
               <p className="room-preset-page__lede">
-                Pick a furnished starter, a rectangle, or draw your own. You can sign in later when you want to save.
+                Choose a measured UChicago starter, a blank rectangle, or draw your own walls. Sign in later when you
+                want to save.
               </p>
             </header>
             <RoomPresetPicker

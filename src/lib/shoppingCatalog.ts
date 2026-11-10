@@ -18,13 +18,24 @@ import {
   type ChecklistCategoryWithProducts,
   type CuratedProduct,
   type ShoppingListEntry,
+  isChecklistV1AreaTag,
 } from './dormChecklist';
+import { isRoomTag, type RoomTag } from './roomTags';
 import { isRoomLocalProductId } from './ownedChecklistItems';
 
 const CATEGORY_SELECT =
+  'id,slug,name,sort_order,published,parent_id,image_path,room_tags,guide_why,guide_tips';
+const CATEGORY_SELECT_NO_GUIDE =
   'id,slug,name,sort_order,published,parent_id,image_path,room_tags';
 const CATEGORY_SELECT_LEGACY =
   'id,slug,name,sort_order,published,parent_id,image_path';
+
+function parseGuideTips(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    .map((t) => t.trim());
+}
 
 function mapCategory(row: Record<string, unknown>): ChecklistCategory {
   const imagePath =
@@ -44,6 +55,11 @@ function mapCategory(row: Record<string, unknown>): ChecklistCategory {
     imagePath,
     imageUrl: productImagePublicUrl(imagePath),
     roomTags: parseCategoryRoomTags(row.room_tags),
+    guideWhy:
+      row.guide_why != null && String(row.guide_why).trim()
+        ? String(row.guide_why).trim()
+        : null,
+    guideTips: parseGuideTips(row.guide_tips),
   };
 }
 
@@ -181,7 +197,13 @@ async function fetchChecklistCategoryRows(publishedOnly: boolean) {
   const first = await query.order('sort_order', { ascending: true });
   if (!first.error) return first;
   const msg = first.error.message.toLowerCase();
-  if (msg.includes('room_tags') || msg.includes('column')) {
+  if (msg.includes('guide_why') || msg.includes('guide_tips')) {
+    let noGuide = supabase.from('checklist_categories').select(CATEGORY_SELECT_NO_GUIDE);
+    if (publishedOnly) noGuide = noGuide.eq('published', true);
+    const noGuideResult = await noGuide.order('sort_order', { ascending: true });
+    if (!noGuideResult.error) return noGuideResult;
+  }
+  if (msg.includes('room_tags') || msg.includes('column') || msg.includes('guide_')) {
     let legacy = supabase.from('checklist_categories').select(CATEGORY_SELECT_LEGACY);
     if (publishedOnly) legacy = legacy.eq('published', true);
     return legacy.order('sort_order', { ascending: true });
@@ -311,6 +333,63 @@ export async function fetchUserMoveInBudgetCents(
   if (data?.budget_cents == null) return null;
   const cents = Number(data.budget_cents);
   return Number.isFinite(cents) && cents >= 0 ? Math.round(cents) : null;
+}
+
+export async function fetchUserChecklistRoomAreaTag(
+  userId: string,
+  roomId: string,
+): Promise<RoomTag | null> {
+  const { data, error } = await supabase
+    .from('user_checklist_room_prefs')
+    .select('area_tag')
+    .eq('user_id', userId)
+    .eq('room_id', roomId)
+    .maybeSingle();
+  if (error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('area_tag') || msg.includes('does not exist') || msg.includes('column')) {
+      return null;
+    }
+    throw new Error(error.message);
+  }
+  const raw = data?.area_tag;
+  if (typeof raw !== 'string' || !isRoomTag(raw) || !isChecklistV1AreaTag(raw)) return null;
+  return raw;
+}
+
+export async function upsertUserChecklistRoomAreaTag(
+  userId: string,
+  roomId: string,
+  areaTag: RoomTag | null,
+): Promise<void> {
+  if (areaTag == null) {
+    const { error } = await supabase
+      .from('user_checklist_room_prefs')
+      .update({ area_tag: null, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('room_id', roomId);
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('area_tag') || msg.includes('does not exist')) return;
+      throw new Error(error.message);
+    }
+    return;
+  }
+  if (!isChecklistV1AreaTag(areaTag)) return;
+  const { error } = await supabase.from('user_checklist_room_prefs').upsert(
+    {
+      user_id: userId,
+      room_id: roomId,
+      area_tag: areaTag,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,room_id' },
+  );
+  if (error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('area_tag') || msg.includes('does not exist')) return;
+    throw new Error(error.message);
+  }
 }
 
 export async function upsertUserMoveInBudgetCents(

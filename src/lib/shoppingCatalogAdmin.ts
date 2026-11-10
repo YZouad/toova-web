@@ -88,6 +88,8 @@ export interface UpdateCategoryInput {
   imagePath?: string | null;
   /** Empty array = show for every room area. */
   roomTags?: string[];
+  guideWhy?: string | null;
+  guideTips?: string[];
 }
 
 export async function updateChecklistCategory(
@@ -106,6 +108,15 @@ export async function updateChecklistCategory(
   if (input.parentId !== undefined) patch.parent_id = input.parentId;
   if (input.imagePath !== undefined) patch.image_path = input.imagePath;
   if (input.roomTags !== undefined) patch.room_tags = input.roomTags;
+  if (input.guideWhy !== undefined) {
+    const trimmed = input.guideWhy?.trim() ?? '';
+    patch.guide_why = trimmed.length > 0 ? trimmed : null;
+  }
+  if (input.guideTips !== undefined) {
+    patch.guide_tips = input.guideTips
+      .map((t) => t.trim())
+      .filter((t) => t.length > 0);
+  }
 
   const { error } = await supabase.from('checklist_categories').update(patch).eq('id', id);
   if (error) throw new Error(error.message);

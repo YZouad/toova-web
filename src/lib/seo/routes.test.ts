@@ -34,6 +34,7 @@ describe('SEO routes', () => {
   it('has an article for every dorm starter path', () => {
     const paths = listSeoArticlePaths();
     expect(paths).toContain('/dorms/uchicago/');
+    expect(paths).toContain('/dorms/uchicago/design-your-dorm/');
     expect(paths.some((p) => p.includes('woodlawn'))).toBe(true);
     expect(getSeoArticle('/dorms/uchicago/woodlawn/double/')?.cta?.href).toContain(
       'template=uchicago-woodlawn-double',

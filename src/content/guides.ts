@@ -14,7 +14,7 @@ export const GUIDE_ARTICLES: SeoArticle[] = [
       { name: 'Guides', path: '/guides/how-to-design-a-dorm-room/' },
       { name: 'Design a dorm', path: '/guides/how-to-design-a-dorm-room/' },
     ],
-    cta: { label: 'Open dorm plans', href: '/dorms/uchicago/' },
+    cta: { label: 'Design a UChicago dorm', href: '/dorms/uchicago/design-your-dorm/' },
     sections: [
       {
         heading: '1. Start from a real footprint',

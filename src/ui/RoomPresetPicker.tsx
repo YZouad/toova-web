@@ -121,8 +121,9 @@ export function RoomPresetPicker({
     }
   }, [active, onResumeAgenticChecklist]);
 
-  const liveForGoal = useStarterTemplatesForGoal(goal);
-  const isUChicago = goal === 'uchicago';
+  const effectiveGoal: RoomStarterGoal = guestSimple ? 'uchicago' : goal;
+  const liveForGoal = useStarterTemplatesForGoal(effectiveGoal);
+  const isUChicago = effectiveGoal === 'uchicago';
   const uchicagoTemplates = useMemo(
     () => (isUChicago ? templatesForUChicagoDorm(liveForGoal, dormId) : []),
     [isUChicago, liveForGoal, dormId],
@@ -269,16 +270,18 @@ export function RoomPresetPicker({
             </span>
           </div>
         </button>
-        <div className="room-preset-card-actions">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={disabled}
-            onClick={() => handleCustomizeStarter(template)}
-          >
-            Customize
-          </Button>
-        </div>
+        {guestSimple ? null : (
+          <div className="room-preset-card-actions">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={disabled}
+              onClick={() => handleCustomizeStarter(template)}
+            >
+              Customize
+            </Button>
+          </div>
+        )}
       </div>
     );
   };
@@ -304,18 +307,20 @@ export function RoomPresetPicker({
           </Field>
         </div>
 
-        <div className="room-preset-section">
-          <Tabs
-            className="room-preset-mode-tabs"
-            active={mode}
-            onChange={(id) => setMode(id as PickerMode)}
-            tabs={[
-              { id: 'presets', label: 'Pick a template' },
-              { id: 'describe', label: 'Describe your room' },
-              { id: 'scan', label: 'Scan a room' },
-            ]}
-          />
-        </div>
+        {guestSimple ? null : (
+          <div className="room-preset-section">
+            <Tabs
+              className="room-preset-mode-tabs"
+              active={mode}
+              onChange={(id) => setMode(id as PickerMode)}
+              tabs={[
+                { id: 'presets', label: 'Pick a template' },
+                { id: 'describe', label: 'Describe your room' },
+                { id: 'scan', label: 'Scan a room' },
+              ]}
+            />
+          </div>
+        )}
 
         {mode === 'describe' ? (
           <AgenticRoomFlow
@@ -333,24 +338,28 @@ export function RoomPresetPicker({
           />
         ) : null}
 
-        {mode === 'presets' && guestSimple ? null : mode === 'presets' ? (
+        {mode === 'presets' ? (
           <>
-            <div className="room-preset-section">
-              <div className="room-preset-section-label">What kind of room?</div>
-              <Tabs
-                className="room-preset-goal-tabs"
-                active={goal}
-                onChange={handleGoalChange}
-                tabs={ROOM_STARTER_GOALS.map((g) => ({ id: g.id, label: g.label }))}
-              />
-              <p className="room-preset-goal-hint">
-                {ROOM_STARTER_GOALS.find((g) => g.id === goal)?.description}
-              </p>
-            </div>
+            {guestSimple ? null : (
+              <div className="room-preset-section">
+                <div className="room-preset-section-label">What kind of room?</div>
+                <Tabs
+                  className="room-preset-goal-tabs"
+                  active={goal}
+                  onChange={handleGoalChange}
+                  tabs={ROOM_STARTER_GOALS.map((g) => ({ id: g.id, label: g.label }))}
+                />
+                <p className="room-preset-goal-hint">
+                  {ROOM_STARTER_GOALS.find((g) => g.id === goal)?.description}
+                </p>
+              </div>
+            )}
 
             {isUChicago ? (
               <div className="room-preset-section">
-                <div className="room-preset-section-label">Residence hall</div>
+                <div className="room-preset-section-label">
+                  {guestSimple ? 'UChicago dorm layout' : 'Residence hall'}
+                </div>
                 <Tabs
                   className="room-preset-goal-tabs room-preset-dorm-tabs"
                   active={dormId}
@@ -358,7 +367,9 @@ export function RoomPresetPicker({
                   tabs={UCHICAGO_DORMS.map((d) => ({ id: d.id, label: d.label }))}
                 />
                 <p className="room-preset-goal-hint">
-                  Pick a layout — each starts as a blank room you can furnish.
+                  {guestSimple
+                    ? 'Measured footprints for UChicago halls — each opens blank so you can furnish at real scale.'
+                    : 'Pick a layout — each starts as a blank room you can furnish.'}
                 </p>
                 <div
                   className="room-preset-grid room-preset-grid--blank room-preset-grid--dorms"
@@ -368,7 +379,7 @@ export function RoomPresetPicker({
                   {starterPreviews.map(renderStarterCard)}
                 </div>
               </div>
-            ) : (
+            ) : guestSimple ? null : (
               <div className="room-preset-section">
                 <div className="room-preset-section-label">Starting look</div>
                 <div className="room-preset-tier-blurb-row" aria-hidden>
@@ -388,11 +399,11 @@ export function RoomPresetPicker({
         {mode === 'presets' ? (
         <div className={guestSimple ? 'room-preset-section' : 'room-preset-section room-preset-section--blank'}>
           <div className="room-preset-section-label">
-            {guestSimple ? 'How do you want to start?' : 'Blank room'}
+            {guestSimple ? 'Or start from scratch' : 'Blank room'}
           </div>
           <p className="room-preset-goal-hint">
             {guestSimple
-              ? 'Start with a rectangle, or draw every wall yourself.'
+              ? 'Not on the list? Use a blank rectangle or draw every wall yourself.'
               : 'Start empty with a shape, or draw every wall yourself.'}
           </p>
           <div

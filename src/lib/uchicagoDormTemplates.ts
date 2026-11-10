@@ -14,6 +14,7 @@ import {
   type FloorPlan,
 } from './floorPlanGeometry';
 import type { RoomStarterTemplate } from './roomStarterTemplates';
+import { uchicagoDemoFloorSeeds } from './uchicagoDormMarketing';
 
 export type UChicagoDormId =
   | 'woodlawn'
@@ -120,9 +121,9 @@ function dormEnvironment(dormId: UChicagoDormId): RoomEnvironment {
 
 function layoutDescription(layout: UChicagoLayoutType): string {
   if (layout === 'pass-through') {
-    return 'Blank pass-through double with doors on both ends — furnish from scratch.';
+    return 'Measured B-J pass-through with example beds and desks — rearrange or replace anything.';
   }
-  return `Blank ${UCHICAGO_LAYOUT_LABELS[layout].toLowerCase()} room — draw walls and furnish from scratch.`;
+  return `Measured ${UCHICAGO_LAYOUT_LABELS[layout].toLowerCase()} with example furnishing — edit from day one.`;
 }
 
 function starterFor(dorm: UChicagoDormDef, layout: UChicagoLayoutType): RoomStarterTemplate {
@@ -137,7 +138,7 @@ function starterFor(dorm: UChicagoDormDef, layout: UChicagoLayoutType): RoomStar
     dimensionsLabel: dimensionsLabelFor(plan),
     buildPlan,
     buildEnvironment: () => dormEnvironment(dorm.id),
-    floorItems: [],
+    floorItems: uchicagoDemoFloorSeeds(layout, plan),
     dormMeta: { dormId: dorm.id, layout },
   };
 }

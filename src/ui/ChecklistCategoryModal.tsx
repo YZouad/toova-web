@@ -23,6 +23,8 @@ export function ChecklistCategoryModal({
   const [name, setName] = useState('');
   const [sortOrder, setSortOrder] = useState('');
   const [roomTags, setRoomTags] = useState<RoomTag[]>([]);
+  const [guideWhy, setGuideWhy] = useState('');
+  const [guideTips, setGuideTips] = useState('');
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,9 +34,19 @@ export function ChecklistCategoryModal({
     setName(category.name);
     setSortOrder(String(category.sortOrder));
     setRoomTags([...(category.roomTags ?? [])]);
+    setGuideWhy(category.guideWhy ?? '');
+    setGuideTips((category.guideTips ?? []).join('\n'));
     setCoverFile(null);
     setError(null);
-  }, [open, category?.id, category?.name, category?.sortOrder, category?.roomTags]);
+  }, [
+    open,
+    category?.id,
+    category?.name,
+    category?.sortOrder,
+    category?.roomTags,
+    category?.guideWhy,
+    category?.guideTips,
+  ]);
 
   const handleClose = () => {
     if (submitting) return;
@@ -58,10 +70,16 @@ export function ChecklistCategoryModal({
     setSubmitting(true);
     setError(null);
     try {
+      const tips = guideTips
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
       await updateChecklistCategory(category.id, {
         name: name.trim(),
         sortOrder: Number(sortOrder) || category.sortOrder,
         roomTags,
+        guideWhy: guideWhy.trim() || null,
+        guideTips: tips,
       });
       if (coverFile) {
         await attachCategoryCoverImage(category.id, coverFile);
@@ -119,6 +137,28 @@ export function ChecklistCategoryModal({
           <small style={{ display: 'block', marginTop: 6, color: 'var(--ink-4)' }}>
             Leave empty to show this category for every area.
           </small>
+        </Field>
+
+        <Field label="Why you need it (scroll UI)">
+          <textarea
+            className="kit-input"
+            rows={3}
+            value={guideWhy}
+            onChange={(e) => setGuideWhy(e.target.value)}
+            disabled={submitting}
+            placeholder="Short paragraph — overrides static defaults when set."
+          />
+        </Field>
+
+        <Field label="Shopping tips (one per line)">
+          <textarea
+            className="kit-input"
+            rows={4}
+            value={guideTips}
+            onChange={(e) => setGuideTips(e.target.value)}
+            disabled={submitting}
+            placeholder="Twin XL label&#10;Deep pockets for thick mattresses"
+          />
         </Field>
 
         <Field label="Cover photo">

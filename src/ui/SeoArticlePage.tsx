@@ -1,5 +1,6 @@
 import { useEffect, type MouseEvent } from 'react';
 import { UCHICAGO_DORM_ARTICLES } from '../content/dorms';
+import { UChicagoDormDesignShowcase } from './uchicago/UChicagoDormDesignShowcase';
 import type { SeoArticle } from '../content/types';
 import { navigate } from '../hooks/useRoute';
 import { Button } from './kit/Button';
@@ -45,6 +46,7 @@ export function SeoArticlePage({
   const primaryAction = loggedIn && onGoDashboard ? onGoDashboard : onGetStarted;
   const secondaryAction = loggedIn && onGoDashboard ? onGoDashboard : onLogin;
   const isUchicagoHub = article.path === '/dorms/uchicago/';
+  const isUchicagoDesign = article.path === '/dorms/uchicago/design-your-dorm/';
 
   useEffect(() => {
     document.documentElement.dataset.seoReady = '1';
@@ -147,6 +149,21 @@ export function SeoArticlePage({
             <Button variant="mono" onClick={secondaryAction}>
               {loggedIn ? 'Dashboard' : 'Log in'}
             </Button>
+          </div>
+        ) : null}
+
+        {isUchicagoDesign ? (
+          <div style={{ marginTop: 48 }}>
+            <UChicagoDormDesignShowcase />
+          </div>
+        ) : null}
+
+        {isUchicagoHub ? (
+          <div style={{ marginTop: 48 }}>
+            <UChicagoDormDesignShowcase
+              compact
+              onOpenFullGuide={() => navigate('/dorms/uchicago/design-your-dorm/')}
+            />
           </div>
         ) : null}
 

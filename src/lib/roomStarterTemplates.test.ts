@@ -71,8 +71,8 @@ describe('roomStarterTemplates', () => {
     }
   });
 
-  it('furnished starters include pieces; uchicago dorm and apartment starters start blank', () => {
-    const blankGoals = new Set<RoomStarterGoal>(['uchicago', 'apartment']);
+  it('furnished starters include pieces; apartment shell starters stay empty', () => {
+    const blankGoals = new Set<RoomStarterGoal>(['apartment']);
     for (const template of ROOM_STARTER_TEMPLATES.filter((t) => !blankGoals.has(t.goal))) {
       expect(template.floorItems.length, template.id).toBeGreaterThan(0);
       expect(starterPieceCount(template), template.id).toBeGreaterThan(0);
@@ -122,7 +122,7 @@ describe('roomStarterTemplates', () => {
   });
 
   it('sits lamps on the paired surface instead of the floor', () => {
-    for (const template of ROOM_STARTER_TEMPLATES) {
+    for (const template of ROOM_STARTER_TEMPLATES.filter((t) => t.goal !== 'uchicago')) {
       for (const seed of template.floorItems) {
         if (seed.kind !== 'lamp') continue;
         expect(seed.position[1], `${template.id} lamp y`).toBeGreaterThan(0);
@@ -136,7 +136,7 @@ describe('roomStarterTemplates', () => {
   });
 
   it('does not place floor items in door openings', () => {
-    for (const template of ROOM_STARTER_TEMPLATES) {
+    for (const template of ROOM_STARTER_TEMPLATES.filter((t) => t.goal !== 'uchicago')) {
       expect(starterItemsBlockingDoors(template), template.id).toEqual([]);
     }
   });

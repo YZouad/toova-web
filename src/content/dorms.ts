@@ -17,6 +17,50 @@ function dormPath(dormId: string, layout: string): string {
   return `/dorms/uchicago/${dormId}/${layout}/`;
 }
 
+export const UCHICAGO_DESIGN_ARTICLE: SeoArticle = {
+  path: '/dorms/uchicago/design-your-dorm/',
+  title: 'Design Your UChicago Dorm Room — Measured Templates | Toova',
+  description:
+    'Design your University of Chicago dorm before move-in: measured Woodlawn, North, Max P, B-J, I-House, RGG, and Snell-Hitchcock layouts. Place beds, desks, and carts at real scale.',
+  heading: 'Design your UChicago dorm',
+  lead: 'Start from your residence hall’s measured footprint, drag in beds and desks, and see what fits before you shop.',
+  priority: 0.88,
+  breadcrumbs: [
+    { name: 'Home', path: '/' },
+    { name: 'UChicago dorms', path: '/dorms/uchicago/' },
+    { name: 'Design your dorm', path: '/dorms/uchicago/design-your-dorm/' },
+  ],
+  cta: { label: 'Open Woodlawn double', href: '/?template=uchicago-woodlawn-double' },
+  sections: [
+    {
+      heading: 'Built for Chicago dorm shapes',
+      body: [
+        'Every template matches a UChicago single, double, or Burton-Judson pass-through footprint. The preview on this page shows example furniture — your room opens blank so you can place your actual bed, desk, and mini-fridge.',
+        'Use the shopping checklist inside Toova to keep what you still need to buy.',
+      ],
+    },
+    {
+      heading: 'Works for doubles and roommates',
+      body: [
+        'In a double, mirror beds along each wall, pull chairs back from desks, and leave the door swing clear before you argue about the rug.',
+        'Share the saved room link so your roommate sees the same layout.',
+      ],
+    },
+  ],
+  faq: [
+    {
+      question: 'Do I need to know my exact room number?',
+      answer:
+        'You need your hall and layout type (single or double). If housing gives you different dimensions, tweak the walls in the editor after you open the template.',
+    },
+    {
+      question: 'Can I use my own furniture photos?',
+      answer:
+        'Yes. Upload a product image and Toova builds a real-scale model you can place on the dorm plan.',
+    },
+  ],
+};
+
 export const UCHICAGO_HUB_ARTICLE: SeoArticle = {
   path: '/dorms/uchicago/',
   title: 'UChicago Dorm Room Plans — Measured Layouts in Toova',
@@ -43,6 +87,7 @@ export const UCHICAGO_HUB_ARTICLE: SeoArticle = {
       heading: 'How to use a dorm plan',
       body: [
         'Choose your hall and room type. Toova opens a blank measured footprint. Add beds, desks, and decor from photos or the catalog, then share the plan with a roommate.',
+        'For a walkthrough with example layouts for every hall, see Design your UChicago dorm.',
       ],
     },
   ],
