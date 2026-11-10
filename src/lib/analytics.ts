@@ -408,6 +408,7 @@ export function trackAffiliateClicked(params: {
   retailer?: string;
   product_id?: string;
   is_price_approximate: boolean;
+  variant?: string;
   source:
     | 'checklist_checkout'
     | 'checklist_checkout_amazon_cart'
@@ -418,9 +419,42 @@ export function trackAffiliateClicked(params: {
     | 'designer_inspector'
     | 'checklist_top_picks'
     | 'bundle_cart'
-    | 'ticker_inline';
+    | 'ticker_inline'
+    | 'designer_library';
 }): void {
   track(EVENTS.PRODUCT_AFFILIATE_CLICKED, params);
+}
+
+export function trackCatalogItemPlaced(params: {
+  variant?: string;
+  method: 'click' | 'drag' | 'try_keep' | 'essential';
+  kind: string;
+  shoppable: boolean;
+  context?: string;
+}): void {
+  track(EVENTS.CATALOG_ITEM_PLACED, {
+    room_id: currentRoomId,
+    variant: params.variant ?? 'showroom',
+    method: params.method,
+    kind: params.kind,
+    shoppable: params.shoppable,
+    ...(params.context ? { context: params.context } : {}),
+  });
+}
+
+export function trackCatalogPlaceUndone(params: { kind: string }): void {
+  track(EVENTS.CATALOG_PLACE_UNDONE, {
+    room_id: currentRoomId,
+    kind: params.kind,
+    variant: 'showroom',
+  });
+}
+
+export function trackLibraryOpened(params?: { variant?: string }): void {
+  track(EVENTS.LIBRARY_OPENED, {
+    room_id: currentRoomId,
+    variant: params?.variant ?? 'showroom',
+  });
 }
 
 export function trackRoomShared(params: { room_id: string; role: 'viewer' | 'editor' }): void {

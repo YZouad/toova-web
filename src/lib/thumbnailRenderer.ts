@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
+import { shouldStandImportedUpright, standUpRotationAxis } from './importedUpright';
 import { normalizeImportedMaterials } from './normalizeImportedMaterials';
 
 export const THUMB_SIZE = 384;
@@ -19,7 +20,9 @@ function getRenderer(): THREE.WebGLRenderer {
     sharedRenderer.setPixelRatio(1);
     sharedRenderer.outputColorSpace = THREE.SRGBColorSpace;
     sharedRenderer.toneMapping = THREE.ACESFilmicToneMapping;
-    sharedRenderer.toneMappingExposure = 1.1;
+    sharedRenderer.toneMappingExposure = 1.25;
+  } else {
+    sharedRenderer.toneMappingExposure = 1.25;
   }
   return sharedRenderer;
 }
@@ -52,18 +55,23 @@ export function disposeObject3D(root: THREE.Object3D) {
 }
 
 function addLights(scene: THREE.Scene) {
-  scene.add(new THREE.AmbientLight(0xffffff, 0.62));
+  scene.add(new THREE.AmbientLight(0xffffff, 0.8));
   const key = new THREE.DirectionalLight(0xffffff, 0.88);
   key.position.set(2.5, 4, 3);
   scene.add(key);
   const fill = new THREE.DirectionalLight(0xffffff, 0.35);
   fill.position.set(-2, 1, -1);
   scene.add(fill);
+  const rim = new THREE.DirectionalLight(0xffffff, 0.6);
+  rim.position.set(-2, 3, -3);
+  scene.add(rim);
 }
 
 export type RenderObjectToJpegOptions = {
   /** Match designer import lighting. Default false (builtin meshes already PBR). */
   normalize?: boolean;
+  /** When set, stand monitors/TVs/lamps/clocks upright before framing. */
+  label?: string;
 };
 
 /** Center object at origin, render to JPEG using the shared offscreen renderer. */
@@ -72,13 +80,6 @@ export async function renderObjectToJpeg(
   opts: RenderObjectToJpegOptions = {},
 ): Promise<Blob | null> {
   try {
-    const box = new THREE.Box3().setFromObject(object);
-    const center = new THREE.Vector3();
-    const size = new THREE.Vector3();
-    box.getCenter(center);
-    box.getSize(size);
-    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
-
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(PREVIEW_BG);
 
@@ -86,6 +87,26 @@ export async function renderObjectToJpeg(
     if (opts.normalize) {
       normalizeImportedMaterials(clone, { relight: true });
     }
+    if (shouldStandImportedUpright(opts.label)) {
+      clone.updateMatrixWorld(true);
+      const natural = new THREE.Box3().setFromObject(clone);
+      if (!natural.isEmpty()) {
+        const natSize = new THREE.Vector3();
+        natural.getSize(natSize);
+        const axis = standUpRotationAxis([natSize.x, natSize.y, natSize.z]);
+        if (axis === 'x') clone.rotation.x = Math.PI / 2;
+        if (axis === 'z') clone.rotation.z = Math.PI / 2;
+        if (axis) clone.updateMatrixWorld(true);
+      }
+    }
+
+    const box = new THREE.Box3().setFromObject(clone);
+    const center = new THREE.Vector3();
+    const size = new THREE.Vector3();
+    box.getCenter(center);
+    box.getSize(size);
+    const maxDim = Math.max(size.x, size.y, size.z, 0.001);
+
     clone.position.sub(center);
     scene.add(clone);
     addLights(scene);

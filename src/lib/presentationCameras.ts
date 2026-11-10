@@ -175,10 +175,20 @@ function pointInApprox(
 export function dollhouseFraming(geom: RoomGeometry): CameraFraming {
   const b = planBounds(geom);
   const [cx, cz] = planCentroid(geom);
-  const span = Math.max(b.width, b.depth);
+  const fov = 42;
+  const target: [number, number, number] = [cx, geom.height * 0.15, cz];
+  // Keep the prior viewing direction; scale distance so the plan diagonal fits.
+  const dirX = 0.55;
+  const dirY = 1.15;
+  const dirZ = 0.7;
+  const dirLen = Math.hypot(dirX, dirY, dirZ) || 1;
+  const radius = 0.5 * Math.hypot(b.width, b.depth);
+  const halfFovRad = ((fov / 2) * Math.PI) / 180;
+  const distance = (radius / Math.sin(halfFovRad)) * 1.15;
+  const scale = distance / dirLen;
   return {
-    position: [cx + span * 0.55, Math.max(span * 1.15, geom.height * 2.4), cz + span * 0.7],
-    target: [cx, geom.height * 0.15, cz],
-    fov: 42,
+    position: [target[0] + dirX * scale, target[1] + dirY * scale, target[2] + dirZ * scale],
+    target,
+    fov,
   };
 }

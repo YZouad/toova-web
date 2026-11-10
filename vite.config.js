@@ -1,0 +1,141 @@
+import { defineConfig, loadEnv } from 'vite';
+import { CONTENT_SECURITY_POLICY } from './src/lib/securityHeaders';
+import react from '@vitejs/plugin-react';
+import { copyFileSync, cpSync, existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+const rootDir = path.dirname(fileURLToPath(import.meta.url));
+/** Same-origin prefix the app calls; Vite forwards to the Render BFF. */
+const trellisProxyPath = '/api/trellis';
+const thrixelProxyPath = '/api/thrixel';
+const agenticRoomProxyPath = '/api/agentic-room';
+const defaultTrellisBffOrigin = 'https://toova-bff.onrender.com';
+/** Production HTML only. Dev keeps Vite's eval/websocket client. */
+function productionSecurityHeaders() {
+    return {
+        name: 'production-security-headers',
+        apply: 'build',
+        transformIndexHtml: {
+            order: 'pre',
+            handler(html, ctx) {
+                const filename = (ctx.filename ?? '').replace(/\\/g, '/');
+                if (!filename.endsWith('/index.html'))
+                    return html;
+                if (html.includes('Content-Security-Policy'))
+                    return html;
+                const meta = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}" />`;
+                return html.replace('<head>', `<head>\n    ${meta}`);
+            },
+        },
+    };
+}
+/** GitHub Pages SPA fallback: unknown paths serve 404.html (= index.html). */
+function spa404Fallback() {
+    return {
+        name: 'spa-404-fallback',
+        closeBundle() {
+            const indexHtml = path.resolve(rootDir, 'dist/index.html');
+            const notFoundHtml = path.resolve(rootDir, 'dist/404.html');
+            if (existsSync(indexHtml)) {
+                copyFileSync(indexHtml, notFoundHtml);
+            }
+        },
+    };
+}
+/** The iOS bundle ships only the public/ folders the 3D scene loads; the rest stays on toova.net. */
+function copyPublicDirs(dirs, outDir) {
+    return {
+        name: 'copy-public-dirs',
+        closeBundle() {
+            for (const dir of dirs) {
+                const from = path.resolve(rootDir, 'public', dir);
+                if (existsSync(from)) {
+                    cpSync(from, path.resolve(rootDir, outDir, dir), { recursive: true });
+                }
+            }
+        },
+    };
+}
+function buildBffProxy(trellisBffOrigin, prefix) {
+    return {
+        [prefix]: {
+            target: trellisBffOrigin,
+            changeOrigin: true,
+            timeout: 600_000,
+            proxyTimeout: 600_000,
+            configure: (proxy) => {
+                proxy.on('proxyReq', (_proxyReq, req) => {
+                    console.log(`[${prefix} proxy] ${req.method} ${req.url} -> ${trellisBffOrigin}${req.url}`);
+                });
+                proxy.on('proxyRes', (proxyRes, req) => {
+                    console.log(`[${prefix} proxy] response ${proxyRes.statusCode} for ${req.url}`);
+                });
+                proxy.on('error', (err, req) => {
+                    console.error(`[${prefix} proxy] error for ${req.url}:`, err.message);
+                });
+            },
+        },
+    };
+}
+function buildTrellisProxy(trellisBffOrigin) {
+    return buildBffProxy(trellisBffOrigin, trellisProxyPath);
+}
+function buildThrixelProxy(trellisBffOrigin) {
+    return buildBffProxy(trellisBffOrigin, thrixelProxyPath);
+}
+function buildAgenticRoomProxy(trellisBffOrigin) {
+    return buildBffProxy(trellisBffOrigin, agenticRoomProxyPath);
+}
+export default defineConfig(({ mode }) => {
+    const env = loadEnv(mode, process.cwd(), '');
+    const trellisBffOrigin = env.TRELLIS_BFF_ORIGIN?.trim() || defaultTrellisBffOrigin;
+    const base = env.VITE_BASE_PATH || '/';
+    if (mode === 'development' && env.VITE_TRELLIS_GENERATE_URL?.trim()) {
+        console.warn('[TRELLIS] VITE_TRELLIS_GENERATE_URL is set; the browser will call that URL directly. ' +
+            'The Vite BFF proxy is still available for same-origin /api/trellis/*.');
+    }
+    const trellisProxy = trellisBffOrigin
+        ? {
+            ...buildTrellisProxy(trellisBffOrigin),
+            ...buildThrixelProxy(trellisBffOrigin),
+            ...buildAgenticRoomProxy(trellisBffOrigin),
+        }
+        : {
+            ...buildAgenticRoomProxy(defaultTrellisBffOrigin),
+        };
+    if (mode === 'embed') {
+        return {
+            base: './',
+            publicDir: false,
+            plugins: [react(), copyPublicDirs(['materials', 'textures'], '../toova-ios/DesignerWeb')],
+            build: {
+                outDir: path.resolve(rootDir, '../toova-ios/DesignerWeb'),
+                emptyOutDir: true,
+                rollupOptions: {
+                    input: { embed: path.resolve(rootDir, 'embed.html') },
+                },
+            },
+        };
+    }
+    return {
+        base,
+        plugins: [react(), productionSecurityHeaders(), spa404Fallback()],
+        build: {
+            rollupOptions: {
+                input: {
+                    main: path.resolve(rootDir, 'index.html'),
+                    visual: path.resolve(rootDir, 'visual.html'),
+                    hangingVisual: path.resolve(rootDir, 'hanging-visual.html'),
+                    notificationsVisual: path.resolve(rootDir, 'notifications-visual.html'),
+                },
+            },
+        },
+        server: {
+            port: 5173,
+            ...(trellisProxy ? { proxy: trellisProxy } : {}),
+        },
+        preview: {
+            ...(trellisProxy ? { proxy: trellisProxy } : {}),
+        },
+    };
+});

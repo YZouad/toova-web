@@ -401,6 +401,44 @@ function AppContent() {
     });
   }, [route, screen]);
 
+  const persistGuestSnapshot = useCallback(async (snapshot: GuestDesignSnapshot) => {
+    if (!user) return;
+    setFloorPlanBusy(true);
+    try {
+      const room = await createRoomWithGeometry(
+        user.id,
+        snapshot.name,
+        snapshot.roomGeometry,
+        snapshot.environment,
+        { templateId: snapshot.templateId, isGuestOrigin: true },
+      );
+      const byId = Object.fromEntries(snapshot.items.map((it) => [it.id, it]));
+      if (snapshot.items.length > 0) {
+        await saveRoomLayout(
+          room.id,
+          byId,
+          snapshot.order,
+          snapshot.environment,
+          snapshot.roomGeometry,
+        );
+      }
+      clearGuestDesignSnapshot();
+      resetLayout();
+      hydrateLayout(snapshot.items, snapshot.order);
+      hydrateRoomSettings(snapshot.environment, snapshot.roomGeometry);
+      setWorkspace({ id: room.id, name: room.name, isOwner: true });
+      setGuestTemplateId(snapshot.templateId);
+      setAuthReason(null);
+      setScreen('designer');
+      navigate('/', true);
+    } catch (err) {
+      console.warn('[toova] failed to restore guest design', err);
+      setScreen('dashboard');
+    } finally {
+      setFloorPlanBusy(false);
+    }
+  }, [user, resetLayout, hydrateLayout, hydrateRoomSettings]);
+
   useEffect(() => {
     if (!user) {
       guestRestoreAttempted.current = false;
@@ -431,42 +469,7 @@ function AppContent() {
       const intent = consumeGuestAuthIntent();
       const snapshot = loadGuestDesignSnapshot();
       if (snapshot && intent === 'save-design') {
-        void (async () => {
-          try {
-            setFloorPlanBusy(true);
-            const room = await createRoomWithGeometry(
-              user.id,
-              snapshot.name,
-              snapshot.roomGeometry,
-              snapshot.environment,
-              { templateId: snapshot.templateId, isGuestOrigin: true },
-            );
-            const byId = Object.fromEntries(snapshot.items.map((it) => [it.id, it]));
-            if (snapshot.items.length > 0) {
-              await saveRoomLayout(
-                room.id,
-                byId,
-                snapshot.order,
-                snapshot.environment,
-                snapshot.roomGeometry,
-              );
-            }
-            clearGuestDesignSnapshot();
-            resetLayout();
-            hydrateLayout(snapshot.items, snapshot.order);
-            hydrateRoomSettings(snapshot.environment, snapshot.roomGeometry);
-            setWorkspace({ id: room.id, name: room.name, isOwner: true });
-            setGuestTemplateId(snapshot.templateId);
-            setAuthReason(null);
-            setScreen('designer');
-            navigate('/', true);
-          } catch (err) {
-            console.warn('[toova] failed to restore guest design', err);
-            setScreen('dashboard');
-          } finally {
-            setFloorPlanBusy(false);
-          }
-        })();
+        void persistGuestSnapshot(snapshot);
         return;
       }
     }
@@ -497,9 +500,7 @@ function AppContent() {
     }
   }, [
     user,
-    resetLayout,
-    hydrateLayout,
-    hydrateRoomSettings,
+    persistGuestSnapshot,
     screen,
     routeIsPublic,
     pendingShareToken,
@@ -710,6 +711,8 @@ function AppContent() {
         seedItems?: Item[];
         seedOrder?: string[];
         starterId?: string;
+        /** Open in the browser only. Persist on an explicit save. */
+        localOnly?: boolean;
         agenticShoppingList?: ShoppingListEntry[];
         agenticShoppingManifest?: AgenticShoppingManifestEntry[];
         agenticBudgetCents?: number | null;
@@ -725,7 +728,9 @@ function AppContent() {
       const seedOrder = options?.seedOrder ?? [];
 
       // Guest path: design locally until save requires auth.
-      if (!user?.id) {
+      // Template links use this path even when signed in, so opening the URL
+      // does not insert a room.
+      if (!user?.id || options?.localOnly) {
         const guestId = `guest-${Date.now()}`;
         if (options?.agenticShoppingList?.length) {
           await applyAgenticShoppingList(
@@ -792,7 +797,12 @@ function AppContent() {
   );
 
   const handleCreateFromStarter = useCallback(
-    async (name: string, template: RoomStarterTemplate, planOverride?: FloorPlan) => {
+    async (
+      name: string,
+      template: RoomStarterTemplate,
+      planOverride?: FloorPlan,
+      options?: { localOnly?: boolean },
+    ) => {
       const plan = planOverride ?? template.buildPlan();
       const environment = template.buildEnvironment();
       const { items, order } = materializeStarterItems(template, plan);
@@ -802,6 +812,7 @@ function AppContent() {
         seedItems: items,
         seedOrder: order,
         starterId: template.id,
+        localOnly: options?.localOnly,
       });
     },
     [handleCreateWithPlan],
@@ -824,7 +835,7 @@ function AppContent() {
       setScreen('landing');
       return;
     }
-    void handleCreateFromStarter(template.label, template).catch(() => {
+    void handleCreateFromStarter(template.label, template, undefined, { localOnly: true }).catch(() => {
       setLandingNotice('Could not open that room template.');
       setScreen('landing');
     });
@@ -1132,8 +1143,20 @@ function AppContent() {
   );
 
   const requestSaveAuth = useCallback(() => {
+    if (user && workspace && isGuestWorkspaceId(workspace.id)) {
+      const state = useStore.getState();
+      void persistGuestSnapshot(buildGuestSnapshot({
+        name: workspace.name,
+        templateId: guestTemplateId as GuestDesignSnapshot['templateId'],
+        items: state.items,
+        order: state.order,
+        environment: state.environment,
+        roomGeometry: state.roomGeometry,
+      }));
+      return;
+    }
     requestGuestAuth('signup', 'Sign in to save this room to your account. Your design is kept on this device until then.');
-  }, [requestGuestAuth]);
+  }, [user, workspace, guestTemplateId, persistGuestSnapshot, requestGuestAuth]);
 
   const requestImportAuth = useCallback(
     (mode: 'signin' | 'signup' = 'signup') => {

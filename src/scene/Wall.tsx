@@ -30,6 +30,11 @@ interface WallProps {
   selected?: boolean;
   /** Click to select this wall for independent paint. */
   onSelect?: () => void;
+  /**
+   * Local-X extent of the slab. Defaults to the full centered `length`.
+   * Joins pass a shorter span so corners butt instead of crossing.
+   */
+  span?: { x0: number; x1: number };
 }
 
 type SlabRect = { x0: number; x1: number; y0: number; y1: number };
@@ -82,26 +87,28 @@ export function buildWallGeometry(
   length: number,
   height: number,
   holes: { x: number; y: number; w: number; h: number }[],
+  x0 = -length / 2,
+  x1 = length / 2,
 ): THREE.BufferGeometry {
   const shape = new THREE.Shape();
-  shape.moveTo(-length / 2, 0);
-  shape.lineTo(length / 2, 0);
-  shape.lineTo(length / 2, height);
-  shape.lineTo(-length / 2, height);
+  shape.moveTo(x0, 0);
+  shape.lineTo(x1, 0);
+  shape.lineTo(x1, height);
+  shape.lineTo(x0, height);
   shape.closePath();
 
   for (const h of holes) {
-    const x0 = h.x - h.w / 2;
-    const x1 = h.x + h.w / 2;
+    const hx0 = Math.max(x0, h.x - h.w / 2);
+    const hx1 = Math.min(x1, h.x + h.w / 2);
     const y0 = Math.max(0, h.y);
     const y1 = Math.min(height, h.y + h.h);
-    if (x1 - x0 < 0.5 || y1 - y0 < 0.5) continue;
+    if (hx1 - hx0 < 0.5 || y1 - y0 < 0.5) continue;
     // Opposite winding to the outer shape so the hole cuts through.
     const path = new THREE.Path();
-    path.moveTo(x0, y0);
-    path.lineTo(x0, y1);
-    path.lineTo(x1, y1);
-    path.lineTo(x1, y0);
+    path.moveTo(hx0, y0);
+    path.lineTo(hx0, y1);
+    path.lineTo(hx1, y1);
+    path.lineTo(hx1, y0);
     path.closePath();
     shape.holes.push(path);
   }
@@ -137,17 +144,20 @@ export function Wall({
   color,
   selected = false,
   onSelect,
+  span,
 }: WallProps) {
   const matRef = useRef<THREE.MeshStandardMaterial>(null!);
   const groupRef = useRef<THREE.Group>(null);
   const shadowRef = useRef<THREE.Mesh>(null!);
 
   const holesKey = holes.map((h) => `${h.kind ?? ''}:${h.x}:${h.y}:${h.w}:${h.h}`).join('|');
+  const x0 = span?.x0 ?? -length / 2;
+  const x1 = span?.x1 ?? length / 2;
   const geometry = useMemo(
-    () => buildWallGeometry(length, height, holes),
+    () => buildWallGeometry(length, height, holes, x0, x1),
     // holes is often a fresh array each parent render — key by contents.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [length, height, holesKey],
+    [length, height, holesKey, x0, x1],
   );
   // Doorways stay solid in the shadow map so sun doesn't pour through;
   // windows keep their holes.
@@ -156,9 +166,11 @@ export function Wall({
       length,
       height,
       holes.filter((h) => h.kind !== 'door'),
+      x0,
+      x1,
     ),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [length, height, holesKey],
+    [length, height, holesKey, x0, x1],
   );
 
   useEffect(
@@ -199,10 +211,16 @@ export function Wall({
 
   // Untextured depth material — Three copies `map` onto the default depth
   // material and that breaks casting on plastered walls.
-  const { depthMaterial, colorMaterial: shadowMaterial } = useMemo(
-    () => createShadowOnlyMaterials(),
-    [],
-  );
+  // Clip with the dollhouse plane so overview doesn't cast full-height shadows.
+  const { depthMaterial, colorMaterial: shadowMaterial } = useMemo(() => {
+    const mats = createShadowOnlyMaterials();
+    const planes = dollhouseClipPlanes();
+    for (const m of [mats.depthMaterial, mats.colorMaterial]) {
+      m.clippingPlanes = planes;
+      m.clipShadows = true;
+    }
+    return mats;
+  }, []);
 
   useEffect(() => {
     matRef.current = material;

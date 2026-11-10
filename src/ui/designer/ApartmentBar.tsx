@@ -19,7 +19,7 @@ function roomChipStyle(room: ApartmentRoom): React.CSSProperties | undefined {
 }
 
 export function ApartmentBar({
-  apartmentName,
+  apartmentName: _apartmentName,
   onFocusRoom,
   onBackToOverview,
 }: ApartmentBarProps) {
@@ -30,29 +30,15 @@ export function ApartmentBar({
   const focused = rooms.find((r) => r.id === focusedRoomId) ?? null;
   const [switcherOpen, setSwitcherOpen] = useState(false);
 
-  if (mode === 'single') return null;
-
-  if (mode === 'overview') {
-    return (
-      <div className="dg-apt-bar" role="status">
-        <span className="dg-apt-bar__crumb">{apartmentName}</span>
-        <span className="dg-apt-bar__sep" aria-hidden>
-          ·
-        </span>
-        <span className="dg-apt-bar__meta">
-          {rooms.length} room{rooms.length === 1 ? '' : 's'} · pick a room to design
-        </span>
-      </div>
-    );
-  }
+  if (mode !== 'focused') return null;
 
   return (
-    <div className="dg-apt-bar">
+    <div className="dg-apt-bar" role="navigation" aria-label="Apartment rooms">
       <button type="button" className="dg-apt-bar__link" onClick={onBackToOverview}>
-        {apartmentName}
+        All rooms
       </button>
       <span className="dg-apt-bar__sep" aria-hidden>
-        ›
+        /
       </span>
       <div className="dg-apt-bar__switcher">
         <button
@@ -151,7 +137,7 @@ export function ApartmentRoomList({
           );
         })}
       </ul>
-      <p className="dg-apt-list__hint">Click a room to furnish it · Esc returns here</p>
+      <p className="dg-apt-list__hint">Esc returns here</p>
     </aside>
   );
 }

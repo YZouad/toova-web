@@ -2,6 +2,10 @@
  * Copies public catalog/room objects from Supabase Storage into R2 (toova-public).
  * Used by the app after publish, and by the one-shot backfill script via wrangler.
  */
+import {
+  encodeCanonicalStorageKey,
+  isOwnedStorageKey,
+} from '../../supabase/functions/_shared/storageObjectKey';
 
 export interface Env {
   PUBLIC_BUCKET: R2Bucket;
@@ -133,7 +137,8 @@ function timingSafeEqual(a: string, b: string): boolean {
 }
 
 async function copySupabaseToR2(env: Env, bucket: string, path: string): Promise<void> {
-  const encoded = path.split('/').map(encodeURIComponent).join('/');
+  const encoded = encodeCanonicalStorageKey(path);
+  if (!encoded) throw new Error('invalid storage path');
   const res = await fetch(
     `${env.SUPABASE_URL}/storage/v1/object/${encodeURIComponent(bucket)}/${encoded}`,
     {
@@ -176,8 +181,7 @@ async function requireUser(
 }
 
 function ownsPath(userId: string, path: string): boolean {
-  const folder = path.split('/').find(Boolean);
-  return folder === userId;
+  return isOwnedStorageKey(path, userId);
 }
 
 function parseIngestObjects(body: unknown): IngestObject[] | null {

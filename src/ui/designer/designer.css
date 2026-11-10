@@ -151,7 +151,8 @@
 .dg-topbar-right { display: flex; align-items: center; gap: 12px; min-width: 0; }
 .dg-topbar-right { gap: 10px; flex: none; }
 
-.dg-topbar-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.dg-topbar-title { display: flex; flex-direction: column; gap: 4px; min-width: 0; justify-content: center; }
+.dg-topbar-title.is-apt-focused { gap: 5px; }
 .dg-page .dg-topbar-title__name {
   font: 500 19px/1.1 var(--font-serif);
   letter-spacing: -0.015em;
@@ -1074,10 +1075,11 @@
 /* ── Context bar ───────────────────────────────────────────────────────── */
 .dg-context {
   position: absolute;
-  left: 50%; bottom: 26px; z-index: 28;
+  left: calc((100% + var(--dg-left-occupied, 0px)) / 2);
+  bottom: 26px; z-index: 28;
   transform: translateX(-50%);
   display: flex; align-items: center; gap: 2px; padding: 8px;
-  max-width: calc(100% - 40px);
+  max-width: calc(100% - var(--dg-left-occupied, 0px) - 40px);
   background: rgba(251, 247, 240, 0.93);
   backdrop-filter: blur(18px) saturate(1.3);
   -webkit-backdrop-filter: blur(18px) saturate(1.3);
@@ -1151,7 +1153,7 @@
   animation: dgFade 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) both;
   max-height: calc(100% - (var(--dg-gutter) * 2));
 }
-.dg-sheet--library { left: 112px; bottom: var(--dg-gutter); width: min(824px, calc(100% - 130px)); }
+.dg-sheet--library { left: 112px; bottom: var(--dg-gutter); width: min(720px, calc(100% - 130px)); }
 .dg-sheet--side { left: 112px; width: 352px; }
 .dg-sheet--pieces { left: 112px; width: 326px; }
 .dg-sheet--inspect {
@@ -1187,11 +1189,16 @@
 .dg-sheet-body {
   flex: 1; min-height: 0; overflow: auto; padding: 14px 18px 18px;
   overscroll-behavior: contain;
+  scrollbar-gutter: stable;
 }
 .dg-sheet-footer {
   flex: none; padding: 12px 18px; border-top: 1px solid var(--rule-soft);
   display: flex; align-items: center; gap: 10px;
   background: rgba(251, 247, 240, 0.72);
+}
+.dg-sheet--library .dg-sheet-footer {
+  flex-wrap: wrap;
+  align-items: stretch;
 }
 
 /* ── Scrim / mobile sheet / action sheet ───────────────────────────────── */
@@ -1418,7 +1425,7 @@
   animation: dgFade 0.16s ease both;
 }
 .dg-keys {
-  display: grid; place-items: center; padding-top: 0;
+  display: flex; align-items: center; justify-content: center; padding-top: 0;
   background: var(--dg-scrim-strong);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
@@ -1437,7 +1444,13 @@
   animation: dgPop 0.18s ease both;
   pointer-events: auto;
 }
-.dg-keys-panel { width: min(760px, calc(100% - 40px)); max-height: none; border-radius: var(--dg-radius); }
+.dg-keys-panel {
+  width: min(760px, calc(100% - 40px));
+  max-height: calc(100% - 48px);
+  flex: none;
+  border-radius: var(--dg-radius);
+  overflow: auto;
+}
 
 .dg-cmdk-input {
   display: flex; align-items: center; gap: 11px;
@@ -1556,6 +1569,16 @@
   display: flex; flex-direction: column; gap: 14px;
 }
 .dg-keys-col + .dg-keys-col { border-left: 1px solid var(--rule-soft); }
+.dg-keys-col__title {
+  font: var(--type-mono-xs); letter-spacing: 0.12em;
+  text-transform: uppercase; color: var(--ink-6);
+}
+.dg-keys-band {
+  border-top: 1px solid var(--rule-soft);
+  display: flex; flex-direction: column;
+}
+.dg-keys-band > .dg-keys-col__title { padding: 22px 24px 0; }
+.dg-keys-band .dg-keys-col { padding-top: 14px; }
 .dg-keys-row {
   display: flex; justify-content: space-between; align-items: center; gap: 16px;
   min-height: 28px;
@@ -2466,6 +2489,10 @@
   color: var(--ink-2); white-space: nowrap;
 }
 .dg-chip:hover { background: var(--paper-2); }
+.dg-chip:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
 .dg-chip.is-active { background: var(--ink-0); border-color: var(--ink-0); color: var(--cream-1); }
 .dg-chip.is-accent { background: var(--accent-bg); border-color: var(--accent-line); color: var(--accent-text); }
 .dg-chip-row {
@@ -3523,9 +3550,9 @@
 .dg-apt-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   min-width: 0;
-  font: 500 13px/1.2 var(--font-sans);
+  font: 500 15px/1.2 var(--font-sans);
   color: var(--ink-3);
 }
 .dg-apt-bar__crumb,
@@ -3536,16 +3563,18 @@
 .dg-apt-bar__link {
   border: 0;
   background: transparent;
-  padding: 0;
+  padding: 2px 0;
   font: inherit;
-  font-weight: 600;
-  color: var(--ink-3);
+  font-weight: 500;
+  color: var(--ink-5);
   cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 2px;
 }
-.dg-apt-bar__link:hover { color: var(--accent-text); }
-.dg-apt-bar__sep { color: var(--ink-6); }
+.dg-apt-bar__link:hover { color: var(--ink-1); }
+.dg-apt-bar__sep {
+  color: var(--ink-7, var(--ink-6));
+  font-weight: 400;
+  user-select: none;
+}
 .dg-apt-bar__meta {
   font: var(--type-mono-xs);
   letter-spacing: 0.08em;
@@ -3555,11 +3584,21 @@
 }
 .dg-apt-bar__switcher { position: relative; }
 .dg-apt-bar__current {
-  border: 1px solid var(--ink-0);
+  border: 1px solid var(--rule-hair);
   background: var(--paper-0);
-  border-radius: 3px;
-  padding: 4px 10px;
+  border-radius: 6px;
+  padding: 5px 12px;
   cursor: pointer;
+  font: 600 15px/1.2 var(--font-serif);
+  letter-spacing: -0.01em;
+  color: var(--ink-0);
+  max-width: min(220px, 40vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dg-apt-bar__current:hover {
+  border-color: var(--ink-0);
 }
 .dg-apt-bar__menu {
   position: absolute;
@@ -3604,7 +3643,7 @@
   left: calc(max(var(--dg-gutter), var(--safe-left)) + var(--dg-rail-w) + 30px);
   z-index: var(--dg-z-chrome);
   width: min(168px, 34vw);
-  max-height: min(42vh, 280px);
+  max-height: calc(100% - 2 * var(--dg-gutter));
   display: flex;
   flex-direction: column;
   background: rgba(248, 243, 234, 0.94);
@@ -3661,8 +3700,13 @@
   color: var(--ink-1);
 }
 .dg-apt-list__meta {
+  display: none;
   font: 400 10px/1.15 var(--font-sans);
   color: var(--ink-5);
+}
+.dg-apt-list__item:hover .dg-apt-list__meta,
+.dg-apt-list__item.is-active .dg-apt-list__meta {
+  display: block;
 }
 .dg-apt-list__hint {
   margin: 0;
