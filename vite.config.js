@@ -1,5 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
-import { CONTENT_SECURITY_POLICY } from './src/lib/securityHeaders';
+import { CONTENT_SECURITY_POLICY_META } from './src/lib/securityHeaders';
 import react from '@vitejs/plugin-react';
 import { copyFileSync, cpSync, existsSync } from 'node:fs';
 import path from 'node:path';
@@ -23,7 +23,7 @@ function productionSecurityHeaders() {
                     return html;
                 if (html.includes('Content-Security-Policy'))
                     return html;
-                const meta = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}" />`;
+                const meta = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY_META}" />`;
                 return html.replace('<head>', `<head>\n    ${meta}`);
             },
         },
