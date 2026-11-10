@@ -248,8 +248,8 @@ export function ChecklistPage({
               purchaseCartCount={purchaseCartLines.length}
               onOpenCheckout={() => setCheckoutOpen(true)}
               onChangeRoom={() => setChecklistAreaTag(null)}
+              onOpenLists={onOpenLists}
               canPlace={canPlace}
-              isCategoryDone={isCategoryDone}
               placedCategoryIds={placedCategoryIds}
               getOwnedProduct={getOwnedProduct}
               getResolution={getResolution}
@@ -491,9 +491,8 @@ export function ChecklistPage({
         onRequestSignIn={onRequestSignIn}
         onAdded={(_listId, syncedActiveRoom) => {
           if (!addToListProduct) return;
-          if (!user?.id || syncedActiveRoom) {
-            void addToList(addToListProduct.id);
-          }
+          if (!user?.id) return;
+          if (syncedActiveRoom) void addToList(addToListProduct.id);
         }}
       />
 

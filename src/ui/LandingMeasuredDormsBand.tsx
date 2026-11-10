@@ -8,7 +8,7 @@ import {
 import type { RoomStarterTemplate } from '../lib/roomStarterTemplates';
 import { useStarterTemplatesForGoal } from '../hooks/useStarterTemplates';
 import { navigate } from '../hooks/useRoute';
-import { Button, MonoMeta, SectionOpener } from './kit';
+import { Button, DisplayHeading, Eyebrow, MonoMeta } from './kit';
 import { LandingDormRoomScene } from './LandingDormRoomScene';
 
 function spaClick(href: string) {
@@ -92,13 +92,21 @@ export function LandingMeasuredDormsBand({ onStartDesign }: LandingMeasuredDorms
     >
       <div className="toova-frame landing-dorms-band__inner">
         <header className="landing-dorms-band__head">
-          <SectionOpener
-            id="landing-dorms-band-title"
-            title="Check out our modeled UChicago dorm rooms."
-            note={`7 halls · ${layoutCount} layouts →`}
-            noteOnClick={() => navigate('/dorms/uchicago/')}
-            level={4}
-          />
+          <Eyebrow level="section" className="landing-dorms-band__eyebrow">
+            UChicago residence halls
+          </Eyebrow>
+          <div className="landing-dorms-band__title-row">
+            <DisplayHeading level={4} id="landing-dorms-band-title">
+              Check out our modeled UChicago dorm rooms.
+            </DisplayHeading>
+            <button
+              type="button"
+              className="landing-dorms-band__meta-link"
+              onClick={() => navigate('/dorms/uchicago/')}
+            >
+              {`7 halls · ${layoutCount} layouts →`}
+            </button>
+          </div>
           <p className="landing-dorms-band__lede">
             Real measurements from Woodlawn, North, Max P, B-J, and more. Browse a layout below, then
             design your room today.
@@ -106,31 +114,30 @@ export function LandingMeasuredDormsBand({ onStartDesign }: LandingMeasuredDorms
         </header>
 
         <div className="landing-dorms-band__explorer" aria-live="polite">
-          <div className="landing-dorms-band__halls" role="tablist" aria-label="Residence halls">
-            {UCHICAGO_DORMS.map((dorm) => {
-              const selected = activeDormId === dorm.id;
-              return (
-                <button
-                  key={dorm.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={selected}
-                  className={[
-                    'landing-dorms-band__hall-btn',
-                    selected ? 'landing-dorms-band__hall-btn--active' : '',
-                  ]
-                    .filter(Boolean)
-                    .join(' ')}
-                  onClick={() => jumpToDorm(dorm.id)}
-                >
-                  {dorm.label}
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="landing-dorms-band__stage">
-            <div className="landing-dorms-band__clicker">
+          <div className="landing-dorms-band__toolbar">
+            <div className="landing-dorms-band__halls" role="tablist" aria-label="Residence halls">
+              {UCHICAGO_DORMS.map((dorm) => {
+                const selected = activeDormId === dorm.id;
+                return (
+                  <button
+                    key={dorm.id}
+                    type="button"
+                    role="tab"
+                    aria-selected={selected}
+                    className={[
+                      'landing-dorms-band__hall-btn',
+                      selected ? 'landing-dorms-band__hall-btn--active' : '',
+                    ]
+                      .filter(Boolean)
+                      .join(' ')}
+                    onClick={() => jumpToDorm(dorm.id)}
+                  >
+                    {dorm.label}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="landing-dorms-band__clicker" aria-label="Layout carousel">
               <button
                 type="button"
                 className="landing-dorms-band__step"
@@ -151,7 +158,9 @@ export function LandingMeasuredDormsBand({ onStartDesign }: LandingMeasuredDorms
                 →
               </button>
             </div>
+          </div>
 
+          <div className="landing-dorms-band__stage">
             {template && layout ? (
               <div className="landing-dorms-band__preview-wrap">
                 <LandingDormRoomScene key={template.id} template={template} />

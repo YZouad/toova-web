@@ -991,28 +991,65 @@ button.landing-nav-brand { cursor: pointer; }
 .landing-stat-n { font-family: var(--font-serif); font-size: 30px; font-weight: 500; color: #F8F3EA; }
 .landing-stat-l { font-size: 13px; color: rgba(248, 243, 234, 0.62); }
 
+.landing-hero-stats-row {
+  margin-top: 36px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rule-hair);
+}
+
 /* ── Landing: UChicago measured dorms band (below hero) ── */
 .landing-dorms-band {
-  margin-top: 64px;
+  margin-top: 96px;
   padding: 0 0 8px;
   border-top: 1px solid var(--rule-heavy);
   border-bottom: 1px solid var(--rule-heavy);
   background: var(--surface, #f5efe4);
 }
 .landing-dorms-band__inner {
-  padding: 56px 0 48px;
+  padding: 72px 0 56px;
 }
 .landing-dorms-band__head {
-  margin-bottom: 32px;
-  max-width: var(--measure-lead, 42rem);
+  display: grid;
+  gap: 20px;
+  margin-bottom: 40px;
+  max-width: var(--page-max, 1200px);
 }
-.landing-dorms-band__head .kit-section-opener {
-  margin-bottom: 6px;
+.landing-dorms-band__eyebrow {
+  margin: 0;
+}
+.landing-dorms-band__title-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 20px 48px;
+}
+.landing-dorms-band__title-row .kit-display-heading {
+  margin: 0;
+  flex: 1 1 280px;
+  min-width: 0;
+}
+.landing-dorms-band__meta-link {
+  flex: none;
+  margin: 0;
+  padding: 0 0 6px;
+  border: none;
+  background: none;
+  font: var(--type-mono);
+  color: var(--ink-3);
+  border-bottom: 1px solid var(--accent-line);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.landing-dorms-band__meta-link:hover {
+  color: var(--accent-h);
 }
 .landing-dorms-band__lede {
-  margin: 18px 0 0;
+  margin: 0;
+  max-width: var(--measure-lead, 42rem);
   font: var(--type-body-sm, 15px/1.55 system-ui);
   color: var(--ink-3);
+  line-height: 1.55;
 }
 .landing-dorms-band__link {
   font-size: 15px;
@@ -1034,16 +1071,27 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .landing-dorms-band__explorer {
   display: grid;
-  gap: 20px;
-  padding: 24px;
+  gap: 28px;
+  padding: 28px 28px 32px;
   border: 1px solid var(--rule-soft);
   border-radius: 16px;
   background: var(--bg, #faf6ef);
+}
+.landing-dorms-band__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px 24px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--rule-hair);
 }
 .landing-dorms-band__halls {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  flex: 1 1 280px;
+  min-width: 0;
 }
 .landing-dorms-band__hall-btn {
   margin: 0;
@@ -1068,13 +1116,14 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .landing-dorms-band__stage {
   display: grid;
-  gap: 18px;
+  gap: 22px;
 }
 .landing-dorms-band__clicker {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 16px;
+  justify-content: flex-end;
+  gap: 12px;
+  flex: 0 0 auto;
 }
 .landing-dorms-band__step {
   display: inline-flex;
@@ -1139,6 +1188,32 @@ button.landing-nav-brand { cursor: pointer; }
   border: 1px solid var(--rule-soft);
   pointer-events: none;
 }
+@media (max-width: 720px) {
+  .landing-dorms-band {
+    margin-top: 72px;
+  }
+  .landing-dorms-band__inner {
+    padding: 48px 0 40px;
+  }
+  .landing-dorms-band__title-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+  .landing-dorms-band__meta-link {
+    padding-bottom: 0;
+  }
+  .landing-dorms-band__toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .landing-dorms-band__clicker {
+    justify-content: center;
+    width: 100%;
+  }
+}
+
 .landing-dorms-band__scene-fallback {
   position: absolute;
   inset: 0;
@@ -3462,6 +3537,22 @@ button.landing-nav-brand { cursor: pointer; }
   background: color-mix(in srgb, var(--bg-raised) 94%, transparent);
   backdrop-filter: blur(8px);
 }
+.checklist-scroll-guide__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px 24px;
+}
+.checklist-scroll-guide__meta .checklist-room-chip {
+  margin-bottom: 0;
+  flex: 1 1 240px;
+}
+.checklist-scroll-guide__meta .checklist-scroll-guide__budget {
+  margin-top: 0;
+  flex: 1 1 200px;
+  align-items: flex-end;
+}
 .checklist-scroll-guide__budget {
   display: flex;
   flex-direction: column;
@@ -3502,17 +3593,21 @@ button.landing-nav-brand { cursor: pointer; }
 .checklist-product-rail {
   margin: 20px 0 0;
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  align-items: stretch;
   width: 100%;
 }
 .checklist-product-rail__track {
   display: flex;
+  flex-direction: row;
   gap: 12px;
   overflow-x: auto;
-  padding-bottom: 6px;
+  overflow-y: hidden;
+  padding-bottom: 8px;
   scroll-snap-type: x proximity;
   -webkit-overflow-scrolling: touch;
-  justify-content: center;
+  justify-content: flex-start;
+  width: 100%;
   max-width: 100%;
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -3582,6 +3677,21 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .checklist-product-rail__shop:hover {
   text-decoration: underline;
+}
+.checklist-product-rail__label {
+  margin: 0 0 10px;
+  text-align: left;
+  width: 100%;
+}
+.checklist-product-rail__desc {
+  margin: 0;
+  font: var(--type-body-sm);
+  color: var(--ink-4);
+  line-height: 1.4;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 .checklist-tips {
   margin: 24px 0 0;
