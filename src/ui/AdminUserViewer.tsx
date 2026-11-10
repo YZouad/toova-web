@@ -763,6 +763,7 @@ export function AdminUserViewer({
         <ModelDetailModal
           model={detailModel}
           currentUserId={currentUserId}
+          isAdmin
           onClose={() => setDetailModel(null)}
           onModelPatched={(kind, patch) => {
             setDetailModel((prev) => (prev && prev.kind === kind ? { ...prev, ...patch } : prev));

@@ -12,13 +12,16 @@ import { hasReportedTarget } from '../lib/contentReports';
 import { ReportDialog } from './ReportDialog';
 import { catalogCategoryLabel } from '../lib/catalogCategories';
 import { deleteCatalogModel, updateCatalogModel } from '../lib/galleryCatalog';
+import { generateGlbThumbnail } from '../lib/generateGlbThumbnail';
 import {
   MODEL_FILES_BUCKET,
   catalogModelDownloadFilename,
   downloadModelFile,
   resolveBrowsableModelUrl,
+  resolveCatalogThumbnailUrl,
+  uploadModelThumbnail,
 } from '../lib/modelStorage';
-import { removePublicModelMirrors } from '../lib/publicModelsMirror';
+import { mirrorToPublicModels, removePublicModelMirrors } from '../lib/publicModelsMirror';
 import { supabase } from '../lib/supabase';
 import { formatRelativeTime } from '../lib/userDisplay';
 import { profilePath, navigate } from '../hooks/useRoute';
@@ -44,6 +47,8 @@ export interface ModelDetailModalProps {
   startInEdit?: boolean;
   /** When true, scroll the Thrixel revise block into view (owner). */
   focusThrixelRevise?: boolean;
+  /** Platform admin — regenerate catalog thumbnails. */
+  isAdmin?: boolean;
 }
 
 const COMPACT_MQ = '(max-width: 1023px)';
@@ -148,6 +153,7 @@ export function ModelDetailModal({
   onModelDeleted,
   startInEdit = false,
   focusThrixelRevise = false,
+  isAdmin = false,
 }: ModelDetailModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -175,6 +181,7 @@ export function ModelDetailModal({
     () => hasReportedCatalogKind(model.kind) || hasReportedTarget('catalog_model', model.kind),
   );
   const [downloadBusy, setDownloadBusy] = useState(false);
+  const [thumbBusy, setThumbBusy] = useState(false);
   const [imgBroken, setImgBroken] = useState(false);
   const thrixelReviseRef = useRef<HTMLDivElement>(null);
   const patchImportedCatalogModel = useStore((s) => s.patchImportedCatalogModel);
@@ -405,6 +412,45 @@ export function ModelDetailModal({
       setError(e instanceof Error ? e.message : 'Could not download model');
     } finally {
       setDownloadBusy(false);
+    }
+  }
+
+  async function handleRegenerateThumbnail() {
+    if (!isAdmin || !currentUserId || thumbBusy) return;
+    setError(null);
+    setThumbBusy(true);
+    try {
+      const url =
+        model.signedUrl ??
+        (model.storagePath
+          ? await resolveBrowsableModelUrl(model.storagePath, {
+              access: model.visibility === 'public' ? 'public' : 'private',
+            })
+          : null);
+      if (!url) throw new Error('No model file to render');
+      const jpeg = await generateGlbThumbnail(url, { label: model.label });
+      if (!jpeg) throw new Error('Could not render thumbnail');
+      const path = await uploadModelThumbnail(jpeg, currentUserId);
+      if (!path) throw new Error('Could not upload thumbnail');
+      const { error: rpcErr } = await supabase.rpc('admin_set_catalog_thumbnail', {
+        p_kind: model.kind,
+        p_thumbnail_path: path,
+      });
+      if (rpcErr) throw new Error(rpcErr.message);
+      if (model.visibility === 'public') {
+        await mirrorToPublicModels([path]);
+      }
+      const previewUrl = await resolveCatalogThumbnailUrl(path, {
+        access: model.visibility === 'public' ? 'public' : 'private',
+      });
+      onModelPatched(model.kind, {
+        previewUrl: previewUrl ?? URL.createObjectURL(jpeg),
+      });
+      setImgBroken(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not regenerate thumbnail');
+    } finally {
+      setThumbBusy(false);
     }
   }
 
@@ -672,6 +718,17 @@ export function ModelDetailModal({
             <span>{downloadExt}</span>
           </div>
         </div>
+        {isAdmin && (model.signedUrl || model.storagePath) ? (
+          <button
+            type="button"
+            className="md-btn md-btn--edit"
+            style={{ marginTop: 10 }}
+            disabled={thumbBusy || busy}
+            onClick={() => void handleRegenerateThumbnail()}
+          >
+            {thumbBusy ? 'Regenerating…' : 'Regenerate thumbnail'}
+          </button>
+        ) : null}
       </div>
     </>
   ) : (

@@ -65,8 +65,91 @@ export function resolveApartmentRooms(plan: FloorPlan): ApartmentRoom[] {
   const areas = resolveZones(plan);
   let untitledIndex = 0;
   const rooms = areas.map((area) => areaToRoom(plan, area, untitledIndex++));
+  applyDuplicateTagLabels(rooms);
   roomsCache.set(plan, rooms);
   return rooms;
+}
+
+/**
+ * Inset a face polygon toward its interior by `distance` (inches).
+ * Uses edge normals and consecutive-edge intersection so L-shapes stay valid.
+ */
+export function insetFace(
+  face: FloorPlanVertex[],
+  distance: number,
+): FloorPlanVertex[] {
+  const n = face.length;
+  if (n < 3 || distance <= 0) return face.map((v) => ({ ...v }));
+
+  // Ensure CCW so inward = rotate tangent +90° in XZ (x,z) → (-z, x) wait:
+  // For CCW in XZ (x right, z down-ish): tangent (dx,dz), inward = (-dz, dx).
+  let area = 0;
+  for (let i = 0; i < n; i++) {
+    const a = face[i]!;
+    const b = face[(i + 1) % n]!;
+    area += a.x * b.z - b.x * a.z;
+  }
+  const ccw = area > 0;
+  const sign = ccw ? 1 : -1;
+
+  const edges: { nx: number; nz: number; px: number; pz: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = face[i]!;
+    const b = face[(i + 1) % n]!;
+    const dx = b.x - a.x;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dz) || 1;
+    // Inward normal for CCW: (-dz, dx); flip when CW.
+    const nx = (sign * -dz) / len;
+    const nz = (sign * dx) / len;
+    edges.push({
+      nx,
+      nz,
+      px: a.x + nx * distance,
+      pz: a.z + nz * distance,
+    });
+  }
+
+  const out: FloorPlanVertex[] = [];
+  for (let i = 0; i < n; i++) {
+    const e0 = edges[(i - 1 + n) % n]!;
+    const e1 = edges[i]!;
+    // Intersection of two offset lines.
+    const det = e0.nx * e1.nz - e0.nz * e1.nx;
+    let x: number;
+    let z: number;
+    if (Math.abs(det) < 1e-8) {
+      x = (e0.px + e1.px) / 2;
+      z = (e0.pz + e1.pz) / 2;
+    } else {
+      // Line: n·(p - p0) = 0 → n.x * x + n.z * z = n.x*p0.x + n.z*p0.z
+      const c0 = e0.nx * e0.px + e0.nz * e0.pz;
+      const c1 = e1.nx * e1.px + e1.nz * e1.pz;
+      x = (c0 * e1.nz - c1 * e0.nz) / det;
+      z = (e0.nx * c1 - e1.nx * c0) / det;
+    }
+    out.push({ id: face[i]!.id, x, z });
+  }
+  return out;
+}
+
+/** Number untitled same-tag rooms: Bedroom, Bedroom 2, … Custom names are kept. */
+function applyDuplicateTagLabels(rooms: ApartmentRoom[]) {
+  const counts = new Map<RoomTag, number>();
+  const seen = new Map<RoomTag, number>();
+  for (const room of rooms) {
+    if (!room.tagged || !room.tag) continue;
+    if (room.zone?.name?.trim()) continue;
+    counts.set(room.tag, (counts.get(room.tag) ?? 0) + 1);
+  }
+  for (const room of rooms) {
+    if (!room.tagged || !room.tag) continue;
+    if (room.zone?.name?.trim()) continue;
+    if ((counts.get(room.tag) ?? 0) < 2) continue;
+    const n = (seen.get(room.tag) ?? 0) + 1;
+    seen.set(room.tag, n);
+    room.label = n === 1 ? roomTagLabel(room.tag) : `${roomTagLabel(room.tag)} ${n}`;
+  }
 }
 
 function areaToRoom(plan: FloorPlan, area: ResolvedArea, untitledIndex: number): ApartmentRoom {

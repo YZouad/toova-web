@@ -761,20 +761,18 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
             >
               All areas
             </button>
-            {taggedAreas.map((area) => {
-              const tag = area.zone!.tag;
-              const label = area.zone!.name?.trim() || roomTagLabel(tag);
-              return (
-                <button
-                  key={area.faceKey}
-                  type="button"
-                  className={`dg-chip${areaTag === tag ? ' is-accent' : ''}`}
-                  onClick={() => setAreaTag(tag)}
-                >
-                  {label}
-                </button>
-              );
-            })}
+            {[...new Map(
+              taggedAreas.map((area) => [area.zone!.tag, area.zone!.tag] as const),
+            ).entries()].map(([tag]) => (
+              <button
+                key={tag}
+                type="button"
+                className={`dg-chip${areaTag === tag ? ' is-accent' : ''}`}
+                onClick={() => setAreaTag(tag)}
+              >
+                {roomTagLabel(tag)}
+              </button>
+            ))}
           </div>
         ) : null}
 

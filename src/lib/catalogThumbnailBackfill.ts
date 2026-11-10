@@ -6,6 +6,7 @@ import { supabase } from './supabase';
 const sessionPreviewCache = new Map<string, string>();
 const skippedKinds = new Set<string>();
 const HEAL_KEY = 'toova-catalog-thumb-glb-v1';
+const UPRIGHT_HEAL_KEY = 'toova-catalog-thumb-upright-v1';
 
 let queueRunning = false;
 const pendingJobs: BackfillJob[] = [];
@@ -16,6 +17,10 @@ export interface BackfillJobInput {
   ownerUserId: string | null;
   /** Replace an existing (possibly wrong) thumbnail with a fresh GLB snapshot. */
   replace?: boolean;
+  /** Stand monitors/TVs/lamps/clocks upright when rendering. */
+  label?: string;
+  /** Persist via admin_set_catalog_thumbnail even when not the owner. */
+  persistAsAdmin?: boolean;
 }
 
 type PreviewCallback = (kind: string, previewUrl: string) => void;
@@ -39,24 +44,45 @@ function idleWait() {
   });
 }
 
-/** True until this browser has replaced a photo thumbnail with a GLB snapshot. */
-export function catalogThumbNeedsGlbHeal(kind: string): boolean {
+function readHealSet(key: string): string[] {
   try {
-    const done = JSON.parse(localStorage.getItem(HEAL_KEY) || '[]') as string[];
-    return !done.includes(kind);
+    return JSON.parse(localStorage.getItem(key) || '[]') as string[];
   } catch {
-    return true;
+    return [];
   }
 }
 
-function markCatalogThumbHealed(kind: string) {
+function markHealed(key: string, kind: string) {
   try {
-    const done = new Set(JSON.parse(localStorage.getItem(HEAL_KEY) || '[]') as string[]);
+    const done = new Set(readHealSet(key));
     done.add(kind);
-    localStorage.setItem(HEAL_KEY, JSON.stringify([...done]));
+    localStorage.setItem(key, JSON.stringify([...done]));
   } catch {
     /* ignore */
   }
+}
+
+/** True until this browser has replaced a photo thumbnail with a GLB snapshot. */
+export function catalogThumbNeedsGlbHeal(kind: string): boolean {
+  return !readHealSet(HEAL_KEY).includes(kind);
+}
+
+/** True until this browser has re-rendered an upright-label model thumbnail. */
+export function catalogThumbNeedsUprightHeal(kind: string): boolean {
+  return !readHealSet(UPRIGHT_HEAL_KEY).includes(kind);
+}
+
+export function isChecklistPhotoThumbPath(path: string | null | undefined): boolean {
+  const trimmed = (path ?? '').trim();
+  return trimmed.startsWith('checklist-refs/images/');
+}
+
+function markCatalogThumbHealed(kind: string) {
+  markHealed(HEAL_KEY, kind);
+}
+
+function markUprightThumbHealed(kind: string) {
+  markHealed(UPRIGHT_HEAL_KEY, kind);
 }
 
 async function drainQueue() {
@@ -67,31 +93,48 @@ async function drainQueue() {
     const job = pendingJobs.shift()!;
     try {
       await idleWait();
-      const blob = await generateGlbThumbnail(job.signedUrl);
+      const blob = await generateGlbThumbnail(job.signedUrl, { label: job.label });
       if (!blob) {
         skippedKinds.add(job.kind);
-        if (job.replace) markCatalogThumbHealed(job.kind);
+        if (job.replace) {
+          markCatalogThumbHealed(job.kind);
+          markUprightThumbHealed(job.kind);
+        }
         continue;
       }
 
       let previewUrl = URL.createObjectURL(blob);
       sessionPreviewCache.set(job.kind, previewUrl);
       job.onPreview(job.kind, previewUrl);
-      if (job.replace) markCatalogThumbHealed(job.kind);
+      if (job.replace) {
+        markCatalogThumbHealed(job.kind);
+        markUprightThumbHealed(job.kind);
+      }
 
-      const canPersist =
+      const canPersistOwner =
         job.ownerUserId &&
         job.currentUserId &&
         job.ownerUserId === job.currentUserId;
+      const canPersistAdmin = Boolean(job.persistAsAdmin && job.currentUserId);
 
-      if (canPersist) {
+      if (canPersistOwner || canPersistAdmin) {
         const path = await uploadModelThumbnail(blob, job.currentUserId!);
         if (path) {
-          const { error } = await supabase
-            .from('furniture_catalog')
-            .update({ thumbnail_path: path })
-            .eq('kind', job.kind);
-          if (!error) {
+          let saved = false;
+          if (canPersistAdmin && !canPersistOwner) {
+            const { error } = await supabase.rpc('admin_set_catalog_thumbnail', {
+              p_kind: job.kind,
+              p_thumbnail_path: path,
+            });
+            saved = !error;
+          } else {
+            const { error } = await supabase
+              .from('furniture_catalog')
+              .update({ thumbnail_path: path })
+              .eq('kind', job.kind);
+            saved = !error;
+          }
+          if (saved) {
             const { data: catalog } = await supabase
               .from('furniture_catalog')
               .select('visibility')
@@ -112,7 +155,10 @@ async function drainQueue() {
       }
     } catch {
       skippedKinds.add(job.kind);
-      if (job.replace) markCatalogThumbHealed(job.kind);
+      if (job.replace) {
+        markCatalogThumbHealed(job.kind);
+        markUprightThumbHealed(job.kind);
+      }
     }
     await delay(120);
   }

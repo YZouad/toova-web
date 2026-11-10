@@ -63,7 +63,7 @@ export function buildDesignerCommands(input: BuildCommandsInput): CommandPalette
     {
       id: 'add',
       label: 'Add a piece',
-      hint: 'A',
+      hint: 'N',
       run: wrap('add', () => input.setPanel('add')),
     },
     {

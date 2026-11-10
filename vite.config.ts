@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv, type Plugin } from 'vite';
+import { CONTENT_SECURITY_POLICY } from './src/lib/securityHeaders';
 import type { ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 import { copyFileSync, cpSync, existsSync } from 'node:fs';
@@ -12,6 +13,24 @@ const trellisProxyPath = '/api/trellis';
 const thrixelProxyPath = '/api/thrixel';
 const agenticRoomProxyPath = '/api/agentic-room';
 const defaultTrellisBffOrigin = 'https://toova-bff.onrender.com';
+
+/** Production HTML only. Dev keeps Vite's eval/websocket client. */
+function productionSecurityHeaders(): Plugin {
+  return {
+    name: 'production-security-headers',
+    apply: 'build',
+    transformIndexHtml: {
+      order: 'pre',
+      handler(html, ctx) {
+        const filename = (ctx.filename ?? '').replace(/\\/g, '/');
+        if (!filename.endsWith('/index.html')) return html;
+        if (html.includes('Content-Security-Policy')) return html;
+        const meta = `<meta http-equiv="Content-Security-Policy" content="${CONTENT_SECURITY_POLICY}" />`;
+        return html.replace('<head>', `<head>\n    ${meta}`);
+      },
+    },
+  };
+}
 
 /** GitHub Pages SPA fallback: unknown paths serve 404.html (= index.html). */
 function spa404Fallback(): Plugin {
@@ -121,7 +140,7 @@ export default defineConfig(({ mode }) => {
 
   return {
     base,
-    plugins: [react(), spa404Fallback()],
+    plugins: [react(), productionSecurityHeaders(), spa404Fallback()],
     build: {
       rollupOptions: {
         input: {

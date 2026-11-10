@@ -290,13 +290,20 @@ const BUILDERS: Record<BuiltinKind, () => THREE.Group> = {
   lamp: buildLampGroup,
 };
 
+/** Build a disposable THREE group for live preview / turntable (caller disposes). */
+export function buildBuiltinPreviewObject(kind: string): THREE.Group | null {
+  if (kind === 'checklist-rug') return buildRugGroup();
+  const build = BUILDERS[kind as BuiltinKind];
+  if (!build) return null;
+  return build();
+}
+
 /** Render a builtin furniture kind to a JPEG palette thumbnail. */
 export async function generateBuiltinThumbnail(
   kind: BuiltinKind,
 ): Promise<Blob | null> {
-  const build = BUILDERS[kind];
-  if (!build) return null;
-  const group = build();
+  const group = buildBuiltinPreviewObject(kind);
+  if (!group) return null;
   try {
     return await renderObjectToJpeg(group);
   } finally {
