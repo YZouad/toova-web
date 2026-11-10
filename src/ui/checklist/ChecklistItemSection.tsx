@@ -12,6 +12,8 @@ import { Button, Eyebrow, MonoMeta } from '../kit';
 import {
   ChecklistResolutionActions,
 } from '../designer/ChecklistBudgetFoot';
+import type { ChecklistInspoClip } from '../../lib/inspoClipUrls';
+import { InspoClipRail } from './InspoClipRail';
 
 interface ChecklistItemSectionProps {
   category: ChecklistCategoryWithProducts;
@@ -19,12 +21,17 @@ interface ChecklistItemSectionProps {
   resolution: CategoryResolution | undefined;
   ownedProduct?: CuratedProduct | null;
   canPlace: boolean;
+  userId?: string | null;
+  isAdmin?: boolean;
+  onRequestSignIn?: () => void;
   onRequestAddToList?: (product: CuratedProduct) => void;
   onPlace?: (product: CuratedProduct) => void;
   onMarkOwned?: (input: { name: string; affiliateUrl: string; priceCents: number }) => void;
   onSkip?: () => void;
   onUndo?: () => void;
   setResolution?: (categoryId: string, resolution: CategoryResolution | null) => Promise<void>;
+  onUseInspoLook?: (category: ChecklistCategoryWithProducts, clip: ChecklistInspoClip) => void;
+  onInspoClipSubmitted?: () => void;
 }
 
 function publishedProducts(products: CuratedProduct[]): CuratedProduct[] {
@@ -38,11 +45,16 @@ export function ChecklistItemSection({
   resolution,
   ownedProduct,
   canPlace,
+  userId = null,
+  isAdmin = false,
+  onRequestSignIn,
   onRequestAddToList,
   onPlace,
   onMarkOwned,
   onSkip,
   onUndo,
+  onUseInspoLook,
+  onInspoClipSubmitted,
 }: ChecklistItemSectionProps) {
   const products = publishedProducts(category.products);
   const done = placed || resolution === 'have' || resolution === 'skip';
@@ -138,6 +150,19 @@ export function ChecklistItemSection({
           </div>
         </div>
       )}
+
+      {onUseInspoLook ? (
+        <InspoClipRail
+          categoryId={category.id}
+          categoryName={category.name}
+          clips={category.inspoClips ?? []}
+          userId={userId}
+          isAdmin={isAdmin}
+          onRequestSignIn={onRequestSignIn}
+          onUseThisLook={(clip) => onUseInspoLook(category, clip)}
+          onClipSubmitted={onInspoClipSubmitted}
+        />
+      ) : null}
 
       {categoryGuideTips(category).length > 0 ? (
         <aside className="checklist-tips" aria-label="Shopping tips">

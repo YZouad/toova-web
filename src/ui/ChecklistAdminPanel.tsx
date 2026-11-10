@@ -6,12 +6,15 @@ import {
 } from '../lib/dormChecklist';
 import { fetchAdminShoppingCatalog } from '../lib/shoppingCatalog';
 import {
+  adminSetInspoClipStatus,
   attachCategoryCoverImage,
   createChecklistCategory,
   deleteChecklistCategory,
+  deleteInspoClip,
   hasChildCategories,
   updateChecklistCategory,
 } from '../lib/shoppingCatalogAdmin';
+import { inspoPlatformLabel } from '../lib/inspoClipUrls';
 import { Banner, Button, Field, Input, MonoMeta, Spinner } from './kit';
 
 interface ChecklistAdminPanelProps {
@@ -251,6 +254,90 @@ export function ChecklistAdminPanel({
               {categories.filter((c) => c.parentId).length}
             </MonoMeta>
           ) : null}
+
+          <div className="checklist-admin-block" style={{ marginTop: 16 }}>
+            <MonoMeta size="sm" tone="dense" style={{ display: 'block', marginBottom: 8 }}>
+              Social inspo clips
+            </MonoMeta>
+            {(() => {
+              const allClips = categories.flatMap((c) =>
+                (c.inspoClips ?? []).map((clip) => ({ clip, categoryName: c.name })),
+              );
+              const pendingClips = allClips.filter((x) => x.clip.status === 'pending');
+              const shownClips = selectedCategory
+                ? (selectedCategory.inspoClips ?? []).map((clip) => ({
+                    clip,
+                    categoryName: selectedCategory.name,
+                  }))
+                : pendingClips;
+              if (shownClips.length === 0) {
+                return (
+                  <MonoMeta size="xs" tone="subtle">
+                    {selectedCategory
+                      ? 'No inspo clips in this category yet.'
+                      : 'No pending inspo clips to review.'}
+                  </MonoMeta>
+                );
+              }
+              return (
+                <ul className="checklist-admin-clips">
+                  {shownClips.map(({ clip, categoryName }) => (
+                    <li key={clip.id} className="checklist-admin-clip-row">
+                      <div style={{ minWidth: 0 }}>
+                        <MonoMeta size="xs" tone="dense" upper>
+                          {inspoPlatformLabel(clip.platform)} · {clip.status} · {categoryName}
+                        </MonoMeta>
+                        <a
+                          href={clip.canonicalUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="shopping-lists-header-link"
+                          style={{ display: 'block', marginTop: 2 }}
+                        >
+                          {clip.title || clip.canonicalUrl}
+                        </a>
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 6 }}>
+                        {clip.status !== 'published' ? (
+                          <Button
+                            size="sm"
+                            disabled={busy}
+                            onClick={() =>
+                              void runMutation(() => adminSetInspoClipStatus(clip.id, 'published'))
+                            }
+                          >
+                            Approve
+                          </Button>
+                        ) : (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            disabled={busy}
+                            onClick={() =>
+                              void runMutation(() => adminSetInspoClipStatus(clip.id, 'pending'))
+                            }
+                          >
+                            Unpublish
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={busy}
+                          onClick={() =>
+                            void runMutation(() => deleteInspoClip(clip.id))
+                          }
+                          style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
+                        >
+                          Remove
+                        </Button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              );
+            })()}
+          </div>
         </>
       ) : null}
     </aside>

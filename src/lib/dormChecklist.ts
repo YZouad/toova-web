@@ -66,6 +66,7 @@ export interface CuratedProduct {
 
 export interface ChecklistCategoryWithProducts extends ChecklistCategory {
   products: CuratedProduct[];
+  inspoClips?: import('./inspoClipUrls').ChecklistInspoClip[];
 }
 
 export interface ShoppingListEntry {

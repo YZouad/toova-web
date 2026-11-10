@@ -20,6 +20,11 @@ import {
   type ShoppingListEntry,
 } from './dormChecklist';
 import { isRoomLocalProductId } from './ownedChecklistItems';
+import type {
+  ChecklistInspoClip,
+  InspoClipPlatform,
+  InspoClipStatus,
+} from './inspoClipUrls';
 
 const CATEGORY_SELECT =
   'id,slug,name,sort_order,published,parent_id,image_path,room_tags';
@@ -189,9 +194,62 @@ async function fetchChecklistCategoryRows(publishedOnly: boolean) {
   return first;
 }
 
+function mapInspoClip(row: Record<string, unknown>): ChecklistInspoClip {
+  const platformRaw = String(row.platform ?? 'instagram').toLowerCase();
+  const platform: InspoClipPlatform = platformRaw === 'tiktok' ? 'tiktok' : 'instagram';
+  const statusRaw = String(row.status ?? 'pending').toLowerCase();
+  const status: InspoClipStatus =
+    statusRaw === 'published' || statusRaw === 'rejected' ? statusRaw : 'pending';
+  return {
+    id: String(row.id),
+    categoryId: String(row.category_id),
+    productId:
+      row.product_id != null && String(row.product_id).trim()
+        ? String(row.product_id).trim()
+        : null,
+    platform,
+    canonicalUrl: String(row.canonical_url ?? ''),
+    title: String(row.title ?? ''),
+    creatorHandle:
+      row.creator_handle != null && String(row.creator_handle).trim()
+        ? String(row.creator_handle).trim()
+        : null,
+    thumbnailUrl:
+      row.thumbnail_url != null && String(row.thumbnail_url).trim()
+        ? String(row.thumbnail_url).trim()
+        : null,
+    status,
+    submittedBy:
+      row.submitted_by != null && String(row.submitted_by).trim()
+        ? String(row.submitted_by).trim()
+        : null,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+    publishedAt:
+      row.published_at != null && String(row.published_at).trim()
+        ? String(row.published_at).trim()
+        : null,
+  };
+}
+
+async function fetchInspoClipRows(): Promise<ChecklistInspoClip[]> {
+  const { data, error } = await supabase
+    .from('checklist_inspo_clips')
+    .select(
+      'id,category_id,product_id,platform,canonical_url,title,creator_handle,thumbnail_url,status,submitted_by,created_at,published_at',
+    )
+    .in('status', ['published', 'pending'])
+    .order('created_at', { ascending: false });
+  if (error) {
+    // Graceful fallback if migration has not been applied yet.
+    return [];
+  }
+  return (data ?? []).map((r) => mapInspoClip(r as Record<string, unknown>));
+}
+
 function assembleCatalog(
   catRows: unknown[] | null,
   prodRows: unknown[] | null,
+  clipRows: ChecklistInspoClip[] = [],
 ): ChecklistCategoryWithProducts[] {
   const productsByCat = new Map<string, CuratedProduct[]>();
   for (const raw of prodRows ?? []) {
@@ -200,36 +258,45 @@ function assembleCatalog(
     list.push(p);
     productsByCat.set(p.categoryId, list);
   }
+  const clipsByCat = new Map<string, ChecklistInspoClip[]>();
+  for (const clip of clipRows) {
+    const list = clipsByCat.get(clip.categoryId) ?? [];
+    list.push(clip);
+    clipsByCat.set(clip.categoryId, list);
+  }
   return (catRows ?? []).map((raw) => {
     const cat = mapCategory(raw as Record<string, unknown>);
     return {
       ...cat,
       products: productsByCat.get(cat.id) ?? [],
+      inspoClips: clipsByCat.get(cat.id) ?? [],
     };
   });
 }
 
 export async function fetchPublishedShoppingCatalog(): Promise<ChecklistCategoryWithProducts[]> {
-  const [catResult, prodResult] = await Promise.all([
+  const [catResult, prodResult, clipRows] = await Promise.all([
     fetchChecklistCategoryRows(true),
     fetchCuratedProductRows(true),
+    fetchInspoClipRows(),
   ]);
 
   if (catResult.error) throw new Error(catResult.error.message);
   if (prodResult.error) throw new Error(prodResult.error.message);
-  return assembleCatalog(catResult.data, prodResult.data);
+  return assembleCatalog(catResult.data, prodResult.data, clipRows);
 }
 
 /** Admin: all categories/products including unpublished. */
 export async function fetchAdminShoppingCatalog(): Promise<ChecklistCategoryWithProducts[]> {
-  const [catResult, prodResult] = await Promise.all([
+  const [catResult, prodResult, clipRows] = await Promise.all([
     fetchChecklistCategoryRows(false),
     fetchCuratedProductRows(false),
+    fetchInspoClipRows(),
   ]);
 
   if (catResult.error) throw new Error(catResult.error.message);
   if (prodResult.error) throw new Error(prodResult.error.message);
-  return assembleCatalog(catResult.data, prodResult.data);
+  return assembleCatalog(catResult.data, prodResult.data, clipRows);
 }
 
 export async function fetchUserChecklistProgress(

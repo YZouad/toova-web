@@ -35,6 +35,11 @@ import { BundleCards } from './billing/BundleCards';
 import { ChecklistAdminPanel } from './ChecklistAdminPanel';
 import { ChecklistBudgetFoot } from './designer/ChecklistBudgetFoot';
 import { ChecklistCheckoutPanel } from './ChecklistCheckoutPanel';
+import { ChecklistRoomTypePicker } from './checklist/ChecklistRoomTypePicker';
+import { ChecklistScrollGuide } from './checklist/ChecklistScrollGuide';
+import { AddToListModal } from './checklist/AddToListModal';
+import { ImportModelModal } from './ImportModelModal';
+import type { ChecklistInspoClip } from '../lib/inspoClipUrls';
 
 function pickTopProduct(products: CuratedProduct[]): CuratedProduct | null {
   const published = products.filter((p) => p.published);
@@ -94,6 +99,11 @@ export function ChecklistPage({
   const [productModalOpen, setProductModalOpen] = useState(false);
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<CuratedProduct | null>(null);
+  const [addToListProduct, setAddToListProduct] = useState<CuratedProduct | null>(null);
+  const [inspoImportTarget, setInspoImportTarget] = useState<{
+    category: ChecklistCategoryWithProducts;
+    clip: ChecklistInspoClip;
+  } | null>(null);
 
   const refreshAdminCatalog = useCallback(async () => {
     if (!isAdmin) return;
@@ -498,6 +508,23 @@ export function ChecklistPage({
           product={editingProduct}
           existingProducts={drawerCategory?.products ?? []}
           onSaved={handleCatalogChanged}
+        />
+      ) : null}
+
+      {user?.id && inspoImportTarget ? (
+        <ImportModelModal
+          open
+          userId={user.id}
+          initialTab="generate"
+          initialTitle={inspoImportTarget.clip.title.trim() || inspoImportTarget.category.name}
+          initialDescription={`From ${inspoImportTarget.clip.canonicalUrl}`}
+          initialChecklistCategoryId={inspoImportTarget.category.id}
+          isAdmin={isAdmin}
+          onClose={() => setInspoImportTarget(null)}
+          onAdded={() => {
+            setInspoImportTarget(null);
+            handleCatalogChanged();
+          }}
         />
       ) : null}
     </div>

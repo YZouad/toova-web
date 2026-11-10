@@ -10,6 +10,7 @@ import {
 import { roomTagLabel, type RoomTag } from '../../lib/roomTags';
 import { Banner, Button, MonoMeta, Spinner } from '../kit';
 import { ChecklistBudgetFoot } from '../designer/ChecklistBudgetFoot';
+import type { ChecklistInspoClip } from '../../lib/inspoClipUrls';
 import { ChecklistItemSection } from './ChecklistItemSection';
 
 interface ChecklistScrollGuideProps {
@@ -26,6 +27,9 @@ interface ChecklistScrollGuideProps {
   onChangeRoom: () => void;
   onOpenLists?: () => void;
   canPlace: boolean;
+  userId?: string | null;
+  isAdmin?: boolean;
+  onRequestSignIn?: () => void;
   placedCategoryIds: Set<string>;
   getOwnedProduct: (productId: string) => CuratedProduct | undefined;
   getResolution: (categoryId: string) => CategoryResolution | undefined;
@@ -38,6 +42,8 @@ interface ChecklistScrollGuideProps {
     priceCents: number;
   }) => void;
   setResolution: (categoryId: string, resolution: CategoryResolution | null) => Promise<void>;
+  onUseInspoLook?: (category: ChecklistCategoryWithProducts, clip: ChecklistInspoClip) => void;
+  onInspoClipSubmitted?: () => void;
 }
 
 export function ChecklistScrollGuide({
@@ -54,6 +60,9 @@ export function ChecklistScrollGuide({
   onChangeRoom,
   onOpenLists,
   canPlace,
+  userId = null,
+  isAdmin = false,
+  onRequestSignIn,
   placedCategoryIds,
   getOwnedProduct,
   getResolution,
@@ -61,6 +70,8 @@ export function ChecklistScrollGuide({
   onPlace,
   markCategoryAsOwned,
   setResolution,
+  onUseInspoLook,
+  onInspoClipSubmitted,
 }: ChecklistScrollGuideProps) {
   const leaves = useMemo(() => {
     const scoped = filterCategoriesByRoomTag(categories, roomTag);
@@ -121,6 +132,9 @@ export function ChecklistScrollGuide({
                 resolution={resolution}
                 ownedProduct={getOwnedProduct(cat.id)}
                 canPlace={canPlace}
+                userId={userId}
+                isAdmin={isAdmin}
+                onRequestSignIn={onRequestSignIn}
                 onRequestAddToList={onRequestAddToList}
                 onPlace={onPlace}
                 onMarkOwned={
@@ -130,6 +144,8 @@ export function ChecklistScrollGuide({
                 }
                 onSkip={() => void setResolution(cat.id, 'skip')}
                 onUndo={() => void setResolution(cat.id, null)}
+                onUseInspoLook={onUseInspoLook}
+                onInspoClipSubmitted={onInspoClipSubmitted}
               />
             );
           })

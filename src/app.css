@@ -3414,7 +3414,10 @@ button.landing-nav-brand { cursor: pointer; }
 
 /* ── Checklist page ── */
 .checklist-page {
-  min-height: 100%;
+  min-height: var(--vh-full);
+  height: auto;
+  overflow-x: hidden;
+  overflow-y: visible;
   background:
     radial-gradient(ellipse 80% 50% at 10% 0%, rgba(176, 90, 60, 0.08), transparent 55%),
     radial-gradient(ellipse 60% 40% at 90% 20%, rgba(201, 179, 145, 0.35), transparent 50%),
@@ -3692,6 +3695,116 @@ button.landing-nav-brand { cursor: pointer; }
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+.checklist-inspo-rail {
+  margin: 22px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+.checklist-inspo-rail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 16px;
+}
+.checklist-inspo-rail__empty {
+  margin: 0;
+  font: var(--type-body-sm);
+  color: var(--ink-4);
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.checklist-inspo-rail__empty p {
+  margin: 0;
+  max-width: 52ch;
+}
+.checklist-inspo-rail__browse {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 18px;
+}
+.checklist-inspo-card__media {
+  position: relative;
+  aspect-ratio: 9 / 12;
+  background: var(--paper-3, #ebe2d2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.checklist-inspo-card__media img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.checklist-inspo-card__glyph {
+  font-size: 26px;
+  color: var(--ink-3);
+}
+.checklist-inspo-card__pill {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(20, 17, 14, 0.72);
+  color: #f8f3ea;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.checklist-inspo-card__status {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  background: rgba(248, 243, 234, 0.92);
+  border: 1px solid var(--rule-soft);
+  color: var(--ink-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+}
+.checklist-inspo-card__links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+}
+.checklist-inspo-card__report {
+  border: none;
+  background: none;
+  padding: 0;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  cursor: pointer;
+}
+.checklist-inspo-card__report:hover {
+  color: var(--ink-2);
+  text-decoration: underline;
+}
+.checklist-admin-clips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.checklist-admin-clip-row {
+  padding: 10px 12px;
+  border: 1px solid var(--rule-soft);
+  border-radius: 8px;
+  background: var(--bg-raised, #fff);
 }
 .checklist-tips {
   margin: 24px 0 0;
@@ -10237,16 +10350,22 @@ a.product-drawer-media--link:hover img {
   z-index: 100;
   background: rgba(43, 38, 32, 0.45);
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: max(24px, var(--safe-top)) max(24px, var(--safe-right)) max(24px, var(--safe-bottom)) max(24px, var(--safe-left));
 }
 .kit-modal__scrim--above-drawer {
   z-index: 2100;
 }
 .kit-modal {
+  flex: none;
+  margin: auto;
   max-height: min(86vh, calc(var(--vh-full) - 48px));
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   background: var(--bg-page);
   border: 1px solid var(--rule-soft);
   box-shadow: var(--shadow-modal);
@@ -10259,6 +10378,7 @@ a.product-drawer-media--link:hover img {
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
+  flex-shrink: 0;
 }
 .kit-modal__meta {
   font: var(--type-mono-sm);
@@ -10296,12 +10416,17 @@ a.product-drawer-media--link:hover img {
 }
 .kit-modal__body {
   min-width: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 .kit-modal__footer {
   display: flex;
   justify-content: flex-end;
   gap: 16px;
   margin-top: 28px;
+  flex-shrink: 0;
 }
 
 .kit-field {
@@ -12042,6 +12167,7 @@ a.product-drawer-media--link:hover img {
     max-width: none;
     max-height: var(--vh-full);
     height: var(--vh-full);
+    margin: 0;
     border: none;
     border-radius: 0;
     padding: calc(20px + var(--safe-top)) 20px calc(24px + var(--safe-bottom));
