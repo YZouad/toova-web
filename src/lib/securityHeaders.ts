@@ -4,13 +4,16 @@ export const REFERRER_POLICY = 'strict-origin-when-cross-origin';
 /**
  * Production CSP. Script sources are limited to this origin plus analytics.
  * Images stay broadly allowed because product photos come from retailer CDNs.
- * Dev servers do not send this policy (Vite HMR needs eval and a websocket).
+ * `blob:` is on connect-src because GLTFLoader fetches embedded textures with
+ * fetch(), which connect-src governs. Dev servers do not send this policy
+ * (Vite HMR needs eval and a websocket).
+ *
+ * `frame-ancestors` is header-only. Browsers ignore it in a meta tag.
  */
-export const CONTENT_SECURITY_POLICY = [
+const CSP_DIRECTIVES = [
   "base-uri 'self'",
   "object-src 'none'",
-  "frame-ancestors 'self'",
-  "script-src 'self' https://www.googletagmanager.com 'wasm-unsafe-eval'",
+  "script-src 'self' https://www.googletagmanager.com https://static.cloudflareinsights.com 'wasm-unsafe-eval'",
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com data:",
   "img-src 'self' data: blob: https:",
@@ -18,7 +21,7 @@ export const CONTENT_SECURITY_POLICY = [
   "worker-src 'self' blob:",
   "frame-src 'self' https://www.youtube.com https://www.youtube-nocookie.com",
   [
-    "connect-src 'self'",
+    "connect-src 'self' blob:",
     'https://*.supabase.co',
     'wss://*.supabase.co',
     'https://assets.toova.net',
@@ -28,7 +31,14 @@ export const CONTENT_SECURITY_POLICY = [
     'https://*.google-analytics.com',
     'https://www.googletagmanager.com',
     'https://stats.g.doubleclick.net',
+    'https://cloudflareinsights.com',
     'https://fonts.googleapis.com',
     'https://fonts.gstatic.com',
   ].join(' '),
-].join('; ');
+];
+
+/** HTTP header policy. Includes frame-ancestors. */
+export const CONTENT_SECURITY_POLICY = [...CSP_DIRECTIVES, "frame-ancestors 'self'"].join('; ');
+
+/** `<meta>` policy. Same directives, without frame-ancestors. */
+export const CONTENT_SECURITY_POLICY_META = CSP_DIRECTIVES.join('; ');
