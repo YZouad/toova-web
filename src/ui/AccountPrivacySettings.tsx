@@ -3,7 +3,7 @@ import { deleteOwnAccount } from '../lib/accountDeletion';
 import { openCookieSettings } from '../lib/cookieConsent';
 import { supabase } from '../lib/supabase';
 import { navigate, privacyPath } from '../hooks/useRoute';
-import { Banner, Button, Field, Input, MonoMeta, SectionOpener } from './kit';
+import { Banner, Button, Field, Input, MonoMeta } from './kit';
 
 const CONFIRM_WORD = 'DELETE';
 
@@ -28,29 +28,34 @@ export function AccountPrivacySettings() {
   }
 
   return (
-    <section className="profile-integrations" style={{ marginTop: 56 }}>
-      <SectionOpener level={5} title="Privacy & account." note="Your data" />
-      <div className="profile-edit-fields" style={{ marginTop: 20, maxWidth: 560 }}>
-        <Field label="Cookies">
-          <MonoMeta size="sm" tone="subtle" style={{ display: 'block', marginBottom: 12 }}>
-            Change whether Toova may use analytics cookies on this browser. See our{' '}
-            <a href={privacyPath()} target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
-          </MonoMeta>
-          <div>
-            <Button size="sm" variant="outline" onClick={openCookieSettings}>
-              Cookie settings
-            </Button>
-          </div>
-        </Field>
+    <div className="profile-privacy">
+      <Field label="Cookies">
+        <MonoMeta size="sm" tone="subtle" className="profile-panel-hint">
+          Change whether Toova may use analytics cookies on this browser. See our{' '}
+          <a href={privacyPath()} target="_blank" rel="noopener noreferrer">
+            Privacy Policy
+          </a>
+          .
+        </MonoMeta>
+        <div>
+          <Button size="sm" variant="outline" onClick={openCookieSettings}>
+            Cookie settings
+          </Button>
+        </div>
+      </Field>
 
+      <div className="profile-danger">
+        <MonoMeta size="xs" tone="subtle" upper className="profile-danger__label">
+          Danger zone
+        </MonoMeta>
         <Field label="Delete account">
-          <MonoMeta size="sm" tone="subtle" style={{ display: 'block', marginBottom: 12 }}>
+          <MonoMeta size="sm" tone="subtle" className="profile-panel-hint">
             Permanently deletes your account, rooms, uploads, 3D models, and published copies, and
             cancels any web subscription. This can’t be undone. App Store subscriptions must be
             cancelled in your Apple ID settings.
           </MonoMeta>
           {confirming ? (
-            <div style={{ display: 'grid', gap: 12 }}>
+            <div className="profile-danger__confirm">
               <Input
                 value={confirmText}
                 disabled={busy}
@@ -58,7 +63,7 @@ export function AccountPrivacySettings() {
                 aria-label={`Type ${CONFIRM_WORD} to confirm account deletion`}
                 onChange={(e) => setConfirmText(e.target.value)}
               />
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <div className="profile-danger__actions">
                 <Button
                   size="sm"
                   disabled={busy || confirmText.trim() !== CONFIRM_WORD}
@@ -89,6 +94,6 @@ export function AccountPrivacySettings() {
           {error ? <Banner tone="error">{error}</Banner> : null}
         </Field>
       </div>
-    </section>
+    </div>
   );
 }

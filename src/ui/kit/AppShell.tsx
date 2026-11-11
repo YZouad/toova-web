@@ -5,6 +5,7 @@ import { AppRail, type AppRailItem, type AppRailItemId } from './AppRail';
 import { Logo } from './Logo';
 import { MonoMeta } from './MonoMeta';
 import { SiteFooter } from './SiteFooter';
+import { usePhoneLayout } from './usePhoneNav';
 
 export type AppShellNavId = 'home' | 'rooms' | 'models' | 'gallery' | 'ar' | 'admin';
 
@@ -59,6 +60,7 @@ export function AppShell({
 }: AppShellProps) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const phoneLayout = usePhoneLayout();
   const menuId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
   const items: AppRailItem[] = showAdmin
@@ -86,8 +88,11 @@ export function AppShell({
     closeMenu();
   };
 
-  const railFooter = (
+  const renderFooter = (withBell: boolean) => (
     <div className="kit-app-shell__rail-footer">
+      {withBell && feedbackUserId ? (
+        <NotificationsBell enabled placement="rail" />
+      ) : null}
       <button
         type="button"
         className="kit-app-shell__avatar"
@@ -149,7 +154,7 @@ export function AppShell({
           active={active}
           onNavigate={handleNavigate}
           items={items}
-          footer={railFooter}
+          footer={renderFooter(!phoneLayout)}
         />
 
         {menuOpen ? (
@@ -184,7 +189,7 @@ export function AppShell({
             active={active}
             onNavigate={handleNavigate}
             items={items}
-            footer={railFooter}
+            footer={renderFooter(phoneLayout)}
           />
         </aside>
 
@@ -208,7 +213,6 @@ export function AppShell({
               </MonoMeta>
             ) : null}
             <div className="kit-app-shell__actions">
-              {feedbackUserId ? <NotificationsBell enabled /> : null}
               {actions}
             </div>
           </header>

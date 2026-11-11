@@ -5,7 +5,7 @@ import {
   updateNotificationPreferences,
   type NotificationPreferences as Prefs,
 } from '../lib/notificationPreferences';
-import { Banner, Checkbox, Field, MonoMeta, SectionOpener } from './kit';
+import { Banner, Checkbox, MonoMeta } from './kit';
 
 const CATEGORIES: Array<{ key: keyof Omit<Prefs, 'email_unsubscribed_all'>; label: string; hint: string }> =
   [
@@ -25,6 +25,7 @@ const CATEGORIES: Array<{ key: keyof Omit<Prefs, 'email_unsubscribed_all'>; labe
     },
   ];
 
+/** Owner email preference toggles. Rendered inside a settings panel (no section chrome). */
 export function NotificationPreferences({ userId }: { userId: string }) {
   const statusId = useId();
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_NOTIFICATION_PREFERENCES);
@@ -77,56 +78,61 @@ export function NotificationPreferences({ userId }: { userId: string }) {
   const categoriesDisabled = disabled || prefs.email_unsubscribed_all;
 
   return (
-    <section className="notification-prefs" style={{ marginTop: 56 }}>
-      <SectionOpener level={5} title="Email notifications." note="Inbox preferences" />
-      <MonoMeta size="sm" tone="subtle" style={{ display: 'block', marginTop: 8, maxWidth: 52 * 8 }}>
+    <div className="notification-prefs">
+      <MonoMeta size="sm" tone="subtle" className="notification-prefs__intro">
         These control lifecycle emails only. In-app alerts still appear in the notifications bell.
       </MonoMeta>
 
       {error ? (
-        <Banner tone="error" style={{ marginTop: 16 }}>
+        <Banner tone="error" className="notification-prefs__error">
           {error}
         </Banner>
       ) : null}
 
-      <div className="notification-prefs__list" style={{ marginTop: 20, maxWidth: 560 }}>
-        <Field label="Master switch">
-          <Checkbox
-            checked={!prefs.email_unsubscribed_all}
-            disabled={disabled}
-            ariaLabel="Send me Toova emails"
-            label="Send me Toova emails"
-            onChange={(checked) =>
-              void save({ email_unsubscribed_all: !checked }, 'email_unsubscribed_all')
-            }
-          />
-        </Field>
+      <div className="notification-prefs__master">
+        <Checkbox
+          checked={!prefs.email_unsubscribed_all}
+          disabled={disabled}
+          ariaLabel="Send me Toova emails"
+          label="Send me Toova emails"
+          onChange={(checked) =>
+            void save({ email_unsubscribed_all: !checked }, 'email_unsubscribed_all')
+          }
+        />
+        <MonoMeta size="xs" tone="subtle" upper>
+          Master switch
+        </MonoMeta>
+      </div>
 
-        <div
-          className="notification-prefs__categories"
-          style={{ display: 'grid', gap: 14, marginTop: 18 }}
-          aria-disabled={categoriesDisabled || undefined}
-        >
-          {CATEGORIES.map((category) => (
+      <div
+        className={[
+          'notification-prefs__categories',
+          categoriesDisabled ? 'notification-prefs__categories--dimmed' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        aria-disabled={categoriesDisabled || undefined}
+      >
+        {CATEGORIES.map((category) => (
+          <div key={category.key} className="notification-prefs__row">
             <Checkbox
-              key={category.key}
               checked={prefs[category.key]}
               disabled={categoriesDisabled}
               label={
-                <span>
-                  <strong style={{ display: 'block', fontSize: 13 }}>{category.label}</strong>
-                  <span style={{ display: 'block', fontSize: 12, opacity: 0.7 }}>{category.hint}</span>
+                <span className="notification-prefs__row-copy">
+                  <strong className="notification-prefs__row-label">{category.label}</strong>
+                  <span className="notification-prefs__row-hint">{category.hint}</span>
                 </span>
               }
               onChange={(checked) => void save({ [category.key]: checked }, category.key)}
             />
-          ))}
-        </div>
-
-        <p id={statusId} className="notification-prefs__status" aria-live="polite">
-          {loading ? 'Loading preferences…' : savingKey ? 'Saving…' : status}
-        </p>
+          </div>
+        ))}
       </div>
-    </section>
+
+      <p id={statusId} className="notification-prefs__status" aria-live="polite">
+        {loading ? 'Loading preferences…' : savingKey ? 'Saving…' : status}
+      </p>
+    </div>
   );
 }
