@@ -329,6 +329,37 @@
 .dgl-showroom__cats-row:has(.is-expanded) {
   align-items: flex-start;
 }
+.dgl-add-poster {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px dashed var(--rule);
+  border-radius: var(--dg-radius, 12px);
+  background: var(--paper-1);
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+}
+.dgl-add-poster:hover {
+  border-color: var(--accent);
+  background: var(--paper-0);
+}
+.dgl-add-poster:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+.dgl-add-poster__title {
+  font-family: var(--font-serif, Georgia, serif);
+  font-size: 1.05rem;
+}
+.dgl-add-poster__hint {
+  font-size: 0.78rem;
+  color: var(--ink-muted);
+}
 .dgl-showroom__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

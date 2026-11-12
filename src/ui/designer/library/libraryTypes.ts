@@ -16,6 +16,7 @@ export interface LibraryPanelSharedProps {
   compact?: boolean;
   onClose: () => void;
   onImport: () => void;
+  onAddPoster: () => void;
   onOpenModel: (model: CatalogModel) => void;
   onStartDraw: (kind: HangingDecorKind) => void;
   onStartMeasure: () => void;
