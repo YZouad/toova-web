@@ -1,6 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { Item } from '../store';
-import { isPosterItem, posterKindForItem } from './posterItem';
+import { isPosterCatalogModel, isPosterItem, posterKindForItem } from './posterItem';
 
 beforeAll(() => {
   vi.stubGlobal('window', {
@@ -57,6 +57,16 @@ describe('isPosterItem', () => {
         }),
       ),
     ).toBe(false);
+  });
+});
+
+describe('isPosterCatalogModel', () => {
+  it('matches bank kinds and poster tag', () => {
+    expect(isPosterCatalogModel({ kind: 'poster-coastal-beach', tags: ['poster', 'coastal'] })).toBe(
+      true,
+    );
+    expect(isPosterCatalogModel({ kind: 'custom-abc', tags: ['poster'] })).toBe(true);
+    expect(isPosterCatalogModel({ kind: 'sofa', tags: ['seating'] })).toBe(false);
   });
 });
 

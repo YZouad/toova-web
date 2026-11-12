@@ -73,6 +73,7 @@ export interface MobileDesignerChromeProps {
     meta?: { fromThrixel: boolean; thrixelLinkFailed?: boolean },
   ) => void;
   onOpenImport: () => void;
+  onAddPoster: () => void;
   onOpenThrixelRevise?: (catalogKind: string) => void;
   onChangePoster?: () => void;
   searchTriggerRef: RefObject<HTMLButtonElement | null>;
@@ -106,6 +107,7 @@ export function MobileDesignerChrome({
   onOpenModel,
   onImportComplete,
   onOpenImport,
+  onAddPoster,
   onOpenThrixelRevise,
   onChangePoster,
   searchTriggerRef,
@@ -454,6 +456,7 @@ export function MobileDesignerChrome({
         <MobileLibrarySheet
           onClose={mobile.closeSheet}
           onImport={onOpenImport}
+          onAddPoster={onAddPoster}
           onOpenModel={onOpenModel}
           onStartDraw={chrome.startDraw}
           onStartMeasure={chrome.startMeasure}

@@ -1,17 +1,34 @@
 import { useEffect, useMemo, useState } from 'react';
-import { loadPosterBankOptions, type PosterBankOption } from '../../lib/posterBank';
+import { useAuth } from '../../hooks/useAuth';
+import {
+  loadPosterBankOptions,
+  posterOptionToGalleryModel,
+  type PosterBankOption,
+} from '../../lib/posterBank';
 import { posterKindForItem } from '../../lib/posterItem';
 import { useStore } from '../../store';
+import { placeFromCatalog } from './placeCatalogModel';
 import { Banner, EmptyState, MonoMeta, Spinner } from '../kit';
 import { Modal } from '../kit/Modal';
 
 interface PosterBankModalProps {
   open: boolean;
+  /** When null, pick places a new wall poster; when set, pick swaps that item. */
   itemId: string | null;
   onClose: () => void;
+  onCreateOwn?: () => void;
+  onPlaced?: (itemId: string) => void;
 }
 
-export function PosterBankModal({ open, itemId, onClose }: PosterBankModalProps) {
+export function PosterBankModal({
+  open,
+  itemId,
+  onClose,
+  onCreateOwn,
+  onPlaced,
+}: PosterBankModalProps) {
+  const placeMode = itemId == null;
+  const { user } = useAuth();
   const item = useStore((s) => (itemId ? s.items[itemId] : null));
   const swapPosterItem = useStore((s) => s.swapPosterItem);
 
@@ -46,12 +63,29 @@ export function PosterBankModal({ open, itemId, onClose }: PosterBankModalProps)
   }, [open]);
 
   const handlePick = async (option: PosterBankOption) => {
-    if (!itemId || !item || option.kind === activeKind) {
-      onClose();
-      return;
-    }
     if (!option.signedUrl) {
       setError('This poster is not available right now.');
+      return;
+    }
+
+    if (placeMode) {
+      setSwappingKind(option.kind);
+      setError(null);
+      try {
+        const model = posterOptionToGalleryModel(option);
+        const placedId = await placeFromCatalog(model, { userId: user?.id ?? null });
+        if (placedId) onPlaced?.(placedId);
+        onClose();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not place poster');
+      } finally {
+        setSwappingKind(null);
+      }
+      return;
+    }
+
+    if (!itemId || !item || option.kind === activeKind) {
+      onClose();
       return;
     }
 
@@ -80,12 +114,19 @@ export function PosterBankModal({ open, itemId, onClose }: PosterBankModalProps)
   return (
     <Modal
       open={open}
-      title="Choose a poster"
-      meta={item ? `Replacing ${item.label}` : undefined}
+      title={placeMode ? 'Add a poster' : 'Choose a poster'}
+      meta={placeMode ? 'Pick from the bank or create your own' : item ? `Replacing ${item.label}` : undefined}
       onClose={onClose}
       width={720}
       className="dg-poster-bank"
       scrimClassName="dg-poster-bank__scrim"
+      footer={
+        placeMode && onCreateOwn ? (
+          <button type="button" className="dg-footer-btn" style={{ borderStyle: 'dashed' }} onClick={onCreateOwn}>
+            Create your own poster
+          </button>
+        ) : undefined
+      }
     >
       {error ? <Banner tone="error">{error}</Banner> : null}
 

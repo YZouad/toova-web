@@ -51,6 +51,15 @@ import { ShopRoomBar } from './ShopRoomBar';
 
 const ModelTurntable = lazy(() => import('./ModelTurntable'));
 
+function AddPosterCard({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" className="dgl-add-poster" onClick={onClick}>
+      <span className="dgl-add-poster__title">Add a poster</span>
+      <span className="dgl-add-poster__hint">Choose from the bank or upload your own</span>
+    </button>
+  );
+}
+
 function useGridColumns(el: HTMLElement | null, fallback = 3) {
   const [columns, setColumns] = useState(fallback);
   useEffect(() => {
@@ -763,6 +772,7 @@ export function ShowroomLibrary(props: LibraryPanelSharedProps) {
         {lib.error ? <p style={{ color: 'var(--danger)' }}>{lib.error}</p> : null}
 
         <div className="dgl-showroom__scroll">
+          <AddPosterCard onClick={props.onAddPoster} />
           {gridBlock}
           {railsBlock}
           {restGrid}

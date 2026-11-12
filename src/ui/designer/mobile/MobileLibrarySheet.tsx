@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../../../hooks/useAuth';
 import { useGalleryCatalog } from '../../../hooks/useGalleryCatalog';
 import {
@@ -17,6 +17,8 @@ import type { GallerySort, GallerySource } from '../../../lib/galleryCatalog';
 import type { CatalogModel } from '../chromeTypes';
 import type { HangingDecorKind } from '../../../store';
 import { IconHangingLeaves, IconHangingLights, IconLedStrip, IconMeasure } from '../icons';
+import { isHiddenChecklistGalleryModel } from '../../../lib/checklistGalleryHidden';
+import { isPosterCatalogModel } from '../../../lib/posterItem';
 import { placeFromCatalog } from '../placeCatalogModel';
 import { MobileSheet } from './MobileSheet';
 
@@ -37,6 +39,7 @@ const SOURCE_TABS: { id: GallerySource; label: string }[] = [
 export interface MobileLibrarySheetProps {
   onClose: () => void;
   onImport: () => void;
+  onAddPoster: () => void;
   onOpenModel: (model: CatalogModel) => void;
   onStartDraw: (kind: HangingDecorKind) => void;
   onStartMeasure: () => void;
@@ -46,6 +49,7 @@ export interface MobileLibrarySheetProps {
 export function MobileLibrarySheet({
   onClose,
   onImport,
+  onAddPoster,
   onOpenModel,
   onStartDraw,
   onStartMeasure,
@@ -75,6 +79,14 @@ export function MobileLibrarySheet({
     categories,
     query,
   });
+
+  const displayModels = useMemo(
+    () =>
+      models.filter(
+        (m) => !isPosterCatalogModel(m) && !isHiddenChecklistGalleryModel(m),
+      ),
+    [models],
+  );
 
   const place = useCallback(
     (model: CatalogModel) => {
@@ -270,12 +282,19 @@ export function MobileLibrarySheet({
         </div>
       </div>
 
+      <button type="button" className="dgm-action-btn is-outline is-full dgm-add-poster" onClick={onAddPoster}>
+        Add a poster
+      </button>
+      <p className="dgm-empty__hint" style={{ margin: '0 0 12px', textAlign: 'center' }}>
+        Choose from the bank or upload your own
+      </p>
+
       <div className="dgm-library-list">
         {error ? <p className="dgm-error">{error}</p> : null}
         {loading && models.length === 0 ? (
           <p className="dgm-empty__hint">Loading models…</p>
         ) : null}
-        {!loading && models.length === 0 ? (
+        {!loading && displayModels.length === 0 ? (
           <div className="dgm-empty">
             <p className="dgm-empty__title">Nothing here yet</p>
             <p className="dgm-empty__hint">Try another source or clear a category filter.</p>
@@ -286,7 +305,7 @@ export function MobileLibrarySheet({
             ) : null}
           </div>
         ) : (
-          models.map((m) => {
+          displayModels.map((m) => {
             const dims = `${Math.round(m.width_in)}×${Math.round(m.depth_in)}×${Math.round(m.height_in)}″`;
             const creator =
               m.creatorDisplayName || m.creatorHandle

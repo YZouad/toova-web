@@ -15,6 +15,8 @@ import {
   type AreaSuggestion,
 } from '../../../lib/roomTagSuggestions';
 import { trackCatalogItemPlaced, trackRoomTagSuggestionPlaced } from '../../../lib/analytics';
+import { isHiddenChecklistGalleryModel } from '../../../lib/checklistGalleryHidden';
+import { isPosterCatalogModel } from '../../../lib/posterItem';
 import { useStore } from '../../../store';
 import type { CatalogModel } from '../chromeTypes';
 import { placeFromCatalog } from '../placeCatalogModel';
@@ -93,6 +95,14 @@ export function useLibraryModel(opts?: { isAdmin?: boolean }) {
     query,
     isAdmin: opts?.isAdmin,
   });
+
+  const displayModels = useMemo(
+    () =>
+      catalog.models.filter(
+        (m) => !isPosterCatalogModel(m) && !isHiddenChecklistGalleryModel(m),
+      ),
+    [catalog.models],
+  );
 
   const sortLabel = LIBRARY_SORT_OPTIONS.find((o) => o.id === sort)?.label ?? 'Hot';
 
@@ -191,6 +201,7 @@ export function useLibraryModel(opts?: { isAdmin?: boolean }) {
     categoryDefs: CATALOG_CATEGORY_DEFS,
     maxCategories: MAX_CATALOG_CATEGORIES,
     ...catalog,
+    models: displayModels,
   };
 }
 
