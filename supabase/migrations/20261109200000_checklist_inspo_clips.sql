@@ -21,15 +21,24 @@ CREATE INDEX IF NOT EXISTS idx_checklist_inspo_clips_category_status
 
 ALTER TABLE public.checklist_inspo_clips ENABLE ROW LEVEL SECURITY;
 
+-- Public read must not call is_admin() for anon (EXECUTE revoked). Admins use a separate policy.
 DROP POLICY IF EXISTS checklist_inspo_clips_public_read ON public.checklist_inspo_clips;
 CREATE POLICY checklist_inspo_clips_public_read ON public.checklist_inspo_clips
   FOR SELECT
   TO anon, authenticated
   USING (
     status = 'published'
-    OR (submitted_by IS NOT NULL AND submitted_by = (SELECT auth.uid()))
-    OR public.is_admin((SELECT auth.uid()))
+    OR (
+      submitted_by IS NOT NULL
+      AND submitted_by = (SELECT auth.uid())
+    )
   );
+
+DROP POLICY IF EXISTS checklist_inspo_clips_admin_read ON public.checklist_inspo_clips;
+CREATE POLICY checklist_inspo_clips_admin_read ON public.checklist_inspo_clips
+  FOR SELECT
+  TO authenticated
+  USING (public.is_admin((SELECT auth.uid())));
 
 DROP POLICY IF EXISTS checklist_inspo_clips_user_insert ON public.checklist_inspo_clips;
 CREATE POLICY checklist_inspo_clips_user_insert ON public.checklist_inspo_clips

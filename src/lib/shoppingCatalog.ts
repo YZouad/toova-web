@@ -9,10 +9,12 @@ import {
   loadLocalMoveInBudgetCents,
   loadLocalResolutions,
   loadLocalShoppingList,
+  mergeShoppingListEntries,
   parseCategoryRoomTags,
   productImagePublicUrl,
   saveLocalMoveInBudgetCents,
   saveLocalResolutions,
+  saveLocalShoppingList,
   type CategoryResolution,
   type ChecklistCategory,
   type ChecklistCategoryWithProducts,
@@ -433,6 +435,23 @@ export async function upsertChecklistProgress(
     { onConflict: 'user_id,room_id,category_id' },
   );
   if (error) throw new Error(error.message);
+}
+
+/** Canonical room shopping list: merge remote + local and persist locally. */
+export async function loadRoomShoppingList(
+  userId: string | null | undefined,
+  roomId: string,
+): Promise<ShoppingListEntry[]> {
+  const local = loadLocalShoppingList(roomId);
+  if (!userId?.trim()) return local;
+  try {
+    const remote = await fetchUserShoppingList(userId, roomId);
+    const merged = mergeShoppingListEntries(remote, local);
+    saveLocalShoppingList(merged, roomId);
+    return merged;
+  } catch {
+    return local;
+  }
 }
 
 export async function fetchUserShoppingList(

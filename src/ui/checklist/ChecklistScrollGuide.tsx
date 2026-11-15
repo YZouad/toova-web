@@ -14,7 +14,7 @@ import type { ChecklistInspoClip } from '../../lib/inspoClipUrls';
 import { ChecklistItemSection } from './ChecklistItemSection';
 
 interface ChecklistScrollGuideProps {
-  roomTag: RoomTag;
+  roomTag?: RoomTag | null;
   categories: ChecklistCategoryWithProducts[];
   loading: boolean;
   error: string | null;
@@ -24,7 +24,6 @@ interface ChecklistScrollGuideProps {
   onSetBudget: (cents: number | null) => void;
   purchaseCartCount: number;
   onOpenCheckout: () => void;
-  onChangeRoom: () => void;
   onOpenLists?: () => void;
   canPlace: boolean;
   userId?: string | null;
@@ -57,7 +56,6 @@ export function ChecklistScrollGuide({
   onSetBudget,
   purchaseCartCount,
   onOpenCheckout,
-  onChangeRoom,
   onOpenLists,
   canPlace,
   userId = null,
@@ -84,14 +82,11 @@ export function ChecklistScrollGuide({
         <div className="checklist-scroll-guide__meta">
           <div className="checklist-room-chip">
             <MonoMeta size="sm" tone="dense" upper>
-              {roomTagLabel(roomTag)} checklist
+              {roomTag ? `${roomTagLabel(roomTag)} checklist` : 'Toova checklist'}
             </MonoMeta>
             <MonoMeta size="sm" tone="subtle">
               {done} of {total} resolved
             </MonoMeta>
-            <button type="button" className="shopping-lists-header-link" onClick={onChangeRoom}>
-              Change room type
-            </button>
             {onOpenLists ? (
               <button type="button" className="shopping-lists-header-link" onClick={onOpenLists}>
                 My checklists

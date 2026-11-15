@@ -8,6 +8,28 @@ import type { RoomTag } from './roomTags';
 
 export const USER_CHECKLIST_LISTS_KEY = 'toova-user-checklist-lists';
 export const CUSTOM_CHECKLIST_ITEMS_KEY = 'toova-custom-checklist-items';
+const PREFERRED_CHECKLIST_LIST_KEY = 'toova-preferred-checklist-list';
+
+function preferredListStorageKey(userId: string): string {
+  return `${PREFERRED_CHECKLIST_LIST_KEY}:${userId}`;
+}
+
+export function loadPreferredChecklistListId(userId: string): string | null {
+  try {
+    const raw = localStorage.getItem(preferredListStorageKey(userId));
+    return raw && raw.trim() ? raw.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
+export function savePreferredChecklistListId(userId: string, listId: string): void {
+  try {
+    localStorage.setItem(preferredListStorageKey(userId), listId);
+  } catch {
+    /* ignore */
+  }
+}
 
 export type ChecklistListKind = 'room' | 'custom';
 

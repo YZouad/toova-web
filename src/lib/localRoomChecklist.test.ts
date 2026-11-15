@@ -127,8 +127,8 @@ describe('local room checklist products', () => {
       ],
     );
     expect(merged).toEqual([
-      { productId: 'remote-1', quantity: 1, reviewDone: false },
       { productId: 'local:abc', quantity: 1, reviewDone: false },
+      { productId: 'remote-1', quantity: 2, reviewDone: true },
     ]);
   });
 

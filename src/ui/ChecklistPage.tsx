@@ -7,12 +7,9 @@ import {
   childCategories,
   leafCategories,
   topLevelCategories,
-  formatPriceCents,
 } from '../lib/dormChecklist';
 import { useShoppingCatalogContext } from '../context/ShoppingCatalogContext';
 import { useAuth } from '../hooks/useAuth';
-import { shopUrlForProduct } from '../lib/affiliateLinks';
-import { trackAffiliateClicked } from '../lib/analytics';
 import { fetchAdminShoppingCatalog } from '../lib/shoppingCatalog';
 import { deleteCuratedProduct } from '../lib/shoppingCatalogAdmin';
 import { ProductDrawer } from './ProductDrawer';
@@ -33,23 +30,11 @@ import {
 import { FeedbackModal } from './FeedbackModal';
 import { BundleCards } from './billing/BundleCards';
 import { ChecklistAdminPanel } from './ChecklistAdminPanel';
-import { ChecklistBudgetFoot } from './designer/ChecklistBudgetFoot';
 import { ChecklistCheckoutPanel } from './ChecklistCheckoutPanel';
-import { ChecklistRoomTypePicker } from './checklist/ChecklistRoomTypePicker';
 import { ChecklistScrollGuide } from './checklist/ChecklistScrollGuide';
 import { AddToListModal } from './checklist/AddToListModal';
 import { ImportModelModal } from './ImportModelModal';
 import type { ChecklistInspoClip } from '../lib/inspoClipUrls';
-
-function pickTopProduct(products: CuratedProduct[]): CuratedProduct | null {
-  const published = products.filter((p) => p.published);
-  if (published.length === 0) return null;
-  const recommended = published.find(
-    (p) => /recommended/i.test(p.name) || /recommended/i.test(p.description),
-  );
-  if (recommended) return recommended;
-  return [...published].sort((a, b) => a.sortOrder - b.sortOrder)[0] ?? null;
-}
 
 interface ChecklistPageProps {
   onBack: () => void;
@@ -60,6 +45,10 @@ interface ChecklistPageProps {
   onContact?: () => void;
   onPitchMadness?: () => void;
   onAdmin?: () => void;
+  onRequestSignIn?: () => void;
+  onOpenLists?: () => void;
+  /** List the user opened from (Your checklists) or last picked add target. */
+  preferredListId?: string | null;
 }
 
 export function ChecklistPage({
@@ -70,14 +59,20 @@ export function ChecklistPage({
   onContact,
   onPitchMadness,
   onAdmin,
+  onRequestSignIn,
+  onOpenLists,
+  preferredListId = null,
 }: ChecklistPageProps) {
   const {
+    roomId: checklistRoomId,
     categories,
+    productsById,
     loading,
     error,
     isCategoryDone,
     addToList,
     refreshCatalog,
+    refreshListFromStorage,
     list,
     budgetSummary,
     setMoveInBudget,
@@ -90,6 +85,7 @@ export function ChecklistPage({
     placedCategoryIds,
   } = useShoppingCatalogContext();
   const { user } = useAuth();
+  const [browseCategories, setBrowseCategories] = useState(false);
   const [groupId, setGroupId] = useState<string | null>(null);
   const [openCategoryId, setOpenCategoryId] = useState<string | null>(null);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -156,20 +152,19 @@ export function ChecklistPage({
     [leaves, isCategoryDone],
   );
 
-  const topPicks = useMemo(() => {
-    if (activeGroup) return [];
-    const picks: { groupName: string; product: CuratedProduct }[] = [];
-    for (const group of groups) {
-      const children = childCategories(categories, group.id);
-      const pool =
-        children.length > 0
-          ? children.flatMap((c) => c.products)
-          : group.products;
-      const product = pickTopProduct(pool);
-      if (product) picks.push({ groupName: group.name, product });
-    }
-    return picks;
-  }, [activeGroup, categories, groups]);
+  const scrollLeaves = useMemo(() => leafCategories(categories), [categories]);
+
+  const scrollProgress = useMemo(
+    () => ({
+      done: scrollLeaves.filter((c) => isCategoryDone(c.id)).length,
+      total: scrollLeaves.length,
+    }),
+    [scrollLeaves, isCategoryDone],
+  );
+
+  const progress = !manageMode && browseCategories ? scrollProgress : { done, total };
+
+  const showScrollExperience = !manageMode;
 
   const placeProduct = useCallback(
     async (product: CuratedProduct) => {
@@ -211,160 +206,186 @@ export function ChecklistPage({
             >
               {manageMode ? 'Done managing' : 'Manage'}
             </Button>
-          ) : onDesign ? (
-            <Button size="sm" onClick={onDesign}>
-              Design your room
-            </Button>
           ) : (
-            <span style={{ width: 96 }} aria-hidden />
+            <span className="checklist-page-topbar-actions">
+              {onOpenLists && user ? (
+                <Button size="sm" variant="outline" onClick={onOpenLists}>
+                  Checklists
+                </Button>
+              ) : null}
+              {onDesign ? (
+                <Button size="sm" onClick={onDesign}>
+                  Design your room
+                </Button>
+              ) : null}
+              {!onOpenLists && !onDesign ? <span style={{ width: 96 }} aria-hidden /> : null}
+            </span>
           )}
         </div>
       </header>
 
-      <main className="app-main checklist-page-main">
-        <Eyebrow level="page">Dorm essentials</Eyebrow>
-        <SectionOpener
-          level={4}
-          title={activeGroup ? `${activeGroup.name}.` : 'The Toova checklist.'}
-          note={`${done} of ${total} categories resolved`}
-          style={{ marginTop: 24 }}
-        />
-        <p style={{ font: 'var(--type-body-sm)', color: 'var(--ink-4)', maxWidth: 'var(--measure-body)', margin: '16px 0 32px' }}>
-          {activeGroup
-            ? 'Pick a subcategory to see curated options. Shop links when available, or place a model in your room when one is attached.'
-            : 'Browse by category, then subcategory. Tap a pick to shop, add it to your list, or place it in your room when a model is ready.'}
-        </p>
-
-        {!activeGroup ? (
-          <div style={{ marginBottom: 32 }}>
-            <BundleCards />
-          </div>
-        ) : null}
-
-        {loading ? <Spinner label="Loading checklist…" /> : null}
-        {error ? <Banner tone="error">{error}</Banner> : null}
-
-        {!loading && !error && !activeGroup && topPicks.length > 0 ? (
-          <section className="checklist-top-picks" aria-label="Top picks">
-            <MonoMeta size="xs" tone="dense" upper style={{ display: 'block', marginBottom: 12 }}>
-              Top picks · shop in one tap
-            </MonoMeta>
-            <div className="checklist-top-picks__row">
-              {topPicks.map(({ groupName, product }) => {
-                const shop = shopUrlForProduct(product);
-                const price = formatPriceCents(product.priceCents, product.currency);
-                return (
-                  <a
-                    key={product.id}
-                    className="checklist-top-picks__card"
-                    href={shop.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    onClick={() =>
-                      trackAffiliateClicked({
-                        retailer: product.retailer,
-                        product_id: product.id,
-                        is_price_approximate: shop.approximate,
-                        source: 'checklist_top_picks',
-                      })
-                    }
-                  >
-                    <div className="checklist-top-picks__media" aria-hidden>
-                      {product.imageUrl ? (
-                        <img src={product.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
-                      ) : (
-                        <span>{product.name.slice(0, 1)}</span>
-                      )}
-                    </div>
-                    <div className="checklist-top-picks__body">
-                      <MonoMeta size="xs" tone="dense">{groupName}</MonoMeta>
-                      <span className="checklist-top-picks__name">{product.name}</span>
-                      <span className="checklist-top-picks__cta">
-                        {shop.approximate
-                          ? shop.label
-                          : price
-                            ? `Shop ${price}`
-                            : shop.label}
-                      </span>
-                    </div>
-                  </a>
-                );
-              })}
-            </div>
-          </section>
-        ) : null}
-
-        {!loading && !error ? (
-          <div className="checklist-page-budget" style={{ marginBottom: 24, maxWidth: 420 }}>
-            <ChecklistBudgetFoot
-              budget={budgetSummary}
-              onSetBudget={(cents) => void setMoveInBudget(cents)}
-            />
-            <Button
-              size="sm"
-              variant="outline"
-              style={{ marginTop: 12, width: '100%' }}
-              disabled={purchaseCartLines.length === 0}
-              onClick={() => setCheckoutOpen(true)}
-            >
-              Checkout · {purchaseCartLines.length} item{purchaseCartLines.length === 1 ? '' : 's'}
-            </Button>
-          </div>
-        ) : null}
-
-        {!loading && !error ? (
-          <div className={manageMode ? 'checklist-page-manage-layout' : undefined}>
-            <div className="checklist-gallery" role="list">
-              {galleryItems.map((item) => {
-                const cover = categoryCoverImageUrl(item, categories);
-                const count = categoryProductCount(item, categories);
-                const isLeaf = Boolean(item.parentId) || childCategories(categories, item.id).length === 0;
-                const doneLeaf = isLeaf && isCategoryDone(item.id);
-                return (
-                  <button
-                    key={item.id}
-                    type="button"
-                    role="listitem"
-                    className={`checklist-gallery-card${doneLeaf ? ' checklist-gallery-card--done' : ''}${manageMode && openCategoryId === item.id ? ' checklist-gallery-card--selected' : ''}`}
-                    onClick={() => {
-                      if (!item.parentId && childCategories(categories, item.id).length > 0) {
-                        setGroupId(item.id);
-                        if (manageMode) setOpenCategoryId(null);
-                        return;
+      <main
+        className={`app-main checklist-page-main${
+          showScrollExperience ? ' checklist-page-main--guide' : ''
+        }`}
+      >
+        {showScrollExperience ? (
+          <>
+            <div className="checklist-guide-bundles">
+              <BundleCards
+                productsById={productsById}
+                onRequestAddToList={(p) => setAddToListProduct(p)}
+                canPlace={canPlace}
+                onPlace={canPlace ? (p) => void placeProduct(p) : undefined}
+                onAddProductToRoom={
+                  canPlace
+                    ? (productId) => {
+                        const product = productsById[productId];
+                        if (product) void placeProduct(product);
                       }
-                      setOpenCategoryId(item.id);
-                    }}
-                  >
-                    <div className="checklist-gallery-media">
-                      {cover ? (
-                        <img src={cover} alt="" loading="lazy" referrerPolicy="no-referrer" />
-                      ) : (
-                        <span className="checklist-gallery-fallback">{item.name.slice(0, 1)}</span>
-                      )}
-                    </div>
-                    <div className="checklist-gallery-body">
-                      <span className="checklist-gallery-name">{item.name}</span>
-                      <MonoMeta size="sm" tone="dense">
-                        {count === 0
-                          ? 'Coming soon'
-                          : `${count} option${count === 1 ? '' : 's'}`}
-                      </MonoMeta>
-                    </div>
-                  </button>
-                );
-              })}
+                    : undefined
+                }
+              />
             </div>
 
-            {manageMode ? (
-              <ChecklistAdminPanel
-                groupId={groupId}
-                openCategoryId={openCategoryId}
-                onGroupChange={setGroupId}
-                onOpenCategoryChange={setOpenCategoryId}
-                onCatalogChanged={handleCatalogChanged}
+            {browseCategories ? (
+              <ChecklistScrollGuide
+                categories={categories}
+                loading={loading}
+                error={error}
+                done={scrollProgress.done}
+                total={scrollProgress.total}
+                budgetSummary={budgetSummary}
+                onSetBudget={(cents) => void setMoveInBudget(cents)}
+                purchaseCartCount={purchaseCartLines.length}
+                onOpenCheckout={() => setCheckoutOpen(true)}
+                onOpenLists={onOpenLists}
+                canPlace={canPlace}
+                userId={user?.id ?? null}
+                isAdmin={isAdmin}
+                onRequestSignIn={onRequestSignIn}
+                placedCategoryIds={placedCategoryIds}
+                getOwnedProduct={getOwnedProduct}
+                getResolution={getResolution}
+                onRequestAddToList={(p) => setAddToListProduct(p)}
+                onPlace={canPlace ? (p) => void placeProduct(p) : undefined}
+                markCategoryAsOwned={(input) => void markCategoryAsOwned(input)}
+                setResolution={setResolution}
+                onUseInspoLook={(category, clip) => {
+                  if (!user?.id) {
+                    onRequestSignIn?.();
+                    return;
+                  }
+                  setInspoImportTarget({ category, clip });
+                }}
+                onInspoClipSubmitted={() => void refreshCatalog()}
               />
             ) : null}
-          </div>
+
+            {!browseCategories ? (
+              <p className="checklist-guide-browse">
+                <button
+                  type="button"
+                  className="shopping-lists-header-link"
+                  onClick={() => setBrowseCategories(true)}
+                >
+                  Browse item-by-item categories
+                </button>
+              </p>
+            ) : null}
+          </>
+        ) : null}
+
+        {manageMode ? (
+          <>
+            <Eyebrow level="page">Catalog manage</Eyebrow>
+            <SectionOpener
+              level={4}
+              title={activeGroup ? `${activeGroup.name}.` : 'The Toova checklist.'}
+              note={`${done} of ${total} categories resolved`}
+              style={{ marginTop: 24 }}
+            />
+            <p
+              style={{
+                font: 'var(--type-body-sm)',
+                color: 'var(--ink-4)',
+                maxWidth: 'var(--measure-body)',
+                margin: '16px 0 32px',
+              }}
+            >
+              {activeGroup
+                ? 'Pick a subcategory to edit products and covers.'
+                : 'Browse by category, then subcategory. Select a tile to open the product drawer.'}
+            </p>
+
+            {loading ? <Spinner label="Loading checklist…" /> : null}
+            {error ? <Banner tone="error">{error}</Banner> : null}
+
+            {!loading && !error ? (
+              <div className="checklist-page-manage-layout">
+                <div className="checklist-gallery" role="list">
+                  {galleryItems.map((item) => {
+                    const cover = categoryCoverImageUrl(item, categories);
+                    const count = categoryProductCount(item, categories);
+                    const isLeaf =
+                      Boolean(item.parentId) ||
+                      childCategories(categories, item.id).length === 0;
+                    const doneLeaf = isLeaf && isCategoryDone(item.id);
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="listitem"
+                        className={`checklist-gallery-card${doneLeaf ? ' checklist-gallery-card--done' : ''}${openCategoryId === item.id ? ' checklist-gallery-card--selected' : ''}`}
+                        onClick={() => {
+                          if (
+                            !item.parentId &&
+                            childCategories(categories, item.id).length > 0
+                          ) {
+                            setGroupId(item.id);
+                            setOpenCategoryId(null);
+                            return;
+                          }
+                          setOpenCategoryId(item.id);
+                        }}
+                      >
+                        <div className="checklist-gallery-media">
+                          {cover ? (
+                            <img
+                              src={cover}
+                              alt=""
+                              loading="lazy"
+                              referrerPolicy="no-referrer"
+                            />
+                          ) : (
+                            <span className="checklist-gallery-fallback">
+                              {item.name.slice(0, 1)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="checklist-gallery-body">
+                          <span className="checklist-gallery-name">{item.name}</span>
+                          <MonoMeta size="sm" tone="dense">
+                            {count === 0
+                              ? 'Coming soon'
+                              : `${count} option${count === 1 ? '' : 's'}`}
+                          </MonoMeta>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+
+                <ChecklistAdminPanel
+                  groupId={groupId}
+                  openCategoryId={openCategoryId}
+                  onGroupChange={setGroupId}
+                  onOpenCategoryChange={setOpenCategoryId}
+                  onCatalogChanged={handleCatalogChanged}
+                />
+              </div>
+            ) : null}
+          </>
         ) : null}
 
         <MonoMeta size="xs" tone="subtle" style={{ display: 'block', marginTop: 32 }}>
@@ -377,10 +398,15 @@ export function ChecklistPage({
           <div className="checklist-continue-bar__inner">
             <div className="checklist-continue-bar__copy">
               <MonoMeta size="sm" tone="dense" upper>
-                {done} of {total} categories resolved
-                {purchaseCartLines.length > 0
-                  ? ` · ${purchaseCartLines.length} to buy`
-                  : ''}
+                {browseCategories
+                  ? `${progress.done} of ${progress.total} categories resolved${
+                      purchaseCartLines.length > 0
+                        ? ` · ${purchaseCartLines.length} to buy`
+                        : ''
+                    }`
+                  : purchaseCartLines.length > 0
+                    ? `${purchaseCartLines.length} to buy`
+                    : 'Room bundles'}
               </MonoMeta>
               <p className="checklist-continue-bar__hint">
                 Saved automatically on this device
@@ -453,6 +479,7 @@ export function ChecklistPage({
             setEditingProduct(null);
           }}
           onAddToList={(p) => void addToList(p.id)}
+          onRequestAddToList={(p) => setAddToListProduct(p)}
           onPlace={canPlace && !manageMode ? (p) => void placeProduct(p) : undefined}
           onAddProduct={
             manageMode
@@ -494,6 +521,20 @@ export function ChecklistPage({
           onSaved={handleCatalogChanged}
         />
       ) : null}
+
+      <AddToListModal
+        open={addToListProduct != null}
+        product={addToListProduct}
+        userId={user?.id ?? null}
+        activeRoomId={checklistRoomId}
+        preferredListId={preferredListId}
+        onClose={() => setAddToListProduct(null)}
+        onRequestSignIn={onRequestSignIn}
+        onAdded={(_listId, syncedActiveRoom) => {
+          if (!user?.id) return;
+          if (syncedActiveRoom) void refreshListFromStorage();
+        }}
+      />
 
       {user?.id && productModalOpen && openCategoryId && manageMode ? (
         <ChecklistProductModal

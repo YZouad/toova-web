@@ -6,6 +6,7 @@ import {
   useNotificationActivateHandler,
 } from './context/NotificationsContext';
 import { getActiveChecklistRoomId, setActiveChecklistRoomId } from './lib/dormChecklist';
+import { savePreferredChecklistListId } from './lib/userChecklistLists';
 import { openReadyJobForSave } from './lib/generationQueue';
 import type { NotificationIntent } from './lib/notifications';
 import { useAdminStats } from './hooks/useAdminStats';
@@ -255,6 +256,7 @@ function AppContent() {
   const [restoringCheckout, setRestoringCheckout] = useState(pendingDesignerCheckoutReturn);
   const checkoutRestoreStarted = useRef(false);
   const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
+  const [checklistPreferredListId, setChecklistPreferredListId] = useState<string | null>(null);
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
   const [timelineScrollToDemos, setTimelineScrollToDemos] = useState(false);
   const [authMode, setAuthMode] = useState<AuthPageMode>('signin');
@@ -1542,13 +1544,16 @@ function AppContent() {
         ? 'designer'
         : checklistReturn === 'dashboard' && user
           ? 'dashboard'
-          : checklistReturn === 'pitch-madness'
-            ? 'pitch-madness'
-            : 'landing';
+          : checklistReturn === 'lists' && user
+            ? 'lists'
+            : checklistReturn === 'pitch-madness'
+              ? 'pitch-madness'
+              : 'landing';
 
     return (
       <ChecklistPage
         onBack={() => setScreen(backTarget)}
+        preferredListId={checklistPreferredListId}
         isAdmin={isAdmin}
         onContact={siteFooterNav.onContact}
         onPitchMadness={siteFooterNav.onPitchMadness}
@@ -1566,6 +1571,42 @@ function AppContent() {
           }
           // Guest: continue into design without forcing auth first.
           setScreen('dashboard');
+        }}
+        onRequestSignIn={() => {
+          setAuthMode('signin');
+          setScreen('auth');
+        }}
+        onOpenLists={
+          user
+            ? () => {
+                navigate('/');
+                setScreen('lists');
+              }
+            : undefined
+        }
+      />
+    );
+  }
+
+  if (screen === 'lists' && user) {
+    return (
+      <ShoppingListsPage
+        user={user}
+        profile={profile}
+        showAdmin={isAdmin}
+        onNavigate={handleAppNav}
+        onLogout={handleLogout}
+        onOpenRoom={(roomId) => void handlePickExisting({ id: roomId, name: 'Room' })}
+        onOpenChecklist={(opts) => {
+          if (opts?.roomId) {
+            setActiveChecklistRoomId(opts.roomId);
+            setRoomId(opts.roomId);
+          }
+          if (opts?.listId) {
+            setChecklistPreferredListId(opts.listId);
+            savePreferredChecklistListId(user.id, opts.listId);
+          }
+          openChecklistFrom('lists');
         }}
       />
     );

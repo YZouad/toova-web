@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import {
-  fetchPublishedShoppingCatalog,
-  fetchUserShoppingList,
-} from '../lib/shoppingCatalog';
+import { SHOPPING_LIST_UPDATED_EVENT } from '../lib/dormChecklist';
+import { fetchPublishedShoppingCatalog, loadRoomShoppingList } from '../lib/shoppingCatalog';
 import { formatPriceCents, type CuratedProduct } from '../lib/dormChecklist';
 import { supabase } from '../lib/supabase';
 import {
@@ -32,7 +30,7 @@ interface ShoppingListsPageProps {
   onNavigate: (nav: AppShellNavId) => void;
   onLogout: () => void;
   onOpenRoom?: (roomId: string) => void;
-  onOpenChecklist?: (roomId: string) => void;
+  onOpenChecklist?: (opts?: { roomId?: string; listId?: string }) => void;
 }
 
 export function ShoppingListsPage({
@@ -72,25 +70,17 @@ export function ShoppingListsPage({
 
   const loadItemsForList = useCallback(
     async (list: UserChecklistListMeta) => {
-      let entries = loadChecklistListItems(list);
       if (list.kind === 'room' && list.roomId) {
         try {
-          const remote = await fetchUserShoppingList(user.id, list.roomId);
-          const byId = new Map(entries.map((e) => [e.productId, e]));
-          for (const row of remote) {
-            const existing = byId.get(row.productId);
-            byId.set(row.productId, {
-              productId: row.productId,
-              quantity: Math.max(existing?.quantity ?? 0, row.quantity),
-              reviewDone: existing?.reviewDone || row.reviewDone,
-            });
-          }
-          entries = [...byId.values()];
+          const entries = await loadRoomShoppingList(user.id, list.roomId);
+          setItems(entries);
+          return;
         } catch {
-          /* keep local */
+          setItems(loadChecklistListItems(list));
+          return;
         }
       }
-      setItems(entries);
+      setItems(loadChecklistListItems(list));
     },
     [user.id],
   );
@@ -124,6 +114,27 @@ export function ShoppingListsPage({
     } else {
       setItems([]);
     }
+  }, [selected, loadItemsForList]);
+
+  useEffect(() => {
+    const onListUpdated = (event: Event) => {
+      const roomId = (event as CustomEvent<{ roomId?: string }>).detail?.roomId;
+      if (!selected || selected.kind !== 'room' || !selected.roomId) return;
+      if (roomId && roomId !== selected.roomId) return;
+      void loadItemsForList(selected);
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible' || !selected) return;
+      void loadItemsForList(selected);
+    };
+    window.addEventListener(SHOPPING_LIST_UPDATED_EVENT, onListUpdated);
+    window.addEventListener('focus', onVisible);
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      window.removeEventListener(SHOPPING_LIST_UPDATED_EVENT, onListUpdated);
+      window.removeEventListener('focus', onVisible);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, [selected, loadItemsForList]);
 
   const roomLists = lists.filter((l) => l.kind === 'room');
@@ -200,7 +211,17 @@ export function ShoppingListsPage({
                         </Button>
                       ) : null}
                       {selected.kind === 'room' && selected.roomId && onOpenChecklist ? (
-                        <Button size="sm" onClick={() => onOpenChecklist(selected.roomId!)}>
+                        <Button
+                          size="sm"
+                          onClick={() =>
+                            onOpenChecklist({ roomId: selected.roomId!, listId: selected.id })
+                          }
+                        >
+                          Toova checklist
+                        </Button>
+                      ) : null}
+                      {selected.kind === 'custom' && onOpenChecklist ? (
+                        <Button size="sm" onClick={() => onOpenChecklist({ listId: selected.id })}>
                           Toova checklist
                         </Button>
                       ) : null}
@@ -232,11 +253,18 @@ export function ShoppingListsPage({
                   {items.length === 0 ? (
                     <p className="checklist-item-section__empty">
                       No items saved yet. Browse the{' '}
-                      {selected.kind === 'room' && onOpenChecklist ? (
+                      {onOpenChecklist ? (
                         <button
                           type="button"
                           className="shopping-lists-header-link"
-                          onClick={() => onOpenChecklist(selected.roomId!)}
+                          onClick={() =>
+                            selected.kind === 'room' && selected.roomId
+                              ? onOpenChecklist({
+                                  roomId: selected.roomId,
+                                  listId: selected.id,
+                                })
+                              : onOpenChecklist({ listId: selected.id })
+                          }
                         >
                           Toova checklist
                         </button>

@@ -383,6 +383,32 @@ export function computeChecklistBudgetSummary(
   };
 }
 
+export const SHOPPING_LIST_UPDATED_EVENT = 'toova-shopping-list-updated';
+
+/** Union local + remote shopping list rows (max qty, either reviewDone). */
+export function mergeShoppingListEntries(
+  remoteList: ShoppingListEntry[],
+  localList: ShoppingListEntry[],
+): ShoppingListEntry[] {
+  const byId = new Map<string, ShoppingListEntry>();
+  for (const entry of remoteList) {
+    byId.set(entry.productId, { ...entry });
+  }
+  for (const entry of localList) {
+    const existing = byId.get(entry.productId);
+    if (!existing) {
+      byId.set(entry.productId, { ...entry });
+      continue;
+    }
+    byId.set(entry.productId, {
+      productId: entry.productId,
+      quantity: Math.max(existing.quantity, entry.quantity),
+      reviewDone: existing.reviewDone || entry.reviewDone,
+    });
+  }
+  return [...byId.values()].sort((a, b) => a.productId.localeCompare(b.productId));
+}
+
 export function loadLocalShoppingList(roomId?: string | null): ShoppingListEntry[] {
   try {
     const key = requireRoomScopedKey(SHOPPING_LIST_KEY, roomId);
@@ -414,6 +440,12 @@ export function saveLocalShoppingList(entries: ShoppingListEntry[], roomId?: str
     const key = requireRoomScopedKey(SHOPPING_LIST_KEY, roomId);
     if (!key) return;
     localStorage.setItem(key, JSON.stringify(entries));
+    const id = roomId?.trim();
+    if (id && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent(SHOPPING_LIST_UPDATED_EVENT, { detail: { roomId: id } }),
+      );
+    }
   } catch {
     /* ignore */
   }

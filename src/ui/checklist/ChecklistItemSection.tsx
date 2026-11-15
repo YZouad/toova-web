@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import { shopUrlForProduct } from '../../lib/affiliateLinks';
 import { trackAffiliateClicked } from '../../lib/analytics';
 import {
@@ -13,7 +14,12 @@ import {
   ChecklistResolutionActions,
 } from '../designer/ChecklistBudgetFoot';
 import type { ChecklistInspoClip } from '../../lib/inspoClipUrls';
-import { InspoClipRail } from './InspoClipRail';
+import {
+  InspoClipBrowseCard,
+  InspoClipCard,
+  visibleInspoClips,
+} from './InspoClipCard';
+import { SaveInspoClipModal } from './SaveInspoClipModal';
 
 interface ChecklistItemSectionProps {
   category: ChecklistCategoryWithProducts;
@@ -56,9 +62,25 @@ export function ChecklistItemSection({
   onUseInspoLook,
   onInspoClipSubmitted,
 }: ChecklistItemSectionProps) {
+  const [inspoSubmitOpen, setInspoSubmitOpen] = useState(false);
   const products = publishedProducts(category.products);
+  const visibleClips = useMemo(
+    () => visibleInspoClips(category.inspoClips ?? [], userId),
+    [category.inspoClips, userId],
+  );
+  const inspoEnabled = Boolean(onUseInspoLook);
+  const showPicksRail =
+    products.length > 0 || visibleClips.length > 0 || inspoEnabled;
   const done = placed || resolution === 'have' || resolution === 'skip';
   const lineStatus = checklistLineStatus(placed, resolution);
+
+  function openSaveInspo() {
+    if (!userId) {
+      onRequestSignIn?.();
+      return;
+    }
+    setInspoSubmitOpen(true);
+  }
 
   return (
     <section
@@ -77,16 +99,25 @@ export function ChecklistItemSection({
         <p>{categoryGuideWhy(category)}</p>
       </div>
 
-      {products.length === 0 ? (
+      {!showPicksRail ? (
         <p className="checklist-item-section__empty">Product options coming soon for this category.</p>
       ) : (
-        <div className="checklist-product-rail">
-          <p className="checklist-product-rail__label">
+        <div className="checklist-product-rail checklist-product-rail--unified">
+          <div className="checklist-product-rail__head">
             <MonoMeta size="xs" tone="dense" upper>
-              Scroll through options
+              Options &amp; inspo
             </MonoMeta>
-          </p>
-          <div className="checklist-product-rail__track" tabIndex={0} aria-label={`${category.name} product options`}>
+            {inspoEnabled ? (
+              <button type="button" className="shopping-lists-header-link" onClick={openSaveInspo}>
+                Save a link
+              </button>
+            ) : null}
+          </div>
+          <div
+            className="checklist-product-rail__track"
+            tabIndex={0}
+            aria-label={`${category.name} products and inspo`}
+          >
             {products.map((product) => {
               const shop = shopUrlForProduct(product);
               const price = formatPriceCents(product.priceCents, product.currency);
@@ -147,20 +178,34 @@ export function ChecklistItemSection({
                 </article>
               );
             })}
+            {inspoEnabled
+              ? visibleClips.map((clip) => (
+                  <InspoClipCard
+                    key={clip.id}
+                    clip={clip}
+                    categoryName={category.name}
+                    userId={userId}
+                    onUseThisLook={(c) => onUseInspoLook!(category, c)}
+                  />
+                ))
+              : null}
+            {inspoEnabled && visibleClips.length === 0 ? (
+              <InspoClipBrowseCard categoryName={category.name} />
+            ) : null}
           </div>
         </div>
       )}
 
-      {onUseInspoLook ? (
-        <InspoClipRail
+      {inspoEnabled ? (
+        <SaveInspoClipModal
+          open={inspoSubmitOpen}
           categoryId={category.id}
           categoryName={category.name}
-          clips={category.inspoClips ?? []}
           userId={userId}
           isAdmin={isAdmin}
+          onClose={() => setInspoSubmitOpen(false)}
           onRequestSignIn={onRequestSignIn}
-          onUseThisLook={(clip) => onUseInspoLook(category, clip)}
-          onClipSubmitted={onInspoClipSubmitted}
+          onSubmitted={onInspoClipSubmitted}
         />
       ) : null}
 

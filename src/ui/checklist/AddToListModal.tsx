@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import type { User } from '@supabase/supabase-js';
 import type { CuratedProduct } from '../../lib/dormChecklist';
 import { supabase } from '../../lib/supabase';
 import {
   addProductToChecklistList,
   createCustomChecklistList,
+  loadPreferredChecklistListId,
   mergeChecklistLists,
+  savePreferredChecklistListId,
   type UserChecklistListMeta,
 } from '../../lib/userChecklistLists';
 import { Button, MonoMeta, Spinner } from '../kit';
@@ -16,9 +17,22 @@ interface AddToListModalProps {
   product: CuratedProduct | null;
   userId: string | null;
   activeRoomId: string | null;
+  preferredListId?: string | null;
   onClose: () => void;
   onRequestSignIn?: () => void;
   onAdded: (listId: string, syncedActiveRoom: boolean) => void;
+}
+
+function sortListsWithPreferred(
+  lists: UserChecklistListMeta[],
+  preferredId: string | null,
+): UserChecklistListMeta[] {
+  if (!preferredId) return lists;
+  const idx = lists.findIndex((l) => l.id === preferredId);
+  if (idx <= 0) return lists;
+  const copy = [...lists];
+  const [picked] = copy.splice(idx, 1);
+  return [picked, ...copy];
 }
 
 export function AddToListModal({
@@ -26,6 +40,7 @@ export function AddToListModal({
   product,
   userId,
   activeRoomId,
+  preferredListId = null,
   onClose,
   onRequestSignIn,
   onAdded,
@@ -39,6 +54,24 @@ export function AddToListModal({
   const lists = useMemo(
     () => (userId ? mergeChecklistLists(userId, rooms) : []),
     [userId, rooms],
+  );
+
+  const effectivePreferredId = useMemo(() => {
+    if (!userId) return null;
+    return preferredListId ?? loadPreferredChecklistListId(userId);
+  }, [userId, preferredListId]);
+
+  const orderedLists = useMemo(
+    () => sortListsWithPreferred(lists, effectivePreferredId),
+    [lists, effectivePreferredId],
+  );
+
+  const suggestedList = useMemo(
+    () =>
+      effectivePreferredId
+        ? (lists.find((l) => l.id === effectivePreferredId) ?? null)
+        : null,
+    [lists, effectivePreferredId],
   );
 
   const loadRooms = useCallback(async () => {
@@ -73,6 +106,7 @@ export function AddToListModal({
     setPendingId(list.id);
     try {
       await addProductToChecklistList(userId, list, product.id, 1);
+      savePreferredChecklistListId(userId, list.id);
       const syncedActiveRoom = list.kind === 'room' && list.roomId === activeRoomId;
       onAdded(list.id, syncedActiveRoom);
       onClose();
@@ -91,6 +125,7 @@ export function AddToListModal({
     try {
       const list = createCustomChecklistList(userId, name);
       await addProductToChecklistList(userId, list, product.id, 1);
+      savePreferredChecklistListId(userId, list.id);
       onAdded(list.id, false);
       onClose();
     } finally {
@@ -125,16 +160,43 @@ export function AddToListModal({
         <Spinner label="Loading your checklists…" />
       ) : (
         <>
+          {suggestedList ? (
+            <div className="add-to-list-modal__suggested">
+              <MonoMeta size="xs" tone="dense" upper>
+                {preferredListId === suggestedList.id ? 'Opened from this list' : 'Suggested'}
+              </MonoMeta>
+              <div className="add-to-list-modal__suggested-row">
+                <div>
+                  <span className="add-to-list-modal__name">{suggestedList.name}</span>
+                  <MonoMeta size="xs" tone="subtle">
+                    {suggestedList.kind === 'room' ? 'Room checklist' : 'Custom list'}
+                  </MonoMeta>
+                </div>
+                <Button
+                  size="sm"
+                  disabled={pendingId === suggestedList.id}
+                  onClick={() => void pickList(suggestedList)}
+                >
+                  Add here
+                </Button>
+              </div>
+            </div>
+          ) : null}
           <p className="checklist-scroll-guide__lede" style={{ marginTop: 0 }}>
             Choose a room checklist or a custom list. You can manage lists anytime from Checklists in
             the app rail.
           </p>
           <ul className="add-to-list-modal__lists">
-            {lists.map((list) => (
+            {orderedLists.map((list) => (
               <li key={list.id}>
                 <button
                   type="button"
-                  className="add-to-list-modal__row"
+                  className={[
+                    'add-to-list-modal__row',
+                    list.id === effectivePreferredId ? 'add-to-list-modal__row--suggested' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
                   disabled={pendingId === list.id}
                   onClick={() => void pickList(list)}
                 >
@@ -142,6 +204,7 @@ export function AddToListModal({
                   <MonoMeta size="xs" tone="subtle">
                     {list.kind === 'room' ? 'Room checklist' : 'Custom list'}
                     {list.roomId && list.roomId === activeRoomId ? ' · active room' : ''}
+                    {list.id === effectivePreferredId ? ' · suggested' : ''}
                   </MonoMeta>
                 </button>
               </li>

@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { ChecklistCategoryWithProducts, CuratedProduct } from './dormChecklist';
-import { buildPurchaseCartLines, purchaseCartTotalCents } from './purchaseCart';
+import { mergeShoppingListEntries } from './dormChecklist';
+import {
+  buildPurchaseCartLines,
+  productIdsToMirrorFromCart,
+  purchaseCartTotalCents,
+} from './purchaseCart';
 import { checklistProgressCounts } from './checklistProgress';
 import type { ChecklistLineModel } from './checklistLines';
 import { createLocalChecklistProduct, mergeLocalProductsIntoCategories } from './localRoomChecklist';
@@ -261,6 +266,41 @@ describe('purchaseCartTotalCents', () => {
       getResolution: () => undefined,
     });
     expect(purchaseCartTotalCents(lines)).toEqual({ sum: 431, known: false });
+  });
+});
+
+describe('mergeShoppingListEntries', () => {
+  it('unions by product id with max quantity and merged reviewDone', () => {
+    const merged = mergeShoppingListEntries(
+      [{ productId: 'remote-1', quantity: 1, reviewDone: false }],
+      [
+        { productId: 'local:abc', quantity: 1, reviewDone: false },
+        { productId: 'remote-1', quantity: 2, reviewDone: true },
+      ],
+    );
+    expect(merged).toEqual([
+      { productId: 'local:abc', quantity: 1, reviewDone: false },
+      { productId: 'remote-1', quantity: 2, reviewDone: true },
+    ]);
+  });
+});
+
+describe('productIdsToMirrorFromCart', () => {
+  it('returns room-only lines not already on the shopping list', () => {
+    const lines = buildPurchaseCartLines({
+      categories,
+      items: {
+        room1: { kind: 'lamp', curatedProductId: productA.id },
+      },
+      order: ['room1'],
+      list: [],
+      productsById,
+      getResolution: () => undefined,
+    });
+    expect(productIdsToMirrorFromCart(lines, [])).toEqual([productA.id]);
+    expect(
+      productIdsToMirrorFromCart(lines, [{ productId: productA.id, quantity: 1, reviewDone: false }]),
+    ).toEqual([]);
   });
 });
 

@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
-import {
-  amazonMultiAddCartUrl,
-  parseAsinFromAffiliateUrl,
-  type AmazonCartLine,
-} from '../../lib/affiliateLinks';
+import { shopUrlForProduct, amazonMultiAddCartUrl, parseAsinFromAffiliateUrl, type AmazonCartLine } from '../../lib/affiliateLinks';
 import {
   bundleItemAsCuratedProduct,
   fetchPublishedBundles,
+  type BundleItemRow,
   type ProductBundle,
 } from '../../lib/bundles';
 import {
@@ -15,16 +12,35 @@ import {
   trackBundleCartClicked,
   trackBundleViewed,
 } from '../../lib/analytics';
+import { formatPriceCents, type CuratedProduct } from '../../lib/dormChecklist';
 import { Button } from '../kit/Button';
-import { DisplayHeading } from '../kit/DisplayHeading';
+import { Eyebrow } from '../kit/Eyebrow';
 import { MonoMeta } from '../kit/MonoMeta';
+import { SectionOpener } from '../kit/SectionOpener';
 import { Spinner } from '../kit/Spinner';
 
 interface BundleCardsProps {
+  productsById?: Record<string, CuratedProduct>;
   onAddProductToRoom?: (productId: string) => void;
+  onRequestAddToList?: (product: CuratedProduct) => void;
+  canPlace?: boolean;
+  onPlace?: (product: CuratedProduct) => void;
 }
 
-export function BundleCards({ onAddProductToRoom }: BundleCardsProps) {
+function productForItem(
+  item: BundleItemRow,
+  productsById?: Record<string, CuratedProduct>,
+): CuratedProduct {
+  return productsById?.[item.product_id] ?? bundleItemAsCuratedProduct(item);
+}
+
+export function BundleCards({
+  productsById,
+  onAddProductToRoom,
+  onRequestAddToList,
+  canPlace = false,
+  onPlace,
+}: BundleCardsProps) {
   const [bundles, setBundles] = useState<ProductBundle[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -37,22 +53,36 @@ export function BundleCards({ onAddProductToRoom }: BundleCardsProps) {
     })();
   }, []);
 
-  if (loading) return <Spinner label="Loading bundles…" />;
-  if (bundles.length === 0) return null;
+  if (loading) return <Spinner label="Loading room bundles…" />;
+  if (bundles.length === 0) {
+    return (
+      <section className="bundle-cards">
+        <Eyebrow level="page">Toova checklist</Eyebrow>
+        <SectionOpener level={3} title="Room bundles." note="Coming soon" />
+        <p className="bundle-cards__lede">
+          Curated dorm packs will show here — add a whole set to your room, then buy everything on
+          Amazon in one cart.
+        </p>
+      </section>
+    );
+  }
 
   return (
-    <section style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
-      <DisplayHeading level={3}>
-        Room bundles
-      </DisplayHeading>
-      <p style={{ margin: 0, maxWidth: 520, lineHeight: 1.5 }}>
-        Curated dorm packs — add the whole set to your room, then buy everything on Amazon in one cart.
+    <section className="bundle-cards">
+      <Eyebrow level="page">Toova checklist</Eyebrow>
+      <SectionOpener level={3} title="Room bundles." note="Dorm packs" />
+      <p className="bundle-cards__lede">
+        Curated dorm packs — add pieces to any checklist, then buy the set on Amazon in one cart.
       </p>
       {bundles.map((bundle) => (
         <BundleCard
           key={bundle.id}
           bundle={bundle}
+          productsById={productsById}
           onAddProductToRoom={onAddProductToRoom}
+          onRequestAddToList={onRequestAddToList}
+          canPlace={canPlace}
+          onPlace={onPlace}
         />
       ))}
     </section>
@@ -61,28 +91,39 @@ export function BundleCards({ onAddProductToRoom }: BundleCardsProps) {
 
 function BundleCard({
   bundle,
+  productsById,
   onAddProductToRoom,
+  onRequestAddToList,
+  canPlace,
+  onPlace,
 }: {
   bundle: ProductBundle;
+  productsById?: Record<string, CuratedProduct>;
   onAddProductToRoom?: (productId: string) => void;
+  onRequestAddToList?: (product: CuratedProduct) => void;
+  canPlace: boolean;
+  onPlace?: (product: CuratedProduct) => void;
 }) {
   useEffect(() => {
     trackBundleViewed({ bundle_slug: bundle.slug });
   }, [bundle.slug]);
 
+  const products = bundle.items.map((item) => productForItem(item, productsById));
+
   const amazonLines: AmazonCartLine[] = bundle.items
     .map((item) => {
+      const product = productForItem(item, productsById);
       const asin =
-        item.product.asin?.trim() ||
-        parseAsinFromAffiliateUrl(item.product.affiliate_url) ||
+        product.asin?.trim() ||
+        parseAsinFromAffiliateUrl(product.affiliateUrl) ||
         '';
-      return { asin, quantity: item.quantity, label: item.product.name };
+      return { asin, quantity: item.quantity, label: product.name };
     })
     .filter((l) => l.asin.length === 10);
 
   const cartUrl = amazonMultiAddCartUrl(amazonLines);
-  const otherRetailers = bundle.items.filter(
-    (i) => i.product.retailer.toLowerCase() !== 'amazon',
+  const otherRetailers = products.filter(
+    (p) => p.retailer.toLowerCase() !== 'amazon',
   );
 
   function handleCartClick() {
@@ -98,35 +139,91 @@ function BundleCard({
   function handleAddAll() {
     if (!onAddProductToRoom) return;
     for (const item of bundle.items) {
-      onAddProductToRoom(bundleItemAsCuratedProduct(item).id);
+      onAddProductToRoom(item.product_id);
     }
     trackBundleAddedToRoom({ bundle_slug: bundle.slug, item_count: bundle.items.length });
   }
 
   return (
-    <article
-      style={{
-        border: '1px solid var(--rule-soft)',
-        padding: '16px 18px',
-        background: 'var(--bg-raised)',
-      }}
-    >
-      <DisplayHeading level={4}>
-        {bundle.title}
-      </DisplayHeading>
-      {bundle.description ? (
-        <p style={{ margin: '8px 0 12px', lineHeight: 1.45 }}>{bundle.description}</p>
-      ) : null}
-      <MonoMeta>{bundle.items.length} items</MonoMeta>
-      <ul style={{ margin: '12px 0', paddingLeft: 18 }}>
-        {bundle.items.map((item) => (
-          <li key={item.product_id}>
-            {item.quantity > 1 ? `${item.quantity}× ` : ''}
-            {item.product.name}
-          </li>
-        ))}
-      </ul>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+    <article className="bundle-card">
+      <header className="bundle-card__head">
+        <h3 className="bundle-card__title">{bundle.title}</h3>
+        {bundle.description ? (
+          <p className="bundle-card__desc">{bundle.description}</p>
+        ) : null}
+        <MonoMeta size="sm" tone="dense">
+          {bundle.items.length} item{bundle.items.length === 1 ? '' : 's'}
+        </MonoMeta>
+      </header>
+
+      <div className="bundle-card__products" role="list">
+        {bundle.items.map((item) => {
+          const product = productForItem(item, productsById);
+          const shop = shopUrlForProduct(product);
+          const price = formatPriceCents(product.priceCents, product.currency);
+          return (
+            <article key={item.product_id} className="checklist-product-rail__card" role="listitem">
+              <div className="checklist-product-rail__media" aria-hidden={!product.imageUrl}>
+                {product.imageUrl ? (
+                  <img src={product.imageUrl} alt="" loading="lazy" referrerPolicy="no-referrer" />
+                ) : (
+                  product.name.slice(0, 1)
+                )}
+              </div>
+              <div className="checklist-product-rail__body">
+                <span className="checklist-product-rail__name">
+                  {item.quantity > 1 ? `${item.quantity}× ` : ''}
+                  {product.name}
+                </span>
+                {price ? (
+                  <MonoMeta size="sm" tone="dense">
+                    {price}
+                  </MonoMeta>
+                ) : null}
+                {product.description ? (
+                  <p className="checklist-product-rail__desc">{product.description}</p>
+                ) : null}
+                <div className="checklist-product-rail__actions">
+                  {onRequestAddToList ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => onRequestAddToList(product)}
+                    >
+                      Add to checklist
+                    </Button>
+                  ) : null}
+                  {canPlace && onPlace && product.placeBuiltinKind ? (
+                    <Button size="sm" onClick={() => onPlace(product)}>
+                      Place in room
+                    </Button>
+                  ) : null}
+                  {shop.url ? (
+                    <a
+                      className="checklist-product-rail__shop"
+                      href={shop.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() =>
+                        trackAffiliateClicked({
+                          product_id: product.id,
+                          retailer: product.retailer,
+                          is_price_approximate: product.priceCents == null,
+                          source: 'bundle_cart',
+                        })
+                      }
+                    >
+                      {shop.label}
+                    </a>
+                  ) : null}
+                </div>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+
+      <div className="bundle-card__actions">
         {cartUrl ? (
           <Button size="sm" onClick={handleCartClick}>
             Buy bundle on Amazon
@@ -139,13 +236,13 @@ function BundleCard({
         ) : null}
       </div>
       {otherRetailers.length > 0 ? (
-        <div style={{ marginTop: 12 }}>
+        <div className="bundle-card__other">
           <MonoMeta>Also from other stores:</MonoMeta>
-          <ul style={{ margin: '8px 0 0', paddingLeft: 18 }}>
-            {otherRetailers.map((item) => (
-              <li key={item.product_id}>
-                <a href={item.product.affiliate_url} target="_blank" rel="noopener noreferrer">
-                  {item.product.name} ({item.product.retailer})
+          <ul>
+            {otherRetailers.map((product) => (
+              <li key={product.id}>
+                <a href={product.affiliateUrl} target="_blank" rel="noopener noreferrer">
+                  {product.name} ({product.retailer})
                 </a>
               </li>
             ))}
