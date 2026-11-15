@@ -11,3 +11,12 @@ export function posterKindForItem(item: Item): string | null {
   if (!isPosterItem(item)) return null;
   return item.catalogKind ?? null;
 }
+
+/** Catalog / gallery row that should only appear via the poster bank, not the main library grid. */
+export function isPosterCatalogModel(model: {
+  kind: string;
+  tags: string[];
+}): boolean {
+  if (model.kind.startsWith('poster-')) return true;
+  return model.tags.includes('poster');
+}

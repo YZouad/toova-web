@@ -165,6 +165,7 @@ export function Designer({
   const [detailModel, setDetailModel] = useState<GalleryModel | null>(null);
   const [detailFocusThrixel, setDetailFocusThrixel] = useState(false);
   const [posterBankItemId, setPosterBankItemId] = useState<string | null>(null);
+  const [posterBankPlaceOpen, setPosterBankPlaceOpen] = useState(false);
   const builtinPreviews = useBuiltinPreviews();
 
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
@@ -407,11 +408,25 @@ export function Designer({
     setDetailModel(model);
   }, []);
 
-  const openPosterBank = useCallback((itemId: string) => {
-    setPosterBankItemId(itemId);
-    chrome.closePanels();
-    chrome.setOverlay(null);
-  }, [chrome]);
+  const closePosterBank = useCallback(() => {
+    setPosterBankItemId(null);
+    setPosterBankPlaceOpen(false);
+  }, []);
+
+  const openPosterBankPlace = useCallback(() => {
+    setPosterBankItemId(null);
+    setPosterBankPlaceOpen(true);
+  }, []);
+
+  const openPosterBank = useCallback(
+    (itemId: string) => {
+      setPosterBankPlaceOpen(false);
+      setPosterBankItemId(itemId);
+      chrome.closePanels();
+      chrome.setOverlay(null);
+    },
+    [chrome],
+  );
 
   const changePosterForSelection = useCallback(() => {
     const id = useStore.getState().selectedId;
@@ -544,8 +559,8 @@ export function Designer({
           chrome.closeImport();
           return;
         }
-        if (posterBankItemId) {
-          setPosterBankItemId(null);
+        if (posterBankItemId || posterBankPlaceOpen) {
+          closePosterBank();
           return;
         }
         if (chrome.overlay) {
@@ -704,6 +719,8 @@ export function Designer({
     resetCamera,
     canShare,
     posterBankItemId,
+    posterBankPlaceOpen,
+    closePosterBank,
     creditsOpen,
     namingRoom,
     focusedRoomId,
@@ -1037,6 +1054,7 @@ export function Designer({
               setDetailModel(model);
             }}
             onOpenImport={() => openImportOrAuth(null)}
+            onAddPoster={openPosterBankPlace}
             onOpenThrixelRevise={(kind) => void openThrixelRevise(kind)}
             onChangePoster={changePosterForSelection}
             searchTriggerRef={searchTriggerRef}
@@ -1201,6 +1219,7 @@ export function Designer({
                 isAdmin={isAdmin}
                 onClose={chrome.closePanels}
                 onImport={() => openImportOrAuth(null)}
+                onAddPoster={openPosterBankPlace}
                 onOpenModel={openModel}
                 onStartDraw={chrome.startDraw}
                 onStartMeasure={chrome.startMeasure}
@@ -1358,9 +1377,16 @@ export function Designer({
       ) : null}
 
       <PosterBankModal
-        open={!!posterBankItemId}
-        itemId={posterBankItemId}
-        onClose={() => setPosterBankItemId(null)}
+        open={posterBankPlaceOpen || !!posterBankItemId}
+        itemId={posterBankPlaceOpen ? null : posterBankItemId}
+        onClose={closePosterBank}
+        onCreateOwn={() => {
+          closePosterBank();
+          openImportOrAuth('poster');
+        }}
+        onPlaced={(id) => {
+          useStore.getState().select(id);
+        }}
       />
 
       {detailModel ? (
