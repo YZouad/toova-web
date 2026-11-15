@@ -3989,6 +3989,34 @@ button.landing-nav-brand { cursor: pointer; }
   font: var(--type-strong);
   font-size: 15px;
 }
+.checklist-added-toast-host {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  z-index: 140;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.checklist-added-toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--accent-h, #8a3b12) 35%, transparent);
+  border-radius: 10px;
+  background: var(--paper, #f7f4ec);
+  box-shadow: 0 18px 40px -22px rgba(36, 31, 25, 0.45);
+}
+.checklist-added-toast__message {
+  flex: 1;
+  min-width: 0;
+  font: var(--type-body-sm);
+  font-weight: 600;
+  color: var(--accent-h, #8a3b12);
+}
 .shopping-lists-header-link {
   border: none;
   padding: 0;
@@ -4170,6 +4198,13 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .shopping-lists-index__name {
   font: var(--type-strong);
+}
+.checklist-room-load {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  padding: 28px 16px 40px;
 }
 .shopping-lists-detail__head {
   display: flex;

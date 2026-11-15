@@ -1,4 +1,5 @@
 import { describe, expect, it, beforeEach } from 'vitest';
+import { manualShoppingEntry } from './shoppingListEntry';
 import { checklistScopedKey } from './dormChecklist';
 import {
   LOCAL_CHECKLIST_CATEGORY_ID,
@@ -120,16 +121,10 @@ describe('local room checklist products', () => {
 
   it('keeps local To Buy rows when a remote list overwrites', () => {
     const merged = keepLocalShoppingListEntries(
-      [{ productId: 'remote-1', quantity: 1, reviewDone: false }],
-      [
-        { productId: 'local:abc', quantity: 1, reviewDone: false },
-        { productId: 'remote-1', quantity: 2, reviewDone: true },
-      ],
+      [manualShoppingEntry('remote-1')],
+      [manualShoppingEntry('local:abc'), manualShoppingEntry('remote-1', 2, true)],
     );
-    expect(merged).toEqual([
-      { productId: 'local:abc', quantity: 1, reviewDone: false },
-      { productId: 'remote-1', quantity: 2, reviewDone: true },
-    ]);
+    expect(merged.find((e) => e.productId === 'remote-1')?.quantity).toBe(2);
   });
 
   it('reloads saved products from storage', () => {

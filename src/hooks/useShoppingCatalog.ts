@@ -9,9 +9,10 @@ import {
   loadCheckedIds,
   loadLocalMoveInBudgetCents,
   loadLocalResolutions,
+  ensureShoppingListCacheVersion,
   loadLocalShoppingList,
-  mergeShoppingListEntries,
   remapCheckedSlugsToIds,
+  SHOPPING_LIST_UPDATED_EVENT,
   roomItemsToPlacementRefs,
   saveCheckedIds,
   saveLocalMoveInBudgetCents,
@@ -42,11 +43,12 @@ import {
 import { isGuestWorkspaceId } from '../lib/guestDesignSnapshot';
 import { isStarterEditWorkspaceId } from '../lib/starterTemplateOverrides';
 import { trackChecklistItemAdded } from '../lib/analytics';
+import { buildPurchaseCartLines, purchaseCartTotalCents } from '../lib/purchaseCart';
 import {
-  buildPurchaseCartLines,
-  productIdsToMirrorFromCart,
-  purchaseCartTotalCents,
-} from '../lib/purchaseCart';
+  countProductsInRoom,
+  reconcileRoomShoppingList,
+} from '../lib/reconcileRoomShoppingList';
+import { normalizeShoppingListEntry } from '../lib/shoppingListEntry';
 import {
   type AgenticManifestResolution,
   type AgenticShoppingManifestEntry,
@@ -68,15 +70,18 @@ import {
   updateAgenticShoppingManifestDismissed,
   upsertChecklistProgress,
   upsertChecklistResolution,
+  syncShoppingListEntries,
   upsertShoppingListEntry,
   upsertUserMoveInBudgetCents,
 } from '../lib/shoppingCatalog';
+import { refreshRoomChecklistFromSavedLayout } from '../lib/roomShoppingListRebuild';
 import { useStore } from '../store';
 
 export function useShoppingCatalog(roomId: string | null) {
   const { user } = useAuth();
   const items = useStore((s) => s.items);
   const order = useStore((s) => s.order);
+  const layoutRoomId = useStore((s) => s.layoutRoomId);
   const persistRoomId = roomId?.trim() || null;
   const canSyncRemote =
     !!user?.id &&
@@ -99,9 +104,11 @@ export function useShoppingCatalog(roomId: string | null) {
   const [list, setList] = useState<ShoppingListEntry[]>([]);
   const [agenticManifest, setAgenticManifest] = useState<AgenticShoppingManifestEntry[]>([]);
   const [ready, setReady] = useState(false);
-  /** Previous curated product IDs present in the room; used to drop To Buy on delete. */
-  const prevRoomProductIdsRef = useRef<Set<string> | null>(null);
-  const mirroredToListRef = useRef<Set<string>>(new Set());
+  const listWriteSeqRef = useRef(0);
+
+  useEffect(() => {
+    ensureShoppingListCacheVersion();
+  }, []);
 
   useEffect(() => {
     if (persistRoomId) setActiveChecklistRoomId(persistRoomId);
@@ -242,13 +249,25 @@ export function useShoppingCatalog(roomId: string | null) {
 
   const refreshListFromStorage = useCallback(async () => {
     if (!persistRoomId) return;
+    const writeSeq = listWriteSeqRef.current;
     if (canSyncRemote && user?.id) {
       const merged = await loadRoomShoppingList(user.id, persistRoomId);
+      if (writeSeq !== listWriteSeqRef.current) return;
       setList(merged);
       return;
     }
     setList(loadLocalShoppingList(persistRoomId));
   }, [canSyncRemote, persistRoomId, user?.id]);
+
+  useEffect(() => {
+    const onListUpdated = (event: Event) => {
+      const detail = (event as CustomEvent<{ roomId?: string }>).detail;
+      if (!persistRoomId || detail?.roomId !== persistRoomId) return;
+      void refreshListFromStorage();
+    };
+    window.addEventListener(SHOPPING_LIST_UPDATED_EVENT, onListUpdated);
+    return () => window.removeEventListener(SHOPPING_LIST_UPDATED_EVENT, onListUpdated);
+  }, [persistRoomId, refreshListFromStorage]);
 
   useEffect(() => {
     void refreshCatalog();
@@ -257,8 +276,6 @@ export function useShoppingCatalog(roomId: string | null) {
   // Load room-scoped checklist state when room or auth changes.
   useEffect(() => {
     let cancelled = false;
-    prevRoomProductIdsRef.current = null;
-    mirroredToListRef.current = new Set();
     setReady(false);
 
     if (!persistRoomId) {
@@ -275,9 +292,25 @@ export function useShoppingCatalog(roomId: string | null) {
       };
     }
 
+    // Drop previous-room list immediately so UI cannot flash stale items.
+    setList([]);
+    setChecked(new Set());
+    setResolutions(new Map());
+    setMoveInBudgetCents(null);
+    setAgenticManifest([]);
+    setLocalProducts([]);
+    setOwnedProducts([]);
+    setChecklistAreaTagState(null);
+    setError(null);
+
     (async () => {
       if (!canSyncRemote) {
         if (!cancelled) {
+          try {
+            await refreshRoomChecklistFromSavedLayout(null, persistRoomId);
+          } catch (e) {
+            console.warn('[toova] guest room checklist refresh', e);
+          }
           setChecked(loadCheckedIds(persistRoomId));
           setResolutions(loadLocalResolutions(persistRoomId));
           setMoveInBudgetCents(loadLocalMoveInBudgetCents(persistRoomId));
@@ -296,35 +329,45 @@ export function useShoppingCatalog(roomId: string | null) {
           await mergeLocalShoppingStateToAccount(user!.id, persistRoomId);
           sessionStorage.setItem(mergedKey, '1');
         }
-        const [remoteChecked, remoteList, remoteResolutions, remoteBudget, remoteManifest] =
+        try {
+          await refreshRoomChecklistFromSavedLayout(user!.id, persistRoomId);
+        } catch (e) {
+          console.warn('[toova] room checklist refresh on load', e);
+        }
+        const [remoteChecked, remoteList, remoteResolutions, remoteBudget, remoteManifest, remoteAreaTag] =
           await Promise.all([
           fetchUserChecklistProgress(user!.id, persistRoomId),
-          fetchUserShoppingList(user!.id, persistRoomId),
+          loadRoomShoppingList(user!.id, persistRoomId),
           fetchUserChecklistResolutions(user!.id, persistRoomId),
           fetchUserMoveInBudgetCents(user!.id, persistRoomId),
           fetchUserAgenticShoppingManifest(user!.id, persistRoomId),
+          fetchUserChecklistRoomAreaTag(user!.id, persistRoomId),
         ]);
         if (cancelled) return;
         const localProductsForRoom = loadLocalChecklistProducts(persistRoomId);
         const ownedProductsForRoom = loadOwnedChecklistProducts(persistRoomId);
-        const mergedList = mergeShoppingListEntries(
-          remoteList,
-          loadLocalShoppingList(persistRoomId),
-        );
+        const remoteListWithLocal = remoteList;
         setChecked(remoteChecked);
         saveCheckedIds(remoteChecked, persistRoomId);
         setResolutions(remoteResolutions);
         saveLocalResolutions(remoteResolutions, persistRoomId);
         setMoveInBudgetCents(remoteBudget);
         saveLocalMoveInBudgetCents(remoteBudget, persistRoomId);
-        setList(mergedList);
-        saveLocalShoppingList(mergedList, persistRoomId);
+        setList(remoteListWithLocal);
+        saveLocalShoppingList(remoteListWithLocal, persistRoomId);
         const localManifest = loadLocalAgenticShoppingManifest(persistRoomId);
         const mergedManifest = localManifest.length > 0 ? localManifest : remoteManifest;
         setAgenticManifest(mergedManifest);
         saveLocalAgenticShoppingManifest(persistRoomId, mergedManifest);
         setLocalProducts(localProductsForRoom);
         setOwnedProducts(ownedProductsForRoom);
+        const localAreaTag = loadLocalChecklistAreaTag(persistRoomId);
+        const mergedAreaTag = remoteAreaTag ?? localAreaTag;
+        setChecklistAreaTagState(mergedAreaTag);
+        saveLocalChecklistAreaTag(persistRoomId, mergedAreaTag);
+        if (remoteAreaTag == null && localAreaTag) {
+          void upsertUserChecklistRoomAreaTag(user!.id, persistRoomId, localAreaTag).catch(() => {});
+        }
       } catch {
         if (!cancelled) {
           setChecked(loadCheckedIds(persistRoomId));
@@ -407,9 +450,28 @@ export function useShoppingCatalog(roomId: string | null) {
     [canSyncRemote, persistRoomId, user],
   );
 
+  const persistListChange = useCallback(
+    async (next: ShoppingListEntry[], prev: ShoppingListEntry[]) => {
+      listWriteSeqRef.current += 1;
+      saveLocalShoppingList(next, persistRoomId);
+      if (!canSyncRemote || !user?.id) return;
+      try {
+        await syncShoppingListEntries(user.id, persistRoomId!, next, prev);
+      } catch (e) {
+        setList(prev);
+        saveLocalShoppingList(prev, persistRoomId);
+        setError(e instanceof Error ? e.message : 'Failed to save checklist');
+        throw e;
+      }
+    },
+    [canSyncRemote, persistRoomId, user?.id],
+  );
+
   const addToList = useCallback(
     async (productId: string, quantity = 1) => {
       if (!persistRoomId) return;
+      const qty = Math.max(1, Math.floor(quantity));
+      const prevSnapshot = list;
       const isNewEntry = !list.some((e) => e.productId === productId);
       if (isNewEntry) {
         const product = productsById[productId];
@@ -417,49 +479,48 @@ export function useShoppingCatalog(roomId: string | null) {
           room_id: persistRoomId,
           product_id: productId,
           category: (product ? categoriesById[product.categoryId]?.slug : undefined) ?? 'unknown',
-          is_curated: true, // every product addable here comes from the admin-curated catalog
+          is_curated: true,
         });
       }
-      setList((prev) => {
-        const existing = prev.find((e) => e.productId === productId);
-        let next: ShoppingListEntry[];
-        if (existing) {
-          next = prev.map((e) =>
+      const existing = prevSnapshot.find((e) => e.productId === productId);
+      const next = existing
+        ? prevSnapshot.map((e) =>
             e.productId === productId
-              ? { ...e, quantity: Math.max(e.quantity, quantity) }
+              ? normalizeShoppingListEntry({
+                  ...e,
+                  manualQuantity: Math.max(e.manualQuantity, qty),
+                })
               : e,
-          );
-        } else {
-          next = [...prev, { productId, quantity, reviewDone: false }];
-        }
-        saveLocalShoppingList(next, persistRoomId);
-        const entry = next.find((e) => e.productId === productId)!;
-        if (canSyncRemote && !isRoomLocalProductId(productId)) {
-          void upsertShoppingListEntry(user!.id, persistRoomId, entry).catch(() => {});
-        }
-        return next;
-      });
+          )
+        : [
+            ...prevSnapshot,
+            normalizeShoppingListEntry({
+              productId,
+              manualQuantity: qty,
+              roomQuantity: 0,
+              reviewDone: false,
+            }),
+          ];
+      setList(next);
+      await persistListChange(next, prevSnapshot);
     },
-    [canSyncRemote, categoriesById, list, persistRoomId, productsById, user],
+    [canSyncRemote, categoriesById, list, persistRoomId, persistListChange, productsById],
   );
 
   const setQuantity = useCallback(
     async (productId: string, quantity: number) => {
       if (!persistRoomId) return;
       const qty = Math.max(1, Math.floor(quantity));
-      setList((prev) => {
-        const next = prev.map((e) =>
-          e.productId === productId ? { ...e, quantity: qty } : e,
-        );
-        saveLocalShoppingList(next, persistRoomId);
-        const entry = next.find((e) => e.productId === productId);
-        if (canSyncRemote && entry && !isRoomLocalProductId(productId)) {
-          void upsertShoppingListEntry(user!.id, persistRoomId, entry).catch(() => {});
-        }
-        return next;
+      const prevSnapshot = list;
+      const next = prevSnapshot.map((e) => {
+        if (e.productId !== productId) return e;
+        const manualQuantity = Math.max(e.roomQuantity, qty);
+        return normalizeShoppingListEntry({ ...e, manualQuantity });
       });
+      setList(next);
+      await persistListChange(next, prevSnapshot);
     },
-    [canSyncRemote, persistRoomId, user],
+    [list, persistRoomId, persistListChange],
   );
 
   const removeFromList = useCallback(
@@ -470,16 +531,21 @@ export function useShoppingCatalog(roomId: string | null) {
         await setResolution(categoryId, null);
         return;
       }
-      setList((prev) => {
-        const next = prev.filter((e) => e.productId !== productId);
-        saveLocalShoppingList(next, persistRoomId);
-        return next;
-      });
-      if (canSyncRemote && !isRoomLocalProductId(productId)) {
-        void removeShoppingListEntry(user!.id, persistRoomId, productId).catch(() => {});
-      }
+      const prevSnapshot = list;
+      const existing = prevSnapshot.find((e) => e.productId === productId);
+      if (!existing) return;
+      const next =
+        existing.roomQuantity > 0
+          ? prevSnapshot.map((e) =>
+              e.productId === productId
+                ? normalizeShoppingListEntry({ ...e, manualQuantity: 0 })
+                : e,
+            )
+          : prevSnapshot.filter((e) => e.productId !== productId);
+      setList(next);
+      await persistListChange(next, prevSnapshot);
     },
-    [canSyncRemote, persistRoomId, setResolution, user],
+    [list, persistRoomId, persistListChange, setResolution],
   );
 
   const toggleChecked = useCallback(
@@ -552,36 +618,28 @@ export function useShoppingCatalog(roomId: string | null) {
     });
   }, [ready, placedCategoryIds, canSyncRemote, persistRoomId, user, clearOwnedForCategory]);
 
-  // When the last room copy of a curated product is deleted, drop it from To Buy.
+  // Room-derived quantities follow placements when store matches this checklist room.
   useEffect(() => {
-    if (!ready || !persistRoomId) return;
-    const current = new Set<string>();
-    for (const id of order) {
-      const item = items[id];
-      if (item?.curatedProductId) current.add(item.curatedProductId);
-    }
-    const prev = prevRoomProductIdsRef.current;
-    prevRoomProductIdsRef.current = current;
-    if (!prev) return;
-    for (const productId of prev) {
-      if (!current.has(productId)) {
-        void removeFromList(productId);
-      }
-    }
-  }, [ready, items, order, persistRoomId, removeFromList]);
-
-  // Mirror in-room catalog matches onto the saved shopping list (lists page + checkout stay aligned).
-  useEffect(() => {
-    if (!ready || !persistRoomId) return;
-    const toMirror = productIdsToMirrorFromCart(purchaseCartLines, list).filter(
-      (id) => !mirroredToListRef.current.has(id),
-    );
-    if (toMirror.length === 0) return;
-    for (const productId of toMirror) {
-      mirroredToListRef.current.add(productId);
-      void addToList(productId);
-    }
-  }, [ready, persistRoomId, purchaseCartLines, list, addToList]);
+    if (!ready || !persistRoomId || layoutRoomId !== persistRoomId) return;
+    const roomCounts = countProductsInRoom({ categories, items, order, productsById });
+    setList((prevSnapshot) => {
+      const next = reconcileRoomShoppingList({ roomCounts, current: prevSnapshot });
+      const unchanged =
+        next.length === prevSnapshot.length &&
+        next.every((row) => {
+          const prev = prevSnapshot.find((e) => e.productId === row.productId);
+          if (!prev) return false;
+          return (
+            prev.roomQuantity === row.roomQuantity &&
+            prev.manualQuantity === row.manualQuantity &&
+            prev.reviewDone === row.reviewDone
+          );
+        });
+      if (unchanged) return prevSnapshot;
+      void persistListChange(next, prevSnapshot);
+      return next;
+    });
+  }, [ready, persistRoomId, layoutRoomId, categories, items, order, productsById, persistListChange]);
 
   // Drop stale persisted checks for purchasable categories not in To Buy.
   useEffect(() => {

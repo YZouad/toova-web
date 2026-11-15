@@ -1,6 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { SHOPPING_LIST_UPDATED_EVENT } from '../lib/dormChecklist';
+import { ensureShoppingListCacheVersion, SHOPPING_LIST_UPDATED_EVENT } from '../lib/dormChecklist';
+import {
+  rebuildAllUserRoomShoppingLists,
+  refreshRoomChecklistFromSavedLayout,
+} from '../lib/roomShoppingListRebuild';
+import {
+  migrateLocalCustomListsToAccount,
+  pullRemoteCustomListsIntoLocal,
+} from '../lib/customChecklistRemote';
 import { fetchPublishedShoppingCatalog, loadRoomShoppingList } from '../lib/shoppingCatalog';
 import { formatPriceCents, type CuratedProduct } from '../lib/dormChecklist';
 import { supabase } from '../lib/supabase';
@@ -22,6 +30,7 @@ import {
   Spinner,
   type AppShellNavId,
 } from './kit';
+import { ChecklistRoomLoadPanel } from './checklist/ChecklistRoomLoadPanel';
 
 interface ShoppingListsPageProps {
   user: User;
@@ -47,6 +56,8 @@ export function ShoppingListsPage({
   const [items, setItems] = useState<Array<{ productId: string; quantity: number; reviewDone: boolean }>>([]);
   const [productsById, setProductsById] = useState<Record<string, CuratedProduct>>({});
   const [loading, setLoading] = useState(true);
+  const [itemsLoading, setItemsLoading] = useState(false);
+  const itemsLoadSeqRef = useRef(0);
   const [renameDraft, setRenameDraft] = useState('');
   const [creatingName, setCreatingName] = useState('');
 
@@ -56,12 +67,23 @@ export function ShoppingListsPage({
   );
 
   const refreshRoomsAndLists = useCallback(async () => {
+    ensureShoppingListCacheVersion();
     const { data, error } = await supabase
       .from('rooms')
       .select('id,name')
       .eq('user_id', user.id)
       .order('sort_order', { ascending: true });
     const roomRows = error ? [] : ((data ?? []) as Array<{ id: string; name: string }>);
+    await rebuildAllUserRoomShoppingLists(
+      user.id,
+      roomRows.map((r) => r.id),
+    );
+    try {
+      await migrateLocalCustomListsToAccount(user.id);
+      await pullRemoteCustomListsIntoLocal(user.id);
+    } catch (e) {
+      console.warn('[toova] custom checklist sync', e);
+    }
     setRooms(roomRows);
     const merged = mergeChecklistLists(user.id, roomRows);
     setLists(merged);
@@ -70,17 +92,29 @@ export function ShoppingListsPage({
 
   const loadItemsForList = useCallback(
     async (list: UserChecklistListMeta) => {
-      if (list.kind === 'room' && list.roomId) {
-        try {
-          const entries = await loadRoomShoppingList(user.id, list.roomId);
-          setItems(entries);
-          return;
-        } catch {
-          setItems(loadChecklistListItems(list));
-          return;
+      const seq = ++itemsLoadSeqRef.current;
+      setItemsLoading(true);
+      setItems([]);
+      try {
+        if (list.kind === 'room' && list.roomId) {
+          try {
+            await refreshRoomChecklistFromSavedLayout(user.id, list.roomId);
+            const entries = await loadRoomShoppingList(user.id, list.roomId);
+            if (seq !== itemsLoadSeqRef.current) return;
+            setItems(entries);
+            return;
+          } catch (e) {
+            console.warn('[toova] load room checklist', list.roomId, e);
+            if (seq !== itemsLoadSeqRef.current) return;
+            setItems(loadChecklistListItems(list));
+            return;
+          }
         }
+        if (seq !== itemsLoadSeqRef.current) return;
+        setItems(loadChecklistListItems(list));
+      } finally {
+        if (seq === itemsLoadSeqRef.current) setItemsLoading(false);
       }
-      setItems(loadChecklistListItems(list));
     },
     [user.id],
   );
@@ -250,7 +284,15 @@ export function ShoppingListsPage({
                     </div>
                   </div>
 
-                  {items.length === 0 ? (
+                  {itemsLoading ? (
+                    <ChecklistRoomLoadPanel
+                      label={
+                        selected.kind === 'room'
+                          ? 'Loading room checklist…'
+                          : 'Loading checklist…'
+                      }
+                    />
+                  ) : items.length === 0 ? (
                     <p className="checklist-item-section__empty">
                       No items saved yet. Browse the{' '}
                       {onOpenChecklist ? (

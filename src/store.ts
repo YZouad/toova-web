@@ -294,6 +294,8 @@ export interface Item {
 interface StoreState {
   items: Record<string, Item>;
   order: string[];
+  /** Room id whose items are currently in `items`/`order`; null when preview or unloaded. */
+  layoutRoomId: string | null;
   /** Primary selection (last clicked); used by inspector / arc menu. */
   selectedId: string | null;
   /** All selected item ids (shift-click multi-select). Includes selectedId when set. */
@@ -401,8 +403,8 @@ interface StoreState {
   /** Spawn a free-floating light at room center and select it. */
   addLightSource: () => string;
 
-  /** Replace layout from persisted data for the active room. */
-  hydrateLayout: (payload: Item[], orderIds: string[]) => void;
+  /** Replace layout from persisted data; pass room id for workspace loads only. */
+  hydrateLayout: (payload: Item[], orderIds: string[], layoutRoomId?: string | null) => void;
   /** Merge a scan-identified item update without changing selection order. */
   patchScanItem: (item: Item) => void;
   hydrateRoomSettings: (environment: RoomEnvironment, roomGeometry: RoomGeometry) => void;
@@ -605,6 +607,7 @@ function cascadeRemoveHangingForAttachment(
 export const useStore = create<StoreState>((set, get) => ({
   items: {},
   order: [],
+  layoutRoomId: null,
   selectedId: null,
   selectedIds: [],
   selectedWallId: null,
@@ -1087,7 +1090,7 @@ export const useStore = create<StoreState>((set, get) => ({
     return id;
   },
 
-  hydrateLayout: (payload, orderIds) =>
+  hydrateLayout: (payload, orderIds, layoutRoomId = null) =>
     set(() => {
       bumpNextIdFromExistingIds(orderIds);
       const items: Record<string, Item> = {};
@@ -1095,9 +1098,11 @@ export const useStore = create<StoreState>((set, get) => ({
         const normalized = ensureAttachmentKey(normalizeShelfItem(normalizeBedItem(it)));
         items[normalized.id] = normalized;
       }
+      const roomId = layoutRoomId?.trim() ? layoutRoomId.trim() : null;
       return {
         items,
         order: [...orderIds],
+        layoutRoomId: roomId,
         ...selectionOf([]),
         selectedWallId: null,
         selectedOpeningId: null,
@@ -1160,6 +1165,7 @@ export const useStore = create<StoreState>((set, get) => ({
       return {
         items: {},
         order: [],
+        layoutRoomId: null,
         ...selectionOf([]),
         selectedWallId: null,
         selectedOpeningId: null,

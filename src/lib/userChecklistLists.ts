@@ -3,7 +3,8 @@ import {
   saveLocalShoppingList,
   type ShoppingListEntry,
 } from './dormChecklist';
-import { upsertShoppingListEntry, removeShoppingListEntry } from './shoppingCatalog';
+import { syncShoppingListEntries } from './shoppingCatalog';
+import { normalizeShoppingListEntry } from './shoppingListEntry';
 import type { RoomTag } from './roomTags';
 
 export const USER_CHECKLIST_LISTS_KEY = 'toova-user-checklist-lists';
@@ -87,7 +88,7 @@ export function loadCustomChecklistLists(userId: string): UserChecklistListMeta[
   }
 }
 
-function saveCustomChecklistLists(userId: string, lists: UserChecklistListMeta[]): void {
+export function saveCustomChecklistLists(userId: string, lists: UserChecklistListMeta[]): void {
   try {
     localStorage.setItem(listsStorageKey(userId), JSON.stringify(lists));
   } catch {
@@ -169,11 +170,11 @@ export function loadCustomChecklistItems(listId: string): ShoppingListEntry[] {
         const o = row as Record<string, unknown>;
         if (typeof o.productId !== 'string') return null;
         const quantity = typeof o.quantity === 'number' && o.quantity > 0 ? Math.floor(o.quantity) : 1;
-        return {
+        return normalizeShoppingListEntry({
           productId: o.productId,
-          quantity,
+          manualQuantity: quantity,
           reviewDone: o.reviewDone === true,
-        };
+        });
       })
       .filter((x): x is ShoppingListEntry => x != null);
   } catch {
@@ -194,17 +195,30 @@ export function loadChecklistListItems(list: UserChecklistListMeta): ShoppingLis
   return loadCustomChecklistItems(list.id);
 }
 
-function mergeEntry(entries: ShoppingListEntry[], productId: string, quantity: number): ShoppingListEntry[] {
-  const next = [...entries];
-  const idx = next.findIndex((e) => e.productId === productId);
+function mergeManualEntry(
+  entries: ShoppingListEntry[],
+  productId: string,
+  quantity: number,
+): ShoppingListEntry[] {
+  const qty = Math.max(1, Math.floor(quantity));
+  const idx = entries.findIndex((e) => e.productId === productId);
   if (idx >= 0) {
-    next[idx] = {
+    const next = [...entries];
+    next[idx] = normalizeShoppingListEntry({
       ...next[idx],
-      quantity: next[idx].quantity + quantity,
-    };
+      manualQuantity: Math.max(next[idx].manualQuantity, qty),
+    });
     return next;
   }
-  return [...next, { productId, quantity, reviewDone: false }];
+  return [
+    ...entries,
+    normalizeShoppingListEntry({
+      productId,
+      manualQuantity: qty,
+      roomQuantity: 0,
+      reviewDone: false,
+    }),
+  ];
 }
 
 export async function addProductToChecklistList(
@@ -214,16 +228,17 @@ export async function addProductToChecklistList(
   quantity = 1,
 ): Promise<void> {
   if (list.kind === 'room' && list.roomId) {
-    const entries = mergeEntry(loadLocalShoppingList(list.roomId), productId, quantity);
+    const prev = loadLocalShoppingList(list.roomId);
+    const entries = mergeManualEntry(prev, productId, quantity);
     saveLocalShoppingList(entries, list.roomId);
-    const row = entries.find((e) => e.productId === productId);
-    if (row) {
-      await upsertShoppingListEntry(userId, list.roomId, row);
-    }
+    await syncShoppingListEntries(userId, list.roomId, entries, prev);
     return;
   }
-  const entries = mergeEntry(loadCustomChecklistItems(list.id), productId, quantity);
+  const entries = mergeManualEntry(loadCustomChecklistItems(list.id), productId, quantity);
   saveCustomChecklistItems(list.id, entries);
+  const { upsertRemoteCustomListItem } = await import('./customChecklistRemote');
+  const row = entries.find((e) => e.productId === productId);
+  if (row) await upsertRemoteCustomListItem(userId, list.id, row);
 }
 
 export async function updateChecklistListItemQty(
@@ -234,16 +249,22 @@ export async function updateChecklistListItemQty(
 ): Promise<void> {
   const qty = Math.max(1, Math.floor(quantity));
   if (list.kind === 'room' && list.roomId) {
-    const entries = loadLocalShoppingList(list.roomId).map((e) =>
-      e.productId === productId ? { ...e, quantity: qty } : e,
-    );
+    const prev = loadLocalShoppingList(list.roomId);
+    const entries = prev.map((e) => {
+      if (e.productId !== productId) return e;
+      return normalizeShoppingListEntry({
+        ...e,
+        manualQuantity: Math.max(e.roomQuantity, qty),
+      });
+    });
     saveLocalShoppingList(entries, list.roomId);
-    const row = entries.find((e) => e.productId === productId);
-    if (row) await upsertShoppingListEntry(userId, list.roomId, row);
+    await syncShoppingListEntries(userId, list.roomId, entries, prev);
     return;
   }
   const entries = loadCustomChecklistItems(list.id).map((e) =>
-    e.productId === productId ? { ...e, quantity: qty } : e,
+    e.productId === productId
+      ? normalizeShoppingListEntry({ ...e, manualQuantity: qty })
+      : e,
   );
   saveCustomChecklistItems(list.id, entries);
 }
@@ -254,9 +275,17 @@ export async function removeChecklistListItem(
   productId: string,
 ): Promise<void> {
   if (list.kind === 'room' && list.roomId) {
-    const entries = loadLocalShoppingList(list.roomId).filter((e) => e.productId !== productId);
+    const prev = loadLocalShoppingList(list.roomId);
+    const existing = prev.find((e) => e.productId === productId);
+    const entries = existing?.roomQuantity
+      ? prev.map((e) =>
+          e.productId === productId
+            ? normalizeShoppingListEntry({ ...e, manualQuantity: 0 })
+            : e,
+        )
+      : prev.filter((e) => e.productId !== productId);
     saveLocalShoppingList(entries, list.roomId);
-    await removeShoppingListEntry(userId, list.roomId, productId);
+    await syncShoppingListEntries(userId, list.roomId, entries, prev);
     return;
   }
   const entries = loadCustomChecklistItems(list.id).filter((e) => e.productId !== productId);

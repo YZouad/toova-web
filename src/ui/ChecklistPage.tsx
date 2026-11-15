@@ -33,6 +33,8 @@ import { ChecklistAdminPanel } from './ChecklistAdminPanel';
 import { ChecklistCheckoutPanel } from './ChecklistCheckoutPanel';
 import { ChecklistScrollGuide } from './checklist/ChecklistScrollGuide';
 import { AddToListModal } from './checklist/AddToListModal';
+import { ChecklistAddedToast } from './checklist/ChecklistAddedToast';
+import { ChecklistRoomLoadPanel } from './checklist/ChecklistRoomLoadPanel';
 import { ImportModelModal } from './ImportModelModal';
 import type { ChecklistInspoClip } from '../lib/inspoClipUrls';
 
@@ -68,6 +70,7 @@ export function ChecklistPage({
     categories,
     productsById,
     loading,
+    ready,
     error,
     isCategoryDone,
     addToList,
@@ -96,6 +99,7 @@ export function ChecklistPage({
   const [categoryModalOpen, setCategoryModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<CuratedProduct | null>(null);
   const [addToListProduct, setAddToListProduct] = useState<CuratedProduct | null>(null);
+  const [addToListConfirmation, setAddToListConfirmation] = useState<string | null>(null);
   const [inspoImportTarget, setInspoImportTarget] = useState<{
     category: ChecklistCategoryWithProducts;
     clip: ChecklistInspoClip;
@@ -116,6 +120,12 @@ export function ChecklistPage({
       void refreshAdminCatalog();
     }
   }, [manageMode, isAdmin, refreshAdminCatalog]);
+
+  useEffect(() => {
+    if (!addToListConfirmation) return;
+    const timer = window.setTimeout(() => setAddToListConfirmation(null), 5000);
+    return () => window.clearTimeout(timer);
+  }, [addToListConfirmation]);
 
   const handleCatalogChanged = useCallback(() => {
     void refreshCatalog();
@@ -318,10 +328,16 @@ export function ChecklistPage({
                 : 'Browse by category, then subcategory. Select a tile to open the product drawer.'}
             </p>
 
-            {loading ? <Spinner label="Loading checklist…" /> : null}
+            {loading || !ready ? (
+              <ChecklistRoomLoadPanel
+                label={
+                  !ready && !loading ? 'Loading checklist for this room…' : 'Loading checklist…'
+                }
+              />
+            ) : null}
             {error ? <Banner tone="error">{error}</Banner> : null}
 
-            {!loading && !error ? (
+            {!loading && ready && !error ? (
               <div className="checklist-page-manage-layout">
                 <div className="checklist-gallery" role="list">
                   {galleryItems.map((item) => {
@@ -530,11 +546,19 @@ export function ChecklistPage({
         preferredListId={preferredListId}
         onClose={() => setAddToListProduct(null)}
         onRequestSignIn={onRequestSignIn}
-        onAdded={(_listId, syncedActiveRoom) => {
+        onAdded={({ listName, productName, syncedActiveRoom }) => {
+          setAddToListConfirmation(`${productName} added to ${listName}`);
           if (!user?.id) return;
           if (syncedActiveRoom) void refreshListFromStorage();
         }}
       />
+
+      {addToListConfirmation ? (
+        <ChecklistAddedToast
+          message={addToListConfirmation}
+          onDismiss={() => setAddToListConfirmation(null)}
+        />
+      ) : null}
 
       {user?.id && productModalOpen && openCategoryId && manageMode ? (
         <ChecklistProductModal

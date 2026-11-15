@@ -10,6 +10,7 @@ import { checklistProgressCounts } from './checklistProgress';
 import type { ChecklistLineModel } from './checklistLines';
 import { createLocalChecklistProduct, mergeLocalProductsIntoCategories } from './localRoomChecklist';
 import { createOwnedChecklistProduct } from './ownedChecklistItems';
+import { manualShoppingEntry } from './shoppingListEntry';
 
 const productA: CuratedProduct = {
   id: 'prod-a',
@@ -84,7 +85,7 @@ describe('buildPurchaseCartLines', () => {
         room1: { kind: 'desk', curatedProductId: productB.id },
       },
       order: ['room1'],
-      list: [{ productId: productA.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id)],
       productsById,
       getResolution: () => undefined,
     });
@@ -100,7 +101,7 @@ describe('buildPurchaseCartLines', () => {
         room1: { kind: 'lamp', curatedProductId: productA.id },
       },
       order: ['room1'],
-      list: [{ productId: productA.id, quantity: 2, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id, 2)],
       productsById,
       getResolution: () => undefined,
     });
@@ -114,7 +115,7 @@ describe('buildPurchaseCartLines', () => {
       categories,
       items: {},
       order: [],
-      list: [{ productId: productA.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id)],
       productsById,
       getResolution: (id) => (id === 'cat-a' ? 'have' : undefined),
     });
@@ -132,7 +133,7 @@ describe('buildPurchaseCartLines', () => {
       categories,
       items: {},
       order: [],
-      list: [{ productId: ownedProduct.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(ownedProduct.id)],
       productsById: { ...productsById, [ownedProduct.id]: ownedProduct },
       getResolution: (id) => (id === 'cat-a' ? 'have' : undefined),
     });
@@ -147,7 +148,7 @@ describe('buildPurchaseCartLines', () => {
       categories,
       items: {},
       order: [],
-      list: [{ productId: productA.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id)],
       productsById,
       getResolution: (id) => (id === 'cat-a' ? 'skip' : undefined),
     });
@@ -166,7 +167,7 @@ describe('buildPurchaseCartLines', () => {
       categories: localCategories,
       items: {},
       order: [],
-      list: [{ productId: localProduct.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(localProduct.id)],
       productsById: { [localProduct.id]: { ...localProduct, categoryId: localProduct.id } },
       getResolution: () => undefined,
     });
@@ -232,7 +233,7 @@ describe('purchaseCartTotalCents', () => {
       categories: pencilCategories,
       items: {},
       order: [],
-      list: [{ productId: pencilProduct.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(pencilProduct.id)],
       productsById: pencilProductsById,
       getResolution: () => undefined,
     });
@@ -246,7 +247,7 @@ describe('purchaseCartTotalCents', () => {
         room1: { kind: 'lamp', curatedProductId: productA.id },
       },
       order: ['room1'],
-      list: [{ productId: productA.id, quantity: 2, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id, 2)],
       productsById,
       getResolution: () => undefined,
     });
@@ -259,8 +260,8 @@ describe('purchaseCartTotalCents', () => {
       items: {},
       order: [],
       list: [
-        { productId: pencilProduct.id, quantity: 1, reviewDone: false },
-        { productId: unpricedProduct.id, quantity: 1, reviewDone: false },
+        manualShoppingEntry(pencilProduct.id),
+        manualShoppingEntry(unpricedProduct.id),
       ],
       productsById: pencilProductsById,
       getResolution: () => undefined,
@@ -272,16 +273,12 @@ describe('purchaseCartTotalCents', () => {
 describe('mergeShoppingListEntries', () => {
   it('unions by product id with max quantity and merged reviewDone', () => {
     const merged = mergeShoppingListEntries(
-      [{ productId: 'remote-1', quantity: 1, reviewDone: false }],
-      [
-        { productId: 'local:abc', quantity: 1, reviewDone: false },
-        { productId: 'remote-1', quantity: 2, reviewDone: true },
-      ],
+      [manualShoppingEntry('remote-1')],
+      [manualShoppingEntry('local:abc'), manualShoppingEntry('remote-1', 2, true)],
     );
-    expect(merged).toEqual([
-      { productId: 'local:abc', quantity: 1, reviewDone: false },
-      { productId: 'remote-1', quantity: 2, reviewDone: true },
-    ]);
+    expect(merged.find((e) => e.productId === 'local:abc')?.quantity).toBe(1);
+    expect(merged.find((e) => e.productId === 'remote-1')?.quantity).toBe(2);
+    expect(merged.find((e) => e.productId === 'remote-1')?.reviewDone).toBe(true);
   });
 });
 
@@ -299,7 +296,7 @@ describe('productIdsToMirrorFromCart', () => {
     });
     expect(productIdsToMirrorFromCart(lines, [])).toEqual([productA.id]);
     expect(
-      productIdsToMirrorFromCart(lines, [{ productId: productA.id, quantity: 1, reviewDone: false }]),
+      productIdsToMirrorFromCart(lines, [manualShoppingEntry(productA.id)]),
     ).toEqual([]);
   });
 });

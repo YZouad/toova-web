@@ -597,8 +597,10 @@ function AppContent() {
     async (room: { id: string; name: string; isOwner?: boolean }) => {
       resetLayout();
       const data = await load(room.id);
-      hydrateLayout(data.items, data.order);
+      hydrateLayout(data.items, data.order, room.id);
       hydrateRoomSettings(data.environment, data.roomGeometry);
+      setActiveChecklistRoomId(room.id);
+      setRoomId(room.id);
       const isOwner = room.isOwner !== false;
       setWorkspace({ id: room.id, name: room.name, isOwner });
       trackRoomOpened({ room_id: room.id, is_owner: isOwner });
@@ -618,6 +620,7 @@ function AppContent() {
       resetLayout,
       pendingGalleryModel,
       placePendingGalleryModel,
+      setRoomId,
     ],
   );
 
@@ -750,7 +753,7 @@ function AppContent() {
           );
         }
         resetLayout();
-        hydrateLayout(seedItems, seedOrder);
+        hydrateLayout(seedItems, seedOrder, guestId);
         hydrateRoomSettings(environment, plan);
         setGuestTemplateId(options?.starterId);
         setWorkspace({ id: guestId, name, isOwner: true });
@@ -781,7 +784,7 @@ function AppContent() {
           );
         }
         resetLayout();
-        hydrateLayout(seedItems, seedOrder);
+        hydrateLayout(seedItems, seedOrder, room.id);
         hydrateRoomSettings(environment, plan);
         if (seedItems.length > 0) {
           const byId = Object.fromEntries(seedItems.map((it) => [it.id, it]));
@@ -938,10 +941,11 @@ function AppContent() {
       const { items, order } = materializeStarterItems(template, plan);
       await resolveStarterItemAssets(items);
       resetLayout();
-      hydrateLayout(items, order);
+      const starterWsId = starterEditWorkspaceId(templateId);
+      hydrateLayout(items, order, starterWsId);
       hydrateRoomSettings(environment, plan);
       setWorkspace({
-        id: starterEditWorkspaceId(templateId),
+        id: starterWsId,
         name: template.label,
         isOwner: true,
       });

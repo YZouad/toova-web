@@ -20,7 +20,12 @@ interface AddToListModalProps {
   preferredListId?: string | null;
   onClose: () => void;
   onRequestSignIn?: () => void;
-  onAdded: (listId: string, syncedActiveRoom: boolean) => void;
+  onAdded: (detail: {
+    listId: string;
+    listName: string;
+    productName: string;
+    syncedActiveRoom: boolean;
+  }) => void;
 }
 
 function sortListsWithPreferred(
@@ -108,7 +113,12 @@ export function AddToListModal({
       await addProductToChecklistList(userId, list, product.id, 1);
       savePreferredChecklistListId(userId, list.id);
       const syncedActiveRoom = list.kind === 'room' && list.roomId === activeRoomId;
-      onAdded(list.id, syncedActiveRoom);
+      onAdded({
+        listId: list.id,
+        listName: list.name,
+        productName: product.name,
+        syncedActiveRoom,
+      });
       onClose();
     } finally {
       setPendingId(null);
@@ -126,7 +136,12 @@ export function AddToListModal({
       const list = createCustomChecklistList(userId, name);
       await addProductToChecklistList(userId, list, product.id, 1);
       savePreferredChecklistListId(userId, list.id);
-      onAdded(list.id, false);
+      onAdded({
+        listId: list.id,
+        listName: list.name,
+        productName: product.name,
+        syncedActiveRoom: false,
+      });
       onClose();
     } finally {
       setCreating(false);

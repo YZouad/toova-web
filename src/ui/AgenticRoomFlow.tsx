@@ -51,7 +51,6 @@ import {
   materialLabel,
   type MaterialPresetId,
 } from '../lib/roomMaterials';
-import { shoppingEntriesFromResolved } from '../lib/agenticRoomApplyChecklist';
 import {
   applyWindowCurtainsToPlan,
   resolveAgentWindowCurtains,
@@ -1130,12 +1129,8 @@ export function AgenticRoomFlow({
           : baseAppearance,
       };
       const activeResolved = resolved.filter((_, index) => itemResolutions.get(index) !== 'skip');
-      const shoppingList = shoppingEntriesFromResolved(
-        resolved.filter((_, index) => {
-          const resolution = itemResolutions.get(index);
-          return resolution !== 'skip' && resolution !== 'have';
-        }),
-      );
+      // Room checklist rows are derived from placed room_items (not the full plan).
+      const shoppingList: ShoppingListEntry[] = [];
       const agenticShoppingManifest = manifestFromResolved(activeResolved).map((entry) => {
         const rowIndex = resolved.findIndex((row) => row.query === entry.query);
         if (rowIndex >= 0 && itemResolutions.get(rowIndex) === 'have') {

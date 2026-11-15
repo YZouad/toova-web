@@ -3,6 +3,7 @@ import {
   saveLocalShoppingList,
   type ShoppingListEntry,
 } from './dormChecklist';
+import { normalizeShoppingListEntry } from './shoppingListEntry';
 import { isGuestWorkspaceId } from './guestDesignSnapshot';
 import {
   type AgenticShoppingManifestEntry,
@@ -70,9 +71,11 @@ export function shoppingEntriesFromResolved(
     if (!item.product) continue;
     merged.set(item.product.id, (merged.get(item.product.id) ?? 0) + item.qty);
   }
-  return [...merged.entries()].map(([productId, quantity]) => ({
-    productId,
-    quantity,
-    reviewDone: false,
-  }));
+  return [...merged.entries()].map(([productId, quantity]) =>
+    normalizeShoppingListEntry({
+      productId,
+      manualQuantity: quantity,
+      reviewDone: false,
+    }),
+  );
 }
