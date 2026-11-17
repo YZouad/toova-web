@@ -2,4 +2,4 @@
 
 Follow [`AGENTS.md`](AGENTS.md) in this folder, then the root handbook [`../AGENTS.md`](../AGENTS.md).
 
-Symbol map (repo root): [`../MAP.md`](../MAP.md) — regenerate with `node ../scripts/generate-repo-map.mjs`.
+Repository map: [`MAP.md`](MAP.md) — check it before broad file searches and regenerate with `npm run map`.

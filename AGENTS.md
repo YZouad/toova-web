@@ -4,6 +4,8 @@ React + Vite + `@react-three/fiber` room designer. Auth/data via Supabase; mesh 
 
 Parent map: [`../AGENTS.md`](../AGENTS.md). Human setup/deploy: [`README.md`](README.md).
 
+Repository navigation: [`MAP.md`](MAP.md). Check it before broad file searches; regenerate with `npm run map` after structural changes.
+
 ## Layout
 
 ```
@@ -45,6 +47,7 @@ npm run dev                  # http://localhost:5173
 npm run typecheck
 npm test
 npm run test:e2e
+npm run map                  # regenerate MAP.md
 npm run build                # vite + prerender (needs Playwright chromium)
 npm run build:web            # vite only (skip prerender)
 ```

@@ -19,6 +19,7 @@
     "test:db": "supabase test db",
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
+    "map": "node scripts/generate-repo-map.mjs",
     "backfill:catalog-thumbnails": "node scripts/backfill-catalog-thumbnails.mjs",
     "generate:unfurls": "node scripts/generate-static-unfurls.mjs"
   },
