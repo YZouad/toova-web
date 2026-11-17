@@ -76,8 +76,14 @@ import {
 } from '../lib/shoppingCatalog';
 import { refreshRoomChecklistFromSavedLayout } from '../lib/roomShoppingListRebuild';
 import { useStore } from '../store';
+import type { ChecklistLoadMode } from '../context/ChecklistRoomContext';
 
-export function useShoppingCatalog(roomId: string | null) {
+export function useShoppingCatalog(
+  roomId: string | null,
+  options?: { checklistLoadMode?: ChecklistLoadMode },
+) {
+  const checklistLoadMode = options?.checklistLoadMode ?? 'full';
+  const listsOnlyLoad = checklistLoadMode === 'lists-only';
   const { user } = useAuth();
   const items = useStore((s) => s.items);
   const order = useStore((s) => s.order);
@@ -276,7 +282,6 @@ export function useShoppingCatalog(roomId: string | null) {
   // Load room-scoped checklist state when room or auth changes.
   useEffect(() => {
     let cancelled = false;
-    setReady(false);
 
     if (!persistRoomId) {
       setChecked(new Set());
@@ -291,6 +296,29 @@ export function useShoppingCatalog(roomId: string | null) {
         cancelled = true;
       };
     }
+
+    if (listsOnlyLoad) {
+      setList(loadLocalShoppingList(persistRoomId));
+      setReady(true);
+      if (!canSyncRemote || !user?.id) {
+        return () => {
+          cancelled = true;
+        };
+      }
+      void (async () => {
+        try {
+          const merged = await loadRoomShoppingList(user.id, persistRoomId);
+          if (!cancelled) setList(merged);
+        } catch {
+          if (!cancelled) setList(loadLocalShoppingList(persistRoomId));
+        }
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setReady(false);
 
     // Drop previous-room list immediately so UI cannot flash stale items.
     setList([]);
@@ -386,7 +414,7 @@ export function useShoppingCatalog(roomId: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [user?.id, persistRoomId, canSyncRemote]);
+  }, [user?.id, persistRoomId, canSyncRemote, listsOnlyLoad]);
 
   const setCategoryChecked = useCallback(
     async (categoryId: string, isChecked: boolean) => {

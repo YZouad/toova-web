@@ -1,16 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { User } from '@supabase/supabase-js';
-import { ensureShoppingListCacheVersion, SHOPPING_LIST_UPDATED_EVENT } from '../lib/dormChecklist';
-import {
-  rebuildAllUserRoomShoppingLists,
-  refreshRoomChecklistFromSavedLayout,
-} from '../lib/roomShoppingListRebuild';
+import { ensureShoppingListCacheVersion } from '../lib/dormChecklist';
+import { useChecklistRoomScope } from '../context/ChecklistRoomContext';
+import { useShoppingCatalogContext } from '../context/ShoppingCatalogContext';
 import {
   migrateLocalCustomListsToAccount,
   pullRemoteCustomListsIntoLocal,
 } from '../lib/customChecklistRemote';
-import { fetchPublishedShoppingCatalog, loadRoomShoppingList } from '../lib/shoppingCatalog';
-import { formatPriceCents, type CuratedProduct } from '../lib/dormChecklist';
+import { formatPriceCents } from '../lib/dormChecklist';
 import { supabase } from '../lib/supabase';
 import {
   createCustomChecklistList,
@@ -50,14 +47,22 @@ export function ShoppingListsPage({
   onOpenRoom,
   onOpenChecklist,
 }: ShoppingListsPageProps) {
-  const [rooms, setRooms] = useState<Array<{ id: string; name: string }>>([]);
+  const { roomId: contextRoomId, setRoomId, setChecklistLoadMode } = useChecklistRoomScope();
+  const {
+    roomId: catalogRoomId,
+    productsById,
+    list: contextList,
+    ready: catalogReady,
+    refreshListFromStorage,
+    loading: catalogLoading,
+  } = useShoppingCatalogContext();
+
   const [lists, setLists] = useState<UserChecklistListMeta[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [items, setItems] = useState<Array<{ productId: string; quantity: number; reviewDone: boolean }>>([]);
-  const [productsById, setProductsById] = useState<Record<string, CuratedProduct>>({});
+  const [customItems, setCustomItems] = useState<
+    Array<{ productId: string; quantity: number; reviewDone: boolean }>
+  >([]);
   const [loading, setLoading] = useState(true);
-  const [itemsLoading, setItemsLoading] = useState(false);
-  const itemsLoadSeqRef = useRef(0);
   const [renameDraft, setRenameDraft] = useState('');
   const [creatingName, setCreatingName] = useState('');
 
@@ -74,64 +79,36 @@ export function ShoppingListsPage({
       .eq('user_id', user.id)
       .order('sort_order', { ascending: true });
     const roomRows = error ? [] : ((data ?? []) as Array<{ id: string; name: string }>);
-    await rebuildAllUserRoomShoppingLists(
-      user.id,
-      roomRows.map((r) => r.id),
-    );
-    try {
-      await migrateLocalCustomListsToAccount(user.id);
-      await pullRemoteCustomListsIntoLocal(user.id);
-    } catch (e) {
-      console.warn('[toova] custom checklist sync', e);
-    }
-    setRooms(roomRows);
     const merged = mergeChecklistLists(user.id, roomRows);
     setLists(merged);
     setSelectedId((prev) => prev ?? merged[0]?.id ?? null);
+    return roomRows;
   }, [user.id]);
 
-  const loadItemsForList = useCallback(
-    async (list: UserChecklistListMeta) => {
-      const seq = ++itemsLoadSeqRef.current;
-      setItemsLoading(true);
-      setItems([]);
+  const syncCustomListsInBackground = useCallback((roomRows: Array<{ id: string; name: string }>) => {
+    void (async () => {
       try {
-        if (list.kind === 'room' && list.roomId) {
-          try {
-            await refreshRoomChecklistFromSavedLayout(user.id, list.roomId);
-            const entries = await loadRoomShoppingList(user.id, list.roomId);
-            if (seq !== itemsLoadSeqRef.current) return;
-            setItems(entries);
-            return;
-          } catch (e) {
-            console.warn('[toova] load room checklist', list.roomId, e);
-            if (seq !== itemsLoadSeqRef.current) return;
-            setItems(loadChecklistListItems(list));
-            return;
-          }
-        }
-        if (seq !== itemsLoadSeqRef.current) return;
-        setItems(loadChecklistListItems(list));
-      } finally {
-        if (seq === itemsLoadSeqRef.current) setItemsLoading(false);
+        await migrateLocalCustomListsToAccount(user.id);
+        await pullRemoteCustomListsIntoLocal(user.id);
+        setLists(mergeChecklistLists(user.id, roomRows));
+      } catch (e) {
+        console.warn('[toova] custom checklist sync', e);
       }
-    },
-    [user.id],
-  );
+    })();
+  }, [user.id]);
+
+  useEffect(() => {
+    setChecklistLoadMode('lists-only');
+    return () => setChecklistLoadMode('full');
+  }, [setChecklistLoadMode]);
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
       setLoading(true);
       try {
-        const cats = await fetchPublishedShoppingCatalog();
-        if (cancelled) return;
-        const map: Record<string, CuratedProduct> = {};
-        for (const cat of cats) {
-          for (const p of cat.products) map[p.id] = p;
-        }
-        setProductsById(map);
-        await refreshRoomsAndLists();
+        const roomRows = await refreshRoomsAndLists();
+        if (!cancelled) syncCustomListsInBackground(roomRows);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -139,61 +116,75 @@ export function ShoppingListsPage({
     return () => {
       cancelled = true;
     };
-  }, [refreshRoomsAndLists]);
+  }, [refreshRoomsAndLists, syncCustomListsInBackground]);
 
   useEffect(() => {
-    if (selected) {
-      setRenameDraft(selected.name);
-      void loadItemsForList(selected);
-    } else {
-      setItems([]);
+    if (!selected) return;
+    setRenameDraft(selected.name);
+    if (selected.kind === 'room' && selected.roomId) {
+      if (selected.roomId !== contextRoomId) {
+        setRoomId(selected.roomId);
+      }
+      return;
     }
-  }, [selected, loadItemsForList]);
+    setCustomItems(loadChecklistListItems(selected));
+  }, [selected, contextRoomId, setRoomId]);
 
-  useEffect(() => {
-    const onListUpdated = (event: Event) => {
-      const roomId = (event as CustomEvent<{ roomId?: string }>).detail?.roomId;
-      if (!selected || selected.kind !== 'room' || !selected.roomId) return;
-      if (roomId && roomId !== selected.roomId) return;
-      void loadItemsForList(selected);
-    };
-    const onVisible = () => {
-      if (document.visibilityState !== 'visible' || !selected) return;
-      void loadItemsForList(selected);
-    };
-    window.addEventListener(SHOPPING_LIST_UPDATED_EVENT, onListUpdated);
-    window.addEventListener('focus', onVisible);
-    document.addEventListener('visibilitychange', onVisible);
-    return () => {
-      window.removeEventListener(SHOPPING_LIST_UPDATED_EVENT, onListUpdated);
-      window.removeEventListener('focus', onVisible);
-      document.removeEventListener('visibilitychange', onVisible);
-    };
-  }, [selected, loadItemsForList]);
+  const roomItems = useMemo(() => {
+    if (selected?.kind !== 'room' || !selected.roomId) return [];
+    if (catalogRoomId === selected.roomId) return contextList;
+    return loadChecklistListItems(selected);
+  }, [selected, catalogRoomId, contextList]);
 
-  const roomLists = lists.filter((l) => l.kind === 'room');
-  const customLists = lists.filter((l) => l.kind === 'custom');
+  const displayItems =
+    selected?.kind === 'room' ? roomItems : customItems;
+
+  const showItemsSpinner =
+    selected?.kind === 'room' &&
+    !!selected.roomId &&
+    catalogRoomId === selected.roomId &&
+    displayItems.length === 0 &&
+    (!catalogReady || catalogLoading);
 
   const handleCreate = () => {
     const name = creatingName.trim() || 'Custom checklist';
     const list = createCustomChecklistList(user.id, name);
     setCreatingName('');
-    void refreshRoomsAndLists().then(() => setSelectedId(list.id));
+    void refreshRoomsAndLists().then((roomRows) => {
+      syncCustomListsInBackground(roomRows);
+      setSelectedId(list.id);
+    });
   };
 
   const handleDelete = (list: UserChecklistListMeta) => {
     if (list.kind !== 'custom') return;
     if (!window.confirm(`Delete “${list.name}”?`)) return;
     deleteCustomChecklistList(user.id, list.id);
-    void refreshRoomsAndLists();
+    void refreshRoomsAndLists().then(syncCustomListsInBackground);
     if (selectedId === list.id) setSelectedId(null);
   };
 
   const handleRename = (list: UserChecklistListMeta) => {
     if (list.kind !== 'custom') return;
     if (!renameChecklistList(user.id, list.id, renameDraft)) return;
-    void refreshRoomsAndLists();
+    void refreshRoomsAndLists().then(syncCustomListsInBackground);
   };
+
+  const afterListMutation = useCallback(
+    async (list: UserChecklistListMeta) => {
+      if (list.kind === 'room' && list.roomId && catalogRoomId === list.roomId) {
+        await refreshListFromStorage();
+        return;
+      }
+      if (list.kind === 'custom') {
+        setCustomItems(loadChecklistListItems(list));
+      }
+    },
+    [catalogRoomId, refreshListFromStorage],
+  );
+
+  const roomLists = lists.filter((l) => l.kind === 'room');
+  const customLists = lists.filter((l) => l.kind === 'custom');
 
   return (
     <AppShell
@@ -284,7 +275,7 @@ export function ShoppingListsPage({
                     </div>
                   </div>
 
-                  {itemsLoading ? (
+                  {showItemsSpinner ? (
                     <ChecklistRoomLoadPanel
                       label={
                         selected.kind === 'room'
@@ -292,7 +283,7 @@ export function ShoppingListsPage({
                           : 'Loading checklist…'
                       }
                     />
-                  ) : items.length === 0 ? (
+                  ) : displayItems.length === 0 ? (
                     <p className="checklist-item-section__empty">
                       No items saved yet. Browse the{' '}
                       {onOpenChecklist ? (
@@ -317,7 +308,7 @@ export function ShoppingListsPage({
                     </p>
                   ) : (
                     <ul className="shopping-lists-items">
-                      {items.map((entry) => {
+                      {displayItems.map((entry) => {
                         const product = productsById[entry.productId];
                         const price = product
                           ? formatPriceCents(product.priceCents, product.currency)
@@ -361,7 +352,7 @@ export function ShoppingListsPage({
                                       selected,
                                       entry.productId,
                                       qty,
-                                    ).then(() => loadItemsForList(selected));
+                                    ).then(() => afterListMutation(selected));
                                   }}
                                 />
                               </label>
@@ -370,7 +361,7 @@ export function ShoppingListsPage({
                                 variant="outline"
                                 onClick={() =>
                                   void removeChecklistListItem(user.id, selected, entry.productId).then(
-                                    () => loadItemsForList(selected),
+                                    () => afterListMutation(selected),
                                   )
                                 }
                               >

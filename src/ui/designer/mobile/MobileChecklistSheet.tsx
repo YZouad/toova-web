@@ -729,6 +729,10 @@ export function MobileChecklistSheet({
           lines={purchaseCartLines}
           onClose={() => setCheckoutOpen(false)}
           onRemoveFromList={(productId) => void removeFromList(productId)}
+          onPlaceInRoom={async (product) => {
+            await handlePlace(product);
+            setCheckoutOpen(false);
+          }}
         />
       ) : null}
     </MobileSheet>

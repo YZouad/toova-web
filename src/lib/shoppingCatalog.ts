@@ -464,7 +464,7 @@ export async function loadRoomShoppingList(
     const remote = await fetchUserShoppingList(userId, roomId);
     const localOnly = local.filter((e) => isRoomLocalProductId(e.productId));
     const merged = [...remote, ...localOnly];
-    saveLocalShoppingList(merged, roomId);
+    saveLocalShoppingList(merged, roomId, { silent: true });
     return merged;
   } catch {
     return local;

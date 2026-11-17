@@ -459,11 +459,19 @@ export function loadLocalShoppingList(roomId?: string | null): ShoppingListEntry
   }
 }
 
-export function saveLocalShoppingList(entries: ShoppingListEntry[], roomId?: string | null) {
+export function saveLocalShoppingList(
+  entries: ShoppingListEntry[],
+  roomId?: string | null,
+  options?: { silent?: boolean },
+) {
   try {
     const key = requireRoomScopedKey(SHOPPING_LIST_KEY, roomId);
     if (!key) return;
-    localStorage.setItem(key, JSON.stringify(entries));
+    const nextJson = JSON.stringify(entries);
+    const prev = localStorage.getItem(key);
+    if (prev === nextJson) return;
+    localStorage.setItem(key, nextJson);
+    if (options?.silent) return;
     const id = roomId?.trim();
     if (id && typeof window !== 'undefined') {
       window.dispatchEvent(

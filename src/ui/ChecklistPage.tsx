@@ -453,6 +453,14 @@ export function ChecklistPage({
           lines={purchaseCartLines}
           onClose={() => setCheckoutOpen(false)}
           onRemoveFromList={(productId) => void removeFromList(productId)}
+          onPlaceInRoom={
+            canPlace
+              ? async (product) => {
+                  await placeProduct(product);
+                  setCheckoutOpen(false);
+                }
+              : undefined
+          }
         />
       ) : null}
 

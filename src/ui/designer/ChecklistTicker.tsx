@@ -497,6 +497,10 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
             lines={purchaseCartLines}
             onClose={() => setCheckoutOpen(false)}
             onRemoveFromList={(productId) => void removeFromList(productId)}
+            onPlaceInRoom={async (product) => {
+              await handlePlace(product);
+              setCheckoutOpen(false);
+            }}
           />
         ) : null}
       </div>
@@ -733,6 +737,10 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
             manifestLines={agenticManifestCheckoutLines}
             onClose={() => setCheckoutOpen(false)}
             onRemoveFromList={(productId) => void removeFromList(productId)}
+            onPlaceInRoom={async (product) => {
+              await handlePlace(product);
+              setCheckoutOpen(false);
+            }}
             onDismissManifestEntry={(id) => void dismissAgenticManifestEntry(id)}
             onSetManifestResolution={(id, resolution) =>
               void setAgenticManifestResolution(id, resolution)
@@ -963,6 +971,10 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
           manifestLines={agenticManifestCheckoutLines}
           onClose={() => setCheckoutOpen(false)}
           onRemoveFromList={(productId) => void removeFromList(productId)}
+          onPlaceInRoom={async (product) => {
+            await handlePlace(product);
+            setCheckoutOpen(false);
+          }}
           onDismissManifestEntry={(id) => void dismissAgenticManifestEntry(id)}
           onSetManifestResolution={(id, resolution) =>
             void setAgenticManifestResolution(id, resolution)
