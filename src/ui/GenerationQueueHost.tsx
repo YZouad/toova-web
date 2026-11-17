@@ -6,13 +6,15 @@ import {
   dismissGenerationQueueItem,
   getGenerationQueueSnapshot,
   getPendingGenerationReview,
-  processGenerationQueue,
+  placeGenerationQueueItem,
   recoverGenerationQueue,
   subscribeGenerationQueue,
   subscribePendingGenerationReview,
+  type GenerationQueueItem,
 } from '../lib/generationQueue';
+import { canPlaceGenerationInRoom } from '../lib/generationQueuePlacement';
 import { ImportModelModal } from './ImportModelModal';
-import { Button } from './kit/Button';
+import { GenerationQueueDrawer } from './GenerationQueueDrawer';
 
 export function GenerationQueueHost() {
   const { user } = useAuth();
@@ -26,7 +28,7 @@ export function GenerationQueueHost() {
     getPendingGenerationReview,
     getPendingGenerationReview,
   );
-  const [review, setReview] = useState<{ jobId: string; file: File } | null>(null);
+  const [reviewItem, setReviewItem] = useState<GenerationQueueItem | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -34,90 +36,56 @@ export function GenerationQueueHost() {
   }, [user?.id]);
 
   useEffect(() => {
-    if (!pendingReview) return;
-    setReview(pendingReview);
+    if (!pendingReview || !user) return;
+    const snap = getGenerationQueueSnapshot();
+    setReviewItem(
+      snap.items.find((i) => i.jobId === pendingReview.jobId && i.glbFile) ?? {
+        jobId: pendingReview.jobId,
+        userId: user.id,
+        label: pendingReview.file.name,
+        status: 'ready',
+        error: null,
+        sourceFile: null,
+        glbFile: pendingReview.file,
+      },
+    );
     clearPendingGenerationReview();
-  }, [pendingReview]);
+  }, [pendingReview, user]);
 
   if (!user) return null;
 
-  const queued = snapshot.items.filter((item) => item.status === 'queued' || item.status === 'processing');
-  const ready = snapshot.items.filter((item) => item.status === 'ready' && item.glbFile);
-  const failed = snapshot.items.filter((item) => item.status === 'failed');
-  const visible = queued.length > 0 || ready.length > 0 || failed.length > 0;
+  const onSaveReady = (item: GenerationQueueItem) => {
+    if (!item.glbFile) return;
+    setReviewItem(item);
+  };
 
-  const body = visible ? (
-    <div className="generation-queue-host" role="status">
-      {queued.length > 0 ? (
-        <div className="generation-queue-card">
-          <div className="generation-queue-card__copy">
-            <span className="generation-queue-card__label">Generation queue</span>
-            <span className="generation-queue-card__title">
-              {snapshot.draining
-                ? queued[0]?.statusMessage || 'Waiting for a free GPU…'
-                : queued.some((item) => item.serverOwned && item.status === 'processing')
-                  ? queued.find((item) => item.status === 'processing')?.statusMessage ||
-                    'Waiting for a free GPU…'
-                  : `${queued.length} waiting to generate`}
-            </span>
-          </div>
-          {!snapshot.draining && !queued.some((item) => item.serverOwned) ? (
-            <Button size="sm" onClick={() => processGenerationQueue()}>
-              Process queue
-            </Button>
-          ) : null}
-        </div>
-      ) : null}
-      {ready.map((item) => (
-        <div key={item.jobId} className="generation-queue-card">
-          <div className="generation-queue-card__copy">
-            <span className="generation-queue-card__label">Ready</span>
-            <span className="generation-queue-card__title">
-              {item.statusMessage || `${item.label} is ready to save`}
-            </span>
-          </div>
-          <Button
-            size="sm"
-            onClick={() => {
-              if (!item.glbFile) return;
-              setReview({ jobId: item.jobId, file: item.glbFile });
-            }}
-          >
-            Save model
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => void dismissGenerationQueueItem(item.jobId)}>
-            Dismiss
-          </Button>
-        </div>
-      ))}
-      {failed.map((item) => (
-        <div key={item.jobId} className="generation-queue-card">
-          <div className="generation-queue-card__copy">
-            <span className="generation-queue-card__label">Failed</span>
-            <span className="generation-queue-card__title">{item.error ?? item.label}</span>
-          </div>
-          <Button size="sm" variant="outline" onClick={() => void dismissGenerationQueueItem(item.jobId)}>
-            Dismiss
-          </Button>
-        </div>
-      ))}
-    </div>
-  ) : null;
+  const reviewFile = reviewItem?.glbFile ?? null;
 
   return (
     <>
-      {typeof document !== 'undefined' && body ? createPortal(body, document.body) : null}
-      {review ? (
+      {typeof document !== 'undefined' ? (
+        createPortal(
+          <GenerationQueueDrawer snapshot={snapshot} onSaveReady={onSaveReady} />,
+          document.body,
+        )
+      ) : null}
+      {reviewItem && reviewFile ? (
         <ImportModelModal
           userId={user.id}
           open
           initialTab="upload"
-          initialGlbFile={review.file}
-          priorJobId={review.jobId}
-          onClose={() => setReview(null)}
+          initialGlbFile={reviewFile}
+          priorJobId={reviewItem.jobId}
+          originRoomId={reviewItem.originRoomId ?? null}
+          canPlaceInRoom={canPlaceGenerationInRoom(reviewItem)}
+          onPlaceInRoom={async () => {
+            const id = await placeGenerationQueueItem(reviewItem);
+            if (id) setReviewItem(null);
+          }}
+          onClose={() => setReviewItem(null)}
           onAdded={() => {
-            void dismissGenerationQueueItem(review.jobId);
-            setReview(null);
+            void dismissGenerationQueueItem(reviewItem.jobId);
+            setReviewItem(null);
           }}
         />
       ) : null}

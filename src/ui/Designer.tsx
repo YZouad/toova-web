@@ -48,9 +48,9 @@ import { KeysOverlay } from './designer/KeysOverlay';
 import { TourCard } from './designer/TourCard';
 import { ContextBar } from './designer/ContextBar';
 import { ImportFlow } from './designer/ImportFlow';
-import { GenerationQueueHost } from './GenerationQueueHost';
 import { MobileDesignerChrome } from './designer/mobile/MobileDesignerChrome';
 import { placeFromCatalog } from './designer/placeCatalogModel';
+import { registerGenerationQueuePlacement } from '../lib/generationQueuePlacement';
 import { PosterBankModal } from './designer/PosterBankModal';
 import { isPosterItem } from '../lib/posterItem';
 import { fetchOwnerCatalogGalleryModel } from '../lib/fetchOwnerCatalogModel';
@@ -367,6 +367,12 @@ export function Designer({
     if (typeof handle?.goToFraming !== 'function') return;
     handle.goToFraming(dollhouseFraming(roomGeometry));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace open only
+  }, [workspace?.id]);
+
+  useEffect(() => {
+    const roomId = workspace?.id ?? null;
+    registerGenerationQueuePlacement(roomId ? { roomId } : null);
+    return () => registerGenerationQueuePlacement(null);
   }, [workspace?.id]);
 
   const confirmLeaveWithoutSaving = useCallback(() => {
@@ -1299,6 +1305,7 @@ export function Designer({
               onStartMeasure={chrome.startMeasureFromImport}
               isAdmin={isAdmin}
               compact={false}
+              originRoomId={workspace?.id ?? null}
               onInsufficientCredits={() => {
                 chrome.setOverlay(null);
                 trackPaywallShown({ reason: 'credits' });
@@ -1460,7 +1467,6 @@ export function Designer({
           onRequestImportAuth?.('signin');
         }}
       />
-      <GenerationQueueHost />
     </div>
   );
 }

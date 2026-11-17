@@ -68,6 +68,8 @@ export async function runPhotoGenerate(
   userId: string,
   signal: AbortSignal,
   onStatus: (message: string) => void,
+  onJobCreated?: (jobId: string) => void,
+  originRoomId?: string | null,
 ): Promise<{ glbFile: File; jobId: string | null }> {
   return enqueuePhotoGenerate({
     userId,
@@ -75,6 +77,8 @@ export async function runPhotoGenerate(
     label: imageFile.name || 'Image → 3D',
     signal,
     onStatus,
+    onJobCreated,
+    originRoomId,
   });
 }
 

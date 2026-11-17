@@ -99,8 +99,9 @@ describe('generation queue dismiss', () => {
   });
 
   it('keeps a dismissed ready model hidden after reload', async () => {
-    const { dismissGenerationQueueItem, getGenerationQueueSnapshot, recoverGenerationQueue } =
+    const { dismissGenerationQueueItem, getGenerationQueueSnapshot, recoverGenerationQueue, resetGenerationQueueForTests } =
       await import('./generationQueue');
+    resetGenerationQueueForTests();
 
     await dismissGenerationQueueItem('job-1');
     await recoverGenerationQueue('user-1');

@@ -15,6 +15,7 @@ import {
   parsePriceDollarsToCents,
 } from '../../lib/shoppingCatalogAdmin';
 import { parseImportedShopDetails } from '../../lib/localRoomChecklist';
+import { detachGenerationWaiter } from '../../lib/generationQueue';
 import { TrellisInsufficientCreditsError } from '../../lib/trellisAuth';
 import { TRELLIS_GENERATE_URL, TRELLIS_STARTING_STATUS, trellisUsesRemoteUrl } from '../../lib/trellisApi';
 import { fetchThrixelConnectionStatus } from '../../lib/thrixelApi';
@@ -56,6 +57,8 @@ export interface ImportFlowProps {
   compact?: boolean;
   onComplete?: (model: CatalogModel, meta?: { fromThrixel: boolean; thrixelLinkFailed?: boolean }) => void;
   onInsufficientCredits?: () => void;
+  /** Designer workspace id when enqueueing photo→3D jobs. */
+  originRoomId?: string | null;
 }
 
 export type ImportCompleteMeta = NonNullable<ImportFlowProps['onComplete']> extends (
@@ -133,6 +136,7 @@ export function ImportFlow({
   compact = false,
   onComplete,
   onInsufficientCredits,
+  originRoomId = null,
 }: ImportFlowProps) {
   const { user, profile } = useAuth();
   const userId = user?.id ?? null;
@@ -392,6 +396,18 @@ export function ImportFlow({
     onClose();
   };
 
+  const releasePhotoGenerationToQueue = (jobId: string) => {
+    generateAbortRef.current = null;
+    detachGenerationWaiter(jobId);
+    setGenerating(false);
+    setGeneratePhase('idle');
+    setGenerateStatus(null);
+    setElapsedSec(0);
+    setPreparedFile(null);
+    setImageFile(null);
+    setGenerateError(null);
+  };
+
   const pickRoute = (id: Exclude<ImportRoute, null>) => {
     onRoute(id);
     setFormError(null);
@@ -423,6 +439,10 @@ export function ImportFlow({
           setGenerateStatus(message);
           if (message.toLowerCase().includes('download')) setGeneratePhase('downloading');
         },
+        (createdJobId) => {
+          releasePhotoGenerationToQueue(createdJobId);
+        },
+        originRoomId,
       );
       activeJobIdRef.current = jobId;
       setFile(glbFile);

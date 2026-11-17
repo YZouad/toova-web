@@ -12,6 +12,7 @@ import {
 } from '../lib/glbImportPipeline';
 import { TRELLIS_GENERATE_URL, TRELLIS_STARTING_STATUS, trellisUsesRemoteUrl } from '../lib/trellisApi';
 import { validateCatalogText } from '../lib/bannedWords';
+import { detachGenerationWaiter } from '../lib/generationQueue';
 import { runPhotoGenerate } from './designer/importLogic';
 import {
   CATALOG_CATEGORY_DEFS,
@@ -22,6 +23,8 @@ import {
 import { ImageFileField } from './ImageFileField';
 import { PhotoSubjectPrep } from './PhotoSubjectPrep';
 import { PosterImageCrop } from './PosterImageCrop';
+import { useGlbPreviewUrl } from '../hooks/useGlbPreviewUrl';
+import { GlbTurntablePreview } from './GlbTurntablePreview';
 import { Button } from './kit/Button';
 import { Checkbox } from './kit/Checkbox';
 import { Field } from './kit/Field';
@@ -60,6 +63,9 @@ interface ImportModelModalProps {
   initialTab?: ModalTab;
   initialGlbFile?: File | null;
   priorJobId?: string | null;
+  originRoomId?: string | null;
+  canPlaceInRoom?: boolean;
+  onPlaceInRoom?: () => void | Promise<void>;
   isAdmin?: boolean;
   onClose: () => void;
   onAdded: () => void | Promise<void>;
@@ -71,6 +77,9 @@ export function ImportModelModal({
   initialTab = 'upload',
   initialGlbFile = null,
   priorJobId = null,
+  originRoomId = null,
+  canPlaceInRoom = false,
+  onPlaceInRoom,
   isAdmin = false,
   onClose,
   onAdded,
@@ -123,6 +132,9 @@ export function ImportModelModal({
   const [shopPriceDollars, setShopPriceDollars] = useState('');
 
   const busy = submitting || generating || decimating || creatingPoster;
+  const previewFile = decimatedFile ?? file;
+  const glbPreviewUrl = useGlbPreviewUrl(open && tab === 'upload' ? previewFile : null);
+  const [placingInRoom, setPlacingInRoom] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -297,6 +309,18 @@ export function ImportModelModal({
     onClose();
   };
 
+  const releasePhotoGenerationToQueue = (jobId: string) => {
+    generateAbortRef.current = null;
+    detachGenerationWaiter(jobId);
+    setGenerating(false);
+    setGeneratePhase('idle');
+    setGenerateStatus(null);
+    setElapsedSec(0);
+    setPreparedFile(null);
+    setImageFile(null);
+    setGenerateError(null);
+  };
+
   const handleGenerate = async () => {
     if (generating) return;
 
@@ -327,6 +351,10 @@ export function ImportModelModal({
             setGeneratePhase('downloading');
           }
         },
+        (createdJobId) => {
+          releasePhotoGenerationToQueue(createdJobId);
+        },
+        originRoomId,
       );
       activeJobIdRef.current = jobId;
       setFile(glbFile);
@@ -766,6 +794,12 @@ export function ImportModelModal({
               />
             </label>
 
+            {glbPreviewUrl && !decimating ? (
+              <div className="import-modal-glb-preview">
+                <GlbTurntablePreview url={glbPreviewUrl} compact enableZoom />
+              </div>
+            ) : null}
+
             {decimating ? (
               <p className="import-modal-generate-status" aria-live="polite">
                 {file?.name === 'generated.glb'
@@ -1035,9 +1069,25 @@ export function ImportModelModal({
 
             <div className="import-modal-actions">
               {tabFooter(
-                <Button type="submit" size="sm" disabled={submitting || decimating || !decimatedFile}>
-                  {submitting ? 'Saving…' : 'Add to library'}
-                </Button>,
+                <>
+                  {canPlaceInRoom && onPlaceInRoom ? (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      disabled={placingInRoom || decimating || !decimatedFile}
+                      onClick={() => {
+                        setPlacingInRoom(true);
+                        void Promise.resolve(onPlaceInRoom()).finally(() => setPlacingInRoom(false));
+                      }}
+                    >
+                      {placingInRoom ? 'Placing…' : 'Place in room'}
+                    </Button>
+                  ) : null}
+                  <Button type="submit" size="sm" disabled={submitting || decimating || !decimatedFile}>
+                    {submitting ? 'Saving…' : 'Add to library'}
+                  </Button>
+                </>,
               )}
             </div>
           </form>

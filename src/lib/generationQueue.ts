@@ -26,6 +26,7 @@ import { trellisAuthHeaders } from './trellisAuth';
 import { trellisSiblingUrl } from './trellisApi';
 import { ensureJpegForTrellis } from './webpToJpeg';
 import { generateGlbFromPhoto } from './trellisGenerate';
+import { canPlaceGenerationInRoom, placeQueuedGlbInRoom } from './generationQueuePlacement';
 
 const DISMISSED_READY_KEY = 'toova-dismissed-ready-jobs';
 const POLL_MS = 4000;
@@ -95,10 +96,16 @@ export type GenerationQueueItem = {
   error: string | null;
   sourceFile: File | null;
   glbFile: File | null;
+  /** Supabase storage path to uploaded source.jpg (preview after reload). */
+  sourcePath?: string | null;
+  /** Room that enqueued this job (designer workspace id). */
+  originRoomId?: string | null;
   /** Server-owned jobs survive tab close; progress comes from conversion_jobs. */
   serverOwned?: boolean;
   statusMessage?: string | null;
 };
+
+const CANCELLED_BEFORE_GENERATION = 'Cancelled before generation';
 
 export type GenerationQueueSnapshot = {
   items: GenerationQueueItem[];
@@ -142,6 +149,21 @@ export function getGenerationQueueSnapshot(): GenerationQueueSnapshot {
   return cachedSnapshot;
 }
 
+/** Vitest-only: clear in-memory queue state between isolated tests. */
+export function resetGenerationQueueForTests(): void {
+  items = [];
+  draining = false;
+  cachedSnapshot = { items, draining };
+  waiters.clear();
+  userCancelled.clear();
+  serverOwnedJobs.clear();
+  inFlightJobIds.clear();
+  activeAbort = null;
+  activeJobId = null;
+  recoverPromise = null;
+  recoverUserId = null;
+}
+
 async function cacheSessionToken(): Promise<void> {
   const { data } = await supabase.auth.getSession();
   cachedAccessToken = data.session?.access_token ?? null;
@@ -162,6 +184,15 @@ function patchItem(jobId: string, patch: Partial<GenerationQueueItem>) {
 function removeItem(jobId: string) {
   items = items.filter((item) => item.jobId !== jobId);
   emit();
+}
+
+function findItem(jobId: string): GenerationQueueItem | undefined {
+  return items.find((item) => item.jobId === jobId);
+}
+
+function isStillQueued(jobId: string): boolean {
+  const live = findItem(jobId);
+  return Boolean(live?.status === 'queued' && live.sourceFile && !userCancelled.has(jobId));
 }
 
 async function persistAsset(item: GenerationQueueItem, kind: 'source' | 'result'): Promise<void> {
@@ -285,12 +316,45 @@ async function pollDurableJob(
   throw new Error('Generation timed out waiting for the GPU.');
 }
 
+export function detachGenerationWaiter(jobId: string): void {
+  const waiter = waiters.get(jobId);
+  if (!waiter) return;
+  waiters.delete(jobId);
+  waiter.reject(new DOMException('Detached', 'AbortError'));
+}
+
+/** Remove a job still waiting in the FIFO stack (before GPU submission). */
+export async function cancelQueuedGeneration(jobId: string): Promise<void> {
+  const live = findItem(jobId);
+  if (!live) return;
+  if (live.status !== 'queued') {
+    throw new Error('Only queued jobs can be cancelled.');
+  }
+  userCancelled.add(jobId);
+  serverOwnedJobs.delete(jobId);
+  const waiter = waiters.get(jobId);
+  waiters.delete(jobId);
+  waiter?.reject(new DOMException('Cancelled', 'AbortError'));
+  removeItem(jobId);
+  await updateConversionJob(jobId, { status: 'failed', error: CANCELLED_BEFORE_GENERATION });
+  userCancelled.delete(jobId);
+}
+
+export async function placeGenerationQueueItem(item: GenerationQueueItem): Promise<string | null> {
+  if (!canPlaceGenerationInRoom(item) || !item.glbFile) return null;
+  const id = await placeQueuedGlbInRoom(item.glbFile, item.label);
+  if (id) await dismissGenerationQueueItem(item.jobId);
+  return id;
+}
+
 export async function enqueuePhotoGenerate(input: {
   userId: string;
   file: File;
   label: string;
   signal: AbortSignal;
   onStatus: (message: string) => void;
+  onJobCreated?: (jobId: string) => void;
+  originRoomId?: string | null;
 }): Promise<{ glbFile: File; jobId: string | null }> {
   bindPageHide();
   await cacheSessionToken();
@@ -318,20 +382,12 @@ export async function enqueuePhotoGenerate(input: {
       error: null,
       sourceFile: input.file,
       glbFile: null,
+      originRoomId: input.originRoomId ?? null,
       serverOwned: true,
       statusMessage: 'Uploading photo…',
     };
     upsertItem(item);
     serverOwnedJobs.add(jobId);
-
-    input.signal.addEventListener(
-      'abort',
-      () => {
-        userCancelled.add(jobId);
-        if (activeJobId === jobId) activeAbort?.abort();
-      },
-      { once: true },
-    );
 
     return await new Promise<{ glbFile: File; jobId: string }>((resolve, reject) => {
       waiters.set(jobId, {
@@ -340,6 +396,22 @@ export async function enqueuePhotoGenerate(input: {
         reject,
         signal: input.signal,
       });
+
+      input.onJobCreated?.(jobId);
+
+      input.signal.addEventListener(
+        'abort',
+        () => {
+          if (isStillQueued(jobId)) {
+            void cancelQueuedGeneration(jobId);
+            return;
+          }
+          userCancelled.add(jobId);
+          if (activeJobId === jobId) activeAbort?.abort();
+        },
+        { once: true },
+      );
+
       void drainQueue();
     });
   } finally {
@@ -348,63 +420,73 @@ export async function enqueuePhotoGenerate(input: {
 }
 
 async function runDurableItem(next: GenerationQueueItem): Promise<void> {
-  const waiter = waiters.get(next.jobId);
+  if (!isStillQueued(next.jobId)) return;
+  const live = findItem(next.jobId);
+  if (!live?.sourceFile || live.status !== 'queued') return;
+  const working = live;
+
   const startedAt = Date.now();
-  activeJobId = next.jobId;
+  activeJobId = working.jobId;
   activeAbort = new AbortController();
   const signal = activeAbort.signal;
+  const getWaiter = () => waiters.get(working.jobId);
 
   try {
-    if (!next.sourceFile) throw new Error('Missing source image for queued generation.');
+    if (!working.sourceFile) throw new Error('Missing source image for queued generation.');
     patchItem(next.jobId, {
       status: 'processing',
       error: null,
       serverOwned: true,
       statusMessage: 'Uploading photo…',
     });
-    waiter?.onStatus('Uploading photo…');
+    getWaiter()?.onStatus('Uploading photo…');
 
-    const sourcePath = await uploadJobSource(next.userId, next.jobId, next.sourceFile);
-    await updateConversionJob(next.jobId, {
+    const sourcePath = await uploadJobSource(working.userId, working.jobId, working.sourceFile);
+    await updateConversionJob(working.jobId, {
       status: 'processing',
       source_path: sourcePath,
       server_owned: true,
       error: null,
     });
-    waiter?.onStatus('Waiting for a free GPU…');
-    patchItem(next.jobId, { statusMessage: 'Waiting for a free GPU…' });
+    getWaiter()?.onStatus('Waiting for a free GPU…');
+    patchItem(working.jobId, { sourcePath, statusMessage: 'Waiting for a free GPU…' });
 
     await submitDurableJob(next.jobId);
     const glbFile = await pollDurableJob(next.jobId, signal, (message) => {
-      waiter?.onStatus(message);
+      getWaiter()?.onStatus(message);
       patchItem(next.jobId, { statusMessage: message });
     });
 
     trackModelGenerationSucceeded({ job_id: next.jobId, duration_ms: Date.now() - startedAt });
     trackCreditsSpent({ cost: 5, source: 'trellis' });
     const ready: GenerationQueueItem = {
-      ...next,
+      ...working,
       status: 'ready',
       error: null,
       glbFile,
       sourceFile: null,
+      sourcePath,
       serverOwned: true,
       statusMessage: 'Your model is ready',
     };
     upsertItem(ready);
     await persistAsset(ready, 'result');
-    waiters.delete(next.jobId);
-    waiter?.resolve({ glbFile, jobId: next.jobId });
-    if (waiter) await dismissGenerationQueueItem(next.jobId);
+    const completedWaiter = getWaiter();
+    waiters.delete(working.jobId);
+    completedWaiter?.resolve({ glbFile, jobId: working.jobId });
+    if (completedWaiter) await dismissGenerationQueueItem(working.jobId);
   } catch (err) {
     const isAbort = err instanceof DOMException && err.name === 'AbortError';
-    const cancelled = userCancelled.has(next.jobId) || Boolean(waiter?.signal.aborted);
+    const waiterNow = getWaiter();
+    const cancelled = userCancelled.has(next.jobId) || Boolean(waiterNow?.signal.aborted);
     // User closed the tab / aborted local waiter — server keeps going.
     if (isAbort && !cancelled) {
+      const bgSourcePath = findItem(next.jobId)?.sourcePath;
       patchItem(next.jobId, {
         status: 'processing',
         statusMessage: 'Generating in the background…',
         sourceFile: null,
+        ...(bgSourcePath ? { sourcePath: bgSourcePath } : {}),
       });
       waiters.delete(next.jobId);
       return;
@@ -412,15 +494,16 @@ async function runDurableItem(next: GenerationQueueItem): Promise<void> {
     if (isAbort && cancelled) {
       // Leave server job alone; just reject local waiter.
       waiters.delete(next.jobId);
-      waiter?.reject(err);
+      waiterNow?.reject(err);
       return;
     }
     const message = err instanceof Error ? err.message : 'Generation failed';
     // Prefer durable path; if submit failed early, fall back to client generate once.
-    if (/Could not start durable job|Could not upload source/i.test(message) && next.sourceFile) {
+    const fallbackSource = findItem(next.jobId)?.sourceFile ?? next.sourceFile;
+    if (/Could not start durable job|Could not upload source/i.test(message) && fallbackSource) {
       try {
-        waiter?.onStatus('Retrying on this device…');
-        const glbFile = await generateGlbFromPhoto(next.sourceFile, signal, (m) => waiter?.onStatus(m));
+        getWaiter()?.onStatus('Retrying on this device…');
+        const glbFile = await generateGlbFromPhoto(fallbackSource, signal, (m) => getWaiter()?.onStatus(m));
         await updateConversionJob(next.jobId, { status: 'completed', label: next.label, server_owned: false });
         trackModelGenerationSucceeded({ job_id: next.jobId, duration_ms: Date.now() - startedAt });
         trackCreditsSpent({ cost: 5, source: 'trellis' });
@@ -434,17 +517,19 @@ async function runDurableItem(next: GenerationQueueItem): Promise<void> {
         };
         upsertItem(ready);
         await persistAsset(ready, 'result');
+        const fallbackWaiter = getWaiter();
         waiters.delete(next.jobId);
-        waiter?.resolve({ glbFile, jobId: next.jobId });
-        if (waiter) await dismissGenerationQueueItem(next.jobId);
+        fallbackWaiter?.resolve({ glbFile, jobId: next.jobId });
+        if (fallbackWaiter) await dismissGenerationQueueItem(next.jobId);
         return;
       } catch (fallbackErr) {
         const fbMsg = fallbackErr instanceof Error ? fallbackErr.message : message;
         await updateConversionJob(next.jobId, { status: 'failed', error: fbMsg });
         trackModelGenerationFailed({ job_id: next.jobId, failure_reason: classifyFailure(fbMsg) });
         patchItem(next.jobId, { status: 'failed', error: fbMsg });
+        const fallbackFailWaiter = getWaiter();
         waiters.delete(next.jobId);
-        waiter?.reject(fallbackErr);
+        fallbackFailWaiter?.reject(fallbackErr);
         await deleteGenerationAsset(next.jobId);
         return;
       }
@@ -455,8 +540,9 @@ async function runDurableItem(next: GenerationQueueItem): Promise<void> {
       failure_reason: classifyFailure(message),
     });
     patchItem(next.jobId, { status: 'failed', error: message });
+    const failWaiter = getWaiter();
     waiters.delete(next.jobId);
-    waiter?.reject(err);
+    failWaiter?.reject(err);
     await deleteGenerationAsset(next.jobId);
   } finally {
     activeAbort = null;
@@ -471,10 +557,13 @@ async function drainQueue(): Promise<void> {
   emit();
   try {
     while (true) {
-      const next = items.find((item) => item.status === 'queued' && item.sourceFile);
-      if (!next) break;
+      const candidate = items.find((item) => item.status === 'queued' && item.sourceFile);
+      if (!candidate) break;
       await cacheSessionToken();
-      await runDurableItem(next);
+      if (!isStillQueued(candidate.jobId)) continue;
+      const still = findItem(candidate.jobId);
+      if (!still) continue;
+      await runDurableItem(still);
     }
   } finally {
     draining = false;
@@ -546,6 +635,7 @@ export async function openReadyJobForSave(
     status: 'ready',
     error: null,
     sourceFile: null,
+    sourcePath: job.source_path,
     glbFile,
     serverOwned: true,
     statusMessage: 'Your model is ready',
@@ -581,6 +671,7 @@ async function recoverGenerationQueueOnce(userId: string): Promise<void> {
           status: 'ready',
           error: null,
           sourceFile: null,
+          sourcePath: job.source_path ?? null,
           glbFile,
           serverOwned: true,
           statusMessage: 'Your model is ready',
@@ -602,6 +693,7 @@ async function recoverGenerationQueueOnce(userId: string): Promise<void> {
           status: 'processing',
           error: null,
           sourceFile: null,
+          sourcePath: job.source_path ?? null,
           glbFile: null,
           serverOwned: true,
           statusMessage: 'Waiting for a free GPU…',
