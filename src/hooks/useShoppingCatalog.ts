@@ -18,6 +18,8 @@ import {
   saveLocalMoveInBudgetCents,
   saveLocalResolutions,
   saveLocalShoppingList,
+  loadLocalChecklistAreaTag,
+  saveLocalChecklistAreaTag,
   setActiveChecklistRoomId,
   type CategoryResolution,
   type ChecklistCategoryWithProducts,
@@ -73,7 +75,10 @@ import {
   syncShoppingListEntries,
   upsertShoppingListEntry,
   upsertUserMoveInBudgetCents,
+  fetchUserChecklistRoomAreaTag,
+  upsertUserChecklistRoomAreaTag,
 } from '../lib/shoppingCatalog';
+import type { RoomTag } from '../lib/roomTags';
 import { refreshRoomChecklistFromSavedLayout } from '../lib/roomShoppingListRebuild';
 import { useStore } from '../store';
 import type { ChecklistLoadMode } from '../context/ChecklistRoomContext';
@@ -109,6 +114,7 @@ export function useShoppingCatalog(
   const [moveInBudgetCents, setMoveInBudgetCents] = useState<number | null>(null);
   const [list, setList] = useState<ShoppingListEntry[]>([]);
   const [agenticManifest, setAgenticManifest] = useState<AgenticShoppingManifestEntry[]>([]);
+  const [checklistAreaTag, setChecklistAreaTagState] = useState<RoomTag | null>(null);
   const [ready, setReady] = useState(false);
   const listWriteSeqRef = useRef(0);
 
@@ -346,6 +352,7 @@ export function useShoppingCatalog(
           setAgenticManifest(loadLocalAgenticShoppingManifest(persistRoomId));
           setLocalProducts(loadLocalChecklistProducts(persistRoomId));
           setOwnedProducts(loadOwnedChecklistProducts(persistRoomId));
+          setChecklistAreaTagState(loadLocalChecklistAreaTag(persistRoomId));
           setReady(true);
         }
         return;
@@ -405,6 +412,7 @@ export function useShoppingCatalog(
           setAgenticManifest(loadLocalAgenticShoppingManifest(persistRoomId));
           setLocalProducts(loadLocalChecklistProducts(persistRoomId));
           setOwnedProducts(loadOwnedChecklistProducts(persistRoomId));
+          setChecklistAreaTagState(loadLocalChecklistAreaTag(persistRoomId));
         }
       } finally {
         if (!cancelled) setReady(true);
@@ -778,6 +786,21 @@ export function useShoppingCatalog(
       return product;
     },
     [addToList, persistRoomId, setResolution],
+  );
+
+  const setChecklistAreaTag = useCallback(
+    (tag: RoomTag | null) => {
+      if (!persistRoomId) {
+        setChecklistAreaTagState(tag);
+        return;
+      }
+      setChecklistAreaTagState(tag);
+      saveLocalChecklistAreaTag(persistRoomId, tag);
+      if (canSyncRemote) {
+        void upsertUserChecklistRoomAreaTag(user!.id, persistRoomId, tag).catch(() => {});
+      }
+    },
+    [canSyncRemote, persistRoomId, user],
   );
 
   return {

@@ -86,6 +86,7 @@ import {
 import type { AgenticShoppingManifestEntry } from './lib/agenticShoppingManifest';
 import type { ShoppingListEntry } from './lib/dormChecklist';
 import { ChecklistPage } from './ui/ChecklistPage';
+import { ShoppingListsPage } from './ui/ShoppingListsPage';
 import { AdminConsole, type AdminTab } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
 import { TimelinePage } from './ui/TimelinePage';
@@ -151,6 +152,7 @@ type Screen =
   | 'admin'
   | 'ar'
   | 'checklist'
+  | 'lists'
   | 'gallery';
 
 interface FloorPlanDraft {
@@ -981,6 +983,7 @@ function AppContent() {
 
   const railActive: AppShellNavId | null =
     screen === 'dashboard' ? 'rooms'
+    : screen === 'lists' ? 'lists'
     : screen === 'models' ? 'models'
     : screen === 'admin' ? 'admin'
     : screen === 'ar' ? 'ar'
@@ -998,9 +1001,14 @@ function AppContent() {
       setScreen('landing');
       return;
     }
-    if (!user && (nav === 'rooms' || nav === 'models' || nav === 'ar' || nav === 'admin')) {
+    if (!user && (nav === 'rooms' || nav === 'lists' || nav === 'models' || nav === 'ar' || nav === 'admin')) {
       setAuthMode('signin');
       setScreen('auth');
+      return;
+    }
+    if (nav === 'lists') {
+      navigate('/');
+      setScreen('lists');
       return;
     }
     if (nav === 'rooms') {
