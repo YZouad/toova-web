@@ -3208,6 +3208,10 @@
   background: var(--paper-2);
   color: var(--ink-2);
 }
+.dg-checkout__place {
+  width: auto;
+  white-space: nowrap;
+}
 .dg-checkout__dismiss {
   height: 36px;
   padding: 0 12px;

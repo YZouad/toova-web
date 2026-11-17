@@ -36,6 +36,7 @@ import {
 } from './ChecklistBudgetFoot';
 import { ChecklistCheckoutPanel } from '../ChecklistCheckoutPanel';
 import { ManifestPlanRows } from '../ManifestPlanRows';
+import { ChecklistRoomLoadPanel } from '../checklist/ChecklistRoomLoadPanel';
 
 export interface ChecklistTickerProps {
   open: boolean;
@@ -191,6 +192,7 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
     agenticManifestCheckoutLines,
     dismissAgenticManifestEntry,
     setAgenticManifestResolution,
+    ready,
   } = useShoppingCatalogContext();
   const { user } = useAuth();
   const canDownloadGlb = !!user?.id;
@@ -261,11 +263,15 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
   }, [agenticManifestSearchLines, tab]);
 
   useEffect(() => {
+    if (!ready) {
+      seededGroupsRef.current = false;
+      return;
+    }
     if (seededGroupsRef.current || lines.length === 0) return;
     seededGroupsRef.current = true;
     const firstOpen = lines.find((l) => l.status === 'open')?.groupId ?? lines[0]?.groupId ?? null;
     setOpenGroups(firstOpen ? new Set([firstOpen]) : new Set());
-  }, [lines]);
+  }, [lines, ready]);
 
   const toggleGroup = (id: string) => {
     setOpenGroups((prev) => {
@@ -437,6 +443,17 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
     </button>
   );
 
+  if (open && !ready) {
+    return (
+      <div data-tour-id="ticker" className="dg-ticker">
+        <div className="dg-ticker-card">
+          {head}
+          <ChecklistRoomLoadPanel label="Loading checklist for this room…" />
+        </div>
+      </div>
+    );
+  }
+
   if (compact) {
     return (
       <div data-tour-id="ticker" className="dg-ticker dg-ticker--pill">
@@ -451,7 +468,7 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
   }
 
   if (!open) {
-    const hasCheckout = purchaseCartLines.length > 0;
+    const hasCheckout = ready && purchaseCartLines.length > 0;
     return (
       <div data-tour-id="ticker" className="dg-ticker">
         <div
@@ -480,6 +497,10 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
             lines={purchaseCartLines}
             onClose={() => setCheckoutOpen(false)}
             onRemoveFromList={(productId) => void removeFromList(productId)}
+            onPlaceInRoom={async (product) => {
+              await handlePlace(product);
+              setCheckoutOpen(false);
+            }}
           />
         ) : null}
       </div>
@@ -716,6 +737,10 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
             manifestLines={agenticManifestCheckoutLines}
             onClose={() => setCheckoutOpen(false)}
             onRemoveFromList={(productId) => void removeFromList(productId)}
+            onPlaceInRoom={async (product) => {
+              await handlePlace(product);
+              setCheckoutOpen(false);
+            }}
             onDismissManifestEntry={(id) => void dismissAgenticManifestEntry(id)}
             onSetManifestResolution={(id, resolution) =>
               void setAgenticManifestResolution(id, resolution)
@@ -946,6 +971,10 @@ export function ChecklistTicker({ open, onToggle, compact, onOpenFull, onStartDr
           manifestLines={agenticManifestCheckoutLines}
           onClose={() => setCheckoutOpen(false)}
           onRemoveFromList={(productId) => void removeFromList(productId)}
+          onPlaceInRoom={async (product) => {
+            await handlePlace(product);
+            setCheckoutOpen(false);
+          }}
           onDismissManifestEntry={(id) => void dismissAgenticManifestEntry(id)}
           onSetManifestResolution={(id, resolution) =>
             void setAgenticManifestResolution(id, resolution)

@@ -6,6 +6,7 @@ import {
   useNotificationActivateHandler,
 } from './context/NotificationsContext';
 import { getActiveChecklistRoomId, setActiveChecklistRoomId } from './lib/dormChecklist';
+import { savePreferredChecklistListId } from './lib/userChecklistLists';
 import { openReadyJobForSave } from './lib/generationQueue';
 import type { NotificationIntent } from './lib/notifications';
 import { useAdminStats } from './hooks/useAdminStats';
@@ -85,6 +86,7 @@ import {
 import type { AgenticShoppingManifestEntry } from './lib/agenticShoppingManifest';
 import type { ShoppingListEntry } from './lib/dormChecklist';
 import { ChecklistPage } from './ui/ChecklistPage';
+import { ShoppingListsPage } from './ui/ShoppingListsPage';
 import { AdminConsole, type AdminTab } from './ui/AdminConsole';
 import { ContactPage } from './ui/ContactPage';
 import { TimelinePage } from './ui/TimelinePage';
@@ -150,6 +152,7 @@ type Screen =
   | 'admin'
   | 'ar'
   | 'checklist'
+  | 'lists'
   | 'gallery';
 
 interface FloorPlanDraft {
@@ -255,6 +258,7 @@ function AppContent() {
   const [restoringCheckout, setRestoringCheckout] = useState(pendingDesignerCheckoutReturn);
   const checkoutRestoreStarted = useRef(false);
   const [checklistReturn, setChecklistReturn] = useState<Screen>('landing');
+  const [checklistPreferredListId, setChecklistPreferredListId] = useState<string | null>(null);
   const [pitchScrollToDemos, setPitchScrollToDemos] = useState(false);
   const [timelineScrollToDemos, setTimelineScrollToDemos] = useState(false);
   const [authMode, setAuthMode] = useState<AuthPageMode>('signin');
@@ -595,8 +599,10 @@ function AppContent() {
     async (room: { id: string; name: string; isOwner?: boolean }) => {
       resetLayout();
       const data = await load(room.id);
-      hydrateLayout(data.items, data.order);
+      hydrateLayout(data.items, data.order, room.id);
       hydrateRoomSettings(data.environment, data.roomGeometry);
+      setActiveChecklistRoomId(room.id);
+      setRoomId(room.id);
       const isOwner = room.isOwner !== false;
       setWorkspace({ id: room.id, name: room.name, isOwner });
       trackRoomOpened({ room_id: room.id, is_owner: isOwner });
@@ -616,6 +622,7 @@ function AppContent() {
       resetLayout,
       pendingGalleryModel,
       placePendingGalleryModel,
+      setRoomId,
     ],
   );
 
@@ -748,7 +755,7 @@ function AppContent() {
           );
         }
         resetLayout();
-        hydrateLayout(seedItems, seedOrder);
+        hydrateLayout(seedItems, seedOrder, guestId);
         hydrateRoomSettings(environment, plan);
         setGuestTemplateId(options?.starterId);
         setWorkspace({ id: guestId, name, isOwner: true });
@@ -779,7 +786,7 @@ function AppContent() {
           );
         }
         resetLayout();
-        hydrateLayout(seedItems, seedOrder);
+        hydrateLayout(seedItems, seedOrder, room.id);
         hydrateRoomSettings(environment, plan);
         if (seedItems.length > 0) {
           const byId = Object.fromEntries(seedItems.map((it) => [it.id, it]));
@@ -936,10 +943,11 @@ function AppContent() {
       const { items, order } = materializeStarterItems(template, plan);
       await resolveStarterItemAssets(items);
       resetLayout();
-      hydrateLayout(items, order);
+      const starterWsId = starterEditWorkspaceId(templateId);
+      hydrateLayout(items, order, starterWsId);
       hydrateRoomSettings(environment, plan);
       setWorkspace({
-        id: starterEditWorkspaceId(templateId),
+        id: starterWsId,
         name: template.label,
         isOwner: true,
       });
@@ -975,6 +983,7 @@ function AppContent() {
 
   const railActive: AppShellNavId | null =
     screen === 'dashboard' ? 'rooms'
+    : screen === 'lists' ? 'lists'
     : screen === 'models' ? 'models'
     : screen === 'admin' ? 'admin'
     : screen === 'ar' ? 'ar'
@@ -992,9 +1001,14 @@ function AppContent() {
       setScreen('landing');
       return;
     }
-    if (!user && (nav === 'rooms' || nav === 'models' || nav === 'ar' || nav === 'admin')) {
+    if (!user && (nav === 'rooms' || nav === 'lists' || nav === 'models' || nav === 'ar' || nav === 'admin')) {
       setAuthMode('signin');
       setScreen('auth');
+      return;
+    }
+    if (nav === 'lists') {
+      navigate('/');
+      setScreen('lists');
       return;
     }
     if (nav === 'rooms') {
@@ -1542,13 +1556,16 @@ function AppContent() {
         ? 'designer'
         : checklistReturn === 'dashboard' && user
           ? 'dashboard'
-          : checklistReturn === 'pitch-madness'
-            ? 'pitch-madness'
-            : 'landing';
+          : checklistReturn === 'lists' && user
+            ? 'lists'
+            : checklistReturn === 'pitch-madness'
+              ? 'pitch-madness'
+              : 'landing';
 
     return (
       <ChecklistPage
         onBack={() => setScreen(backTarget)}
+        preferredListId={checklistPreferredListId}
         isAdmin={isAdmin}
         onContact={siteFooterNav.onContact}
         onPitchMadness={siteFooterNav.onPitchMadness}
@@ -1566,6 +1583,42 @@ function AppContent() {
           }
           // Guest: continue into design without forcing auth first.
           setScreen('dashboard');
+        }}
+        onRequestSignIn={() => {
+          setAuthMode('signin');
+          setScreen('auth');
+        }}
+        onOpenLists={
+          user
+            ? () => {
+                navigate('/');
+                setScreen('lists');
+              }
+            : undefined
+        }
+      />
+    );
+  }
+
+  if (screen === 'lists' && user) {
+    return (
+      <ShoppingListsPage
+        user={user}
+        profile={profile}
+        showAdmin={isAdmin}
+        onNavigate={handleAppNav}
+        onLogout={handleLogout}
+        onOpenRoom={(roomId) => void handlePickExisting({ id: roomId, name: 'Room' })}
+        onOpenChecklist={(opts) => {
+          if (opts?.roomId) {
+            setActiveChecklistRoomId(opts.roomId);
+            setRoomId(opts.roomId);
+          }
+          if (opts?.listId) {
+            setChecklistPreferredListId(opts.listId);
+            savePreferredChecklistListId(user.id, opts.listId);
+          }
+          openChecklistFrom('lists');
         }}
       />
     );

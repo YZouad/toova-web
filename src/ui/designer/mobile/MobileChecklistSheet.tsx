@@ -36,6 +36,7 @@ import {
 } from '../ChecklistBudgetFoot';
 import { ChecklistCheckoutPanel } from '../../ChecklistCheckoutPanel';
 import { MobileSheet } from './MobileSheet';
+import { ChecklistRoomLoadPanel } from '../../checklist/ChecklistRoomLoadPanel';
 
 type ChecklistTab = 'todo' | 'placed' | 'all';
 type DetailSort = 'popular' | 'price';
@@ -151,7 +152,21 @@ export function MobileChecklistSheet({
   const roomGeometry = useStore((s) => s.roomGeometry);
   const select = useStore((s) => s.select);
   const removeItem = useStore((s) => s.removeItem);
-  const { categories, categoriesById, list, addToList, removeFromList, getResolution, setResolution, getOwnedProduct, markCategoryAsOwned, budgetSummary, setMoveInBudget, purchaseCartLines } = useShoppingCatalogContext();
+  const {
+    categories,
+    categoriesById,
+    list,
+    addToList,
+    removeFromList,
+    getResolution,
+    setResolution,
+    getOwnedProduct,
+    markCategoryAsOwned,
+    budgetSummary,
+    setMoveInBudget,
+    purchaseCartLines,
+    ready,
+  } = useShoppingCatalogContext();
   const { user } = useAuth();
   const canDownloadGlb = !!user?.id;
 
@@ -325,6 +340,20 @@ export function MobileChecklistSheet({
     });
     window.open(shop.url, '_blank', 'noopener,noreferrer');
   };
+
+  if (!ready) {
+    return (
+      <MobileSheet
+        kind="checklist"
+        title="Move-in checklist"
+        onClose={onClose}
+        hideTitle
+        bodyClassName="dgm-sheet-body--checklist"
+      >
+        <ChecklistRoomLoadPanel label="Loading checklist for this room…" />
+      </MobileSheet>
+    );
+  }
 
   if (activeLine) {
     const budget = formatPriceCents(activeLine.fromPriceCents, activeLine.currency) ?? '—';
@@ -700,6 +729,10 @@ export function MobileChecklistSheet({
           lines={purchaseCartLines}
           onClose={() => setCheckoutOpen(false)}
           onRemoveFromList={(productId) => void removeFromList(productId)}
+          onPlaceInRoom={async (product) => {
+            await handlePlace(product);
+            setCheckoutOpen(false);
+          }}
         />
       ) : null}
     </MobileSheet>

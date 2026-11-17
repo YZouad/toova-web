@@ -6,7 +6,7 @@ import { Logo } from './Logo';
 import { MonoMeta } from './MonoMeta';
 import { SiteFooter } from './SiteFooter';
 
-export type AppShellNavId = 'home' | 'rooms' | 'models' | 'gallery' | 'ar' | 'admin';
+export type AppShellNavId = 'home' | 'rooms' | 'lists' | 'models' | 'gallery' | 'ar' | 'admin';
 
 export interface AppShellProps {
   active: AppShellNavId;
@@ -32,6 +32,7 @@ export interface AppShellProps {
 const BASE_ITEMS: AppRailItem[] = [
   { id: 'home', label: 'Home', glyph: '⌂' },
   { id: 'rooms', label: 'Rooms', glyph: '▦' },
+  { id: 'lists', label: 'Checklist', glyph: '≡' },
   { id: 'models', label: 'Models', glyph: '◇' },
   { id: 'gallery', label: 'Gallery', glyph: '◫' },
   { id: 'ar', label: 'AR', glyph: '◈' },

@@ -138,3 +138,18 @@ export function purchaseCartTotalCents(lines: PurchaseCartLine[]): {
   }
   return { sum, known };
 }
+
+/** Product ids in the cart from room placement that are not yet on the saved shopping list. */
+export function productIdsToMirrorFromCart(
+  lines: PurchaseCartLine[],
+  list: ShoppingListEntry[],
+): string[] {
+  const onList = new Set(list.map((e) => e.productId));
+  const out: string[] = [];
+  for (const line of lines) {
+    if (line.source !== 'room') continue;
+    if (onList.has(line.productId)) continue;
+    out.push(line.productId);
+  }
+  return out;
+}

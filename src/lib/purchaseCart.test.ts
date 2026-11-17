@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import type { ChecklistCategoryWithProducts, CuratedProduct } from './dormChecklist';
-import { buildPurchaseCartLines, purchaseCartTotalCents } from './purchaseCart';
+import { mergeShoppingListEntries } from './dormChecklist';
+import {
+  buildPurchaseCartLines,
+  productIdsToMirrorFromCart,
+  purchaseCartTotalCents,
+} from './purchaseCart';
 import { checklistProgressCounts } from './checklistProgress';
 import type { ChecklistLineModel } from './checklistLines';
 import { createLocalChecklistProduct, mergeLocalProductsIntoCategories } from './localRoomChecklist';
 import { createOwnedChecklistProduct } from './ownedChecklistItems';
+import { manualShoppingEntry } from './shoppingListEntry';
 
 const productA: CuratedProduct = {
   id: 'prod-a',
@@ -79,7 +85,7 @@ describe('buildPurchaseCartLines', () => {
         room1: { kind: 'desk', curatedProductId: productB.id },
       },
       order: ['room1'],
-      list: [{ productId: productA.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id)],
       productsById,
       getResolution: () => undefined,
     });
@@ -95,7 +101,7 @@ describe('buildPurchaseCartLines', () => {
         room1: { kind: 'lamp', curatedProductId: productA.id },
       },
       order: ['room1'],
-      list: [{ productId: productA.id, quantity: 2, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id, 2)],
       productsById,
       getResolution: () => undefined,
     });
@@ -109,7 +115,7 @@ describe('buildPurchaseCartLines', () => {
       categories,
       items: {},
       order: [],
-      list: [{ productId: productA.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id)],
       productsById,
       getResolution: (id) => (id === 'cat-a' ? 'have' : undefined),
     });
@@ -127,7 +133,7 @@ describe('buildPurchaseCartLines', () => {
       categories,
       items: {},
       order: [],
-      list: [{ productId: ownedProduct.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(ownedProduct.id)],
       productsById: { ...productsById, [ownedProduct.id]: ownedProduct },
       getResolution: (id) => (id === 'cat-a' ? 'have' : undefined),
     });
@@ -142,7 +148,7 @@ describe('buildPurchaseCartLines', () => {
       categories,
       items: {},
       order: [],
-      list: [{ productId: productA.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id)],
       productsById,
       getResolution: (id) => (id === 'cat-a' ? 'skip' : undefined),
     });
@@ -161,7 +167,7 @@ describe('buildPurchaseCartLines', () => {
       categories: localCategories,
       items: {},
       order: [],
-      list: [{ productId: localProduct.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(localProduct.id)],
       productsById: { [localProduct.id]: { ...localProduct, categoryId: localProduct.id } },
       getResolution: () => undefined,
     });
@@ -227,7 +233,7 @@ describe('purchaseCartTotalCents', () => {
       categories: pencilCategories,
       items: {},
       order: [],
-      list: [{ productId: pencilProduct.id, quantity: 1, reviewDone: false }],
+      list: [manualShoppingEntry(pencilProduct.id)],
       productsById: pencilProductsById,
       getResolution: () => undefined,
     });
@@ -241,7 +247,7 @@ describe('purchaseCartTotalCents', () => {
         room1: { kind: 'lamp', curatedProductId: productA.id },
       },
       order: ['room1'],
-      list: [{ productId: productA.id, quantity: 2, reviewDone: false }],
+      list: [manualShoppingEntry(productA.id, 2)],
       productsById,
       getResolution: () => undefined,
     });
@@ -254,13 +260,44 @@ describe('purchaseCartTotalCents', () => {
       items: {},
       order: [],
       list: [
-        { productId: pencilProduct.id, quantity: 1, reviewDone: false },
-        { productId: unpricedProduct.id, quantity: 1, reviewDone: false },
+        manualShoppingEntry(pencilProduct.id),
+        manualShoppingEntry(unpricedProduct.id),
       ],
       productsById: pencilProductsById,
       getResolution: () => undefined,
     });
     expect(purchaseCartTotalCents(lines)).toEqual({ sum: 431, known: false });
+  });
+});
+
+describe('mergeShoppingListEntries', () => {
+  it('unions by product id with max quantity and merged reviewDone', () => {
+    const merged = mergeShoppingListEntries(
+      [manualShoppingEntry('remote-1')],
+      [manualShoppingEntry('local:abc'), manualShoppingEntry('remote-1', 2, true)],
+    );
+    expect(merged.find((e) => e.productId === 'local:abc')?.quantity).toBe(1);
+    expect(merged.find((e) => e.productId === 'remote-1')?.quantity).toBe(2);
+    expect(merged.find((e) => e.productId === 'remote-1')?.reviewDone).toBe(true);
+  });
+});
+
+describe('productIdsToMirrorFromCart', () => {
+  it('returns room-only lines not already on the shopping list', () => {
+    const lines = buildPurchaseCartLines({
+      categories,
+      items: {
+        room1: { kind: 'lamp', curatedProductId: productA.id },
+      },
+      order: ['room1'],
+      list: [],
+      productsById,
+      getResolution: () => undefined,
+    });
+    expect(productIdsToMirrorFromCart(lines, [])).toEqual([productA.id]);
+    expect(
+      productIdsToMirrorFromCart(lines, [manualShoppingEntry(productA.id)]),
+    ).toEqual([]);
   });
 });
 

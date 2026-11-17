@@ -4,6 +4,7 @@ import { resolveBeddingConfig } from './bedding/config';
 import type { BeddingConfig } from './bedding/types';
 import type { HangingDecorKind } from './hangingDecorGeometry';
 import { isRoomTag, type RoomTag } from './roomTags';
+import { parseShoppingListRow } from './shoppingListEntry';
 
 /** Bed inspector layers linked to checklist categories. */
 export type BeddingPlacementKind = 'sheets' | 'comforter' | 'pillow';
@@ -24,6 +25,10 @@ export interface ChecklistCategory {
    * Empty / missing means the category shows for every area.
    */
   roomTags?: RoomTag[];
+  /** Why this item matters (optional DB override). */
+  guideWhy?: string | null;
+  /** Shopping tips (optional DB override). */
+  guideTips?: string[];
 }
 
 export interface CuratedProduct {
@@ -66,11 +71,15 @@ export interface CuratedProduct {
 
 export interface ChecklistCategoryWithProducts extends ChecklistCategory {
   products: CuratedProduct[];
+  inspoClips?: import('./inspoClipUrls').ChecklistInspoClip[];
 }
 
 export interface ShoppingListEntry {
   productId: string;
+  /** Effective quantity: max(roomQuantity, manualQuantity). */
   quantity: number;
+  roomQuantity: number;
+  manualQuantity: number;
   reviewDone: boolean;
 }
 
@@ -79,9 +88,45 @@ export const CHECKLIST_CHECKED_KEY = 'toova-checklist-checked';
 export const CHECKLIST_RESOLUTION_KEY = 'toova-checklist-resolution';
 export const MOVE_IN_BUDGET_KEY = 'toova-move-in-budget';
 export const SHOPPING_LIST_KEY = 'toova-shopping-list';
+/** Bump when local shopping-list row shape changes (drops pre-v2 caches). */
+export const SHOPPING_LIST_CACHE_VERSION = 'v2';
+export const SHOPPING_LIST_CACHE_VERSION_KEY = 'toova-shopping-list-cache-version';
+export const CUSTOM_CHECKLIST_LIST_UPDATED_EVENT = 'toova-custom-checklist-updated';
 export const CHECKLIST_PROGRESS_MERGED_KEY = 'toova-checklist-progress-merged';
 export const ACTIVE_CHECKLIST_ROOM_KEY = 'toova-active-checklist-room';
 export const CHECKLIST_LEGACY_MIGRATED_KEY = 'toova-checklist-legacy-migrated';
+export const CHECKLIST_AREA_TAG_KEY = 'toova-checklist-area-tag';
+
+const CHECKLIST_V1_AREA_TAGS: RoomTag[] = ['dorm', 'bedroom', 'kitchen'];
+
+export function isChecklistV1AreaTag(tag: unknown): tag is RoomTag {
+  return isRoomTag(tag) && CHECKLIST_V1_AREA_TAGS.includes(tag);
+}
+
+export function loadLocalChecklistAreaTag(roomId: string | null | undefined): RoomTag | null {
+  const key = requireRoomScopedKey(CHECKLIST_AREA_TAG_KEY, roomId);
+  if (!key) return null;
+  try {
+    const raw = localStorage.getItem(key);
+    return isChecklistV1AreaTag(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+export function saveLocalChecklistAreaTag(
+  roomId: string | null | undefined,
+  tag: RoomTag | null,
+): void {
+  const key = requireRoomScopedKey(CHECKLIST_AREA_TAG_KEY, roomId);
+  if (!key) return;
+  try {
+    if (tag && isChecklistV1AreaTag(tag)) localStorage.setItem(key, tag);
+    else localStorage.removeItem(key);
+  } catch {
+    /* ignore */
+  }
+}
 
 export function checklistScopedKey(baseKey: string, roomId: string): string {
   return `${baseKey}:${roomId}`;
@@ -382,37 +427,93 @@ export function computeChecklistBudgetSummary(
   };
 }
 
+export const SHOPPING_LIST_UPDATED_EVENT = 'toova-shopping-list-updated';
+
+/** Union local + remote shopping list rows (max qty, either reviewDone). */
+export function mergeShoppingListEntries(
+  remoteList: ShoppingListEntry[],
+  localList: ShoppingListEntry[],
+): ShoppingListEntry[] {
+  const byId = new Map<string, ShoppingListEntry>();
+  for (const entry of remoteList) {
+    byId.set(entry.productId, { ...entry });
+  }
+  for (const entry of localList) {
+    const existing = byId.get(entry.productId);
+    if (!existing) {
+      byId.set(entry.productId, { ...entry });
+      continue;
+    }
+    byId.set(entry.productId, {
+      productId: entry.productId,
+      quantity: Math.max(existing.quantity, entry.quantity),
+      roomQuantity: Math.max(existing.roomQuantity, entry.roomQuantity),
+      manualQuantity: Math.max(existing.manualQuantity, entry.manualQuantity),
+      reviewDone: existing.reviewDone || entry.reviewDone,
+    });
+  }
+  return [...byId.values()].sort((a, b) => a.productId.localeCompare(b.productId));
+}
+
+function shoppingListCacheValid(): boolean {
+  try {
+    return localStorage.getItem(SHOPPING_LIST_CACHE_VERSION_KEY) === SHOPPING_LIST_CACHE_VERSION;
+  } catch {
+    return false;
+  }
+}
+
+export function ensureShoppingListCacheVersion(): void {
+  try {
+    const current = localStorage.getItem(SHOPPING_LIST_CACHE_VERSION_KEY);
+    if (current === SHOPPING_LIST_CACHE_VERSION) return;
+    const prefix = `${SHOPPING_LIST_KEY}:`;
+    const keys: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k?.startsWith(prefix) || k === SHOPPING_LIST_KEY) keys.push(k);
+    }
+    for (const k of keys) localStorage.removeItem(k);
+    localStorage.setItem(SHOPPING_LIST_CACHE_VERSION_KEY, SHOPPING_LIST_CACHE_VERSION);
+  } catch {
+    /* ignore */
+  }
+}
+
 export function loadLocalShoppingList(roomId?: string | null): ShoppingListEntry[] {
   try {
+    if (!shoppingListCacheValid()) return [];
     const key = requireRoomScopedKey(SHOPPING_LIST_KEY, roomId);
     if (!key) return [];
     const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed
-      .map((row): ShoppingListEntry | null => {
-        if (!row || typeof row !== 'object') return null;
-        const o = row as Record<string, unknown>;
-        if (typeof o.productId !== 'string') return null;
-        const quantity = typeof o.quantity === 'number' && o.quantity > 0 ? o.quantity : 1;
-        return {
-          productId: o.productId,
-          quantity,
-          reviewDone: o.reviewDone === true,
-        };
-      })
-      .filter((x): x is ShoppingListEntry => x != null);
+    return parsed.map(parseShoppingListRow).filter((x): x is ShoppingListEntry => x != null);
   } catch {
     return [];
   }
 }
 
-export function saveLocalShoppingList(entries: ShoppingListEntry[], roomId?: string | null) {
+export function saveLocalShoppingList(
+  entries: ShoppingListEntry[],
+  roomId?: string | null,
+  options?: { silent?: boolean },
+) {
   try {
     const key = requireRoomScopedKey(SHOPPING_LIST_KEY, roomId);
     if (!key) return;
-    localStorage.setItem(key, JSON.stringify(entries));
+    const nextJson = JSON.stringify(entries);
+    const prev = localStorage.getItem(key);
+    if (prev === nextJson) return;
+    localStorage.setItem(key, nextJson);
+    if (options?.silent) return;
+    const id = roomId?.trim();
+    if (id && typeof window !== 'undefined') {
+      window.dispatchEvent(
+        new CustomEvent(SHOPPING_LIST_UPDATED_EVENT, { detail: { roomId: id } }),
+      );
+    }
   } catch {
     /* ignore */
   }

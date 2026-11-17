@@ -38,6 +38,9 @@ import {
 } from '../lib/roomAppearance';
 import type { Item, RoomEnvironment } from '../store';
 import { DEFAULT_ENVIRONMENT, useStore } from '../store';
+import { refreshRoomChecklistFromSavedLayout } from '../lib/roomShoppingListRebuild';
+import { isGuestWorkspaceId } from '../lib/guestDesignSnapshot';
+import { isStarterEditWorkspaceId } from '../lib/starterTemplateOverrides';
 
 export interface RoomLoadResult {
   items: Item[];
@@ -459,6 +462,17 @@ export function useRoomSave(roomId: string | null) {
     setError(null);
     try {
       await saveRoomLayout(roomId, items, order, environment, roomGeometry);
+      if (!isGuestWorkspaceId(roomId) && !isStarterEditWorkspaceId(roomId)) {
+        const { data } = await supabase.auth.getSession();
+        const userId = data.session?.user?.id;
+        if (userId) {
+          try {
+            await refreshRoomChecklistFromSavedLayout(userId, roomId);
+          } catch (syncErr) {
+            console.warn('[toova] checklist sync after save', syncErr);
+          }
+        }
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Failed to save room';
       setError(msg);
