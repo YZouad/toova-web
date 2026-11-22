@@ -9,22 +9,41 @@ import {
   loadLocalMoveInBudgetCents,
   loadLocalResolutions,
   loadLocalShoppingList,
+  mergeShoppingListEntries,
   parseCategoryRoomTags,
   productImagePublicUrl,
   saveLocalMoveInBudgetCents,
   saveLocalResolutions,
+  saveLocalShoppingList,
   type CategoryResolution,
   type ChecklistCategory,
   type ChecklistCategoryWithProducts,
   type CuratedProduct,
   type ShoppingListEntry,
+  isChecklistV1AreaTag,
 } from './dormChecklist';
+import { isRoomTag, type RoomTag } from './roomTags';
 import { isRoomLocalProductId } from './ownedChecklistItems';
+import { normalizeShoppingListEntry } from './shoppingListEntry';
+import type {
+  ChecklistInspoClip,
+  InspoClipPlatform,
+  InspoClipStatus,
+} from './inspoClipUrls';
 
 const CATEGORY_SELECT =
+  'id,slug,name,sort_order,published,parent_id,image_path,room_tags,guide_why,guide_tips';
+const CATEGORY_SELECT_NO_GUIDE =
   'id,slug,name,sort_order,published,parent_id,image_path,room_tags';
 const CATEGORY_SELECT_LEGACY =
   'id,slug,name,sort_order,published,parent_id,image_path';
+
+function parseGuideTips(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .filter((t): t is string => typeof t === 'string' && t.trim().length > 0)
+    .map((t) => t.trim());
+}
 
 function mapCategory(row: Record<string, unknown>): ChecklistCategory {
   const imagePath =
@@ -44,6 +63,11 @@ function mapCategory(row: Record<string, unknown>): ChecklistCategory {
     imagePath,
     imageUrl: productImagePublicUrl(imagePath),
     roomTags: parseCategoryRoomTags(row.room_tags),
+    guideWhy:
+      row.guide_why != null && String(row.guide_why).trim()
+        ? String(row.guide_why).trim()
+        : null,
+    guideTips: parseGuideTips(row.guide_tips),
   };
 }
 
@@ -181,7 +205,13 @@ async function fetchChecklistCategoryRows(publishedOnly: boolean) {
   const first = await query.order('sort_order', { ascending: true });
   if (!first.error) return first;
   const msg = first.error.message.toLowerCase();
-  if (msg.includes('room_tags') || msg.includes('column')) {
+  if (msg.includes('guide_why') || msg.includes('guide_tips')) {
+    let noGuide = supabase.from('checklist_categories').select(CATEGORY_SELECT_NO_GUIDE);
+    if (publishedOnly) noGuide = noGuide.eq('published', true);
+    const noGuideResult = await noGuide.order('sort_order', { ascending: true });
+    if (!noGuideResult.error) return noGuideResult;
+  }
+  if (msg.includes('room_tags') || msg.includes('column') || msg.includes('guide_')) {
     let legacy = supabase.from('checklist_categories').select(CATEGORY_SELECT_LEGACY);
     if (publishedOnly) legacy = legacy.eq('published', true);
     return legacy.order('sort_order', { ascending: true });
@@ -189,9 +219,62 @@ async function fetchChecklistCategoryRows(publishedOnly: boolean) {
   return first;
 }
 
+function mapInspoClip(row: Record<string, unknown>): ChecklistInspoClip {
+  const platformRaw = String(row.platform ?? 'instagram').toLowerCase();
+  const platform: InspoClipPlatform = platformRaw === 'tiktok' ? 'tiktok' : 'instagram';
+  const statusRaw = String(row.status ?? 'pending').toLowerCase();
+  const status: InspoClipStatus =
+    statusRaw === 'published' || statusRaw === 'rejected' ? statusRaw : 'pending';
+  return {
+    id: String(row.id),
+    categoryId: String(row.category_id),
+    productId:
+      row.product_id != null && String(row.product_id).trim()
+        ? String(row.product_id).trim()
+        : null,
+    platform,
+    canonicalUrl: String(row.canonical_url ?? ''),
+    title: String(row.title ?? ''),
+    creatorHandle:
+      row.creator_handle != null && String(row.creator_handle).trim()
+        ? String(row.creator_handle).trim()
+        : null,
+    thumbnailUrl:
+      row.thumbnail_url != null && String(row.thumbnail_url).trim()
+        ? String(row.thumbnail_url).trim()
+        : null,
+    status,
+    submittedBy:
+      row.submitted_by != null && String(row.submitted_by).trim()
+        ? String(row.submitted_by).trim()
+        : null,
+    createdAt: String(row.created_at ?? new Date().toISOString()),
+    publishedAt:
+      row.published_at != null && String(row.published_at).trim()
+        ? String(row.published_at).trim()
+        : null,
+  };
+}
+
+async function fetchInspoClipRows(): Promise<ChecklistInspoClip[]> {
+  const { data, error } = await supabase
+    .from('checklist_inspo_clips')
+    .select(
+      'id,category_id,product_id,platform,canonical_url,title,creator_handle,thumbnail_url,status,submitted_by,created_at,published_at',
+    )
+    .in('status', ['published', 'pending'])
+    .order('created_at', { ascending: false });
+  if (error) {
+    // Graceful fallback if migration has not been applied yet.
+    return [];
+  }
+  return (data ?? []).map((r) => mapInspoClip(r as Record<string, unknown>));
+}
+
 function assembleCatalog(
   catRows: unknown[] | null,
   prodRows: unknown[] | null,
+  clipRows: ChecklistInspoClip[] = [],
 ): ChecklistCategoryWithProducts[] {
   const productsByCat = new Map<string, CuratedProduct[]>();
   for (const raw of prodRows ?? []) {
@@ -200,36 +283,45 @@ function assembleCatalog(
     list.push(p);
     productsByCat.set(p.categoryId, list);
   }
+  const clipsByCat = new Map<string, ChecklistInspoClip[]>();
+  for (const clip of clipRows) {
+    const list = clipsByCat.get(clip.categoryId) ?? [];
+    list.push(clip);
+    clipsByCat.set(clip.categoryId, list);
+  }
   return (catRows ?? []).map((raw) => {
     const cat = mapCategory(raw as Record<string, unknown>);
     return {
       ...cat,
       products: productsByCat.get(cat.id) ?? [],
+      inspoClips: clipsByCat.get(cat.id) ?? [],
     };
   });
 }
 
 export async function fetchPublishedShoppingCatalog(): Promise<ChecklistCategoryWithProducts[]> {
-  const [catResult, prodResult] = await Promise.all([
+  const [catResult, prodResult, clipRows] = await Promise.all([
     fetchChecklistCategoryRows(true),
     fetchCuratedProductRows(true),
+    fetchInspoClipRows(),
   ]);
 
   if (catResult.error) throw new Error(catResult.error.message);
   if (prodResult.error) throw new Error(prodResult.error.message);
-  return assembleCatalog(catResult.data, prodResult.data);
+  return assembleCatalog(catResult.data, prodResult.data, clipRows);
 }
 
 /** Admin: all categories/products including unpublished. */
 export async function fetchAdminShoppingCatalog(): Promise<ChecklistCategoryWithProducts[]> {
-  const [catResult, prodResult] = await Promise.all([
+  const [catResult, prodResult, clipRows] = await Promise.all([
     fetchChecklistCategoryRows(false),
     fetchCuratedProductRows(false),
+    fetchInspoClipRows(),
   ]);
 
   if (catResult.error) throw new Error(catResult.error.message);
   if (prodResult.error) throw new Error(prodResult.error.message);
-  return assembleCatalog(catResult.data, prodResult.data);
+  return assembleCatalog(catResult.data, prodResult.data, clipRows);
 }
 
 export async function fetchUserChecklistProgress(
@@ -313,6 +405,63 @@ export async function fetchUserMoveInBudgetCents(
   return Number.isFinite(cents) && cents >= 0 ? Math.round(cents) : null;
 }
 
+export async function fetchUserChecklistRoomAreaTag(
+  userId: string,
+  roomId: string,
+): Promise<RoomTag | null> {
+  const { data, error } = await supabase
+    .from('user_checklist_room_prefs')
+    .select('area_tag')
+    .eq('user_id', userId)
+    .eq('room_id', roomId)
+    .maybeSingle();
+  if (error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('area_tag') || msg.includes('does not exist') || msg.includes('column')) {
+      return null;
+    }
+    throw new Error(error.message);
+  }
+  const raw = data?.area_tag;
+  if (typeof raw !== 'string' || !isRoomTag(raw) || !isChecklistV1AreaTag(raw)) return null;
+  return raw;
+}
+
+export async function upsertUserChecklistRoomAreaTag(
+  userId: string,
+  roomId: string,
+  areaTag: RoomTag | null,
+): Promise<void> {
+  if (areaTag == null) {
+    const { error } = await supabase
+      .from('user_checklist_room_prefs')
+      .update({ area_tag: null, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('room_id', roomId);
+    if (error) {
+      const msg = error.message.toLowerCase();
+      if (msg.includes('area_tag') || msg.includes('does not exist')) return;
+      throw new Error(error.message);
+    }
+    return;
+  }
+  if (!isChecklistV1AreaTag(areaTag)) return;
+  const { error } = await supabase.from('user_checklist_room_prefs').upsert(
+    {
+      user_id: userId,
+      room_id: roomId,
+      area_tag: areaTag,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'user_id,room_id' },
+  );
+  if (error) {
+    const msg = error.message.toLowerCase();
+    if (msg.includes('area_tag') || msg.includes('does not exist')) return;
+    throw new Error(error.message);
+  }
+}
+
 export async function upsertUserMoveInBudgetCents(
   userId: string,
   roomId: string,
@@ -368,21 +517,62 @@ export async function upsertChecklistProgress(
   if (error) throw new Error(error.message);
 }
 
+function mapDbShoppingListRow(r: Record<string, unknown>): ShoppingListEntry {
+  const roomQty =
+    r.room_quantity != null ? Math.max(0, Math.floor(Number(r.room_quantity))) : 0;
+  const manualQty =
+    r.manual_quantity != null ? Math.max(0, Math.floor(Number(r.manual_quantity))) : 0;
+  const legacyQty = Number(r.quantity) > 0 ? Math.floor(Number(r.quantity)) : 1;
+  return normalizeShoppingListEntry({
+    productId: String(r.product_id),
+    roomQuantity: roomQty,
+    manualQuantity: manualQty > 0 || roomQty > 0 ? manualQty : legacyQty,
+    quantity: legacyQty,
+    reviewDone: r.review_done === true,
+  });
+}
+
+/** Remote list is canonical for signed-in users; guest uses local only. */
+export async function loadRoomShoppingList(
+  userId: string | null | undefined,
+  roomId: string,
+): Promise<ShoppingListEntry[]> {
+  const local = loadLocalShoppingList(roomId);
+  if (!userId?.trim()) return local;
+  try {
+    const remote = await fetchUserShoppingList(userId, roomId);
+    const localOnly = local.filter((e) => isRoomLocalProductId(e.productId));
+    const merged = [...remote, ...localOnly];
+    saveLocalShoppingList(merged, roomId, { silent: true });
+    return merged;
+  } catch {
+    return local;
+  }
+}
+
 export async function fetchUserShoppingList(
   userId: string,
   roomId: string,
 ): Promise<ShoppingListEntry[]> {
-  const { data, error } = await supabase
+  const full = await supabase
+    .from('user_shopping_list')
+    .select('product_id,quantity,room_quantity,manual_quantity,review_done')
+    .eq('user_id', userId)
+    .eq('room_id', roomId);
+  if (!full.error) {
+    return (full.data ?? []).map((r) => mapDbShoppingListRow(r as Record<string, unknown>));
+  }
+  const msg = full.error.message.toLowerCase();
+  if (!msg.includes('room_quantity') && !msg.includes('manual_quantity') && !msg.includes('column')) {
+    throw new Error(full.error.message);
+  }
+  const legacy = await supabase
     .from('user_shopping_list')
     .select('product_id,quantity,review_done')
     .eq('user_id', userId)
     .eq('room_id', roomId);
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((r) => ({
-    productId: String(r.product_id),
-    quantity: Number(r.quantity) > 0 ? Number(r.quantity) : 1,
-    reviewDone: r.review_done === true,
-  }));
+  if (legacy.error) throw new Error(legacy.error.message);
+  return (legacy.data ?? []).map((r) => mapDbShoppingListRow(r as Record<string, unknown>));
 }
 
 export async function upsertShoppingListEntry(
@@ -390,18 +580,51 @@ export async function upsertShoppingListEntry(
   roomId: string,
   entry: ShoppingListEntry,
 ): Promise<void> {
-  const { error } = await supabase.from('user_shopping_list').upsert(
+  const normalized = normalizeShoppingListEntry(entry);
+  const payload = {
+    user_id: userId,
+    room_id: roomId,
+    product_id: normalized.productId,
+    quantity: normalized.quantity,
+    room_quantity: normalized.roomQuantity,
+    manual_quantity: normalized.manualQuantity,
+    review_done: normalized.reviewDone,
+    updated_at: new Date().toISOString(),
+  };
+  const { error } = await supabase.from('user_shopping_list').upsert(payload, {
+    onConflict: 'user_id,room_id,product_id',
+  });
+  if (!error) return;
+  const msg = error.message.toLowerCase();
+  if (!msg.includes('room_quantity') && !msg.includes('manual_quantity') && !msg.includes('column')) {
+    throw new Error(error.message);
+  }
+  const { error: legacyErr } = await supabase.from('user_shopping_list').upsert(
     {
       user_id: userId,
       room_id: roomId,
-      product_id: entry.productId,
-      quantity: entry.quantity,
-      review_done: entry.reviewDone,
+      product_id: normalized.productId,
+      quantity: normalized.quantity,
+      review_done: normalized.reviewDone,
       updated_at: new Date().toISOString(),
     },
     { onConflict: 'user_id,room_id,product_id' },
   );
-  if (error) throw new Error(error.message);
+  if (legacyErr) throw new Error(legacyErr.message);
+}
+
+export async function syncShoppingListEntries(
+  userId: string,
+  roomId: string,
+  entries: ShoppingListEntry[],
+  previous: ShoppingListEntry[],
+): Promise<void> {
+  const prevIds = new Set(previous.map((e) => e.productId));
+  const nextIds = new Set(entries.map((e) => e.productId));
+  const toRemove = [...prevIds].filter((id) => !nextIds.has(id) && !isRoomLocalProductId(id));
+  const toWrite = entries.filter((e) => !isRoomLocalProductId(e.productId));
+  await Promise.all(toRemove.map((productId) => removeShoppingListEntry(userId, roomId, productId)));
+  await Promise.all(toWrite.map((entry) => upsertShoppingListEntry(userId, roomId, entry)));
 }
 
 export async function removeShoppingListEntry(
@@ -494,7 +717,6 @@ export async function mergeLocalShoppingStateToAccount(
   roomId: string,
 ): Promise<void> {
   const localChecked = loadCheckedIds(roomId);
-  const localList = loadLocalShoppingList(roomId);
   const localResolutions = loadLocalResolutions(roomId);
   const localBudget = loadLocalMoveInBudgetCents(roomId);
 
@@ -522,27 +744,6 @@ export async function mergeLocalShoppingStateToAccount(
     await upsertUserMoveInBudgetCents(userId, roomId, localBudget);
   } else if (localBudget != null && remoteBudget != null && localBudget !== remoteBudget) {
     await upsertUserMoveInBudgetCents(userId, roomId, Math.max(localBudget, remoteBudget));
-  }
-
-  const byProduct = new Map(remoteList.map((e) => [e.productId, e]));
-  for (const entry of localList) {
-    if (isRoomLocalProductId(entry.productId)) {
-      byProduct.set(entry.productId, entry);
-      continue;
-    }
-    const existing = byProduct.get(entry.productId);
-    if (!existing) {
-      byProduct.set(entry.productId, entry);
-      await upsertShoppingListEntry(userId, roomId, entry);
-    } else {
-      const next: ShoppingListEntry = {
-        productId: entry.productId,
-        quantity: Math.max(existing.quantity, entry.quantity),
-        reviewDone: existing.reviewDone || entry.reviewDone,
-      };
-      byProduct.set(entry.productId, next);
-      await upsertShoppingListEntry(userId, roomId, next);
-    }
   }
 
   const localManifest = loadLocalAgenticShoppingManifest(roomId);

@@ -1,9 +1,49 @@
 import { Canvas, useThree } from '@react-three/fiber';
-import { ContactShadows, Environment, OrbitControls, useGLTF } from '@react-three/drei';
-import { Suspense, useEffect, useMemo } from 'react';
+import { ContactShadows, OrbitControls, useGLTF } from '@react-three/drei';
+import { Component, Suspense, useEffect, useMemo, type ReactNode } from 'react';
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js';
 import { normalizeImportedMaterials } from '../lib/normalizeImportedMaterials';
 import { MonoMeta, Spinner } from './kit';
+
+/** Procedural IBL. drei's Environment preset fetches an HDR from githack, which production CSP blocks. */
+function TurntableEnvironment() {
+  const gl = useThree((s) => s.gl);
+  const scene = useThree((s) => s.scene);
+  useEffect(() => {
+    const pmrem = new THREE.PMREMGenerator(gl);
+    const room = new RoomEnvironment();
+    const envMap = pmrem.fromScene(room, 0.04).texture;
+    scene.environment = envMap;
+    scene.environmentIntensity = 0.35;
+    room.dispose();
+    return () => {
+      if (scene.environment === envMap) {
+        scene.environment = null;
+        scene.environmentIntensity = 1;
+      }
+      envMap.dispose();
+      pmrem.dispose();
+    };
+  }, [gl, scene]);
+  return null;
+}
+
+class PreviewErrorBoundary extends Component<
+  { children: ReactNode; fallback: ReactNode },
+  { failed: boolean }
+> {
+  state = { failed: false };
+
+  static getDerivedStateFromError(): { failed: boolean } {
+    return { failed: true };
+  }
+
+  render() {
+    if (this.state.failed) return this.props.fallback;
+    return this.props.children;
+  }
+}
 
 function TransparentClear() {
   const { gl } = useThree();
@@ -81,50 +121,61 @@ export function GlbTurntablePreview({
         .join(' ')}
       aria-label="Drag to rotate the 3D model"
     >
-      <Suspense
+      <PreviewErrorBoundary
+        key={url}
         fallback={
           <div className="glb-turntable-fallback">
-            <Spinner label="Loading model…" />
+            <MonoMeta size="sm" tone="dense">
+              Preview unavailable
+            </MonoMeta>
           </div>
         }
       >
-        <Canvas
-          key={url}
-          camera={
-            compact
-              ? { position: [50, 23, 58], fov: 32 }
-              : { position: [38, 24, 44], fov: 30 }
+        <Suspense
+          fallback={
+            <div className="glb-turntable-fallback">
+              <Spinner label="Loading model…" />
+            </div>
           }
-          dpr={[1, 1.5]}
-          gl={{
-            antialias: true,
-            alpha: true,
-            premultipliedAlpha: false,
-            powerPreference: 'low-power',
-          }}
-          style={{ background: 'transparent', width: '100%', height: '100%' }}
-          onCreated={({ gl }) => {
-            gl.setClearColor(0x000000, 0);
-          }}
         >
-          <TransparentClear />
-          <DisposeGlOnUnmount />
-          <ambientLight intensity={0.55} />
-          <directionalLight position={[36, 48, 24]} intensity={1.05} />
-          <directionalLight position={[-28, 18, -16]} intensity={0.35} color="#B05A3C" />
-          <Environment preset="apartment" environmentIntensity={0.35} />
-          <GlbTurntableModel url={url} compact={compact} />
-          <ContactShadows position={[0, 0.01, 0]} opacity={0.28} scale={48} blur={2.4} far={40} />
-          <OrbitControls
-            target={compact ? [0, 10, 0] : [0, 11, 0]}
-            enablePan={false}
-            enableZoom={enableZoom}
-            autoRotate={autoRotate}
-            autoRotateSpeed={0.55}
-            enableDamping
-          />
-        </Canvas>
-      </Suspense>
+          <Canvas
+            key={url}
+            camera={
+              compact
+                ? { position: [50, 23, 58], fov: 32 }
+                : { position: [38, 24, 44], fov: 30 }
+            }
+            dpr={[1, 1.5]}
+            gl={{
+              antialias: true,
+              alpha: true,
+              premultipliedAlpha: false,
+              powerPreference: 'low-power',
+            }}
+            style={{ background: 'transparent', width: '100%', height: '100%' }}
+            onCreated={({ gl }) => {
+              gl.setClearColor(0x000000, 0);
+            }}
+          >
+            <TransparentClear />
+            <DisposeGlOnUnmount />
+            <ambientLight intensity={0.55} />
+            <directionalLight position={[36, 48, 24]} intensity={1.05} />
+            <directionalLight position={[-28, 18, -16]} intensity={0.35} color="#B05A3C" />
+            <TurntableEnvironment />
+            <GlbTurntableModel url={url} compact={compact} />
+            <ContactShadows position={[0, 0.01, 0]} opacity={0.28} scale={48} blur={2.4} far={40} />
+            <OrbitControls
+              target={compact ? [0, 10, 0] : [0, 11, 0]}
+              enablePan={false}
+              enableZoom={enableZoom}
+              autoRotate={autoRotate}
+              autoRotateSpeed={0.55}
+              enableDamping
+            />
+          </Canvas>
+        </Suspense>
+      </PreviewErrorBoundary>
     </div>
   );
 }

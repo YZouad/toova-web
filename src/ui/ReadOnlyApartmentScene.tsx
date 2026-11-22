@@ -34,11 +34,19 @@ export function ReadOnlyApartmentScene() {
 
   const handleBack = useCallback(() => {
     exitToOverview();
-    sceneRef.current?.goToFraming(dollhouseFraming(useStore.getState().roomGeometry));
+    // Scene's ApartmentCameraDirector queues the dollhouse tween on mode change.
+    const framing = dollhouseFraming(useStore.getState().roomGeometry);
+    requestAnimationFrame(() => {
+      sceneRef.current?.goToFraming(framing);
+    });
   }, [exitToOverview]);
 
+  // Initial dollhouse framing only — back navigation animates via handleBack.
+  const framedPlanRef = useRef<typeof roomGeometry | null>(null);
   useEffect(() => {
     if (mode !== 'overview') return;
+    if (framedPlanRef.current === roomGeometry) return;
+    framedPlanRef.current = roomGeometry;
     sceneRef.current?.goToFraming(dollhouseFraming(roomGeometry));
   }, [mode, roomGeometry]);
 

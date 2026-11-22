@@ -9,12 +9,15 @@ import {
 import { pickItemUnderRay } from '../lib/pickItemUnderPointer';
 import { roomTagDef } from '../lib/roomTags';
 import { getApartmentMode, useStore } from '../store';
-import { DOLLHOUSE_CUT_HEIGHT } from './dollhouseClip';
+import { dollhouseCutHeightFor } from './dollhouseClip';
 
 const FLOOR_Y = 0.15;
-const OUTLINE_Y = DOLLHOUSE_CUT_HEIGHT + 0.5;
 
-function facePoints(room: ApartmentRoom, y: number): [number, number, number][] {
+/** Room face polyline at the dollhouse cut — the published overview rim. */
+function faceOutlinePoints(
+  room: ApartmentRoom,
+  y: number,
+): [number, number, number][] {
   const pts: [number, number, number][] = room.face.map((v) => [v.x, y, v.z]);
   if (pts.length > 0) pts.push(pts[0]!);
   return pts;
@@ -69,14 +72,16 @@ function opaqueColor(css: string): string {
 function RoomLabel({
   room,
   emphasized,
+  labelY,
 }: {
   room: ApartmentRoom;
   emphasized: boolean;
+  labelY: number;
 }) {
   const areaSqFt = Math.round(room.areaSqIn / 144);
   return (
     <Html
-      position={[room.labelAnchor[0], OUTLINE_Y + 8, room.labelAnchor[1]]}
+      position={[room.labelAnchor[0], labelY, room.labelAnchor[1]]}
       center
       style={{ pointerEvents: 'none', opacity: emphasized ? 1 : 0.72 }}
     >
@@ -124,6 +129,7 @@ export function ApartmentOverview({
   const focusedRoomId = useStore((s) => s.focusedRoomId);
   const mode = getApartmentMode({ roomGeometry, focusedRoomId });
   const rooms = useMemo(() => resolveApartmentRooms(roomGeometry), [roomGeometry]);
+  const labelY = dollhouseCutHeightFor(roomGeometry) + 8;
   const { camera, gl } = useThree();
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const floorPlane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
@@ -251,24 +257,25 @@ export function ApartmentOverview({
 
   if (mode !== 'overview') return null;
 
+  const outlineY = dollhouseCutHeightFor(roomGeometry) + 0.5;
+
   return (
     <group>
       {rooms.map((room) => {
         const active = highlightedId === room.id;
-        const outline = facePoints(room, OUTLINE_Y);
         const color = room.tag ? roomTagDef(room.tag).stroke : '#8a8074';
         return (
           <group key={room.id}>
             {active ? <FloorHighlight room={room} /> : null}
             <Line
-              points={outline}
+              points={faceOutlinePoints(room, outlineY)}
               color={active ? '#2c241c' : color}
-              lineWidth={active ? 2.5 : 1.25}
+              lineWidth={active ? 5 : 2.5}
               transparent
               opacity={active ? 0.95 : 0.65}
               raycast={noRaycast}
             />
-            <RoomLabel room={room} emphasized={active} />
+            <RoomLabel room={room} emphasized={active} labelY={labelY} />
           </group>
         );
       })}

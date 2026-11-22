@@ -3,6 +3,11 @@
  * Proxies static assets from GitHub Pages; injects escaped OG tags for
  * /r/:token, /u/:handle, and /u/:handle/r/:roomId with HTTP 200.
  */
+import {
+  encodeCanonicalStorageKey,
+  isOwnedStorageKey,
+} from '../../supabase/functions/_shared/storageObjectKey';
+import { CONTENT_SECURITY_POLICY, REFERRER_POLICY } from '../../src/lib/securityHeaders';
 
 export interface Env {
   SUPABASE_URL: string;
@@ -111,11 +116,7 @@ async function handleDeepLink(
   ]);
 
   const injected = injectOgTags(html, meta);
-  const headers = new Headers({
-    'content-type': 'text/html; charset=utf-8',
-    'cache-control': meta.cacheControl,
-    'x-toova-gateway': 'og',
-  });
+  const headers = htmlHeaders(meta.cacheControl, 'og');
 
   if (request.method === 'HEAD') {
     return new Response(null, { status: 200, headers });
@@ -139,12 +140,13 @@ async function buildMeta(env: Env, deep: DeepLink): Promise<UnfurlMeta> {
     const row = data as Record<string, unknown>;
     const title = String(row.title ?? 'Shared room');
     const owner = String(row.owner_display ?? 'Toova designer');
-    const thumbPath = typeof row.thumbnail_path === 'string' ? row.thumbnail_path : null;
+    const ownerId = typeof row.owner_id === 'string' ? row.owner_id : '';
+    const thumbPath = typeof row.thumbnail_path === 'string' ? row.thumbnail_path : '';
     const canonical =
       typeof row.canonical_url === 'string'
         ? row.canonical_url
         : 'https://toova.net/r/' + deep.token;
-    const imageUrl = thumbPath
+    const imageUrl = isOwnedStorageKey(thumbPath, ownerId)
       ? `https://toova.net/og/r/${deep.token}`
       : fallbackImage;
 
@@ -174,14 +176,12 @@ async function buildMeta(env: Env, deep: DeepLink): Promise<UnfurlMeta> {
     const row = data as Record<string, unknown>;
     const title = String(row.title ?? 'Room');
     const owner = String(row.owner_display ?? 'Toova designer');
-    const thumbPath = typeof row.thumbnail_path === 'string' ? row.thumbnail_path : null;
+    const thumbPath = typeof row.thumbnail_path === 'string' ? row.thumbnail_path : '';
     const canonical =
       typeof row.canonical_url === 'string'
         ? row.canonical_url
         : `https://toova.net/u/${deep.handle}/r/${deep.roomId}`;
-    const imageUrl = thumbPath
-      ? publicModelsObjectUrl(env, thumbPath)
-      : fallbackImage;
+    const imageUrl = publicModelsObjectUrl(env, thumbPath) ?? fallbackImage;
 
     return {
       title: `${title} · Toova`,
@@ -205,6 +205,7 @@ async function buildMeta(env: Env, deep: DeepLink): Promise<UnfurlMeta> {
   }
   const page = data as {
     profile?: {
+      id?: string;
       handle?: string;
       display_name?: string | null;
       bio?: string | null;
@@ -217,12 +218,13 @@ async function buildMeta(env: Env, deep: DeepLink): Promise<UnfurlMeta> {
     (page.profile?.display_name && String(page.profile.display_name).trim()) ||
     `@${handle}`;
   const bio = (page.profile?.bio && String(page.profile.bio).trim()) || `Profile on Toova`;
+  const profileId = page.profile?.id ? String(page.profile.id) : '';
   const avatarPath = page.profile?.avatar_path
     ? String(page.profile.avatar_path)
-    : null;
-    const imageUrl = avatarPath
-      ? `https://toova.net/og/u/${handle}`
-      : fallbackImage;
+    : '';
+  const imageUrl = isOwnedStorageKey(avatarPath, profileId)
+    ? `https://toova.net/og/u/${handle}`
+    : fallbackImage;
 
   return {
     title: `${display} · Toova`,
@@ -274,11 +276,7 @@ async function proxyToOrigin(request: Request, env: Env): Promise<Response> {
   if (request.method === 'GET' || request.method === 'HEAD') {
     try {
       const html = await fetchOriginHtml(env);
-      const headers = new Headers({
-        'content-type': 'text/html; charset=utf-8',
-        'cache-control': 'public, max-age=60',
-        'x-toova-gateway': 'spa',
-      });
+      const headers = htmlHeaders('public, max-age=60', 'spa');
       if (request.method === 'HEAD') return new Response(null, { status: 200, headers });
       return new Response(html, { status: 200, headers });
     } catch (err) {
@@ -294,7 +292,8 @@ async function rpcJson(
   args: Record<string, unknown>,
 ): Promise<unknown> {
   const base = env.SUPABASE_URL.replace(/\/+$/, '');
-  const key = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY;
+  const key = env.SUPABASE_ANON_KEY;
+  if (!key) return null;
   const res = await fetch(`${base}/rest/v1/rpc/${fn}`, {
     method: 'POST',
     headers: {
@@ -319,16 +318,13 @@ async function rpcJson(
   }
 }
 
-function publicModelsObjectUrl(env: Env, path: string): string {
+function publicModelsObjectUrl(env: Env, path: string): string | null {
+  const encoded = encodeCanonicalStorageKey(path);
+  if (!encoded) return null;
   const base = (env.R2_PUBLIC_BASE_URL || 'https://assets.toova.net').replace(
     /\/+$/,
     '',
   );
-  const encoded = path
-    .split('/')
-    .filter(Boolean)
-    .map(encodeURIComponent)
-    .join('/');
   return `${base}/${encoded}`;
 }
 
@@ -340,33 +336,40 @@ async function handleOgImage(
   let bucket = '';
   let objectPath = '';
 
+  let ownerId = '';
+  let cacheControl = 'private, no-store';
+
   if (og.kind === 'share') {
     const data = await rpcJson(env, 'get_share_unfurl', { p_token: og.token });
     const row = data && typeof data === 'object' ? (data as Record<string, unknown>) : null;
     const thumb = typeof row?.thumbnail_path === 'string' ? row.thumbnail_path.trim() : '';
-    if (!thumb) return new Response('Not found', { status: 404 });
+    ownerId = typeof row?.owner_id === 'string' ? row.owner_id : '';
+    if (!isOwnedStorageKey(thumb, ownerId)) return new Response('Not found', { status: 404 });
     bucket = 'room-thumbnails';
     objectPath = thumb;
   } else {
     const data = await rpcJson(env, 'get_profile_page', { p_handle: og.handle });
     const page =
       data && typeof data === 'object'
-        ? (data as { profile?: { avatar_path?: string | null } })
+        ? (data as { profile?: { id?: string; avatar_path?: string | null } })
         : null;
     const avatar = page?.profile?.avatar_path
       ? String(page.profile.avatar_path).trim()
       : '';
-    if (!avatar) return new Response('Not found', { status: 404 });
+    ownerId = page?.profile?.id ? String(page.profile.id) : '';
+    if (!isOwnedStorageKey(avatar, ownerId)) return new Response('Not found', { status: 404 });
     bucket = 'profile-avatars';
     objectPath = avatar;
+    cacheControl = 'public, max-age=300';
   }
 
-  const object = await fetchStorageObject(env, bucket, objectPath);
+  const object = await fetchStorageObject(env, bucket, objectPath, ownerId);
   if (!object) return new Response('Not found', { status: 404 });
 
   const headers = new Headers({
-    'content-type': object.contentType,
-    'cache-control': 'public, max-age=300',
+    'content-type': 'image/jpeg',
+    'cache-control': cacheControl,
+    'x-content-type-options': 'nosniff',
     'x-toova-gateway': 'og-image',
   });
   if (request.method === 'HEAD') {
@@ -380,9 +383,14 @@ async function fetchStorageObject(
   env: Env,
   bucket: string,
   objectPath: string,
+  ownerId: string,
 ): Promise<{ body: ArrayBuffer; contentType: string } | null> {
-  const key = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY;
-  const encoded = objectPath.split('/').filter(Boolean).map(encodeURIComponent).join('/');
+  const key = env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) return null;
+  if (bucket !== 'room-thumbnails' && bucket !== 'profile-avatars') return null;
+  if (!isOwnedStorageKey(objectPath, ownerId)) return null;
+  const encoded = encodeCanonicalStorageKey(objectPath);
+  if (!encoded) return null;
   const res = await fetch(
     `${env.SUPABASE_URL.replace(/\/+$/, '')}/storage/v1/object/${encodeURIComponent(bucket)}/${encoded}`,
     {
@@ -393,14 +401,28 @@ async function fetchStorageObject(
     },
   );
   if (!res.ok) return null;
+  const contentType = (res.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  if (contentType !== 'image/jpeg' && contentType !== 'image/jpg') return null;
   return {
     body: await res.arrayBuffer(),
-    contentType: res.headers.get('content-type') || 'image/jpeg',
+    contentType: 'image/jpeg',
   };
+}
+
+function htmlHeaders(cacheControl: string, gateway: string): Headers {
+  return new Headers({
+    'content-type': 'text/html; charset=utf-8',
+    'cache-control': cacheControl,
+    'content-security-policy': CONTENT_SECURITY_POLICY,
+    'referrer-policy': REFERRER_POLICY,
+    'x-content-type-options': 'nosniff',
+    'x-toova-gateway': gateway,
+  });
 }
 
 function injectOgTags(html: string, meta: UnfurlMeta): string {
   const tags: string[] = [
+    `<meta name="referrer" content="${REFERRER_POLICY}" />`,
     `<link rel="canonical" href="${escapeAttr(meta.canonicalUrl)}" />`,
     `<meta property="og:type" content="website" />`,
     `<meta property="og:site_name" content="Toova" />`,

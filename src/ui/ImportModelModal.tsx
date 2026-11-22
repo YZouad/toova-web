@@ -60,6 +60,9 @@ interface ImportModelModalProps {
   initialTab?: ModalTab;
   initialGlbFile?: File | null;
   priorJobId?: string | null;
+  initialTitle?: string;
+  initialDescription?: string;
+  initialChecklistCategoryId?: string;
   isAdmin?: boolean;
   onClose: () => void;
   onAdded: () => void | Promise<void>;
@@ -71,6 +74,9 @@ export function ImportModelModal({
   initialTab = 'upload',
   initialGlbFile = null,
   priorJobId = null,
+  initialTitle,
+  initialDescription,
+  initialChecklistCategoryId,
   isAdmin = false,
   onClose,
   onAdded,
@@ -126,6 +132,12 @@ export function ImportModelModal({
 
   useEffect(() => {
     if (!open) return;
+    if (initialTitle != null) setTitle(initialTitle);
+    if (initialDescription != null) setDescription(initialDescription);
+    if (initialChecklistCategoryId) {
+      setChecklistCategoryId(initialChecklistCategoryId);
+      setAddToChecklist(true);
+    }
     if (initialGlbFile) {
       setTab('upload');
       setFile(initialGlbFile);
@@ -133,7 +145,15 @@ export function ImportModelModal({
       return;
     }
     setTab(initialTab);
-  }, [open, initialTab, initialGlbFile, priorJobId]);
+  }, [
+    open,
+    initialTab,
+    initialGlbFile,
+    priorJobId,
+    initialTitle,
+    initialDescription,
+    initialChecklistCategoryId,
+  ]);
 
   // Pre-wake Trellis while the user prepares the photo.
   useEffect(() => {

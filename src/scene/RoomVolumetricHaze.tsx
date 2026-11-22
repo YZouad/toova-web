@@ -3,8 +3,10 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { interiorHazeParams } from '../lib/environment';
 import { planBounds, planCentroid } from '../lib/roomGeometry';
+import { apartmentModeFor } from '../lib/apartmentRooms';
 import { useStore } from '../store';
 import { resolveRenderQuality } from '../lib/renderQuality';
+import { useApartmentTransitionPhase } from './ApartmentTransition';
 
 function createHazeMaterial(color: string): THREE.ShaderMaterial {
   return new THREE.ShaderMaterial({
@@ -54,10 +56,15 @@ export function RoomVolumetricHaze() {
   const weather = useStore((s) => s.environment.weather);
   const exposure = useStore((s) => s.environment.exposure);
   const geom = useStore((s) => s.roomGeometry);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
   const quality = useStore((s) => s.visual.quality);
   const q = resolveRenderQuality(quality);
   const envOk =
     q.envDetail === 'full' || (q.envDetail === 'standard' && godRays);
+  const apartmentMode = apartmentModeFor(geom, focusedRoomId);
+  const phase = useApartmentTransitionPhase();
+  const visible =
+    apartmentMode === 'single' || (apartmentMode === 'focused' && phase === 'focused');
 
   const meshRef = useRef<THREE.Mesh>(null);
   const { camera } = useThree();
@@ -93,6 +100,7 @@ export function RoomVolumetricHaze() {
   return (
     <mesh
       ref={meshRef}
+      visible={visible}
       position={[cx, height / 2, cz]}
       scale={[bounds.width * 0.97, height * 0.97, bounds.depth * 0.97]}
       renderOrder={0}

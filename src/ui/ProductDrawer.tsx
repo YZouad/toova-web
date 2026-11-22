@@ -17,6 +17,8 @@ interface ProductDrawerProps {
   canPlace: boolean;
   onClose: () => void;
   onAddToList: (product: CuratedProduct) => void;
+  /** When set, Add to list opens list picker instead of adding immediately. */
+  onRequestAddToList?: (product: CuratedProduct) => void;
   onPlace?: (product: CuratedProduct) => void;
   placeHint?: string | null;
   /** Admin manage mode: show Add product and edit actions. */
@@ -42,6 +44,7 @@ export function ProductDrawer({
   canPlace,
   onClose,
   onAddToList,
+  onRequestAddToList,
   onPlace,
   placeHint,
   adminMode = false,
@@ -268,7 +271,11 @@ export function ProductDrawer({
                         </>
                       ) : (
                         <>
-                          <Button size="sm" variant="outline" onClick={() => onAddToList(product)}>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => (onRequestAddToList ?? onAddToList)(product)}
+                          >
                             Add to list
                           </Button>
                           <a

@@ -67,6 +67,29 @@ export function PanelShell({
   const closeRef = useRef<HTMLButtonElement>(null);
   useTrapFocus(rootRef, closeRef);
 
+  // Shift selection toolbar / free canvas space when a left sheet is open.
+  useEffect(() => {
+    if (compact) return;
+    const el = rootRef.current;
+    if (!el) return;
+    if (el.classList.contains('dg-sheet--inspect')) return;
+    const page =
+      (el.closest('.dg-page') as HTMLElement | null) ?? document.documentElement;
+    const update = () => {
+      const right = Math.round(el.getBoundingClientRect().right);
+      page.style.setProperty('--dg-left-occupied', `${Math.max(0, right)}px`);
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    window.addEventListener('resize', update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', update);
+      page.style.removeProperty('--dg-left-occupied');
+    };
+  }, [compact, sheetClass]);
+
   // Desktop: click outside the sheet closes it. Keep rail/dock clicks so users
   // can switch panels without the dismiss wiping the new selection.
   // Portaled overlays (model detail, kit modals) sit outside the sheet in the
@@ -79,7 +102,7 @@ export function PanelShell({
       if (rootRef.current?.contains(t)) return;
       if (
         t.closest(
-          '.dg-rail, .dg-dock, .dg-more-menu, .dg-cmdk, .dg-keys, .dg-import, .dg-ticker, .dg-topbar, .md-backdrop, .md-card, .report-dialog, .kit-modal__scrim',
+          '.dg-rail, .dg-dock, .dg-more-menu, .dg-cmdk, .dg-keys, .dg-import, .dg-ticker, .dg-topbar, .md-backdrop, .md-card, .report-dialog, .kit-modal__scrim, .dgl-placed-toast, .dgl-price-popover, .dgl-draw-popover, .dgl-context__menu, .dgl-shop-bar__panel',
         )
       ) {
         return;

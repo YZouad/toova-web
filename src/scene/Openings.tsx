@@ -9,6 +9,7 @@ import {
 } from '../lib/roomGeometry';
 import { getProceduralMaterialMaps } from '../lib/proceduralTextures';
 import type { MaterialPresetId } from '../lib/roomMaterials';
+import { ROOM } from '../units';
 import { useOrbitFade } from './useOrbitFade';
 import { SHADOW_ONLY_LAYER } from './shadowLayers';
 import { dollhouseClipPlanes } from './dollhouseClip';
@@ -16,15 +17,108 @@ import { useStore } from '../store';
 
 const WINDOW_CLICK_PX = 6;
 
+/** Shared paint for the door leaf (also used by dollhouse caps). */
+export const DOOR_LEAF_COLOR = '#f2efe8';
+
+export type DoorPartBox = {
+  kind: 'leftJamb' | 'rightJamb' | 'head' | 'threshold' | 'leaf' | 'panel' | 'handle';
+  /** Local center relative to the opening origin (inner face, door midpoint). */
+  center: [number, number, number];
+  size: [number, number, number];
+};
+
+export type DoorPartLayout = {
+  boxes: DoorPartBox[];
+  /** Hinge-group origin in local door space. */
+  hinge: [number, number, number];
+  openAngle: number;
+  hingeSign: number;
+};
+
+/**
+ * Local door parts with Z centered in the wall slab.
+ * Opening origin is the wall's inner face (local Z=0 into the room); the wall
+ * occupies Z ∈ [-thickness, 0]. Parts sit at Z = -T/2 so they fill the hole
+ * instead of standing as fins inside the room.
+ */
+export function doorPartBoxes(
+  w: number,
+  h: number,
+  thickness: number = ROOM.wallThickness,
+  hinge: 'left' | 'right' = 'right',
+  closed = false,
+): DoorPartLayout {
+  const jamb = 1.5;
+  const leafGap = 0.4;
+  const leafT = 1.4;
+  const floorClear = 0.35;
+  const thresholdH = 0.5;
+  const thresholdBottom = 0.05;
+  const zMid = -thickness / 2;
+  const jambDepth = thickness + 0.2;
+  const jambH = h - floorClear;
+  const jambCy = floorClear + jambH / 2;
+  const leafH = h - 1 - floorClear;
+  const leafCy = floorClear + 0.5 + leafH / 2;
+  const hingeSign = hinge === 'left' ? -1 : 1;
+  const openAngle = closed ? 0 : -hingeSign * 0.35;
+  const leafW = w - leafGap * 2;
+  const hingePivot: [number, number, number] = [hingeSign * (w / 2 - leafGap), 0, zMid];
+  const leafLocalX = -hingeSign * (leafW / 2);
+
+  const boxes: DoorPartBox[] = [
+    {
+      kind: 'leftJamb',
+      center: [-w / 2 - jamb / 2, jambCy, zMid],
+      size: [jamb, jambH, jambDepth],
+    },
+    {
+      kind: 'rightJamb',
+      center: [w / 2 + jamb / 2, jambCy, zMid],
+      size: [jamb, jambH, jambDepth],
+    },
+    {
+      kind: 'head',
+      center: [0, h + jamb / 2, zMid],
+      size: [w + 2 * jamb, jamb, jambDepth],
+    },
+    {
+      kind: 'threshold',
+      center: [0, thresholdBottom + thresholdH / 2, zMid],
+      size: [w + 2 * jamb, thresholdH, thickness],
+    },
+    {
+      kind: 'leaf',
+      center: [leafLocalX, leafCy, 0],
+      size: [leafW, leafH, leafT],
+    },
+    {
+      kind: 'panel',
+      center: [leafLocalX, h * 0.55, leafT * 0.55],
+      size: [leafW * 0.7, h * 0.55, 0.15],
+    },
+    {
+      kind: 'handle',
+      center: [-hingeSign * (leafW * 0.78), 36, leafT * 0.7],
+      size: [0.9, 3.2, 0.9],
+    },
+  ];
+
+  return { boxes, hinge: hingePivot, openAngle, hingeSign };
+}
+
 /**
  * Door casing, leaf, threshold, and handle — fades with its host wall in orbit mode.
  */
 export function DoorAssemblies({
   geom,
   trimPreset,
+  closed = false,
 }: {
   geom: RoomGeometry;
   trimPreset: MaterialPresetId;
+  /** Closed leaves for the dollhouse overview (no swing into corridors). */
+  closed?: boolean;
 }) {
   const doors = doorOpenings(geom);
 
@@ -39,6 +133,7 @@ export function DoorAssemblies({
             placement={p}
             hinge={door.hinge === 'left' ? 'left' : 'right'}
             trimPreset={trimPreset}
+            closed={closed}
           />
         );
       })}
@@ -50,10 +145,12 @@ function DoorUnit({
   placement,
   hinge,
   trimPreset,
+  closed = false,
 }: {
   placement: NonNullable<ReturnType<typeof openingWorldPlacement>>;
   hinge: 'left' | 'right';
   trimPreset: MaterialPresetId;
+  closed?: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const trimRef = useRef<THREE.MeshStandardMaterial>(null!);
@@ -83,7 +180,7 @@ function DoorUnit({
   const leafMat = useMemo(
     () =>
       new THREE.MeshStandardMaterial({
-        color: '#f2efe8',
+        color: DOOR_LEAF_COLOR,
         roughness: 0.55,
         metalness: 0,
         transparent: true,
@@ -122,14 +219,19 @@ function DoorUnit({
     wallId: placement.opening.wallId,
   });
 
-  const w = placement.w;
-  const h = placement.h;
-  const jamb = 1.5;
-  const depth = 3.5;
-  const leafGap = 0.4;
-  const leafT = 1.4;
-  const hingeSign = hinge === 'left' ? -1 : 1;
-  const openAngle = -hingeSign * 0.35;
+  const layout = useMemo(
+    () => doorPartBoxes(placement.w, placement.h, ROOM.wallThickness, hinge, closed),
+    [placement.w, placement.h, hinge, closed],
+  );
+  const byKind = (kind: DoorPartBox['kind']) => layout.boxes.find((b) => b.kind === kind)!;
+
+  const leftJamb = byKind('leftJamb');
+  const rightJamb = byKind('rightJamb');
+  const head = byKind('head');
+  const threshold = byKind('threshold');
+  const leaf = byKind('leaf');
+  const panel = byKind('panel');
+  const handle = byKind('handle');
 
   return (
     <group
@@ -137,42 +239,28 @@ function DoorUnit({
       position={[placement.cx, 0, placement.cz]}
       rotation={[0, placement.rotationY, 0]}
     >
-      <mesh position={[-w / 2 - jamb / 2, h / 2, depth / 2]} castShadow material={trimMat}>
-        <boxGeometry args={[jamb, h, depth]} />
+      <mesh position={leftJamb.center} castShadow material={trimMat}>
+        <boxGeometry args={leftJamb.size} />
       </mesh>
-      <mesh position={[w / 2 + jamb / 2, h / 2, depth / 2]} castShadow material={trimMat}>
-        <boxGeometry args={[jamb, h, depth]} />
+      <mesh position={rightJamb.center} castShadow material={trimMat}>
+        <boxGeometry args={rightJamb.size} />
       </mesh>
-      <mesh position={[0, h + jamb / 2, depth / 2]} castShadow material={trimMat}>
-        <boxGeometry args={[w + 2 * jamb, jamb, depth]} />
+      <mesh position={head.center} castShadow material={trimMat}>
+        <boxGeometry args={head.size} />
       </mesh>
-      <mesh position={[0, 0.4, depth / 2]} castShadow receiveShadow material={trimMat}>
-        <boxGeometry args={[w + 2 * jamb, 0.8, depth + 1]} />
+      {/* No sun shadow — a thin sill picks up sawtooth shadow-map edges. */}
+      <mesh position={threshold.center} material={trimMat}>
+        <boxGeometry args={threshold.size} />
       </mesh>
-      <group
-        position={[hingeSign * (w / 2 - leafGap), 0, depth * 0.35]}
-        rotation={[0, openAngle, 0]}
-      >
-        <mesh
-          position={[-hingeSign * ((w - leafGap * 2) / 2), h / 2, 0]}
-          castShadow
-          receiveShadow
-          material={leafMat}
-        >
-          <boxGeometry args={[w - leafGap * 2, h - 1, leafT]} />
+      <group position={layout.hinge} rotation={[0, layout.openAngle, 0]}>
+        <mesh position={leaf.center} castShadow receiveShadow material={leafMat}>
+          <boxGeometry args={leaf.size} />
         </mesh>
-        <mesh
-          position={[-hingeSign * ((w - leafGap * 2) / 2), h * 0.55, leafT * 0.55]}
-          material={leafMat}
-        >
-          <boxGeometry args={[(w - leafGap * 2) * 0.7, h * 0.55, 0.15]} />
+        <mesh position={panel.center} material={leafMat}>
+          <boxGeometry args={panel.size} />
         </mesh>
-        <mesh
-          position={[-hingeSign * ((w - leafGap * 2) * 0.78), 36, leafT * 0.7]}
-          castShadow
-          material={handleMat}
-        >
-          <cylinderGeometry args={[0.45, 0.45, 3.2, 12]} />
+        <mesh position={handle.center} castShadow material={handleMat}>
+          <cylinderGeometry args={[0.45, 0.45, handle.size[1], 12]} />
         </mesh>
       </group>
     </group>
@@ -189,6 +277,7 @@ export function WindowAssemblies({
   fillIntensity,
   castWindowShadows = false,
   interactive = false,
+  fillLights = true,
 }: {
   geom: RoomGeometry;
   trimPreset: MaterialPresetId;
@@ -197,6 +286,8 @@ export function WindowAssemblies({
   /** When Shadow roof blocks overhead sun, window spots cast furniture shadows. */
   castWindowShadows?: boolean;
   interactive?: boolean;
+  /** Per-window spotlights. Off in apartment shells — lights live in ApartmentWindowLights. */
+  fillLights?: boolean;
 }) {
   const windows = geom.openings.filter((o) => o.kind === 'window');
 
@@ -215,6 +306,7 @@ export function WindowAssemblies({
             fillIntensity={fillIntensity}
             castShadows={castWindowShadows && i === 0}
             interactive={interactive}
+            fillLights={fillLights}
           />
         );
       })}
@@ -230,6 +322,7 @@ function WindowUnit({
   fillIntensity,
   castShadows = false,
   interactive = false,
+  fillLights = true,
 }: {
   placement: NonNullable<ReturnType<typeof openingWorldPlacement>>;
   sill: number;
@@ -238,6 +331,7 @@ function WindowUnit({
   fillIntensity: number;
   castShadows?: boolean;
   interactive?: boolean;
+  fillLights?: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const pendingClick = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -424,12 +518,14 @@ function WindowUnit({
           </mesh>
         ) : null}
       </group>
-      <WindowFillLight
-        placement={placement}
-        color={glassTint}
-        intensity={fillIntensity * (curtains ? 0.25 + curtains.openness * 0.75 : 1)}
-        castShadows={castShadows}
-      />
+      {fillLights ? (
+        <WindowFillLight
+          placement={placement}
+          color={glassTint}
+          intensity={fillIntensity * (curtains ? 0.25 + curtains.openness * 0.75 : 1)}
+          castShadows={castShadows}
+        />
+      ) : null}
     </group>
   );
 }
@@ -494,7 +590,8 @@ function CurtainSet({
   );
 }
 
-function WindowFillLight({
+/** Exported for ApartmentWindowLights — same spotlight setup as WindowUnit. */
+export function WindowFillLight({
   placement,
   color,
   intensity,

@@ -246,8 +246,8 @@ export function LandingPage({
           </div>
         </div>
         <StatRow
-          style={{ paddingTop: 20 }}
-          items={['Photo → 3D in 32.4s', '18 categories', '24 measured dorm plans', 'Free for five rooms']}
+          className="landing-hero-stats-row"
+          items={['Photo → 3D in 32.4s', '18 categories', '15 UChicago layouts', 'Free for five rooms']}
         />
       </div>
 

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   catalogThumbNeedsGlbHeal,
+  catalogThumbNeedsUprightHeal,
   enqueueCatalogThumbnailBackfill,
   getSessionCatalogPreview,
+  isChecklistPhotoThumbPath,
+  type BackfillJobInput,
 } from '../lib/catalogThumbnailBackfill';
 import {
   fetchGalleryCatalog,
@@ -16,6 +19,8 @@ import type { CatalogVisibility } from '../lib/catalogEngagement';
 import type { CatalogCategorySlug } from '../lib/catalogCategories';
 import { BUILTIN_CATEGORIES } from '../lib/catalogCategories';
 import { FURNITURE, type FurnitureKind } from '../furniture/registry';
+import { shouldStandImportedUpright } from '../lib/importedUpright';
+import { isProceduralBuiltinKind } from '../lib/placeGalleryModel';
 import { supabase } from '../lib/supabase';
 import { trackCatalogSearched } from '../lib/analytics';
 
@@ -43,6 +48,8 @@ export interface GalleryModel {
   storagePath: string;
   signedUrl: string | null;
   previewUrl: string | null;
+  /** Raw catalog thumbnail_path (for heal detection). */
+  thumbnailPath?: string | null;
 }
 
 export interface UseGalleryCatalogParams {
@@ -52,6 +59,8 @@ export interface UseGalleryCatalogParams {
   categories?: string[];
   query?: string;
   pageSize?: number;
+  /** Persist Toova photo-thumb heals via admin RPC. */
+  isAdmin?: boolean;
 }
 
 function rowToModel(row: GalleryCatalogRow, signedUrl: string | null, previewUrl: string | null): GalleryModel {
@@ -81,6 +90,7 @@ function rowToModel(row: GalleryCatalogRow, signedUrl: string | null, previewUrl
     storagePath: isAbsolute ? '' : path,
     signedUrl,
     previewUrl,
+    thumbnailPath: row.thumbnail_path?.trim() || null,
   };
 }
 
@@ -175,6 +185,7 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
     categories = EMPTY_CATEGORIES,
     query = '',
     pageSize = 48,
+    isAdmin = false,
   } = params;
 
   const [models, setModels] = useState<GalleryModel[]>([]);
@@ -305,22 +316,80 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
           }
         }
 
-        const backfillJobs = out
-          .filter((e) => !e.isBuiltin && e.signedUrl)
-          .filter((e) => {
-            if (!e.previewUrl) return true;
-            // One-time heal: Trellis imports used to store the source photo as the
-            // thumbnail — regenerate a GLB snapshot for the owner's own models.
-            if (source !== 'mine') return false;
-            if (e.tags.includes('poster')) return false;
-            return catalogThumbNeedsGlbHeal(e.kind);
-          })
-          .map((e) => ({
-            kind: e.kind,
-            signedUrl: e.signedUrl!,
-            ownerUserId: e.userId,
-            replace: Boolean(e.previewUrl),
-          }));
+        const backfillJobs: BackfillJobInput[] = [];
+        const queued = new Set<string>();
+        const enqueue = (job: BackfillJobInput) => {
+          if (queued.has(job.kind)) return;
+          queued.add(job.kind);
+          backfillJobs.push(job);
+        };
+
+        for (const e of out) {
+          if (!e.signedUrl || e.tags.includes('poster')) continue;
+
+          // Missing preview — session GLB snapshot for any non-procedural model.
+          if (!e.previewUrl && !isProceduralBuiltinKind(e.kind)) {
+            enqueue({
+              kind: e.kind,
+              signedUrl: e.signedUrl,
+              ownerUserId: e.userId,
+              label: e.label,
+              replace: false,
+              persistAsAdmin: isAdmin && e.isBuiltin,
+            });
+            continue;
+          }
+
+          // Owner "mine" heal: Trellis imports used to store the source photo.
+          if (
+            source === 'mine' &&
+            !e.isBuiltin &&
+            e.previewUrl &&
+            catalogThumbNeedsGlbHeal(e.kind)
+          ) {
+            enqueue({
+              kind: e.kind,
+              signedUrl: e.signedUrl,
+              ownerUserId: e.userId,
+              label: e.label,
+              replace: true,
+            });
+          }
+
+          // Toova bank: replace staged shop photos (checklist-refs/images/…) with a GLB render.
+          if (
+            source === 'toova' &&
+            e.isBuiltin &&
+            !isProceduralBuiltinKind(e.kind) &&
+            isChecklistPhotoThumbPath(e.thumbnailPath) &&
+            catalogThumbNeedsGlbHeal(e.kind)
+          ) {
+            enqueue({
+              kind: e.kind,
+              signedUrl: e.signedUrl,
+              ownerUserId: e.userId,
+              label: e.label,
+              replace: true,
+              persistAsAdmin: isAdmin,
+            });
+          }
+
+          // Upright heal: monitors/TVs/lamps/clocks that were rendered lying flat.
+          if (
+            !isProceduralBuiltinKind(e.kind) &&
+            shouldStandImportedUpright(e.label) &&
+            catalogThumbNeedsUprightHeal(e.kind)
+          ) {
+            enqueue({
+              kind: e.kind,
+              signedUrl: e.signedUrl,
+              ownerUserId: e.userId,
+              label: e.label,
+              replace: true,
+              persistAsAdmin: isAdmin && e.isBuiltin,
+            });
+          }
+        }
 
         if (backfillJobs.length > 0) {
           enqueueCatalogThumbnailBackfill(
@@ -345,7 +414,7 @@ export function useGalleryCatalog(params: UseGalleryCatalogParams) {
         setLoadingMore(false);
       }
     },
-    [enabled, source, sort, categories, query, pageSize, patchPreview],
+    [enabled, source, sort, categories, query, pageSize, isAdmin, patchPreview],
   );
 
   const refresh = useCallback(async () => {

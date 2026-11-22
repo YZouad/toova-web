@@ -32,7 +32,8 @@ import './designer/mobile/mobile-designer.css';
 import { useDesignerChrome } from './designer/useDesignerChrome';
 import { VIEW_PRESETS } from './designer/chromeTypes';
 import type { CatalogModel, ImportRoute } from './designer/chromeTypes';
-import { LibraryPanel } from './designer/LibraryPanel';
+import { ShowroomLibrary } from './designer/library/ShowroomLibrary';
+import './designer/library/library.css';
 import { LookPanel } from './designer/LookPanel';
 import { RevisePanel } from './designer/RevisePanel';
 import { LightPanel } from './designer/LightPanel';
@@ -72,6 +73,7 @@ import { planBounds } from '../lib/roomGeometry';
 import {
   apartmentRoomById,
   isApartmentPlan,
+  planForRoomId,
   resolveApartmentRooms,
   type ApartmentRoom,
 } from '../lib/apartmentRooms';
@@ -163,6 +165,7 @@ export function Designer({
   const [detailModel, setDetailModel] = useState<GalleryModel | null>(null);
   const [detailFocusThrixel, setDetailFocusThrixel] = useState(false);
   const [posterBankItemId, setPosterBankItemId] = useState<string | null>(null);
+  const [posterBankPlaceOpen, setPosterBankPlaceOpen] = useState(false);
   const builtinPreviews = useBuiltinPreviews();
 
   const cancelHangingDraft = useStore((s) => s.cancelHangingDraft);
@@ -225,6 +228,8 @@ export function Designer({
       cancelled = true;
     };
   }, [workspace?.id, starterEdit]);
+
+  const saveAsksForAuth = Boolean(onRequestSaveAuth && !user);
 
   const handleSave = useCallback(async () => {
     if (!workspace?.id) return;
@@ -290,36 +295,37 @@ export function Designer({
 
   const handleFocusRoom = useCallback(
     (roomId: string) => {
+      // Warm highlight first so Room can mount the focus shell before focusRoom
+      // swaps chrome / camera on the same frame.
+      setHighlightedRoomId(roomId);
       focusRoom(roomId);
       const room = apartmentRoomById(useStore.getState().roomGeometry, roomId);
       if (!room || !sceneRef.current) return;
-      // Scene goToPreset only knows CameraPresetId — push framing via store + reset.
       useStore.getState().setCameraPreset('corner');
-      // Prefer immediate corner framing of the face via a custom animation request.
       const framing = framingForArea(useStore.getState().roomGeometry, room, 'corner');
       const handle = sceneRef.current as SceneHandle & {
         goToFraming?: (f: ReturnType<typeof framingForArea>) => void;
       };
-      if (typeof handle.goToFraming === 'function') {
-        handle.goToFraming(framing);
-      } else {
-        handle.goToPreset('corner');
-      }
+      // Defer camera so shell mount + shader compile aren't fighting the tween.
+      requestAnimationFrame(() => {
+        if (typeof handle.goToFraming === 'function') {
+          handle.goToFraming(framing);
+        } else {
+          handle.goToPreset('corner');
+        }
+      });
     },
     [focusRoom],
   );
 
   const handleBackToOverview = useCallback(() => {
     exitToOverview();
+    // ApartmentCameraDirector also queues dollhouse framing on focused→overview;
+    // this keeps an explicit chrome-path request in sync with enter.
     const framing = dollhouseFraming(useStore.getState().roomGeometry);
-    const handle = sceneRef.current as SceneHandle & {
-      goToFraming?: (f: ReturnType<typeof dollhouseFraming>) => void;
-    };
-    if (typeof handle.goToFraming === 'function') {
-      handle.goToFraming(framing);
-    } else {
-      handle?.goToPreset('catalog');
-    }
+    requestAnimationFrame(() => {
+      sceneRef.current?.goToFraming(framing);
+    });
   }, [exitToOverview]);
 
   // Sync ?room= with focused zone (replaceState only — no history spam).
@@ -350,16 +356,18 @@ export function Designer({
     }
   }, [roomGeometry, focusedRoomId, focusRoom]);
 
-  // When entering overview on an apartment, frame the whole plan.
+  // Initial dollhouse framing when opening an apartment design — not on every
+  // overview return (handleBackToOverview owns the animated exit).
   useEffect(() => {
-    if (apartmentMode !== 'overview') return;
+    if (!isApartmentPlan(roomGeometry)) return;
+    if (focusedRoomId) return;
     const handle = sceneRef.current as SceneHandle & {
       goToFraming?: (f: ReturnType<typeof dollhouseFraming>) => void;
     };
-    if (!handle) return;
-    const framing = dollhouseFraming(roomGeometry);
-    if (typeof handle.goToFraming === 'function') handle.goToFraming(framing);
-  }, [apartmentMode, workspace?.id]);
+    if (typeof handle?.goToFraming !== 'function') return;
+    handle.goToFraming(dollhouseFraming(roomGeometry));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- workspace open only
+  }, [workspace?.id]);
 
   const confirmLeaveWithoutSaving = useCallback(() => {
     setLeaveConfirmOpen(false);
@@ -400,11 +408,25 @@ export function Designer({
     setDetailModel(model);
   }, []);
 
-  const openPosterBank = useCallback((itemId: string) => {
-    setPosterBankItemId(itemId);
-    chrome.closePanels();
-    chrome.setOverlay(null);
-  }, [chrome]);
+  const closePosterBank = useCallback(() => {
+    setPosterBankItemId(null);
+    setPosterBankPlaceOpen(false);
+  }, []);
+
+  const openPosterBankPlace = useCallback(() => {
+    setPosterBankItemId(null);
+    setPosterBankPlaceOpen(true);
+  }, []);
+
+  const openPosterBank = useCallback(
+    (itemId: string) => {
+      setPosterBankPlaceOpen(false);
+      setPosterBankItemId(itemId);
+      chrome.closePanels();
+      chrome.setOverlay(null);
+    },
+    [chrome],
+  );
 
   const changePosterForSelection = useCallback(() => {
     const id = useStore.getState().selectedId;
@@ -465,7 +487,7 @@ export function Designer({
         goPreset,
         resetCamera,
         selectedId: chrome.selectedId,
-        saveLabel: onRequestSaveAuth ? 'Save design…' : starterEdit ? 'Save starter' : 'Save room',
+        saveLabel: saveAsksForAuth ? 'Save design…' : starterEdit ? 'Save starter' : 'Save room',
         isOwner: canShare,
       }),
     [
@@ -488,6 +510,7 @@ export function Designer({
       starterEdit,
       goPreset,
       resetCamera,
+      saveAsksForAuth,
       onRequestSaveAuth,
       onRequestImportAuth,
       fixturesEpoch,
@@ -536,8 +559,8 @@ export function Designer({
           chrome.closeImport();
           return;
         }
-        if (posterBankItemId) {
-          setPosterBankItemId(null);
+        if (posterBankItemId || posterBankPlaceOpen) {
+          closePosterBank();
           return;
         }
         if (chrome.overlay) {
@@ -610,7 +633,7 @@ export function Designer({
       }
       if (e.shiftKey) return;
 
-      if (lower === 'a') {
+      if (lower === 'n') {
         e.preventDefault();
         chrome.setPanel('add');
         return;
@@ -696,6 +719,8 @@ export function Designer({
     resetCamera,
     canShare,
     posterBankItemId,
+    posterBankPlaceOpen,
+    closePosterBank,
     creditsOpen,
     namingRoom,
     focusedRoomId,
@@ -751,21 +776,30 @@ export function Designer({
               <IconBack />
             </button>
             <div className="dg-rule--v" aria-hidden />
-            <div className="dg-topbar-title">
-              {apartmentMode !== 'single' ? (
+            <div
+              className={
+                apartmentMode === 'focused'
+                  ? 'dg-topbar-title is-apt-focused'
+                  : apartmentMode === 'overview'
+                    ? 'dg-topbar-title is-apt-overview'
+                    : 'dg-topbar-title'
+              }
+            >
+              {apartmentMode === 'focused' ? (
                 <ApartmentBar
                   apartmentName={roomName || 'Apartment'}
                   onFocusRoom={handleFocusRoom}
                   onBackToOverview={handleBackToOverview}
                 />
-              ) : null}
-              <input
-                className="dg-topbar-title__name"
-                value={roomName}
-                onChange={(e) => setRoomName(e.target.value)}
-                onBlur={() => void handleSave()}
-                aria-label={apartmentMode === 'single' ? 'Room name' : 'Apartment name'}
-              />
+              ) : (
+                <input
+                  className="dg-topbar-title__name"
+                  value={roomName}
+                  onChange={(e) => setRoomName(e.target.value)}
+                  onBlur={() => void handleSave()}
+                  aria-label={apartmentMode === 'single' ? 'Room name' : 'Apartment name'}
+                />
+              )}
               {forkMeta?.attribution?.visible ? (
                 <div className="dg-topbar-title__meta">
                   Forked from{' '}
@@ -788,12 +822,26 @@ export function Designer({
               ) : (
                 <div className="dg-topbar-title__meta">
                   {(() => {
-                    const b = planBounds(roomGeometry);
                     const fmt = (inches: number) => {
                       const ft = Math.floor(inches / 12);
                       const inn = Math.round(inches % 12);
                       return `${ft}′${inn}″`;
                     };
+                    if (apartmentMode === 'overview') {
+                      const rooms = resolveApartmentRooms(roomGeometry);
+                      const sqFt = Math.round(
+                        rooms.reduce((sum, r) => sum + r.areaSqIn, 0) / 144,
+                      );
+                      return `${rooms.length} room${rooms.length === 1 ? '' : 's'} · ${sqFt} sq ft`;
+                    }
+                    if (apartmentMode === 'focused' && focusedRoomId) {
+                      const facePlan = planForRoomId(roomGeometry, focusedRoomId);
+                      if (facePlan) {
+                        const b = planBounds(facePlan);
+                        return `${fmt(b.width)} × ${fmt(b.depth)}`;
+                      }
+                    }
+                    const b = planBounds(roomGeometry);
                     return `${fmt(b.width)} × ${fmt(b.depth)} · ${starterEdit ? 'starter' : 'room'}`;
                   })()}
                 </div>
@@ -838,7 +886,7 @@ export function Designer({
                 disabled={saving}
                 onClick={() => void handleSave()}
               >
-                {onRequestSaveAuth ? 'Save design' : starterEdit ? 'Save starter' : 'Save'}
+                {saveAsksForAuth ? 'Save design' : starterEdit ? 'Save starter' : 'Save'}
               </button>
               <button
                 type="button"
@@ -990,7 +1038,7 @@ export function Designer({
             saving={saving}
             onBack={requestLeave}
             onSave={() => void handleSave()}
-            saveLabel={onRequestSaveAuth ? 'Save design' : starterEdit ? 'Save starter' : 'Save'}
+            saveLabel={saveAsksForAuth ? 'Save design' : starterEdit ? 'Save starter' : 'Save'}
             onEditFloorPlan={onEditFloorPlan}
             onOpenShare={canShare ? () => setShareOpen(true) : undefined}
             onOpenExport={() => setExportOpen(true)}
@@ -1006,6 +1054,7 @@ export function Designer({
               setDetailModel(model);
             }}
             onOpenImport={() => openImportOrAuth(null)}
+            onAddPoster={openPosterBankPlace}
             onOpenThrixelRevise={(kind) => void openThrixelRevise(kind)}
             onChangePoster={changePosterForSelection}
             searchTriggerRef={searchTriggerRef}
@@ -1085,7 +1134,7 @@ export function Designer({
               </nav>
             ) : null}
 
-            {chrome.tickerVisible ? (
+            {chrome.tickerVisible && apartmentMode === 'focused' ? (
               <ChecklistTicker
                 open={chrome.tickerOpen}
                 onToggle={() => chrome.setTickerOpen(!chrome.tickerOpen)}
@@ -1165,10 +1214,12 @@ export function Designer({
             ) : null}
 
             {chrome.panel === 'add' ? (
-              <LibraryPanel
+              <ShowroomLibrary
                 compact={false}
+                isAdmin={isAdmin}
                 onClose={chrome.closePanels}
                 onImport={() => openImportOrAuth(null)}
+                onAddPoster={openPosterBankPlace}
                 onOpenModel={openModel}
                 onStartDraw={chrome.startDraw}
                 onStartMeasure={chrome.startMeasure}
@@ -1326,9 +1377,16 @@ export function Designer({
       ) : null}
 
       <PosterBankModal
-        open={!!posterBankItemId}
-        itemId={posterBankItemId}
-        onClose={() => setPosterBankItemId(null)}
+        open={posterBankPlaceOpen || !!posterBankItemId}
+        itemId={posterBankPlaceOpen ? null : posterBankItemId}
+        onClose={closePosterBank}
+        onCreateOwn={() => {
+          closePosterBank();
+          openImportOrAuth('poster');
+        }}
+        onPlaced={(id) => {
+          useStore.getState().select(id);
+        }}
       />
 
       {detailModel ? (
@@ -1340,6 +1398,7 @@ export function Designer({
               : null
           }
           currentUserId={user?.id ?? null}
+          isAdmin={isAdmin}
           onClose={() => {
             setDetailFocusThrixel(false);
             setDetailModel(null);

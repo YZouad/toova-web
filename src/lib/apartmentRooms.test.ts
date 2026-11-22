@@ -9,6 +9,7 @@ import {
   UNPLACED_ROOM_KEY,
   apartmentRoomById,
   groupItemsByRoom,
+  insetFace,
   isApartmentPlan,
   itemRoomKey,
   planForFace,
@@ -16,6 +17,7 @@ import {
   roomAtFloorPoint,
   roomSpawnPoint,
 } from './apartmentRooms';
+import { pointInFace } from './floorPlanGeometry';
 
 function partitionedPlan(): FloorPlan {
   return {
@@ -143,5 +145,48 @@ describe('apartmentRooms', () => {
     const [x, z] = roomSpawnPoint(bedroom);
     expect(zoneAtPoint(plan, x, z)?.zone?.tag).toBe('bedroom');
     expect(faceLoopKey(bedroom.face)).toBe(bedroom.faceKey);
+  });
+
+  it('numbers duplicate same-tag rooms without custom names', () => {
+    const plan = setZoneTag(setZoneTag(partitionedPlan(), 30, 60, 'bedroom'), 90, 60, 'bedroom');
+    const labels = resolveApartmentRooms(plan)
+      .filter((r) => r.tag === 'bedroom')
+      .map((r) => r.label);
+    expect(labels).toEqual(['Bedroom', 'Bedroom 2']);
+  });
+
+  it('keeps custom names when tags duplicate', () => {
+    const plan = setZoneTag(
+      setZoneTag(partitionedPlan(), 30, 60, 'bedroom', 'Primary'),
+      90,
+      60,
+      'bedroom',
+      'Guest',
+    );
+    const labels = resolveApartmentRooms(plan)
+      .filter((r) => r.tag === 'bedroom')
+      .map((r) => r.label)
+      .sort();
+    expect(labels).toEqual(['Guest', 'Primary']);
+  });
+
+  it('insetFace shrinks a rectangle toward its center', () => {
+    const face = [
+      { id: 'a', x: 0, z: 0 },
+      { id: 'b', x: 100, z: 0 },
+      { id: 'c', x: 100, z: 80 },
+      { id: 'd', x: 0, z: 80 },
+    ];
+    const inset = insetFace(face, 10);
+    expect(inset).toHaveLength(4);
+    expect(pointInFace(50, 40, inset)).toBe(true);
+    expect(pointInFace(5, 5, inset)).toBe(false);
+    expect(pointInFace(5, 5, face)).toBe(true);
+    for (const v of inset) {
+      expect(v.x).toBeGreaterThan(5);
+      expect(v.x).toBeLessThan(95);
+      expect(v.z).toBeGreaterThan(5);
+      expect(v.z).toBeLessThan(75);
+    }
   });
 });

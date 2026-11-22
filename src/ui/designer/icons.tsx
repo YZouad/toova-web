@@ -175,6 +175,19 @@ export function IconRuler({ size = 14, stroke = 'currentColor' }: { size?: numbe
   );
 }
 
+export function IconGrip({ size = 14, stroke = 'currentColor' }: { size?: number; stroke?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 14 14" fill="none" aria-hidden>
+      <circle cx="5" cy="3.5" r="1.1" fill={stroke} />
+      <circle cx="9" cy="3.5" r="1.1" fill={stroke} />
+      <circle cx="5" cy="7" r="1.1" fill={stroke} />
+      <circle cx="9" cy="7" r="1.1" fill={stroke} />
+      <circle cx="5" cy="10.5" r="1.1" fill={stroke} />
+      <circle cx="9" cy="10.5" r="1.1" fill={stroke} />
+    </svg>
+  );
+}
+
 export function IconMeasure({ size = 14, stroke = 'currentColor' }: { size?: number; stroke?: string }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={stroke} strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round" aria-hidden>

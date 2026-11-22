@@ -8,6 +8,7 @@ import {
 } from '../lib/affiliateLinks';
 import { trackAffiliateClicked } from '../lib/analytics';
 import { formatPriceCents } from '../lib/dormChecklist';
+import { productHasPlaceableModel } from '../lib/checklistPublicGlbs';
 import type {
   AgenticManifestResolution,
   AgenticShoppingManifestEntry,
@@ -32,6 +33,7 @@ interface ChecklistCheckoutPanelProps {
   manifestLines?: AgenticShoppingManifestEntry[];
   onClose: () => void;
   onRemoveFromList: (productId: string) => void;
+  onPlaceInRoom?: (product: PurchaseCartLine['product']) => void | Promise<void>;
   onDismissManifestEntry?: (entryId: string) => void;
   onSetManifestResolution?: (
     entryId: string,
@@ -59,6 +61,7 @@ export function ChecklistCheckoutPanel({
   manifestLines = [],
   onClose,
   onRemoveFromList,
+  onPlaceInRoom,
   onDismissManifestEntry,
   onSetManifestResolution,
   variant = 'page',
@@ -122,6 +125,7 @@ export function ChecklistCheckoutPanel({
         )}
         onClose={onClose}
         onRemoveFromList={onRemoveFromList}
+        onPlaceInRoom={onPlaceInRoom}
       />
     );
   }
@@ -258,6 +262,18 @@ export function ChecklistCheckoutPanel({
                           Remove
                         </button>
                       ) : null}
+                      {line.source === 'list' &&
+                      onPlaceInRoom &&
+                      productHasPlaceableModel(line.product) ? (
+                        <button
+                          type="button"
+                          className="kit-btn kit-btn--sm kit-btn--outline checkout-place-warning"
+                          data-room-warning="Item is currently not in room"
+                          onClick={() => void onPlaceInRoom(line.product)}
+                        >
+                          Place in room
+                        </button>
+                      ) : null}
                     </span>,
                   ];
                 })}
@@ -300,6 +316,7 @@ function DesignerCheckout({
   amazonApproximate,
   onClose,
   onRemoveFromList,
+  onPlaceInRoom,
 }: {
   lines: PurchaseCartLine[];
   groups: [string, PurchaseCartLine[]][];
@@ -309,6 +326,7 @@ function DesignerCheckout({
   amazonApproximate: boolean;
   onClose: () => void;
   onRemoveFromList: (productId: string) => void;
+  onPlaceInRoom?: (product: PurchaseCartLine['product']) => void | Promise<void>;
 }) {
   const pressedOnScrim = useRef(false);
 
@@ -368,6 +386,10 @@ function DesignerCheckout({
                       const shop = shopUrlForProduct(line.product);
                       const canRemove =
                         line.source === 'list' || line.source === 'both' || line.source === 'owned';
+                      const canPlace =
+                        line.source === 'list' &&
+                        !!onPlaceInRoom &&
+                        productHasPlaceableModel(line.product);
                       const priceLabel = line.quantity > 1 ? `${price} ×${line.quantity}` : price;
                       return (
                         <li key={line.productId} className="dg-checkout__row">
@@ -385,6 +407,16 @@ function DesignerCheckout({
                                   onClick={() => onRemoveFromList(line.productId)}
                                 >
                                   Remove
+                                </button>
+                              ) : null}
+                              {canPlace ? (
+                                <button
+                                  type="button"
+                                  className="dg-checkout__remove dg-checkout__place checkout-place-warning"
+                                  data-room-warning="Item is currently not in room"
+                                  onClick={() => void onPlaceInRoom(line.product)}
+                                >
+                                  Place in room
                                 </button>
                               ) : null}
                             </div>

@@ -38,5 +38,15 @@ export const MARKETING_SHOWCASE = {
       'marketing/woodlawn-948bb304.glb',
     '791d872b-6a53-459c-8019-3c0319a05fe0/D8747605-7909-4D11-BFFB-ED36BF81C2F5.glb':
       'marketing/woodlawn-d8747605.glb',
+    '3bdec469-f31d-4640-9118-48de8d5d5450/8360fe07-e48c-4e10-a8a0-2e062bdd0c32.glb':
+      'marketing/woodlawn-8360fe07.glb',
+    '3bdec469-f31d-4640-9118-48de8d5d5450/a3358fb7-44f9-476b-9389-cf68b3a436fd.glb':
+      'marketing/woodlawn-a3358fb7.glb',
+    '3bdec469-f31d-4640-9118-48de8d5d5450/ad252989-0bf2-418f-922d-d82b0dfe00aa.glb':
+      'marketing/woodlawn-ad252989.glb',
+    '3bdec469-f31d-4640-9118-48de8d5d5450/f8d9c933-65fc-4c21-8d3f-caa962ad23aa.glb':
+      'marketing/woodlawn-f8d9c933.glb',
+    '54b5e05b-6bd0-4715-8e7b-11906da731da/1f840be3-dc7b-4c59-a3f2-9f0f8f360322.glb':
+      'marketing/woodlawn-1f840be3.glb',
   },
 } as const;

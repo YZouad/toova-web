@@ -1,6 +1,10 @@
 import { test, expect, type Page } from '@playwright/test';
 
 async function dismissBlockingModals(page: Page) {
+  const rejectCookies = page.getByRole('button', { name: 'Reject' });
+  if (await rejectCookies.isVisible().catch(() => false)) {
+    await rejectCookies.click();
+  }
   const close = page.getByRole('button', { name: 'Not now' });
   if (await close.isVisible().catch(() => false)) {
     await close.click();
@@ -120,11 +124,10 @@ test.describe('designer overhaul chrome', () => {
     await page.locator('.dg-rail-btn.is-primary').click();
     await expect(page.locator('.dg-sheet, .dg-mobile-sheet').first()).toBeVisible();
 
-    // Wait for catalog rows, then click the name button (onOpenModel), not "+".
-    const addBtn = page.getByRole('button', { name: /^Add / }).first();
-    await expect(addBtn).toBeVisible({ timeout: 30_000 });
-    const nameBtn = addBtn.locator('xpath=preceding-sibling::button[1]');
-    await nameBtn.click();
+    // Open the first card title (onOpenModel), not Place.
+    const titleBtn = page.locator('.dgl-card__title').first();
+    await expect(titleBtn).toBeVisible({ timeout: 30_000 });
+    await titleBtn.click();
 
     await expect(page.locator('.md-card, .md-backdrop').first()).toBeVisible({ timeout: 15_000 });
     await page.waitForTimeout(500);
@@ -132,6 +135,52 @@ test.describe('designer overhaul chrome', () => {
     const canvasCountAfter = await page.locator('canvas').count();
     expect(canvasCountAfter).toBe(canvasCountBefore);
     await expect(page.locator('.furniture-preview canvas')).toHaveCount(0);
+  });
+
+  test('showroom: place first piece then undo', async ({ page }) => {
+    test.setTimeout(120_000);
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/');
+    await enterGuestDesigner(page);
+
+    await page.locator('.dg-rail-btn.is-primary').click();
+    await expect(page.locator('.dg-sheet-header__title', { hasText: 'Add to the room' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(page.locator('.dgl-showroom')).toBeVisible();
+
+    // Prefer the card Place CTA — avoid "Place a free light" in draw tools.
+    const placeBtn = page.locator('.dgl-card').getByRole('button', { name: /^Place / }).first();
+    await expect(placeBtn).toBeVisible({ timeout: 30_000 });
+    const coach = page.locator('.dgl-coach-banner');
+    if (await coach.isVisible().catch(() => false)) {
+      await coach.getByRole('button', { name: 'Got it' }).click();
+    }
+
+    // Empty cart → shop bar hidden.
+    await expect(page.locator('.dgl-shop-bar')).toHaveCount(0);
+
+    // Area dropdown must not AND-filter the catalog empty.
+    const areaBtn = page.locator('.dgl-context__area-btn');
+    if (await areaBtn.isVisible().catch(() => false)) {
+      await areaBtn.click();
+      const kitchen = page.locator('.dgl-context__menu').getByRole('option', { name: /^Kitchen/ });
+      if (await kitchen.isVisible().catch(() => false)) {
+        await kitchen.click();
+      } else {
+        await page.keyboard.press('Escape');
+      }
+      await expect(page.locator('.dgl-card').first()).toBeVisible({ timeout: 15_000 });
+    }
+
+    await dismissBlockingModals(page);
+    await placeBtn.click();
+
+    const toast = page.locator('.dgl-placed-toast');
+    await expect(toast).toBeVisible({ timeout: 10_000 });
+    await dismissBlockingModals(page);
+    await toast.getByRole('button', { name: 'Undo' }).click({ force: true });
+    await expect(toast).toHaveCount(0);
   });
 
   test('reset camera keeps the active view preset highlighted', async ({ page }) => {

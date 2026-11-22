@@ -4,6 +4,7 @@ export interface KeysOverlayProps {
 }
 
 const MOVE_ROWS: { label: string; kbd: string }[] = [
+  { label: 'Move around', kbd: 'WASD' },
   { label: 'Orbit the room', kbd: 'drag' },
   { label: 'Zoom', kbd: 'scroll' },
   { label: 'Pan', kbd: 'space + drag' },
@@ -11,7 +12,7 @@ const MOVE_ROWS: { label: string; kbd: string }[] = [
 ];
 
 const PIECE_ROWS: { label: string; kbd: string }[] = [
-  { label: 'Add a piece', kbd: 'A' },
+  { label: 'Add a piece', kbd: 'N' },
   { label: 'Turn lamps on / off', kbd: 'L' },
   { label: 'Edit details', kbd: '↵' },
   { label: 'Rotate 15°', kbd: 'R' },
@@ -26,6 +27,26 @@ const APARTMENT_ROWS: { label: string; kbd: string }[] = [
   { label: 'Open room 1–9', kbd: '1-9' },
   { label: 'Previous / next room', kbd: '[ / ]' },
 ];
+
+function KeysRow({ label, kbd }: { label: string; kbd: string }) {
+  return (
+    <div className="dg-keys-row">
+      <span className="dg-keys-row__label">{label}</span>
+      <span className="dg-keys-row__kbd">{kbd}</span>
+    </div>
+  );
+}
+
+function KeysColumn({ title, rows }: { title: string; rows: { label: string; kbd: string }[] }) {
+  return (
+    <div className="dg-keys-col">
+      <span className="dg-keys-col__title">{title}</span>
+      {rows.map((row) => (
+        <KeysRow key={row.label} label={row.label} kbd={row.kbd} />
+      ))}
+    </div>
+  );
+}
 
 export function KeysOverlay({ open, onClose }: KeysOverlayProps) {
   if (!open) return null;
@@ -46,59 +67,22 @@ export function KeysOverlay({ open, onClose }: KeysOverlayProps) {
           </button>
         </div>
         <div className="dg-keys-grid">
-          <div className="dg-keys-col">
-            <span
-              style={{
-                font: 'var(--type-mono-xs)',
-                letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-                color: 'var(--ink-6)',
-              }}
-            >
-              Moving around
-            </span>
-            {MOVE_ROWS.map((row) => (
-              <div key={row.label} className="dg-keys-row">
-                <span className="dg-keys-row__label">{row.label}</span>
-                <span className="dg-keys-row__kbd">{row.kbd}</span>
-              </div>
-            ))}
-          </div>
-          <div className="dg-keys-col">
-            <span
-              style={{
-                font: 'var(--type-mono-xs)',
-                letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-                color: 'var(--ink-6)',
-              }}
-            >
-              Working with pieces
-            </span>
-            {PIECE_ROWS.map((row) => (
-              <div key={row.label} className="dg-keys-row">
-                <span className="dg-keys-row__label">{row.label}</span>
-                <span className="dg-keys-row__kbd">{row.kbd}</span>
-              </div>
-            ))}
-          </div>
-          <div className="dg-keys-col">
-            <span
-              style={{
-                font: 'var(--type-mono-xs)',
-                letterSpacing: '0.12em',
-                textTransform: 'uppercase',
-                color: 'var(--ink-6)',
-              }}
-            >
-              Apartment
-            </span>
-            {APARTMENT_ROWS.map((row) => (
-              <div key={row.label} className="dg-keys-row">
-                <span className="dg-keys-row__label">{row.label}</span>
-                <span className="dg-keys-row__kbd">{row.kbd}</span>
-              </div>
-            ))}
+          <KeysColumn title="Moving around" rows={MOVE_ROWS} />
+          <KeysColumn title="Working with pieces" rows={PIECE_ROWS} />
+        </div>
+        <div className="dg-keys-band">
+          <span className="dg-keys-col__title">Apartment</span>
+          <div className="dg-keys-grid">
+            <div className="dg-keys-col">
+              {APARTMENT_ROWS.slice(0, 2).map((row) => (
+                <KeysRow key={row.label} label={row.label} kbd={row.kbd} />
+              ))}
+            </div>
+            <div className="dg-keys-col">
+              {APARTMENT_ROWS.slice(2).map((row) => (
+                <KeysRow key={row.label} label={row.label} kbd={row.kbd} />
+              ))}
+            </div>
           </div>
         </div>
       </div>

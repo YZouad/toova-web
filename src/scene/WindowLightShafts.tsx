@@ -15,8 +15,10 @@ import {
   createShaftMaterial,
   type WindowBeam,
 } from '../lib/windowLightShafts';
+import { apartmentModeFor } from '../lib/apartmentRooms';
 import { useStore } from '../store';
 import { resolveRenderQuality } from '../lib/renderQuality';
+import { useApartmentTransitionPhase } from './ApartmentTransition';
 
 function BeamMesh({
   beam,
@@ -56,9 +58,15 @@ export function WindowLightShafts() {
   const exposure = useStore((s) => s.environment.exposure);
   const weather = useStore((s) => s.environment.weather);
   const geom = useStore((s) => s.roomGeometry);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
   const quality = useStore((s) => s.visual.quality);
   const q = resolveRenderQuality(quality);
   const envOk = q.envDetail !== 'minimal';
+  const apartmentMode = apartmentModeFor(geom, focusedRoomId);
+  const phase = useApartmentTransitionPhase();
+  // Keep mounted; hide in dollhouse so light count / materials stay stable.
+  const visible =
+    apartmentMode === 'single' || (apartmentMode === 'focused' && phase === 'focused');
 
   const weatherShaft = weatherGodRayStrength(weather);
 
@@ -117,7 +125,7 @@ export function WindowLightShafts() {
   }
 
   return (
-    <group>
+    <group visible={visible}>
       {beams.map((beam, i) => (
         <BeamMesh
           key={`beam-${i}-${geomKey.time}-${geomKey.orient}`}

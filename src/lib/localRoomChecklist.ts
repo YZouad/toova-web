@@ -3,11 +3,11 @@
 import { parseAsinFromAffiliateUrl } from './affiliateLinks';
 import {
   checklistScopedKey,
+  mergeShoppingListEntries,
   type ChecklistCategoryWithProducts,
   type CuratedProduct,
   type ShoppingListEntry,
 } from './dormChecklist';
-import { isRoomLocalProductId } from './ownedChecklistItems';
 
 export const LOCAL_CHECKLIST_PRODUCTS_KEY = 'toova-local-checklist-products';
 export const LOCAL_CHECKLIST_CATEGORY_ID = 'local-your-models';
@@ -257,14 +257,10 @@ export function mergeLocalProductsIntoCategories(
   return [...withoutLocal, parentCategory, ...childCategories];
 }
 
-/** Keep local-only To Buy rows when a remote shopping list overwrites storage. */
+/** @deprecated Use mergeShoppingListEntries from dormChecklist.ts */
 export function keepLocalShoppingListEntries(
   remoteList: ShoppingListEntry[],
   localList: ShoppingListEntry[],
 ): ShoppingListEntry[] {
-  const remoteIds = new Set(remoteList.map((e) => e.productId));
-  const extras = localList.filter(
-    (e) => isRoomLocalProductId(e.productId) && !remoteIds.has(e.productId),
-  );
-  return extras.length ? [...remoteList, ...extras] : remoteList;
+  return mergeShoppingListEntries(remoteList, localList);
 }

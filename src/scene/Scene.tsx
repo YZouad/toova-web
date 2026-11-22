@@ -18,6 +18,7 @@ import { Room } from './Room';
 import { ApartmentOverview } from './ApartmentOverview';
 import { ItemsLayer } from '../furniture/ItemsLayer';
 import { DragController } from '../interaction/DragController';
+import { CatalogDropController } from '../interaction/CatalogDropController';
 import { OrbitPointerGuard } from '../interaction/OrbitPointerGuard';
 import { MobileObjectGestureController } from '../interaction/MobileObjectGestureController';
 import { KeyboardShortcuts } from '../interaction/KeyboardShortcuts';
@@ -40,13 +41,31 @@ import { WeatherSystem } from './WeatherSystem';
 import { ProceduralSky } from './ProceduralSky';
 import { ScenePostProcessing } from './ScenePostProcessing';
 import { resolveRenderQuality } from '../lib/renderQuality';
-import { framingForPreset, type CameraFraming } from '../lib/presentationCameras';
-import { activeGeometryFor, type ApartmentRoom } from '../lib/apartmentRooms';
+import { dollhouseFraming, framingForPreset, type CameraFraming } from '../lib/presentationCameras';
+import {
+  activeGeometryFor,
+  apartmentModeFor,
+  type ApartmentRoom,
+} from '../lib/apartmentRooms';
 import { useApartmentTransitionPhase } from './ApartmentTransition';
 import { CameraOrbitSync } from './CameraOrbitSync';
+import { WasdMove } from './WasdMove';
 import { SHADOW_ONLY_LAYER } from './shadowLayers';
 
 const SCENE_BG = '#E4DAC8';
+
+/** Floor for sun normalBias — kept for tiny single rooms. */
+export const MIN_SUN_SHADOW_NORMAL_BIAS = 0.12;
+
+/**
+ * Orthographic sun shadow camera spans ±extent across `shadowMapSize` texels.
+ * One texel in world inches is `2 * extent / mapSize`. Bias below that lets
+ * west-facing walls self-shadow into stripes at apartment scale.
+ */
+export function sunShadowNormalBias(shadowExtent: number, shadowMapSize: number): number {
+  const pixel = (2 * shadowExtent) / Math.max(1, shadowMapSize);
+  return Math.max(MIN_SUN_SHADOW_NORMAL_BIAS, pixel);
+}
 
 function useActiveGeometry() {
   const fullGeom = useStore((s) => s.roomGeometry);
@@ -121,6 +140,11 @@ function EnvironmentRig() {
     const b = planBounds(geom);
     return Math.max(b.width, b.depth) * 1.1 + 80;
   }, [geom]);
+
+  const sunNormalBias = useMemo(
+    () => sunShadowNormalBias(shadowExtent, q.shadowMapSize),
+    [shadowExtent, q.shadowMapSize],
+  );
 
   useLayoutEffect(() => {
     const light = lightRef.current;
@@ -212,7 +236,7 @@ function EnvironmentRig() {
           ) + shadowExtent,
         )}
         shadow-radius={0}
-        shadow-normalBias={0.12}
+        shadow-normalBias={sunNormalBias}
         shadow-bias={-0.0002}
       />
       <object3D ref={targetRef} position={target} />
@@ -408,16 +432,21 @@ function AutoClearGuard() {
   return null;
 }
 
+type AnimRequest = {
+  framing: CameraFraming | null;
+  t: number;
+};
+
 /** Animate orbit controls toward a framing. */
 function CameraAnimator({
   controlsRef,
   requestRef,
+  orbitTarget,
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
-  requestRef: MutableRefObject<{
-    framing: ReturnType<typeof framingForPreset> | null;
-    t: number;
-  }>;
+  requestRef: MutableRefObject<AnimRequest>;
+  /** Stable Vector3 passed as OrbitControls `target` — mutate, never replace. */
+  orbitTarget: THREE.Vector3;
 }) {
   const invalidate = useThree((s) => s.invalidate);
   const fromPos = useRef(new THREE.Vector3());
@@ -425,18 +454,30 @@ function CameraAnimator({
   const toPos = useRef(new THREE.Vector3());
   const toTarget = useRef(new THREE.Vector3());
   const startFov = useRef(50);
-  const animating = useRef(false);
+  const activeFraming = useRef<CameraFraming | null>(null);
+  const savedEnabled = useRef(true);
 
   useFrame((_, dt) => {
     const req = requestRef.current;
     const ctrl = controlsRef.current;
-    if (!req?.framing || !ctrl) {
-      animating.current = false;
+    if (!ctrl) return;
+
+    // Keep the stable prop Vector3 mirrored to the live controls target while
+    // idle so React applyProps can't yank the look-at back to a stale seed.
+    if (!req?.framing) {
+      if (activeFraming.current) {
+        ctrl.enabled = savedEnabled.current;
+        activeFraming.current = null;
+      }
+      orbitTarget.copy(ctrl.target);
       return;
     }
+
     const f = req.framing;
-    if (!animating.current) {
-      animating.current = true;
+    if (f !== activeFraming.current) {
+      activeFraming.current = f;
+      savedEnabled.current = ctrl.enabled;
+      ctrl.enabled = false;
       fromPos.current.copy(ctrl.object.position);
       fromTarget.current.copy(ctrl.target);
       toPos.current.set(...f.position);
@@ -449,18 +490,46 @@ function CameraAnimator({
     const k = 1 - Math.pow(1 - req.t, 3);
     const cam = ctrl.object as THREE.PerspectiveCamera;
     cam.position.lerpVectors(fromPos.current, toPos.current, k);
-    ctrl.target.lerpVectors(fromTarget.current, toTarget.current, k);
+    orbitTarget.lerpVectors(fromTarget.current, toTarget.current, k);
+    ctrl.target.copy(orbitTarget);
     if ('fov' in cam && typeof f.fov === 'number') {
       cam.fov = THREE.MathUtils.lerp(startFov.current, f.fov, k);
       cam.updateProjectionMatrix();
     }
+    cam.lookAt(orbitTarget);
     ctrl.update();
     invalidate();
     if (req.t >= 1) {
       req.framing = null;
-      animating.current = false;
+      activeFraming.current = null;
+      ctrl.enabled = savedEnabled.current;
     }
   });
+  return null;
+}
+
+/**
+ * Owns the overview return framing inside the canvas so exit always eases
+ * back to the dollhouse even if the React chrome path misses goToFraming.
+ */
+function ApartmentCameraDirector({
+  requestRef,
+}: {
+  requestRef: MutableRefObject<AnimRequest>;
+}) {
+  const roomGeometry = useStore((s) => s.roomGeometry);
+  const focusedRoomId = useStore((s) => s.focusedRoomId);
+  const mode = apartmentModeFor(roomGeometry, focusedRoomId);
+  const prevMode = useRef(mode);
+
+  useEffect(() => {
+    const prev = prevMode.current;
+    prevMode.current = mode;
+    if (prev === 'focused' && mode === 'overview') {
+      requestRef.current = { framing: dollhouseFraming(roomGeometry), t: 0 };
+    }
+  }, [mode, roomGeometry, requestRef]);
+
   return null;
 }
 
@@ -578,10 +647,7 @@ function SceneInner({
 }: {
   controlsRef: RefObject<OrbitControlsType | null>;
   apiRef: MutableRefObject<CaptureApi | null>;
-  animRequestRef: MutableRefObject<{
-    framing: ReturnType<typeof framingForPreset> | null;
-    t: number;
-  }>;
+  animRequestRef: MutableRefObject<AnimRequest>;
   readOnly: boolean;
   autoRotate: boolean;
   orbitCssTargetRef?: RefObject<HTMLElement | null>;
@@ -604,6 +670,18 @@ function SceneInner({
   const q = resolveRenderQuality(quality);
 
   const framing = useMemo(() => framingForPreset(geom, cameraPreset), [geom, cameraPreset]);
+  const moveBounds = useMemo(() => planBounds(geom), [geom]);
+  // Seed-only camera pose. Orbit look-at is a stable Vector3 mutated by CameraAnimator —
+  // never pass a fresh framing.target (that teleports on apartment geom swaps).
+  const initialCamera = useRef({
+    position: framing.position,
+    fov: framing.fov,
+    near: 1,
+    far: 2000,
+  });
+  const orbitTarget = useRef(
+    new THREE.Vector3(framing.target[0], framing.target[1], framing.target[2]),
+  ).current;
 
   const backdrop = useMemo(() => {
     if (skyMode === 'studio') return SCENE_BG;
@@ -624,12 +702,7 @@ function SceneInner({
       frameloop="always"
       shadows
       dpr={[1, q.dprCap]}
-      camera={{
-        position: framing.position,
-        fov: framing.fov,
-        near: 1,
-        far: 2000,
-      }}
+      camera={initialCamera.current}
       onPointerMissed={() => {
         if (!readOnly && useStore.getState().designerTool !== 'measure') deselect(null);
       }}
@@ -691,6 +764,7 @@ function SceneInner({
         </>
       ) : null}
       {measureTool ? <MeasureController /> : null}
+      {showChrome ? <CatalogDropController /> : null}
       {showChrome && !hangingTool && !measureTool ? (
         <>
           {/*
@@ -724,7 +798,19 @@ function SceneInner({
       <RoomVolumetricHaze />
 
       <ScenePostProcessing />
-      <CameraAnimator controlsRef={controlsRef} requestRef={animRequestRef} />
+      <CameraAnimator
+        controlsRef={controlsRef}
+        requestRef={animRequestRef}
+        orbitTarget={orbitTarget}
+      />
+      <WasdMove
+        controlsRef={controlsRef}
+        animRequestRef={animRequestRef}
+        orbitTarget={orbitTarget}
+        bounds={moveBounds}
+        plan={geom}
+      />
+      <ApartmentCameraDirector requestRef={animRequestRef} />
       <CaptureBridge apiRef={apiRef} controlsRef={controlsRef} />
       {orbitCssTargetRef ? (
         <CameraOrbitSync controlsRef={controlsRef} targetRef={orbitCssTargetRef} />
@@ -732,7 +818,7 @@ function SceneInner({
 
       <OrbitControls
         ref={controlsRef as never}
-        target={framing.target}
+        target={orbitTarget}
         minDistance={60}
         maxDistance={650}
         minPolarAngle={0.05}
@@ -805,10 +891,7 @@ export const Scene = forwardRef<SceneHandle, SceneProps>(function Scene(
 ) {
   const controlsRef = useRef<OrbitControlsType>(null);
   const apiRef = useRef<CaptureApi | null>(null);
-  const animRequestRef = useRef<{
-    framing: ReturnType<typeof framingForPreset> | null;
-    t: number;
-  }>({ framing: null, t: 0 });
+  const animRequestRef = useRef<AnimRequest>({ framing: null, t: 0 });
   const geom = useActiveGeometry();
   const cameraPreset = useStore((s) => s.visual.cameraPreset);
 

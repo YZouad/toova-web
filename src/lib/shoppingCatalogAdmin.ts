@@ -389,3 +389,66 @@ export function hasChildCategories(
 ): boolean {
   return childCategories(categories, categoryId).length > 0;
 }
+
+export interface SubmitInspoClipInput {
+  categoryId: string;
+  productId?: string | null;
+  rawUrl: string;
+  title?: string;
+  creatorHandle?: string | null;
+  thumbnailUrl?: string | null;
+  userId: string;
+  publishImmediately?: boolean;
+}
+
+export async function submitInspoClip(input: SubmitInspoClipInput): Promise<void> {
+  const { parseInspoClipUrl } = await import('./inspoClipUrls');
+  const parsed = parseInspoClipUrl(input.rawUrl);
+  if (!parsed.ok) {
+    throw new Error(parsed.error);
+  }
+  const creatorHandle =
+    input.creatorHandle?.trim() || parsed.inferredCreatorHandle || null;
+  const status = input.publishImmediately ? 'published' : 'pending';
+  const now = new Date().toISOString();
+
+  const { error } = await supabase.from('checklist_inspo_clips').upsert(
+    {
+      category_id: input.categoryId,
+      product_id: input.productId ?? null,
+      platform: parsed.platform,
+      canonical_url: parsed.canonicalUrl,
+      title: input.title?.trim() ?? '',
+      creator_handle: creatorHandle,
+      thumbnail_url: input.thumbnailUrl?.trim() || null,
+      status,
+      submitted_by: input.userId,
+      published_at: status === 'published' ? now : null,
+    },
+    { onConflict: 'category_id,canonical_url' },
+  );
+  if (error) throw new Error(error.message);
+}
+
+export async function adminSetInspoClipStatus(
+  clipId: string,
+  status: 'published' | 'rejected' | 'pending',
+): Promise<void> {
+  const patch: Record<string, unknown> = {
+    status,
+    published_at: status === 'published' ? new Date().toISOString() : null,
+  };
+  const { error } = await supabase
+    .from('checklist_inspo_clips')
+    .update(patch)
+    .eq('id', clipId);
+  if (error) throw new Error(error.message);
+}
+
+export async function deleteInspoClip(clipId: string): Promise<void> {
+  const { error } = await supabase
+    .from('checklist_inspo_clips')
+    .delete()
+    .eq('id', clipId);
+  if (error) throw new Error(error.message);
+}

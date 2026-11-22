@@ -7,6 +7,10 @@
  * verify_jwt is false so anon share viewers can call; authorization is the share token.
  */
 
+import { encodeCanonicalStorageKey, isCanonicalStorageKey } from "../_shared/storageObjectKey.ts";
+
+const SIGN_BUCKETS = new Set(["model-files", "room-thumbnails"]);
+
 const corsHeaders: Record<string, string> = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info",
@@ -69,7 +73,7 @@ Deno.serve(async (req: Request) => {
       const bucket = typeof row.bucket_id === "string" && row.bucket_id
         ? row.bucket_id
         : "model-files";
-      if (!path) continue;
+      if (!isCanonicalStorageKey(path) || !SIGN_BUCKETS.has(bucket)) continue;
 
       const signed = await createSignedUrl(
         supabaseURL,
@@ -111,7 +115,8 @@ async function createSignedUrl(
   path: string,
   expiresSec: number,
 ): Promise<string | null> {
-  const encodedPath = path.split("/").map(encodeURIComponent).join("/");
+  const encodedPath = encodeCanonicalStorageKey(path);
+  if (!encodedPath || !SIGN_BUCKETS.has(bucket)) return null;
   const response = await fetch(
     `${supabaseURL}/storage/v1/object/sign/${bucket}/${encodedPath}`,
     {

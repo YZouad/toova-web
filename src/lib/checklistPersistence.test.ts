@@ -14,7 +14,9 @@ import {
   CHECKLIST_RESOLUTION_KEY,
   MOVE_IN_BUDGET_KEY,
   SHOPPING_LIST_KEY,
+  ensureShoppingListCacheVersion,
 } from './dormChecklist';
+import { manualShoppingEntry } from './shoppingListEntry';
 
 const ROOM_A = 'room-a';
 const ROOM_B = 'room-b';
@@ -50,6 +52,7 @@ function installMemoryLocalStorage() {
 describe('checklist local persistence', () => {
   beforeEach(() => {
     installMemoryLocalStorage();
+    ensureShoppingListCacheVersion();
     localStorage.removeItem(CHECKLIST_CHECKED_KEY);
     localStorage.removeItem(CHECKLIST_RESOLUTION_KEY);
     localStorage.removeItem(MOVE_IN_BUDGET_KEY);
@@ -68,14 +71,11 @@ describe('checklist local persistence', () => {
   });
 
   it('keeps To Buy entries across reloads per room', () => {
-    saveLocalShoppingList([{ productId: 'prod-1', quantity: 2, reviewDone: false }], ROOM_A);
-    saveLocalShoppingList([{ productId: 'prod-2', quantity: 1, reviewDone: false }], ROOM_B);
-    expect(loadLocalShoppingList(ROOM_A)).toEqual([
-      { productId: 'prod-1', quantity: 2, reviewDone: false },
-    ]);
-    expect(loadLocalShoppingList(ROOM_B)).toEqual([
-      { productId: 'prod-2', quantity: 1, reviewDone: false },
-    ]);
+    saveLocalShoppingList([manualShoppingEntry('prod-1', 2)], ROOM_A);
+    saveLocalShoppingList([manualShoppingEntry('prod-2', 1)], ROOM_B);
+    expect(loadLocalShoppingList(ROOM_A)[0]?.productId).toBe('prod-1');
+    expect(loadLocalShoppingList(ROOM_A)[0]?.quantity).toBe(2);
+    expect(loadLocalShoppingList(ROOM_B)[0]?.productId).toBe('prod-2');
   });
 
   it('keeps have/skip resolutions across reloads per room', () => {
@@ -99,9 +99,11 @@ describe('checklist local persistence', () => {
       SHOPPING_LIST_KEY,
       JSON.stringify([{ productId: 'legacy-prod', quantity: 1, reviewDone: false }]),
     );
-    expect(loadLocalShoppingList(ROOM_A)).toEqual([
-      { productId: 'legacy-prod', quantity: 1, reviewDone: false },
-    ]);
+    const rows = loadLocalShoppingList(ROOM_A);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.productId).toBe('legacy-prod');
+    expect(rows[0]?.quantity).toBe(1);
+    expect(rows[0]?.manualQuantity).toBe(1);
     expect(loadLocalShoppingList(ROOM_B)).toEqual([]);
   });
 });

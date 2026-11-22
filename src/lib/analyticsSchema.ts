@@ -28,6 +28,9 @@ export const EVENTS = {
   ROOM_OPENED: 'room_opened',
   ROOM_AREA_TAGGED: 'room_area_tagged',
   ROOM_TAG_SUGGESTION_PLACED: 'room_tag_suggestion_placed',
+  CATALOG_ITEM_PLACED: 'catalog_item_placed',
+  CATALOG_PLACE_UNDONE: 'catalog_place_undone',
+  LIBRARY_OPENED: 'library_opened',
 } as const;
 
 export type EventName = (typeof EVENTS)[keyof typeof EVENTS];
@@ -74,6 +77,8 @@ export const ALLOWED_EVENT_PROPERTIES = [
   'is_owner',
   'tag',
   'essential',
+  'variant',
+  'shoppable',
 ] as const;
 
 const ALLOWED_PROPERTY_SET = new Set<string>(ALLOWED_EVENT_PROPERTIES);

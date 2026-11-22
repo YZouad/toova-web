@@ -1,3 +1,4 @@
+import type { GalleryModel } from '../hooks/useGalleryCatalog';
 import {
   AGENTIC_POSTER_BANK,
   type AgenticPosterBankEntry,
@@ -132,4 +133,36 @@ export async function loadPosterBankOptions(): Promise<PosterBankOption[]> {
   }
 
   return merged;
+}
+
+/** Minimal gallery model for placing a poster from the bank. */
+export function posterOptionToGalleryModel(option: PosterBankOption): GalleryModel {
+  const tags = option.tags.length ? [...option.tags] : ['poster'];
+  if (!tags.includes('poster')) tags.push('poster');
+  return {
+    kind: option.kind,
+    label: option.label,
+    description: null,
+    tags,
+    categories: ['decor_art'],
+    width_in: option.widthIn,
+    height_in: option.heightIn,
+    depth_in: option.depthIn,
+    clearance_in: null,
+    userId: null,
+    visibility: 'public',
+    isBuiltin: option.isCurated,
+    likesCount: 0,
+    downloadsCount: 0,
+    viewsCount: 0,
+    createdAt: '',
+    creatorHandle: null,
+    creatorDisplayName: null,
+    likedByMe: false,
+    hotScore: 0,
+    storagePath: option.modelPath,
+    signedUrl: option.signedUrl,
+    previewUrl: option.previewUrl,
+    thumbnailPath: option.thumbnailPath || null,
+  };
 }
