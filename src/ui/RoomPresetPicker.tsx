@@ -17,6 +17,7 @@ import {
 import {
   UCHICAGO_DORMS,
   templatesForUChicagoDorm,
+  uChicagoDormIdFromStarterId,
   uChicagoLayoutLabel,
   type UChicagoDormId,
 } from '../lib/uchicagoDormTemplates';
@@ -104,14 +105,22 @@ export function RoomPresetPicker({
   useEffect(() => {
     if (!active) return;
     setRoomName(defaultName);
-    setGoal('bedroom');
-    setDormId(UCHICAGO_DORMS[0]!.id);
+    const preferredDorm = preferredTemplateId
+      ? uChicagoDormIdFromStarterId(preferredTemplateId)
+      : undefined;
+    if (preferredDorm) {
+      setGoal('uchicago');
+      setDormId(preferredDorm);
+    } else {
+      setGoal('bedroom');
+      setDormId(UCHICAGO_DORMS[0]!.id);
+    }
     setBusy(false);
     setError(null);
     setGallerySort('hot');
     setGalleryQuery('');
     setMode('presets');
-  }, [active, defaultName]);
+  }, [active, defaultName, preferredTemplateId]);
 
   useEffect(() => {
     if (!active) return;

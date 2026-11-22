@@ -26,7 +26,9 @@ import {
   StatRow,
   usePhoneNav,
 } from './kit';
+import type { RoomStarterTemplate } from '../lib/roomStarterTemplates';
 import { openCookieSettings } from '../lib/cookieConsent';
+import { LandingMeasuredDormsBand } from './LandingMeasuredDormsBand';
 
 interface LandingPageProps {
   onGetStarted: () => void;
@@ -41,6 +43,9 @@ interface LandingPageProps {
   onGoDashboard?: () => void;
   notice?: string | null;
   onDismissNotice?: () => void;
+  onOpenUChicagoPlan?: (template: RoomStarterTemplate) => void;
+  onBrowseUChicagoPlans?: (template: RoomStarterTemplate) => void;
+  openingUChicagoPlan?: boolean;
 }
 
 const STEPS = [
@@ -109,6 +114,9 @@ export function LandingPage({
   onGoDashboard,
   notice,
   onDismissNotice,
+  onOpenUChicagoPlan,
+  onBrowseUChicagoPlans,
+  openingUChicagoPlan,
 }: LandingPageProps) {
   const phone = usePhoneNav();
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -250,6 +258,14 @@ export function LandingPage({
           items={['Photo → 3D in 32.4s', '18 categories', '15 UChicago layouts', 'Free for five rooms']}
         />
       </div>
+
+      {onOpenUChicagoPlan && onBrowseUChicagoPlans ? (
+        <LandingMeasuredDormsBand
+          onOpenPlan={onOpenUChicagoPlan}
+          onBrowsePlans={onBrowseUChicagoPlans}
+          openingPlan={openingUChicagoPlan}
+        />
+      ) : null}
 
       {/* Hero visual — live turntable kept as the product visual */}
       <div className="toova-frame" style={{ marginTop: 64 }}>

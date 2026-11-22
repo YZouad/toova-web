@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useCallback, useMemo, useState, type KeyboardEvent } from 'react';
 import {
   UCHICAGO_DORMS,
   templatesForUChicagoDorm,
@@ -11,14 +11,6 @@ import { navigate } from '../hooks/useRoute';
 import { Button, DisplayHeading, Eyebrow, MonoMeta } from './kit';
 import { LandingDormRoomScene } from './LandingDormRoomScene';
 
-function spaClick(href: string) {
-  return (e: MouseEvent<HTMLAnchorElement | HTMLButtonElement>) => {
-    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
-    e.preventDefault();
-    navigate(href);
-  };
-}
-
 interface DormSlide {
   dormId: (typeof UCHICAGO_DORMS)[number]['id'];
   dormLabel: string;
@@ -26,10 +18,18 @@ interface DormSlide {
 }
 
 interface LandingMeasuredDormsBandProps {
-  onStartDesign: () => void;
+  /** Create an editable copy of the current layout and open the designer. */
+  onOpenPlan: (template: RoomStarterTemplate) => void;
+  /** Open the new-room flow with the starter bank (UChicago tab). */
+  onBrowsePlans: (template: RoomStarterTemplate) => void;
+  openingPlan?: boolean;
 }
 
-export function LandingMeasuredDormsBand({ onStartDesign }: LandingMeasuredDormsBandProps) {
+export function LandingMeasuredDormsBand({
+  onOpenPlan,
+  onBrowsePlans,
+  openingPlan,
+}: LandingMeasuredDormsBandProps) {
   const liveUchicago = useStarterTemplatesForGoal('uchicago');
 
   const slides = useMemo<DormSlide[]>(() => {
@@ -48,8 +48,6 @@ export function LandingMeasuredDormsBand({ onStartDesign }: LandingMeasuredDorms
   const slide = slides[index] ?? slides[0];
   const template = slide?.template;
   const layout = template?.dormMeta?.layout;
-  const templateHref = template ? `/?template=${encodeURIComponent(template.id)}` : '/';
-
   const go = useCallback(
     (delta: number) => {
       if (count === 0) return;
@@ -66,13 +64,9 @@ export function LandingMeasuredDormsBand({ onStartDesign }: LandingMeasuredDorms
     [slides],
   );
 
-  const openCurrent = useCallback(() => {
-    if (!template) return;
-    navigate(templateHref);
-  }, [template, templateHref]);
-
   const activeDormId = slide?.dormId;
   const layoutCount = count || 15;
+  const actionsDisabled = openingPlan || !template;
 
   return (
     <section
@@ -177,13 +171,19 @@ export function LandingMeasuredDormsBand({ onStartDesign }: LandingMeasuredDorms
             ) : null}
 
             <div className="landing-dorms-band__stage-actions">
-              <Button variant="primary" size="md" onClick={openCurrent} disabled={!template}>
-                Open this plan
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => template && onOpenPlan(template)}
+                disabled={actionsDisabled}
+              >
+                {openingPlan ? 'Opening…' : 'Open this plan'}
               </Button>
               <button
                 type="button"
                 className="landing-dorms-band__link landing-dorms-band__link--btn"
-                onClick={onStartDesign}
+                onClick={() => template && onBrowsePlans(template)}
+                disabled={actionsDisabled}
               >
                 Or pick a hall in the designer →
               </button>
