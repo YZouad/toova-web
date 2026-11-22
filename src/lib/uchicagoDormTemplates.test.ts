@@ -4,6 +4,7 @@ import {
   UCHICAGO_DORMS,
   buildUChicagoDormStarters,
   templatesForUChicagoDorm,
+  uChicagoDormIdFromStarterId,
   uChicagoLayoutLabel,
 } from './uchicagoDormTemplates';
 
@@ -41,6 +42,12 @@ describe('uchicagoDormTemplates', () => {
   it('labels layout types for the picker', () => {
     expect(uChicagoLayoutLabel('single')).toBe('Single');
     expect(uChicagoLayoutLabel('pass-through')).toBe('BJ pass through');
+  });
+
+  it('parses dorm id from starter template ids', () => {
+    expect(uChicagoDormIdFromStarterId('uchicago-woodlawn-single')).toBe('woodlawn');
+    expect(uChicagoDormIdFromStarterId('uchicago-burton-judson-pass-through')).toBe('burton-judson');
+    expect(uChicagoDormIdFromStarterId('bedroom-simple')).toBeUndefined();
   });
 
   it('gives BJ pass-through starters doors on opposite walls', () => {

@@ -3,10 +3,10 @@ import {
   acquireLandingSceneLease,
   releaseLandingSceneLease,
 } from '../lib/landingSceneLease';
-import { materializeStarterItems, type RoomStarterTemplate } from '../lib/roomStarterTemplates';
-import { resolveStarterItemAssets } from '../lib/starterTemplateOverrides';
-import { Scene } from '../scene/Scene';
+import { buildUChicagoCarouselLayout } from '../lib/uchicagoLandingLayout';
+import type { RoomStarterTemplate } from '../lib/roomStarterTemplates';
 import { useStore } from '../store';
+import { Scene } from '../scene/Scene';
 import { MonoMeta, Spinner } from './kit';
 
 interface LandingDormRoomSceneProps {
@@ -47,16 +47,17 @@ export function LandingDormRoomScene({ template }: LandingDormRoomSceneProps) {
     setReady(false);
 
     void (async () => {
-      const plan = template.buildPlan();
-      const environment = template.buildEnvironment();
-      const { items, order } = materializeStarterItems(template, plan);
-      await resolveStarterItemAssets(items);
-      if (cancelled) return;
+      try {
+        const { plan, environment, items, order } = await buildUChicagoCarouselLayout(template);
+        if (cancelled) return;
 
-      resetLayout();
-      hydrateLayout(items, order);
-      hydrateRoomSettings(environment, plan);
-      setReady(true);
+        resetLayout();
+        hydrateLayout(items, order);
+        hydrateRoomSettings(environment, plan);
+        setReady(true);
+      } catch {
+        if (!cancelled) setReady(false);
+      }
     })();
 
     return () => {

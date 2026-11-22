@@ -167,3 +167,8 @@ export function templatesForUChicagoDorm(
 ): RoomStarterTemplate[] {
   return templates.filter((t) => t.goal === 'uchicago' && t.dormMeta?.dormId === dormId && !t.hidden);
 }
+
+/** Parse dorm id from a starter id such as `uchicago-woodlawn-single`. */
+export function uChicagoDormIdFromStarterId(templateId: string): UChicagoDormId | undefined {
+  return UCHICAGO_DORMS.find((d) => templateId.startsWith(`uchicago-${d.id}-`))?.id;
+}

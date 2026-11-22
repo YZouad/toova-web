@@ -1,5 +1,9 @@
 import { Suspense, useEffect, useRef, useState } from 'react';
 import { loadPublicRoomLayout } from '../hooks/useRoomLayout';
+import {
+  getLandingSceneLeaseHolder,
+  subscribeLandingSceneLease,
+} from '../lib/landingSceneLease';
 import { MARKETING_SHOWCASE } from '../lib/marketingShowcase';
 import { useStore } from '../store';
 import { Scene } from '../scene/Scene';
@@ -21,6 +25,9 @@ export function HeroTurntable() {
   const [near, setNear] = useState(false);
   const [ready, setReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [leaseVersion, setLeaseVersion] = useState(0);
+
+  useEffect(() => subscribeLandingSceneLease(() => setLeaseVersion((n) => n + 1)), []);
 
   useEffect(() => {
     const el = plateRef.current;
@@ -39,6 +46,10 @@ export function HeroTurntable() {
 
   useEffect(() => {
     if (!near) return;
+    if (getLandingSceneLeaseHolder() === 'dorm-carousel') {
+      setReady(false);
+      return;
+    }
     let cancelled = false;
     setReady(false);
     setError(null);
@@ -68,7 +79,7 @@ export function HeroTurntable() {
       cancelled = true;
       resetLayout();
     };
-  }, [near, hydrateLayout, hydrateRoomSettings, resetLayout]);
+  }, [near, hydrateLayout, hydrateRoomSettings, resetLayout, leaseVersion]);
 
   return (
     <div ref={plateRef} className="landing-hero-scene">

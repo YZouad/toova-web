@@ -46,6 +46,7 @@ import {
   materializeStarterItems,
   type RoomStarterTemplate,
 } from './lib/roomStarterTemplates';
+import { buildUChicagoCarouselLayout } from './lib/uchicagoLandingLayout';
 import {
   buildGuestSnapshot,
   clearGuestDesignSnapshot,
@@ -271,6 +272,7 @@ function AppContent() {
   const [authReason, setAuthReason] = useState<string | null>(null);
   const [authFromGuestStart, setAuthFromGuestStart] = useState(false);
   const [landingNotice, setLandingNotice] = useState<string | null>(null);
+  const [landingUChicagoOpenBusy, setLandingUChicagoOpenBusy] = useState(false);
   const resetRouteOpened = useRef(false);
   const placeCatalogHandled = useRef(false);
   const openRoomHandled = useRef(false);
@@ -1672,6 +1674,36 @@ function AppContent() {
               setTimelineScrollToDemos(true);
               navigate(timelinePath());
             }}
+            onOpenUChicagoPlan={(template) => {
+              if (landingUChicagoOpenBusy || floorPlanBusy) return;
+              setLandingUChicagoOpenBusy(true);
+              void (async () => {
+                try {
+                  const { plan, environment, items, order } =
+                    await buildUChicagoCarouselLayout(template);
+                  await handleCreateWithPlan(template.label, plan, {
+                    environment,
+                    seedItems: items,
+                    seedOrder: order,
+                    starterId: template.id,
+                    localOnly: !user?.id,
+                  });
+                } catch {
+                  setLandingNotice('Could not open that room template.');
+                } finally {
+                  setLandingUChicagoOpenBusy(false);
+                }
+              })();
+            }}
+            openingUChicagoPlan={landingUChicagoOpenBusy || floorPlanBusy}
+            onBrowseUChicagoPlans={(template) => {
+              setFloorPlanDraft({
+                name: user ? 'Room 1' : 'My dorm',
+                mode: 'create',
+                preferredTemplateId: template.id,
+              });
+              setScreen('dashboard');
+            }}
           />
         </div>
         {railChrome}
@@ -1841,9 +1873,10 @@ function AppContent() {
             </header>
             <RoomPresetPicker
               variant="page"
-              guestSimple
+              guestSimple={!floorPlanDraft?.preferredTemplateId}
               creating={floorPlanBusy}
               defaultName={floorPlanDraft?.name || 'My dorm'}
+              preferredTemplateId={floorPlanDraft?.preferredTemplateId}
               cancelLabel="Back to home"
               onClose={() => setScreen('landing')}
               onSelect={handlePresetPickerSelect}
