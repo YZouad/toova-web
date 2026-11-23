@@ -1,7 +1,6 @@
 import type { CameraPresetId } from '../../lib/renderQuality';
 import { WALL_COLOR_SWATCHES } from '../../lib/roomAppearance';
-import { roomHasShuffleableFloorItems } from '../../lib/roomLayoutArrange';
-import { shuffleRoomLayout } from '../../lib/shuffleRoomLayout';
+import { resolveShuffleScope, shuffleRoomLayout } from '../../lib/shuffleRoomLayout';
 import { isApartmentPlan, resolveApartmentRooms } from '../../lib/apartmentRooms';
 import type { HangingDecorKind } from '../../store';
 import { useStore } from '../../store';
@@ -197,15 +196,15 @@ export function buildDesignerCommands(input: BuildCommandsInput): CommandPalette
     }
   }
 
-  const floorItems = useStore
-    .getState()
-    .order.map((id) => useStore.getState().items[id])
-    .filter((it): it is NonNullable<typeof it> => it != null);
-  if (roomHasShuffleableFloorItems(floorItems)) {
+  const shuffleScope = resolveShuffleScope(useStore.getState());
+  if (shuffleScope) {
+    const shuffleHint = isApartmentPlan(useStore.getState().roomGeometry)
+      ? 'Focused room only · 3 layouts'
+      : 'Cycle 3 layouts, keeps selection';
     cmds.push({
       id: 'shuffle-layout',
       label: 'Shuffle layout',
-      hint: 'Cycle 3 layouts, keeps selection',
+      hint: shuffleHint,
       run: wrap('shuffle-layout', () => {
         shuffleRoomLayout();
       }),
