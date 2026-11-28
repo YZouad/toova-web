@@ -134,6 +134,7 @@ export function DoorAssemblies({
             hinge={door.hinge === 'left' ? 'left' : 'right'}
             trimPreset={trimPreset}
             closed={closed}
+            doorless={door.doorless === true}
           />
         );
       })}
@@ -146,11 +147,14 @@ function DoorUnit({
   hinge,
   trimPreset,
   closed = false,
+  doorless = false,
 }: {
   placement: NonNullable<ReturnType<typeof openingWorldPlacement>>;
   hinge: 'left' | 'right';
   trimPreset: MaterialPresetId;
   closed?: boolean;
+  /** Passage with casing only — no swinging leaf. */
+  doorless?: boolean;
 }) {
   const groupRef = useRef<THREE.Group>(null);
   const trimRef = useRef<THREE.MeshStandardMaterial>(null!);
@@ -252,17 +256,19 @@ function DoorUnit({
       <mesh position={threshold.center} material={trimMat}>
         <boxGeometry args={threshold.size} />
       </mesh>
-      <group position={layout.hinge} rotation={[0, layout.openAngle, 0]}>
-        <mesh position={leaf.center} castShadow receiveShadow material={leafMat}>
-          <boxGeometry args={leaf.size} />
-        </mesh>
-        <mesh position={panel.center} material={leafMat}>
-          <boxGeometry args={panel.size} />
-        </mesh>
-        <mesh position={handle.center} castShadow material={handleMat}>
-          <cylinderGeometry args={[0.45, 0.45, handle.size[1], 12]} />
-        </mesh>
-      </group>
+      {doorless ? null : (
+        <group position={layout.hinge} rotation={[0, layout.openAngle, 0]}>
+          <mesh position={leaf.center} castShadow receiveShadow material={leafMat}>
+            <boxGeometry args={leaf.size} />
+          </mesh>
+          <mesh position={panel.center} material={leafMat}>
+            <boxGeometry args={panel.size} />
+          </mesh>
+          <mesh position={handle.center} castShadow material={handleMat}>
+            <cylinderGeometry args={[0.45, 0.45, handle.size[1], 12]} />
+          </mesh>
+        </group>
+      )}
     </group>
   );
 }

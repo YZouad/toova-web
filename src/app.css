@@ -7130,8 +7130,46 @@ button.landing-nav-brand { cursor: pointer; }
 }
 .fp-canvas-draw { cursor: crosshair; }
 .fp-canvas-select { cursor: default; }
+.fp-canvas-scale { cursor: cell; }
 .fp-canvas-pan { cursor: grab; }
 .fp-canvas-pan:active { cursor: grabbing; }
+.fp-underlay {
+  pointer-events: none;
+}
+.fp-wall-uncertain {
+  stroke: #d4a017;
+  stroke-dasharray: 6 4;
+}
+.fp-opening-uncertain .fp-opening {
+  stroke: #d4a017;
+}
+.fp-box-select {
+  fill: rgba(246, 222, 180, 0.12);
+  stroke: rgba(246, 222, 180, 0.7);
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+.fp-vertex-free {
+  fill: #8a9e8e;
+  stroke: #fff;
+  stroke-width: 1.25;
+}
+.fp-rail-opacity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--muted, #9a9084);
+}
+.fp-rail-opacity input[type='range'] {
+  width: 100%;
+}
+.fp-rail-opacity-label {
+  letter-spacing: 0.02em;
+}
 .fp-grid { stroke: var(--fp-grid); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .fp-grid-major { stroke: var(--fp-grid-major); stroke-width: 1.25; }
 .fp-wall {

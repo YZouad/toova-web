@@ -19,13 +19,17 @@ import {
   openEndpointVertexIds,
   openingWorldPlacement,
   parseFloorPlan,
+  planBounds,
   pointInPolygon,
+  problematicOpenEndpointIds,
   pruneZones,
   reconcileZoneAnchors,
   rectanglePlan,
   resolveWallAnchor,
   resolveZones,
   sanitizeWallGraph,
+  scalePlan,
+  scalePlanToWallLength,
   serializeFloorPlan,
   setWallLength,
   setZoneTag,
@@ -635,5 +639,79 @@ describe('floorPlanGeometry', () => {
     const added = next.openings.find((o) => !plan.openings.some((p) => p.id === o.id));
     expect(added?.kind).toBe('door');
     expect(added?.wallId).toBe(south.id);
+  });
+
+  it('scalePlan doubles wall lengths and opening widths', () => {
+    const plan = rectanglePlan(120, 96, 96, true);
+    const before = planBounds(plan);
+    const door = plan.openings.find((o) => o.kind === 'door')!;
+    const scaled = scalePlan(plan, 2);
+    const after = planBounds(scaled);
+    expect(after.width).toBe(before.width * 2);
+    expect(after.depth).toBe(before.depth * 2);
+    const scaledDoor = scaled.openings.find((o) => o.kind === 'door')!;
+    // Widths are re-snapped to the 6″ grid after scaling.
+    expect(scaledDoor.width).toBe(snapToGrid(door.width * 2));
+  });
+
+  it('scalePlanToWallLength rescales the whole plan from one wall', () => {
+    const plan = rectanglePlan(120, 96, 96, false);
+    const wall = plan.walls[0]!;
+    const scaled = scalePlanToWallLength(plan, wall.id, 240);
+    expect(Math.round(wallLength(scaled, scaled.walls[0]!))).toBe(240);
+    expect(planBounds(scaled).depth).toBe(192);
+  });
+
+  it('parses and serializes doorless doors', () => {
+    const plan = defaultRectanglePlan();
+    const door = plan.openings.find((o) => o.kind === 'door')!;
+    const withFlag = {
+      ...plan,
+      openings: plan.openings.map((o) =>
+        o.id === door.id ? { ...o, doorless: true as const } : o,
+      ),
+    };
+    const roundTrip = parseFloorPlan(serializeFloorPlan(withFlag));
+    expect(roundTrip).not.toBeNull();
+    const parsedDoor = roundTrip!.openings.find((o) => o.kind === 'door');
+    expect(parsedDoor?.doorless).toBe(true);
+  });
+
+  it('allows free-standing interior wall ends inside an enclosed footprint', () => {
+    // 120×120 room with a stub wall hanging into the interior from the south wall.
+    let plan: FloorPlan = {
+      version: 2,
+      height: 96,
+      vertices: [
+        { id: 'v0', x: 0, z: 0 },
+        { id: 'v1', x: 120, z: 0 },
+        { id: 'v2', x: 120, z: 120 },
+        { id: 'v3', x: 0, z: 120 },
+        { id: 'v4', x: 60, z: 0 },
+        { id: 'v5', x: 60, z: 48 },
+      ],
+      walls: [
+        { id: 'w0', startId: 'v0', endId: 'v4' },
+        { id: 'w1', startId: 'v4', endId: 'v1' },
+        { id: 'w2', startId: 'v1', endId: 'v2' },
+        { id: 'w3', startId: 'v2', endId: 'v3' },
+        { id: 'w4', startId: 'v3', endId: 'v0' },
+        { id: 'stub', startId: 'v4', endId: 'v5' },
+      ],
+      openings: [
+        {
+          id: 'd0',
+          wallId: 'w2',
+          kind: 'door',
+          offset: 44,
+          width: 32,
+          height: 80,
+          hinge: 'left',
+        },
+      ],
+    };
+    plan = sanitizeWallGraph(plan);
+    expect(problematicOpenEndpointIds(plan)).not.toContain('v5');
+    expect(validateFloorPlan(plan).some((i) => i.code === 'open_ends')).toBe(false);
   });
 });

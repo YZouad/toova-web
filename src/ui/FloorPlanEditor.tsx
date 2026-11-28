@@ -3,6 +3,7 @@ import { DOOR, WINDOW } from '../units';
 import {
   type FloorPlan,
   type FloorPlanOpening,
+  type FloorPlanUnderlay,
   type LengthUnit,
   EDITOR_CANVAS_PAD,
   EDITOR_VERTEX_RADIUS,
@@ -15,6 +16,7 @@ import {
   hitWallAtPoint,
   moveVertex,
   openEndpointVertexIds,
+  problematicOpenEndpointIds,
   offsetOnWall,
   planBounds,
   removeOpening,
@@ -23,6 +25,8 @@ import {
   resolveWallAnchor,
   resolveZones,
   sanitizeWallGraph,
+  scalePlanToWallLength,
+  scaleUnderlay,
   setZoneTag,
   snapAngle,
   snapPoint,
@@ -40,13 +44,25 @@ import { itemRect } from '../interaction/collision';
 import { FloorPlanInspector, type GridSnapSize } from './FloorPlanInspector';
 import { FloorPlanToolRail } from './FloorPlanToolRail';
 
-export type FloorPlanTool = 'select' | 'wall' | 'door' | 'window' | 'pan';
+export type FloorPlanTool = 'select' | 'wall' | 'door' | 'window' | 'scale' | 'pan';
+
+export interface FloorPlanIngestReview {
+  uncertainWallIds?: string[];
+  uncertainOpeningIds?: string[];
+  /** When true, Continue requires the user to confirm scale (Set scale tool). */
+  scaleNeedsConfirmation?: boolean;
+}
 
 interface FloorPlanEditorProps {
   plan: FloorPlan;
   onChange: (plan: FloorPlan) => void;
   furnitureOverlay?: Item[];
   readOnlyFurniture?: boolean;
+  underlay?: FloorPlanUnderlay | null;
+  onUnderlayChange?: (underlay: FloorPlanUnderlay | null) => void;
+  ingestReview?: FloorPlanIngestReview | null;
+  scaleConfirmed?: boolean;
+  onScaleConfirmedChange?: (confirmed: boolean) => void;
 }
 
 interface EditorState {
@@ -183,6 +199,11 @@ export function FloorPlanEditor({
   plan: initialPlan,
   onChange,
   furnitureOverlay,
+  underlay = null,
+  onUnderlayChange,
+  ingestReview = null,
+  scaleConfirmed = true,
+  onScaleConfirmedChange,
 }: FloorPlanEditorProps) {
   const [{ plan, past, future }, dispatch] = useReducer(editorReducer, {
     plan: initialPlan,
@@ -190,13 +211,14 @@ export function FloorPlanEditor({
     future: [],
   });
 
-  const [tool, setTool] = useState<FloorPlanTool>('wall');
+  const [tool, setTool] = useState<FloorPlanTool>(underlay ? 'select' : 'wall');
   const [angleSnap, setAngleSnap] = useState(true);
   const [gridSnap, setGridSnap] = useState<GridSnapSize>(GRID_SNAP_IN as GridSnapSize);
   const [lengthUnit, setLengthUnit] = useState<LengthUnit>('ft-in');
   const [selectedWallId, setSelectedWallId] = useState<string | null>(null);
   const [selectedOpeningId, setSelectedOpeningId] = useState<string | null>(null);
   const [selectedFaceKey, setSelectedFaceKey] = useState<string | null>(null);
+  const [selectedWallIds, setSelectedWallIds] = useState<string[]>([]);
   const [wallDraft, setWallDraft] = useState<WallDraft | null>(null);
   const [windowDraft, setWindowDraft] = useState<{ wallId: string; offset: number } | null>(null);
   const [cursor, setCursor] = useState<[number, number] | null>(null);
@@ -204,7 +226,11 @@ export function FloorPlanEditor({
   const [dragVertexId, setDragVertexId] = useState<string | null>(null);
   const [dragDraft, setDragDraft] = useState<FloorPlan | null>(null);
   const [panDrag, setPanDrag] = useState<{ startX: number; startZ: number; viewCx: number; viewCz: number } | null>(null);
+  const [boxSelect, setBoxSelect] = useState<{ x0: number; z0: number; x1: number; z1: number } | null>(null);
   const [aspect, setAspect] = useState(1);
+  const [underlayVisible, setUnderlayVisible] = useState(true);
+  const [underlayOpacity, setUnderlayOpacity] = useState(0.45);
+  const [scaleLengthDraft, setScaleLengthDraft] = useState<number | null>(null);
 
   const bounds = useMemo(() => planBounds(plan), [plan]);
   const [presetWidthFt, setPresetWidthFt] = useState(() => Math.floor(bounds.width / 12));
@@ -229,10 +255,36 @@ export function FloorPlanEditor({
   const baseW = Math.max(bounds.width + EDITOR_CANVAS_PAD * 2, 120);
   const baseH = Math.max(bounds.depth + EDITOR_CANVAS_PAD * 2, 120);
   const viewBox = viewBoxFromView(view, aspect, baseW, baseH);
-  const openEndpoints = useMemo(() => new Set(openEndpointVertexIds(plan)), [plan]);
+  const openEndpoints = useMemo(() => new Set(problematicOpenEndpointIds(plan)), [plan]);
+  const allOpenEndpoints = useMemo(() => new Set(openEndpointVertexIds(plan)), [plan]);
   const displayPlan = dragDraft ?? plan;
   const resolvedAreas = useMemo(() => resolveZones(displayPlan), [displayPlan]);
   const pad = EDITOR_CANVAS_PAD;
+  const uncertainWalls = useMemo(
+    () => new Set(ingestReview?.uncertainWallIds ?? []),
+    [ingestReview?.uncertainWallIds],
+  );
+  const uncertainOpenings = useMemo(
+    () => new Set(ingestReview?.uncertainOpeningIds ?? []),
+    [ingestReview?.uncertainOpeningIds],
+  );
+
+  const applyScaleToWall = useCallback(
+    (wallId: string, targetLength: number) => {
+      const next = scalePlanToWallLength(plan, wallId, targetLength);
+      commit(next);
+      if (underlay && onUnderlayChange) {
+        const wall = wallById(plan, wallId);
+        const len = wall ? wallLength(plan, wall) : 0;
+        if (len > 0.001) {
+          onUnderlayChange(scaleUnderlay(underlay, Math.max(GRID_SNAP_IN, targetLength) / len));
+        }
+      }
+      onScaleConfirmedChange?.(true);
+      setScaleLengthDraft(null);
+    },
+    [plan, commit, underlay, onUnderlayChange, onScaleConfirmedChange],
+  );
 
   useEffect(() => {
     const el = canvasWrapRef.current;
@@ -297,6 +349,17 @@ export function FloorPlanEditor({
     let [x, z] = world;
 
     if (tool === 'pan') return;
+
+    if (tool === 'scale') {
+      const wall = hitWallAtPoint(plan, x, z);
+      if (!wall) return;
+      setSelectedWallId(wall.id);
+      setSelectedOpeningId(null);
+      setSelectedFaceKey(null);
+      setSelectedWallIds([]);
+      setScaleLengthDraft(Math.round(wallLength(plan, wall)));
+      return;
+    }
 
     if (tool === 'wall') {
       const startPt = wallDraftPoint(plan, wallDraft);
@@ -439,19 +502,31 @@ export function FloorPlanEditor({
         setSelectedOpeningId(opening.id);
         setSelectedWallId(opening.wallId);
         setSelectedFaceKey(null);
+        setSelectedWallIds([]);
         return;
       }
       const wall = hitWallAtPoint(plan, x, z);
       if (wall) {
+        if (e.shiftKey) {
+          setSelectedWallIds((prev) =>
+            prev.includes(wall.id) ? prev.filter((id) => id !== wall.id) : [...prev, wall.id],
+          );
+          setSelectedWallId(wall.id);
+          setSelectedOpeningId(null);
+          setSelectedFaceKey(null);
+          return;
+        }
         setSelectedWallId(wall.id);
         setSelectedOpeningId(null);
         setSelectedFaceKey(null);
+        setSelectedWallIds([wall.id]);
         return;
       }
       const area = zoneAtPoint(plan, x, z);
       setSelectedWallId(null);
       setSelectedOpeningId(null);
       setSelectedFaceKey(area?.faceKey ?? null);
+      setSelectedWallIds([]);
     }
   };
 
@@ -471,6 +546,13 @@ export function FloorPlanEditor({
     if (vert) {
       e.preventDefault();
       setDragVertexId(vert.id);
+      return;
+    }
+    // Start box select when clicking empty space (shift keeps prior selection).
+    if (!hitWallAtPoint(plan, world[0], world[1], 10)) {
+      e.preventDefault();
+      if (!e.shiftKey) setSelectedWallIds([]);
+      setBoxSelect({ x0: world[0], z0: world[1], x1: world[0], z1: world[1] });
     }
   };
 
@@ -490,12 +572,38 @@ export function FloorPlanEditor({
       setDragDraft(moveVertex(plan, dragVertexId, world[0], world[1], gridSnap));
       return;
     }
+
+    if (boxSelect) {
+      setBoxSelect({ ...boxSelect, x1: world[0], z1: world[1] });
+    }
   };
 
   const handleMouseUp = () => {
     if (dragVertexId && dragDraft) {
       commit(dragDraft);
       setDragDraft(null);
+    }
+    if (boxSelect) {
+      const minX = Math.min(boxSelect.x0, boxSelect.x1);
+      const maxX = Math.max(boxSelect.x0, boxSelect.x1);
+      const minZ = Math.min(boxSelect.z0, boxSelect.z1);
+      const maxZ = Math.max(boxSelect.z0, boxSelect.z1);
+      if (maxX - minX > 4 || maxZ - minZ > 4) {
+        const hit = plan.walls.filter((w) => {
+          const seg = getWallSegment(plan, w);
+          if (!seg) return false;
+          const mx = (seg.start.x + seg.end.x) / 2;
+          const mz = (seg.start.z + seg.end.z) / 2;
+          return mx >= minX && mx <= maxX && mz >= minZ && mz <= maxZ;
+        });
+        setSelectedWallIds((prev) => {
+          const next = new Set(prev);
+          for (const w of hit) next.add(w.id);
+          return [...next];
+        });
+        if (hit[0]) setSelectedWallId(hit[0].id);
+      }
+      setBoxSelect(null);
     }
     setDragVertexId(null);
     setPanDrag(null);
@@ -525,6 +633,7 @@ export function FloorPlanEditor({
       if (key === 'w') setTool('wall');
       if (key === 'd') setTool('door');
       if (key === 'n') setTool('window');
+      if (key === 's') setTool('scale');
       if (key === 'h') setTool('pan');
       if (key === 't' && selectedFaceKey) {
         e.preventDefault();
@@ -553,10 +662,20 @@ export function FloorPlanEditor({
         setSelectedOpeningId(null);
         return;
       }
+      if (selectedWallIds.length > 1) {
+        e.preventDefault();
+        let next = plan;
+        for (const id of selectedWallIds) next = removeWall(next, id);
+        commit(next);
+        setSelectedWallIds([]);
+        setSelectedWallId(null);
+        return;
+      }
       if (selectedWallId) {
         e.preventDefault();
         commit(removeWall(plan, selectedWallId));
         setSelectedWallId(null);
+        setSelectedWallIds([]);
       }
     }
     if (e.metaKey || e.ctrlKey) {
@@ -628,7 +747,13 @@ export function FloorPlanEditor({
   }
 
   const cursorClass =
-    tool === 'pan' || panDrag ? 'fp-canvas-pan' : tool === 'select' ? 'fp-canvas-select' : 'fp-canvas-draw';
+    tool === 'pan' || panDrag
+      ? 'fp-canvas-pan'
+      : tool === 'select'
+        ? 'fp-canvas-select'
+        : tool === 'scale'
+          ? 'fp-canvas-scale'
+          : 'fp-canvas-draw';
 
   return (
     <div className="fp-editor" onKeyDown={handleKeyDown} tabIndex={0}>
@@ -643,6 +768,11 @@ export function FloorPlanEditor({
         onRedo={handleRedo}
         onFitView={fitView}
         onClear={clearPlan}
+        hasUnderlay={Boolean(underlay)}
+        underlayVisible={underlayVisible}
+        onUnderlayVisibleChange={setUnderlayVisible}
+        underlayOpacity={underlayOpacity}
+        onUnderlayOpacityChange={setUnderlayOpacity}
       />
 
       <div className="fp-canvas-wrap" ref={canvasWrapRef}>
@@ -671,6 +801,18 @@ export function FloorPlanEditor({
             height={visibleMaxZ - visibleMinZ}
             fill="url(#fp-board-vignette)"
           />
+          {underlay && underlayVisible ? (
+            <image
+              href={underlay.imageUrl}
+              x={underlay.originX}
+              y={underlay.originZ}
+              width={underlay.imageWidth * underlay.inchesPerPixel}
+              height={underlay.imageHeight * underlay.inchesPerPixel}
+              opacity={underlayOpacity}
+              preserveAspectRatio="none"
+              className="fp-underlay"
+            />
+          ) : null}
           {gridLines}
 
           {resolvedAreas.map((area) => {
@@ -725,7 +867,8 @@ export function FloorPlanEditor({
           {displayPlan.walls.map((w) => {
             const seg = getWallSegment(displayPlan, w);
             if (!seg) return null;
-            const selected = selectedWallId === w.id;
+            const selected = selectedWallId === w.id || selectedWallIds.includes(w.id);
+            const uncertain = uncertainWalls.has(w.id);
             const label = wallDimLabel(seg);
             return (
               <g key={w.id}>
@@ -734,7 +877,7 @@ export function FloorPlanEditor({
                   y1={seg.start.z}
                   x2={seg.end.x}
                   y2={seg.end.z}
-                  className={`fp-wall${selected ? ' selected' : ''}`}
+                  className={`fp-wall${selected ? ' selected' : ''}${uncertain ? ' fp-wall-uncertain' : ''}`}
                 />
                 <text x={label.x} y={label.y} className="fp-dim" dominantBaseline="middle" textAnchor="middle">
                   {formatLength(seg.length, lengthUnit)}
@@ -743,19 +886,37 @@ export function FloorPlanEditor({
             );
           })}
 
-          {displayPlan.openings.map((o) => renderOpening(o, displayPlan, selectedOpeningId === o.id))}
+          {displayPlan.openings.map((o) => (
+            <g key={o.id} className={uncertainOpenings.has(o.id) ? 'fp-opening-uncertain' : undefined}>
+              {renderOpening(o, displayPlan, selectedOpeningId === o.id)}
+            </g>
+          ))}
+
+          {boxSelect ? (
+            <rect
+              x={Math.min(boxSelect.x0, boxSelect.x1)}
+              y={Math.min(boxSelect.z0, boxSelect.z1)}
+              width={Math.abs(boxSelect.x1 - boxSelect.x0)}
+              height={Math.abs(boxSelect.z1 - boxSelect.z0)}
+              className="fp-box-select"
+            />
+          ) : null}
 
           {ghostOpening ? renderOpening(ghostOpening, displayPlan, false, true) : null}
 
-          {displayPlan.vertices.map((v) => (
-            <circle
-              key={v.id}
-              cx={v.x}
-              cy={v.z}
-              r={openEndpoints.has(v.id) ? EDITOR_VERTEX_RADIUS + 1 : EDITOR_VERTEX_RADIUS}
-              className={`fp-vertex${openEndpoints.has(v.id) ? ' fp-vertex-open' : ''}${dragVertexId === v.id ? ' fp-vertex-drag' : ''}${tool === 'select' ? ' fp-vertex-draggable' : ''}`}
-            />
-          ))}
+          {displayPlan.vertices.map((v) => {
+            const badOpen = openEndpoints.has(v.id);
+            const freeInterior = !badOpen && allOpenEndpoints.has(v.id);
+            return (
+              <circle
+                key={v.id}
+                cx={v.x}
+                cy={v.z}
+                r={badOpen || freeInterior ? EDITOR_VERTEX_RADIUS + 1 : EDITOR_VERTEX_RADIUS}
+                className={`fp-vertex${badOpen ? ' fp-vertex-open' : ''}${freeInterior ? ' fp-vertex-free' : ''}${dragVertexId === v.id ? ' fp-vertex-drag' : ''}${tool === 'select' ? ' fp-vertex-draggable' : ''}`}
+              />
+            );
+          })}
 
           {wallDraft?.mode === 'pending' ? (
             <circle cx={wallDraft.x} cy={wallDraft.z} r={EDITOR_VERTEX_RADIUS} className="fp-vertex fp-vertex-pending" />
@@ -838,13 +999,33 @@ export function FloorPlanEditor({
         onPlanChange={commit}
         onSelectWall={(id) => {
           setSelectedWallId(id);
-          if (id) setSelectedFaceKey(null);
+          if (id) {
+            setSelectedFaceKey(null);
+            setSelectedWallIds(id ? [id] : []);
+          }
         }}
         onSelectOpening={(id) => {
           setSelectedOpeningId(id);
           if (id) setSelectedFaceKey(null);
         }}
         onSelectFace={setSelectedFaceKey}
+        scaleMode={tool === 'scale'}
+        scaleLengthDraft={scaleLengthDraft}
+        onScaleLengthDraftChange={setScaleLengthDraft}
+        onScaleWholePlan={(wallId, length) => applyScaleToWall(wallId, length)}
+        scaleConfirmed={scaleConfirmed}
+        scaleNeedsConfirmation={Boolean(ingestReview?.scaleNeedsConfirmation)}
+        uncertainWallCount={uncertainWalls.size}
+        uncertainOpeningCount={uncertainOpenings.size}
+        selectedWallCount={selectedWallIds.length}
+        onDeleteSelectedWalls={() => {
+          if (selectedWallIds.length === 0) return;
+          let next = plan;
+          for (const id of selectedWallIds) next = removeWall(next, id);
+          commit(next);
+          setSelectedWallIds([]);
+          setSelectedWallId(null);
+        }}
       />
     </div>
   );

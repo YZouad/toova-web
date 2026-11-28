@@ -31,6 +31,10 @@ import { RoomPreview } from './RoomPreview';
 import { consumeAgenticChecklistResume } from '../lib/agenticChecklistSession';
 import { AgenticRoomFlow, type AgenticRoomConfirmPayload } from './AgenticRoomFlow';
 import { AgenticRoomScanFlow } from './AgenticRoomScanFlow';
+import {
+  FloorPlanImportFlow,
+  type FloorPlanImportResult,
+} from './FloorPlanImportFlow';
 
 export type RoomPresetPickerSelection =
   | { kind: 'starter'; template: RoomStarterTemplate }
@@ -47,9 +51,15 @@ export type RoomPresetPickerSelection =
       seedItems: import('../store').Item[];
       seedOrder: string[];
       packSkipped: string[];
+    }
+  | {
+      kind: 'import';
+      plan: FloorPlan;
+      underlay: FloorPlanImportResult['underlay'];
+      ingestReview: FloorPlanImportResult['ingestReview'];
     };
 
-type PickerMode = 'presets' | 'describe' | 'scan';
+type PickerMode = 'presets' | 'describe' | 'scan' | 'import';
 
 interface RoomPresetPickerProps {
   open?: boolean;
@@ -322,6 +332,7 @@ export function RoomPresetPicker({
               { id: 'presets', label: 'Pick a template' },
               { id: 'describe', label: 'Describe your room' },
               { id: 'scan', label: 'Scan a room' },
+              { id: 'import', label: 'Import floor plan' },
             ]}
           />
         </div>
@@ -339,6 +350,21 @@ export function RoomPresetPicker({
             disabled={disabled}
             onBack={() => setMode('presets')}
             onConfirm={handleAgenticConfirm}
+          />
+        ) : null}
+
+        {mode === 'import' ? (
+          <FloorPlanImportFlow
+            disabled={disabled}
+            onBack={() => setMode('presets')}
+            onImported={(result) =>
+              void runSelect({
+                kind: 'import',
+                plan: result.plan,
+                underlay: result.underlay,
+                ingestReview: result.ingestReview,
+              })
+            }
           />
         ) : null}
 

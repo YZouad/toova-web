@@ -164,6 +164,10 @@ interface FloorPlanDraft {
   starterTemplateId?: string;
   /** Highlight / prefer this starter in the picker (first-room onboarding). */
   preferredTemplateId?: string;
+  /** Reference image from floor-plan import. */
+  underlay?: import('./lib/floorPlanGeometry').FloorPlanUnderlay | null;
+  /** Review metadata from the floor-plan ingester. */
+  ingestReview?: import('./ui/FloorPlanEditor').FloorPlanIngestReview | null;
 }
 
 /** Decorative only — does not encode a real URL. */
@@ -891,6 +895,17 @@ function AppContent() {
       }
       if (selection.kind === 'customize') {
         handleCustomizePresetPlan(name, selection.plan, selection.template);
+        return;
+      }
+      if (selection.kind === 'import') {
+        setFloorPlanDraft({
+          name,
+          mode: 'create',
+          initialPlan: structuredClone(selection.plan),
+          underlay: selection.underlay,
+          ingestReview: selection.ingestReview,
+        });
+        setScreen('floor-plan');
         return;
       }
       handleCustomizeOwnPlan(name);
@@ -1760,6 +1775,8 @@ function AppContent() {
         mode={floorPlanDraft.mode}
         initialPlan={floorPlanDraft.initialPlan}
         furnitureItems={floorPlanDraft.mode === 'edit' ? items : undefined}
+        underlay={floorPlanDraft.underlay}
+        ingestReview={floorPlanDraft.ingestReview}
         continuing={floorPlanBusy}
         onCancel={() => {
           if (floorPlanDraft.mode === 'create') {

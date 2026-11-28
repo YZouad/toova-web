@@ -53,8 +53,41 @@ export interface FloorPlanOpening {
   /** Sill height from floor (windows only). */
   sill?: number;
   hinge?: DoorHinge;
+  /**
+   * When true on a door, treat as a doorless passage (no leaf in 3D).
+   * Older readers that ignore this flag still see a valid door opening.
+   */
+  doorless?: boolean;
   /** Optional curtains attached to this window. */
   curtains?: WindowCurtains;
+}
+
+/**
+ * Reference image overlaid under the floor-plan editor canvas.
+ * World inches map linearly onto image pixels via inchesPerPixel.
+ */
+export interface FloorPlanUnderlay {
+  /** Object URL or data URL. */
+  imageUrl: string;
+  imageWidth: number;
+  imageHeight: number;
+  /** World X of the image's left edge (inches). */
+  originX: number;
+  /** World Z of the image's top edge (inches). */
+  originZ: number;
+  /** Inches per image pixel (uniform). */
+  inchesPerPixel: number;
+}
+
+/** Scale an underlay so it stays aligned after `scalePlan`. */
+export function scaleUnderlay(underlay: FloorPlanUnderlay, factor: number): FloorPlanUnderlay {
+  if (!Number.isFinite(factor) || factor <= 0) return underlay;
+  return {
+    ...underlay,
+    originX: underlay.originX * factor,
+    originZ: underlay.originZ * factor,
+    inchesPerPixel: underlay.inchesPerPixel * factor,
+  };
 }
 
 /** Labeled anchor point inside an enclosed floor area (kitchen, bedroom, …). */
@@ -291,6 +324,54 @@ export function setWallLength(plan: FloorPlan, wallId: string, length: number): 
   return { ...plan, vertices };
 }
 
+/**
+ * Uniformly scale all plan coordinates and opening widths/offsets by `factor`.
+ * Vertices and openings are re-snapped to the grid; height is unchanged.
+ */
+export function scalePlan(plan: FloorPlan, factor: number): FloorPlan {
+  if (!Number.isFinite(factor) || factor <= 0 || Math.abs(factor - 1) < 1e-9) return plan;
+  const vertices = plan.vertices.map((v) => ({
+    ...v,
+    x: snapToGrid(v.x * factor),
+    z: snapToGrid(v.z * factor),
+  }));
+  const openings = plan.openings.map((o) => {
+    const minW = o.kind === 'window' ? MIN_WINDOW_WIDTH : 12;
+    return {
+      ...o,
+      offset: Math.max(0, snapToGrid(o.offset * factor)),
+      width: Math.max(minW, snapToGrid(o.width * factor)),
+    };
+  });
+  const zones = (plan.zones ?? []).map((z) => ({
+    ...z,
+    x: snapToGrid(z.x * factor),
+    z: snapToGrid(z.z * factor),
+  }));
+  return clampPlan(
+    sanitizeWallGraph({
+      ...plan,
+      vertices,
+      openings,
+      zones,
+    }),
+  );
+}
+
+/** Scale the whole plan so `wallId` becomes `targetLength` inches. */
+export function scalePlanToWallLength(
+  plan: FloorPlan,
+  wallId: string,
+  targetLength: number,
+): FloorPlan {
+  const wall = wallById(plan, wallId);
+  if (!wall) return plan;
+  const len = wallLength(plan, wall);
+  if (len < 0.001) return plan;
+  const clamped = Math.max(MIN_WALL_LENGTH, targetLength);
+  return scalePlan(plan, clamped / len);
+}
+
 export function moveVertex(
   plan: FloorPlan,
   vertexId: string,
@@ -308,7 +389,9 @@ export function moveVertex(
 export function updateOpening(
   plan: FloorPlan,
   openingId: string,
-  patch: Partial<Pick<FloorPlanOpening, 'offset' | 'width' | 'height' | 'sill' | 'hinge' | 'curtains'>>,
+  patch: Partial<
+    Pick<FloorPlanOpening, 'offset' | 'width' | 'height' | 'sill' | 'hinge' | 'curtains' | 'doorless'>
+  >,
 ): FloorPlan {
   const openings = plan.openings.map((o) =>
     o.id === openingId ? { ...o, ...patch } : o,
@@ -1514,11 +1597,62 @@ export function hasNoDanglingWalls(plan: FloorPlan): boolean {
   return openEndpointVertexIds(plan).length === 0;
 }
 
-/** True when the outer envelope forms a large enough enclosed footprint. */
+/**
+ * True when the plan contains a large enough enclosed floor face.
+ * Free-standing / dangling walls are allowed as long as at least one face exists.
+ */
 export function hasEnclosedFootprint(plan: FloorPlan): boolean {
-  if (!hasNoDanglingWalls(plan)) return false;
-  const outer = outerFaceVertices(plan);
-  return outer.length >= 3 && Math.abs(polygonAreaVerts(outer)) >= MIN_ROOM_AREA;
+  const loops = floorFaceLoops(plan);
+  for (const face of loops) {
+    if (Math.abs(polygonAreaVerts(face)) >= MIN_ROOM_AREA) return true;
+  }
+  if (hasNoDanglingWalls(plan)) {
+    const outer = outerFaceVertices(plan);
+    return outer.length >= 3 && Math.abs(polygonAreaVerts(outer)) >= MIN_ROOM_AREA;
+  }
+  return false;
+}
+
+/**
+ * Open wall endpoints that are NOT interior free ends (i.e. they break the
+ * outer envelope). Interior free-standing wall ends inside an enclosed face
+ * are allowed and omitted from this list.
+ */
+export function problematicOpenEndpointIds(plan: FloorPlan): string[] {
+  const open = openEndpointVertexIds(plan);
+  if (open.length === 0) return [];
+  if (!hasEnclosedFootprint(plan)) return open;
+  const loops = floorFaceLoops(plan).filter(
+    (face) => Math.abs(polygonAreaVerts(face)) >= MIN_ROOM_AREA,
+  );
+  if (loops.length === 0) return open;
+
+  // Union bbox of enclosed faces. Free ends strictly inside (inset) are OK —
+  // e.g. fireplace stubs. Ends on/near the outer hull remain problematic.
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  for (const face of loops) {
+    for (const p of face) {
+      minX = Math.min(minX, p.x);
+      maxX = Math.max(maxX, p.x);
+      minZ = Math.min(minZ, p.z);
+      maxZ = Math.max(maxZ, p.z);
+    }
+  }
+  const inset = Math.min(GRID_SNAP_IN, (maxX - minX) / 4, (maxZ - minZ) / 4);
+
+  return open.filter((id) => {
+    const v = vertexById(plan, id);
+    if (!v) return true;
+    const strictlyInside =
+      v.x > minX + inset &&
+      v.x < maxX - inset &&
+      v.z > minZ + inset &&
+      v.z < maxZ - inset;
+    return !strictlyInside;
+  });
 }
 
 export function isClosedLoop(plan: FloorPlan): boolean {
@@ -1546,7 +1680,7 @@ export function openingsOverlap(a: FloorPlanOpening, b: FloorPlanOpening): boole
 export function validateFloorPlan(plan: FloorPlan): ValidationIssue[] {
   const p = sanitizeWallGraph(plan);
   const issues: ValidationIssue[] = [];
-  const open = openEndpointVertexIds(p);
+  const open = problematicOpenEndpointIds(p);
   if (open.length > 0) {
     issues.push({
       code: 'open_ends',
@@ -1561,8 +1695,9 @@ export function validateFloorPlan(plan: FloorPlan): ValidationIssue[] {
   if (hasSelfIntersection(p)) {
     issues.push({ code: 'self_intersect', message: 'Walls must not cross each other.' });
   }
+  const enclosed = hasEnclosedFootprint(p);
   const area = Math.abs(polygonAreaVerts(outerFaceVertices(p)));
-  if (open.length === 0 && area < MIN_ROOM_AREA) {
+  if (open.length === 0 && !enclosed && area < MIN_ROOM_AREA) {
     issues.push({ code: 'too_small', message: 'Room footprint is too small.' });
   }
   for (const w of p.walls) {
@@ -1858,6 +1993,7 @@ export function parseFloorPlan(raw: unknown): FloorPlan | null {
         height: r.height,
         sill: typeof r.sill === 'number' ? r.sill : undefined,
         hinge: r.hinge === 'left' || r.hinge === 'right' ? r.hinge : undefined,
+        doorless: r.kind === 'door' && r.doorless === true ? true : undefined,
         curtains:
           r.kind === 'window' &&
           r.curtains &&

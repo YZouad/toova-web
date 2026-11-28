@@ -49,6 +49,16 @@ interface FloorPlanInspectorProps {
   onSelectWall: (id: string | null) => void;
   onSelectOpening: (id: string | null) => void;
   onSelectFace: (faceKey: string | null) => void;
+  scaleMode?: boolean;
+  scaleLengthDraft?: number | null;
+  onScaleLengthDraftChange?: (v: number | null) => void;
+  onScaleWholePlan?: (wallId: string, length: number) => void;
+  scaleConfirmed?: boolean;
+  scaleNeedsConfirmation?: boolean;
+  uncertainWallCount?: number;
+  uncertainOpeningCount?: number;
+  selectedWallCount?: number;
+  onDeleteSelectedWalls?: () => void;
 }
 
 interface ChecklistItem {
@@ -63,12 +73,23 @@ const ITEM = {
   show: { opacity: 1, y: 0, transition: { type: 'spring' as const, stiffness: 380, damping: 28 } },
 };
 
-function buildChecklist(plan: FloorPlan, issues: ReturnType<typeof validateFloorPlan>): ChecklistItem[] {
+function buildChecklist(
+  plan: FloorPlan,
+  issues: ReturnType<typeof validateFloorPlan>,
+  opts?: {
+    scaleNeedsConfirmation?: boolean;
+    scaleConfirmed?: boolean;
+    uncertainWallCount?: number;
+    uncertainOpeningCount?: number;
+  },
+): ChecklistItem[] {
   const codes = new Set(issues.map((i) => i.code));
   const doors = plan.openings.filter((o) => o.kind === 'door').length;
   const areas = resolveZones(plan);
   const tagged = areas.filter((a) => a.zone).length;
-  return [
+  const uncertain =
+    (opts?.uncertainWallCount ?? 0) + (opts?.uncertainOpeningCount ?? 0);
+  const items: ChecklistItem[] = [
     {
       id: 'boundary',
       label: 'Close the outer boundary',
@@ -94,23 +115,39 @@ function buildChecklist(plan: FloorPlan, issues: ReturnType<typeof validateFloor
       label: 'Openings fit on walls',
       done: !codes.has('opening_bounds') && !codes.has('opening_overlap') && !codes.has('orphan_opening'),
     },
-    {
-      id: 'tags',
-      label:
-        areas.length === 0
-          ? 'Tag each area (optional)'
-          : tagged >= areas.length
-            ? 'All areas tagged'
-            : areas.length >= 2
-              ? `Tag 2+ rooms to enable apartment view · ${tagged}/${areas.length}`
-              : `Tag each area (optional) · ${tagged}/${areas.length}`,
-      // Soft requirement: done when all tagged, or when apartment threshold (2+) is met.
-      done:
-        areas.length === 0 ||
-        tagged >= areas.length ||
-        (areas.length >= 2 && tagged >= 2),
-    },
   ];
+  if (opts?.scaleNeedsConfirmation) {
+    items.push({
+      id: 'scale',
+      label: opts.scaleConfirmed
+        ? 'Scale confirmed'
+        : 'Confirm scale (Set scale tool → pick a wall)',
+      done: Boolean(opts.scaleConfirmed),
+    });
+  }
+  if (uncertain > 0) {
+    items.push({
+      id: 'uncertain',
+      label: `Review uncertain items · ${uncertain}`,
+      done: false,
+    });
+  }
+  items.push({
+    id: 'tags',
+    label:
+      areas.length === 0
+        ? 'Tag each area (optional)'
+        : tagged >= areas.length
+          ? 'All areas tagged'
+          : areas.length >= 2
+            ? `Tag 2+ rooms to enable apartment view · ${tagged}/${areas.length}`
+            : `Tag each area (optional) · ${tagged}/${areas.length}`,
+    done:
+      areas.length === 0 ||
+      tagged >= areas.length ||
+      (areas.length >= 2 && tagged >= 2),
+  });
+  return items;
 }
 
 function SectionEyebrow({ children }: { children: React.ReactNode }) {
@@ -276,9 +313,35 @@ export function FloorPlanInspector({
   onSelectWall,
   onSelectOpening,
   onSelectFace,
+  scaleMode = false,
+  scaleLengthDraft = null,
+  onScaleLengthDraftChange,
+  onScaleWholePlan,
+  scaleConfirmed = true,
+  scaleNeedsConfirmation = false,
+  uncertainWallCount = 0,
+  uncertainOpeningCount = 0,
+  selectedWallCount = 0,
+  onDeleteSelectedWalls,
 }: FloorPlanInspectorProps) {
   const issues = useMemo(() => validateFloorPlan(plan), [plan]);
-  const checklist = useMemo(() => buildChecklist(plan, issues), [plan, issues]);
+  const checklist = useMemo(
+    () =>
+      buildChecklist(plan, issues, {
+        scaleNeedsConfirmation,
+        scaleConfirmed,
+        uncertainWallCount,
+        uncertainOpeningCount,
+      }),
+    [
+      plan,
+      issues,
+      scaleNeedsConfirmation,
+      scaleConfirmed,
+      uncertainWallCount,
+      uncertainOpeningCount,
+    ],
+  );
   const bounds = useMemo(() => planBounds(plan), [plan]);
   const areas = useMemo(() => resolveZones(plan), [plan]);
   const selectedArea = selectedFaceKey
@@ -351,16 +414,68 @@ export function FloorPlanInspector({
           <OpeningFields opening={selectedOpening} plan={plan} lengthUnit={lengthUnit} onChange={onPlanChange} />
         ) : selectedWall ? (
           <>
-            <SectionEyebrow>Wall</SectionEyebrow>
+            <SectionEyebrow>{scaleMode ? 'Set scale' : 'Wall'}</SectionEyebrow>
             <p className="fp-inspector-serif">{formatLength(wallLength(plan, selectedWall), lengthUnit)}</p>
-            <NumField
-              label={`Length (${lengthUnit === 'inches' ? 'in' : 'ft/in'})`}
-              value={Math.round(wallLength(plan, selectedWall))}
-              min={6}
-              step={6}
-              onChange={(v) => onPlanChange(setWallLength(plan, selectedWall.id, v))}
-            />
-            <p className="fp-inspector-hint">Drag corners on canvas to reshape</p>
+            {scaleMode ? (
+              <>
+                <NumField
+                  label={`Real length (${lengthUnit === 'inches' ? 'in' : 'ft/in'})`}
+                  value={scaleLengthDraft ?? Math.round(wallLength(plan, selectedWall))}
+                  min={6}
+                  step={6}
+                  onChange={(v) => onScaleLengthDraftChange?.(v)}
+                />
+                <button
+                  type="button"
+                  className="fp-chip active"
+                  style={{ marginTop: 8, width: '100%' }}
+                  onClick={() => {
+                    const len =
+                      scaleLengthDraft ?? Math.round(wallLength(plan, selectedWall));
+                    onScaleWholePlan?.(selectedWall.id, len);
+                  }}
+                >
+                  Scale whole plan to this length
+                </button>
+                <p className="fp-inspector-hint">
+                  All walls and the reference image rescale together.
+                </p>
+              </>
+            ) : (
+              <>
+                <NumField
+                  label={`Length (${lengthUnit === 'inches' ? 'in' : 'ft/in'})`}
+                  value={Math.round(wallLength(plan, selectedWall))}
+                  min={6}
+                  step={6}
+                  onChange={(v) => onPlanChange(setWallLength(plan, selectedWall.id, v))}
+                />
+                {onScaleWholePlan ? (
+                  <button
+                    type="button"
+                    className="fp-chip"
+                    style={{ marginTop: 8, width: '100%' }}
+                    onClick={() => {
+                      const len = Math.round(wallLength(plan, selectedWall));
+                      onScaleWholePlan(selectedWall.id, len);
+                    }}
+                  >
+                    Scale whole plan to this length
+                  </button>
+                ) : null}
+                {selectedWallCount > 1 && onDeleteSelectedWalls ? (
+                  <button
+                    type="button"
+                    className="fp-chip"
+                    style={{ marginTop: 8, width: '100%' }}
+                    onClick={onDeleteSelectedWalls}
+                  >
+                    Delete {selectedWallCount} selected walls
+                  </button>
+                ) : null}
+                <p className="fp-inspector-hint">Drag corners on canvas to reshape</p>
+              </>
+            )}
           </>
         ) : selectedArea ? (
           <>
